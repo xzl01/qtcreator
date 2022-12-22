@@ -1,0 +1,16 @@
+Author: Pino Toscano <pino@debian.org>
+Description: Adjust the installation paths to the standard Debian locations.
+Forwarded: not-needed
+Last-Update: 2021-08-15
+
+--- a/cmake/QtCreatorAPIInternal.cmake
++++ b/cmake/QtCreatorAPIInternal.cmake
+@@ -75,7 +75,7 @@ else ()
+   set(_IDE_PLUGIN_PATH "${_IDE_LIBRARY_BASE_PATH}/qtcreator/plugins")
+   set(_IDE_LIBEXEC_PATH "${CMAKE_INSTALL_LIBEXECDIR}/qtcreator")
+   set(_IDE_DATA_PATH "${CMAKE_INSTALL_DATAROOTDIR}/qtcreator")
+-  set(_IDE_DOC_PATH "${CMAKE_INSTALL_DATAROOTDIR}/doc/qtcreator")
++  set(_IDE_DOC_PATH "${CMAKE_INSTALL_DATAROOTDIR}/qtcreator/doc")
+   set(_IDE_BIN_PATH "${CMAKE_INSTALL_BINDIR}")
+   set(_IDE_LIBRARY_ARCHIVE_PATH "${_IDE_LIBRARY_PATH}")
+ 

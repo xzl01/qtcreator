@@ -1,0 +1,827 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Source: http://download.qt.io/official_releases/qtcreator/*/*/
+
+Files: *
+Copyright: 2008-2020 The Qt Company
+License: GPL-3 with Qt-1.0 exception
+
+Files: debian/*
+Copyright: 2014-2019, Adam Majer <adamm@zombino.com>
+           2018-2019, Alexander Volkov <a.volkov@rubistech.ru>
+           2018, Dmitry Shachnev <mitya57@debian.org>
+           2018, Feliz Geyer <fgeyer@debian.org>
+           2013-2020, Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
+           2017, Maximiliano Curia <maxy@debian.org>
+           2013-2019, Pino Toscano <pino@debian.org>
+           2017-2018, Simon Quigley <tsimonq2@ubuntu.com>
+License: GPL-3+
+
+# Auto-generated rules for non-3rdparty code
+# Use qtbase's debian/scripts/update-copyright in cleaned source tree root to update it.
+## BEGIN AUTO GENERATED BLOCK
+
+## BSD-3-clause
+
+Files: src/shared/qbs/examples/baremetal/at90can128olimex/at90can128olimex.qbs
+       src/shared/qbs/examples/baremetal/at90can128olimex/redblink/gpio.c
+       src/shared/qbs/examples/baremetal/at90can128olimex/redblink/gpio.h
+       src/shared/qbs/examples/baremetal/at90can128olimex/redblink/main.c
+       src/shared/qbs/examples/baremetal/at90can128olimex/redblink/redblink.qbs
+       src/shared/qbs/examples/baremetal/baremetal.qbs
+       src/shared/qbs/examples/baremetal/cc2540usbdongle/cc2540usbdongle.qbs
+       src/shared/qbs/examples/baremetal/cc2540usbdongle/greenblink/gpio.c
+       src/shared/qbs/examples/baremetal/cc2540usbdongle/greenblink/gpio.h
+       src/shared/qbs/examples/baremetal/cc2540usbdongle/greenblink/greenblink.qbs
+       src/shared/qbs/examples/baremetal/cc2540usbdongle/greenblink/main.c
+       src/shared/qbs/examples/baremetal/cc2540usbdongle/greenblink/system.h
+       src/shared/qbs/examples/baremetal/cy7c68013a/cy7c68013a.qbs
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/core.c
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/core.h
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/defs.h
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/gpio.c
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/gpio.h
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/hid.c
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/hid.h
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/hiddesc.c
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/hidep0.c
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/hidep1.c
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/irqs.h
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/main.c
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/nes-gamepads.qbs
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/regs.h
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/usb.c
+       src/shared/qbs/examples/baremetal/cy7c68013a/nes-gamepads/usb.h
+       src/shared/qbs/examples/baremetal/msp430f5529/msp430f5529.qbs
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/gamepads.ld
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/gpio.c
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/gpio.h
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/hid.h
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/hiddesc.c
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/hidep0.c
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/hidep1.c
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/hwdefs.h
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/main.c
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/nes-gamepads.qbs
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/pmm.c
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/pmm.h
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/ucs.c
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/ucs.h
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/usb.c
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/usb.h
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/wdt_a.c
+       src/shared/qbs/examples/baremetal/msp430f5529/nes-gamepads/wdt_a.h
+       src/shared/qbs/examples/baremetal/msp430f5529/redblink/gpio.c
+       src/shared/qbs/examples/baremetal/msp430f5529/redblink/gpio.h
+       src/shared/qbs/examples/baremetal/msp430f5529/redblink/main.c
+       src/shared/qbs/examples/baremetal/msp430f5529/redblink/redblink.qbs
+       src/shared/qbs/examples/baremetal/msp430f5529/redblink/system.c
+       src/shared/qbs/examples/baremetal/msp430f5529/redblink/system.h
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/blueblink.qbs
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/gcc/flash.ld
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/gcc/startup.s
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/gpio.c
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/gpio.h
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/iar/flash.icf
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/iar/startup.s
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/keil/flash.sct
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/keil/startup.s
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/main.c
+       src/shared/qbs/examples/baremetal/stm32f4discovery/blueblink/system.h
+       src/shared/qbs/examples/baremetal/stm32f4discovery/stm32f4discovery.qbs
+       src/shared/qbs/examples/baremetal/stm8s103f3/redblink/gpio.c
+       src/shared/qbs/examples/baremetal/stm8s103f3/redblink/gpio.h
+       src/shared/qbs/examples/baremetal/stm8s103f3/redblink/main.c
+       src/shared/qbs/examples/baremetal/stm8s103f3/redblink/redblink.qbs
+       src/shared/qbs/examples/baremetal/stm8s103f3/redblink/system.h
+       src/shared/qbs/examples/baremetal/stm8s103f3/stm8s103f3.qbs
+Copyright: 2019 Denis Shienkov <denis.shienkov@gmail.com>
+License: BSD-3-clause
+
+Files: src/shared/qbs/tests/auto/blackbox/testdata/loadablemodule/main.cpp
+Copyright: 2015 Jake Petroules.
+           2016 The Qt Company Ltd.
+License: BSD-3-clause
+
+Files: src/shared/qbs/examples/cocoa-application/CocoaApplication.qbs
+       src/shared/qbs/examples/cocoa-application/CocoaApplication/AppDelegate.h
+       src/shared/qbs/examples/cocoa-touch-application/CocoaTouchApplication.qbs
+       src/shared/qbs/examples/cocoa-touch-application/CocoaTouchApplication/AppDelegate.h
+       src/shared/qbs/examples/cocoa-touch-application/CocoaTouchApplication/DetailViewController.h
+       src/shared/qbs/examples/cocoa-touch-application/CocoaTouchApplication/MasterViewController.h
+Copyright: 2015 Petroules Corporation.
+           2017 The Qt Company Ltd.
+License: BSD-3-clause
+
+## GFDL-NIV-1.3
+
+Files: src/shared/qbs/doc/reference/modules/freedesktop-module.qdoc
+Copyright: 2019 Alberto Mardegan
+License: GFDL-NIV-1.3
+
+Files: src/shared/qbs/doc/reference/items/probe/iar-probe.qdoc
+       src/shared/qbs/doc/reference/items/probe/keil-probe.qdoc
+       src/shared/qbs/doc/reference/items/probe/sdcc-probe.qdoc
+Copyright: 2019 Denis Shienkov <denis.shienkov@gmail.com>
+License: GFDL-NIV-1.3
+
+Files: src/shared/qbs/doc/reference/jsextensions/jsextension-binaryfile.qdoc
+Copyright: 2017 Denis Shienkov <denis.shienkov@gmail.com>
+           2017 Sergey Belyashov <sergey.belyashov@gmail.com>
+           2017 The Qt Company Ltd.
+License: GFDL-NIV-1.3
+
+Files: src/shared/qbs/doc/reference/items/convenience/library.qdoc
+       src/shared/qbs/doc/reference/items/probe/binary-probe.qdoc
+       src/shared/qbs/doc/reference/items/probe/framework-probe.qdoc
+       src/shared/qbs/doc/reference/items/probe/include-probe.qdoc
+       src/shared/qbs/doc/reference/items/probe/library-probe.qdoc
+       src/shared/qbs/doc/reference/items/probe/path-probe.qdoc
+       src/shared/qbs/doc/reference/items/probe/pkgconfig-probe.qdoc
+Copyright: 2018-2020 Ivan Komissarov <ABBAPOH@gmail.com>
+License: GFDL-NIV-1.3
+
+Files: src/shared/qbs/doc/reference/jsextensions/jsextension-temporarydir.qdoc
+Copyright: 2015 Jake Petroules.
+License: GFDL-NIV-1.3
+
+Files: src/shared/qbs/doc/reference/items/convenience/applicationextension.qdoc
+       src/shared/qbs/doc/reference/items/convenience/loadablemodule.qdoc
+       src/shared/qbs/doc/reference/items/convenience/xpcservice.qdoc
+       src/shared/qbs/doc/reference/modules/bundle-module.qdoc
+       src/shared/qbs/doc/reference/modules/xcode-module.qdoc
+Copyright: 2015 Jake Petroules.
+           2017 The Qt Company Ltd.
+License: GFDL-NIV-1.3
+
+Files: src/shared/qbs/doc/reference/commands.qdoc
+       src/shared/qbs/doc/reference/items/convenience/autotestrunner.qdoc
+Copyright: 2019 Jochen Ulrich <jochenulrich@t-online.de>
+           2017 The Qt Company Ltd.
+License: GFDL-NIV-1.3
+
+Files: doc/qtdesignstudio/src/qtquick3d-editor/exporting-3d/exporting-3d-assets.qdoc
+Copyright: 1993-2009 NVIDIA Corporation.
+           2020 The Qt Company Ltd.
+License: GFDL-NIV-1.3
+
+Files: src/shared/qbs/doc/reference/jsextensions/jsextensions-general.qdoc
+Copyright: 2015 Petroules Corporation.
+           2016 The Qt Company Ltd.
+License: GFDL-NIV-1.3
+
+Files: src/shared/qbs/doc/reference/items/probe/conanfile-probe.qdoc
+Copyright: 2020 Richard Weickelt
+License: GFDL-NIV-1.3
+
+## GPL-3
+
+Files: share/qtcreator/qmldesigner/propertyEditorQmlSources/imports/HelperWidgets/ItemFilterComboBox.qml
+       share/qtcreator/qmldesigner/propertyEditorQmlSources/imports/HelperWidgets/ListViewComboBox.qml
+Copyright: 2019 The Qt Company Ltd.
+License: GPL-3
+
+## GPL-3 with Qt-1.0 exception
+
+Files: src/shared/qbs/tests/auto/blackbox/tst_clangdb.cpp
+Copyright: 2016 Christian Gagneraud.
+           2016 The Qt Company Ltd.
+License: GPL-3 with Qt-1.0 exception
+
+Files: src/shared/qbs/tests/auto/blackbox/testdata/generate-linker-map-file/main.cpp
+Copyright: 2019 Denis Shienkov <denis.shienkov@gmail.com>
+License: GPL-3 with Qt-1.0 exception
+
+Files: src/shared/qbs/tests/auto/blackbox/testdata/groups-in-modules/modules/helper/diamondc.c
+Copyright: 2015 Jake Petroules.
+           2016 The Qt Company Ltd.
+License: GPL-3 with Qt-1.0 exception
+
+Files: src/shared/qbs/tests/auto/api/testdata/timeout-process/main.cpp
+       src/shared/qbs/tests/auto/blackbox/testdata/autotest-timeout/test-main.cpp
+Copyright: 2019 Jochen Ulrich <jochenulrich@t-online.de>
+License: GPL-3 with Qt-1.0 exception
+
+Files: src/shared/qbs/tests/auto/api/tst_api.cpp
+       src/shared/qbs/tests/auto/api/tst_api.h
+       src/shared/qbs/tests/auto/blackbox/tst_blackbox.cpp
+       src/shared/qbs/tests/auto/blackbox/tst_blackbox.h
+Copyright: 2019 Jochen Ulrich <jochenulrich@t-online.de>
+           2016 The Qt Company Ltd.
+License: GPL-3 with Qt-1.0 exception
+
+## LGPL-2.1-or-3 with Qt-1.1 exception
+
+Files: src/libs/glsl/glslparsertable.cpp
+       src/libs/glsl/glslparsertable_p.h
+Copyright: 2016 The Qt Company Ltd.
+License: LGPL-2.1-or-3 with Qt-1.1 exception
+
+## LGPL-3 or GPL-2
+
+Files: src/shared/qbs/src/lib/corelib/jsextensions/domxml.cpp
+Copyright: 2016 BogDan Vatra <bogdan@kde.org>
+           2016 The Qt Company Ltd.
+License: LGPL-3 or GPL-2
+
+Files: src/shared/qbs/src/app/qbs-setup-toolchains/iarewprobe.cpp
+       src/shared/qbs/src/app/qbs-setup-toolchains/iarewprobe.h
+       src/shared/qbs/src/app/qbs-setup-toolchains/keilprobe.cpp
+       src/shared/qbs/src/app/qbs-setup-toolchains/keilprobe.h
+       src/shared/qbs/src/app/qbs-setup-toolchains/sdccprobe.cpp
+       src/shared/qbs/src/app/qbs-setup-toolchains/sdccprobe.h
+       src/shared/qbs/src/lib/corelib/generators/generatorversioninfo.cpp
+       src/shared/qbs/src/lib/corelib/generators/generatorversioninfo.h
+       src/shared/qbs/src/lib/corelib/generators/xmlworkspace.cpp
+       src/shared/qbs/src/lib/corelib/generators/xmlworkspace.h
+       src/shared/qbs/src/plugins/generator/iarew/iarewgeneratorplugin.cpp
+       src/shared/qbs/src/plugins/generator/iarew/iarewversioninfo.h
+       src/shared/qbs/src/plugins/generator/iarew/iarewworkspace.cpp
+       src/shared/qbs/src/plugins/generator/iarew/iarewworkspace.h
+       src/shared/qbs/src/plugins/generator/keiluv/keiluvgeneratorplugin.cpp
+       src/shared/qbs/src/plugins/generator/keiluv/keiluvversioninfo.h
+       src/shared/qbs/src/plugins/generator/keiluv/keiluvworkspace.cpp
+       src/shared/qbs/src/plugins/generator/keiluv/keiluvworkspace.h
+Copyright: 2019 Denis Shienkov <denis.shienkov@gmail.com>
+License: LGPL-3 or GPL-2
+
+Files: src/shared/qbs/src/lib/corelib/jsextensions/binaryfile.cpp
+Copyright: 2017 Denis Shienkov <denis.shienkov@gmail.com>
+           2017 Sergey Belyashov <sergey.belyashov@gmail.com>
+           2017 The Qt Company Ltd.
+License: LGPL-3 or GPL-2
+
+Files: src/shared/qbs/scripts/run-analyzer.sh
+       src/shared/qbs/src/app/qbs-setup-toolchains/clangclprobe.cpp
+       src/shared/qbs/src/app/qbs-setup-toolchains/clangclprobe.h
+Copyright: 2019 Ivan Komissarov <ABBAPOH@gmail.com>
+License: LGPL-3 or GPL-2
+
+Files: src/shared/qbs/src/lib/corelib/generators/generator.h
+       src/shared/qbs/src/lib/corelib/jsextensions/temporarydir.cpp
+       src/shared/qbs/src/lib/corelib/tools/commandechomode.cpp
+       src/shared/qbs/src/lib/corelib/tools/commandechomode.h
+       src/shared/qbs/src/lib/corelib/tools/generateoptions.cpp
+       src/shared/qbs/src/lib/corelib/tools/generateoptions.h
+       src/shared/qbs/src/lib/corelib/tools/projectgeneratormanager.cpp
+       src/shared/qbs/src/lib/corelib/tools/projectgeneratormanager.h
+       src/shared/qbs/src/lib/corelib/tools/visualstudioversioninfo.cpp
+       src/shared/qbs/src/lib/corelib/tools/visualstudioversioninfo.h
+Copyright: 2015 Jake Petroules.
+           2016 The Qt Company Ltd.
+License: LGPL-3 or GPL-2
+
+Files: src/shared/qbs/src/lib/corelib/buildgraph/abstractcommandexecutor.cpp
+       src/shared/qbs/src/lib/corelib/buildgraph/abstractcommandexecutor.h
+       src/shared/qbs/src/lib/corelib/buildgraph/jscommandexecutor.cpp
+       src/shared/qbs/src/lib/corelib/buildgraph/jscommandexecutor.h
+       src/shared/qbs/src/lib/corelib/buildgraph/processcommandexecutor.cpp
+       src/shared/qbs/src/lib/corelib/buildgraph/processcommandexecutor.h
+       src/shared/qbs/src/lib/corelib/buildgraph/rulecommands.cpp
+       src/shared/qbs/src/lib/corelib/buildgraph/rulecommands.h
+Copyright: 2019 Jochen Ulrich <jochenulrich@t-online.de>
+           2016 The Qt Company Ltd.
+License: LGPL-3 or GPL-2
+
+Files: src/shared/qbs/src/lib/corelib/jsextensions/propertylist.cpp
+       src/shared/qbs/src/lib/corelib/jsextensions/propertylist.h
+       src/shared/qbs/src/lib/corelib/jsextensions/propertylist.mm
+       src/shared/qbs/src/lib/corelib/jsextensions/propertylistutils.h
+       src/shared/qbs/src/lib/corelib/jsextensions/propertylistutils.mm
+       src/shared/qbs/src/lib/corelib/tools/architectures.cpp
+       src/shared/qbs/src/lib/corelib/tools/shellutils.cpp
+       src/shared/qbs/src/lib/corelib/tools/shellutils.h
+Copyright: 2014-2015 Petroules Corporation.
+           2016 The Qt Company Ltd.
+License: LGPL-3 or GPL-2
+
+Files: src/shared/qbs/docker/bionic/entrypoint.sh
+Copyright: 2019 Richard Weickelt <richard@weickelt.de>
+License: LGPL-3 or GPL-2
+
+Files: src/shared/qbs/scripts/build-qbs-with-qbs.sh
+       src/shared/qbs/scripts/build-qbs-with-qmake.sh
+       src/shared/qbs/scripts/install-qt.sh
+       src/shared/qbs/scripts/test-qt-for-android.sh
+Copyright: 2019 Richard Weickelt.
+License: LGPL-3 or GPL-2
+
+## END AUTO GENERATED BLOCK
+
+# 3rd party code, does not has standard Qt headers.
+
+Files: src/shared/qbs/src/3rdparty/python/*
+Copyright: 2014 Alastair Houghton
+License: BSD-3-clause
+
+Files: src/tools/3rdparty/cplusplus-keywordgen/*
+Copyright: 2007 Roberto Raggi <roberto.raggi@gmail.com>
+License: Expat
+
+Files: src/share/3rdparty/studiofonts/*.ttf
+Copyright: 2009-2011 by Accademia di Belle Arti di Urbino and students of MA course of Visual design.
+License: OFL-1.1
+
+Files: src/share/3rdparty/fonts/*.ttf
+Copyright: 2010-2012 Adobe Systems Incorporated
+License: OFL-1.1
+
+Files: src/libs/3rdparty/optional/*
+Copyright: 2011-2012 Andrzej Krzemienski
+License: BSL-1.0
+
+Files: src/libs/3rdparty/cplusplus/*
+Copyright: 2008 Roberto Raggi <roberto.raggi@gmail.com>
+License: Expat
+
+Files: src/libs/3rdparty/syntax-highlighting/*
+Copyright: 2016 Volker Krause <vkrause@kde.org>
+  2016 Dominik Haumann <dhaumann@kde.org>
+  2018 Christoph Cullmann <cullmann@kde.org>
+  2007 Sebastian Pipping <webmaster@hartwork.org>
+  2004 Alexander Neundorf (neundorf@kde.org)
+  2007,2008,2013,2014 Matthew Woehlke (mw_triad@users.sourceforge.net)
+  2013-2015,2017-2019 Alex Turbov (i.zaufi@gmail.com)
+  2001-2004 Anders Lund <anders@alweb.dk>
+  2004 Sebastian Vuorinen (sebastian dot vuorinen at helsinki dot fi)
+  2004  by Stefan Lang (langstefan@gmx.at)
+  2008 Robin Pedersen (robinpeder@gmail.com)
+  2011 Miquel Sabaté (mikisabate@gmail.com)
+  2004 Jan Villat <jan.villat@net2000.ch>
+  2008 Darrin Yeager
+  2001 Joseph Wenninger <jowenn@kde.org>
+  2016 Kevin Funk <kfunk@kde.org>
+  2018 The Qt Company Ltd.
+License: Expat
+
+Files: src/libs/3rdparty/variant/*
+Copyright: 2015-2017 Michael Park
+License: BSL-1.0
+
+Files: src/libs/3rdparty/sqlite/*
+Copyright: D. Richard Hipp <drh@hwaci.com>
+License: public-domain
+ The files listed have been put on the public domain by the sqlite3
+ contributors.
+
+Files: src/libs/3rdparty/sqlite/okapi_bm25.h
+Copyright: 2014 Joshua Wilson
+License: MIT
+
+Files: src/libs/3rdparty/json/*
+Copyright: 2013-2019 Niels Lohmann <http://nlohmann.me>
+License: MIT
+
+Files: src/libs/3rdparty/yaml-cpp/*
+Copyright: 2008-2015 Jesse Beder
+License: Expat
+
+Files: share/metainfo/org.qt-project.qtcreator.appdata.xml
+Copyright: 2016 The Qt Company Ltd.
+License: CC0-1.0
+
+Files: src/shared/qbs/tests/auto/blackbox/testdata/freedesktop/myapp.appdata.xml
+Copyright: 2019 Alberto Mardegan <mardy@users.sourceforge.net>
+License: CC0
+ Same as CC0-1.0, using a different name to please Lintian.
+
+## Licenses
+
+License: GPL-3 with Qt-1.0 exception
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License version 3 as
+ published by the Free Software Foundation.
+ .
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in /usr/share/common-licenses/GPL-3.
+ .
+ The Qt Company GPL Exception 1.0
+ Exception 1:
+ .
+ As a special exception you may create a larger work which contains the
+ output of this application and distribute that work under terms of your
+ choice, so long as the work is not otherwise derived from or based on
+ this application and so long as the work does not in itself generate
+ output that contains the output from this application in its original
+ or modified form.
+ .
+ Exception 2:
+ .
+ As a special exception, you have permission to combine this application
+ with Plugins licensed under the terms of your choice, to produce an
+ executable, and to copy and distribute the resulting executable under
+ the terms of your choice. However, the executable must be accompanied
+ by a prominent notice offering all users of the executable the entire
+ source code to this application, excluding the source code of the
+ independent modules, but including any changes you have made to this
+ application, under the terms of this license.
+
+License: Expat
+ Copyright (c) 1998, 1999, 2000 Thai Open Source Software Center Ltd
+ .
+ Permission is hereby granted, free of charge, to any person obtaining
+ a copy of this software and associated documentation files (the
+ "Software"), to deal in the Software without restriction, including
+ without limitation the rights to use, copy, modify, merge, publish,
+ distribute, sublicense, and/or sell copies of the Software, and to
+ permit persons to whom the Software is furnished to do so, subject to
+ the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included
+ in all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+License: BSL-1.0
+ Boost Software License - Version 1.0 - August 17th, 2003
+ .
+ Permission is hereby granted, free of charge, to any person or organization
+ obtaining a copy of the software and accompanying documentation covered by
+ this license (the "Software") to use, reproduce, display, distribute,
+ execute, and transmit the Software, and to prepare derivative works of the
+ Software, and to permit third-parties to whom the Software is furnished to
+ do so, all subject to the following:
+ .
+ The copyright notices in the Software and this entire statement, including
+ the above license grant, this restriction and the following disclaimer,
+ must be included in all copies of the Software, in whole or in part, and
+ all derivative works of the Software, unless such copies or derivative
+ works are solely in the form of machine-executable object code generated by
+ a source language processor.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+ SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+ FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
+
+License: BSD-3-clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+ .
+ 1.  Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
+ .
+ 2.  Redistributions in binary form must reproduce the above copyright notice,
+     this list of conditions and the following disclaimer in the documentation
+     and/or other materials provided with the distribution.
+ .
+ 3.  The name of the copyright holders may be used to endorse or promote
+     products derived from this software without specific prior written
+     permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ POSSIBILITY OF SUCH DAMAGE.
+
+License: GFDL-NIV-1.3
+ Permission is granted to copy, distribute and/or modify this document
+ under the terms of the GNU Free Documentation License, Version 1.3
+ or any later version published by the Free Software Foundation;
+ with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+ .
+ On Debian systems, the complete text of the GNU Free Documentation
+ License version 1.3 can be found in /usr/share/common-licenses/GFDL-1.3.
+
+License: GPL-2
+ This program is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public License
+ as published by the Free Software Foundation; version 2.
+ .
+ This program is distributed in the hope that it will be
+ useful, but WITHOUT ANY WARRANTY; without even the implied
+ warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ PURPOSE. See the GNU General Public License for more details.
+ .
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software Foundation,
+ Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
+ USA.
+ .
+ On Debian systems, GNU General Public License
+ as published by the Free Software Foundation; version 2
+ can be found in "/usr/share/common-licenses/GPL-2".
+
+License: GPL-3
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ can be found in `/usr/share/common-licenses/GPL-3`
+
+License: GPL-3+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ can be found in `/usr/share/common-licenses/GPL-3`
+
+License: LGPL-2.1-or-3 with Qt-1.1 exception
+ GNU Lesser General Public License:
+ This file may be used under the terms of the GNU Lesser General Public
+ License version 2.1 or version 3 as published by the Free Software
+ Foundation and appearing in the file LICENSE.LGPLv21 and LICENSE.LGPLv3
+ included in the packaging of this file. Please review the following
+ information to ensure the GNU Lesser General Public License requirements
+ will be met: https://www.gnu.org/licenses/lgpl.html.
+ .
+ In addition, as a special exception, The Qt Company gives you certain
+ additional rights. These rights are described in The Qt Company Qt LGPL
+ Exception version 1.1, included in the file LGPL_EXCEPTION.txt in this
+ package.
+ .
+ On Debian systems, the complete text of the GNU Lesser General Public
+ License version 2.1 can be found in `/usr/share/common-licenses/LGPL-2.1`.
+ The complete text of the GNU Lesser General Public License version 3 can be
+ found in `/usr/share/common-licenses/LGPL-3`.
+ .
+ The Qt Company LGPL Exception version 1.1:
+ As an additional permission to the GNU Lesser General Public License version
+ 2.1, the object code form of a "work that uses the Library" may incorporate
+ material from a header file that is part of the Library.  You may distribute
+ such object code under terms of your choice, provided that:
+     (i)   the header files of the Library have not been modified; and
+     (ii)  the incorporated material is limited to numerical parameters, data
+           structure layouts, accessors, macros, inline functions and
+           templates; and
+     (iii) you comply with the terms of Section 6 of the GNU Lesser General
+           Public License version 2.1.
+ .
+ Moreover, you may apply this exception to a modified version of the Library,
+ provided that such modification does not involve copying material from the
+ Library into the modified Library's header files unless such material is
+ limited to (i) numerical parameters; (ii) data structure layouts;
+ (iii) accessors; and (iv) small macros, templates and inline functions of
+ five lines or less in length.
+ .
+ Furthermore, you are not required to apply this additional permission to a
+ modified version of the Library.
+
+License: LGPL-3
+ This file may be used under the terms of the GNU Lesser General Public
+ License version 3 as published by the Free Software Foundation.
+ .
+ On Debian systems, the complete text of the GNU Lesser General Public
+ License can be found in `/usr/share/common-licenses/LGPL-3`.
+
+License: MIT
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+  .
+  The above copyright notice and this permission notice shall be
+  included in all copies or substantial portions of the Software.
+  .
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+License: OFL-1.1
+ SIL OPEN FONT LICENSE
+ .
+ Version 1.1 - 26 February 2007
+ .
+ PREAMBLE
+ .
+ The goals of the Open Font License (OFL) are to stimulate worldwide
+ development of collaborative font projects, to support the font creation
+ efforts of academic and linguistic communities, and to provide a free and
+ open framework in which fonts may be shared and improved in partnership
+ with others.
+ .
+ The OFL allows the licensed fonts to be used, studied, modified and
+ redistributed freely as long as they are not sold by themselves. The
+ fonts, including any derivative works, can be bundled, embedded,
+ redistributed and/or sold with any software provided that any reserved
+ names are not used by derivative works. The fonts and derivatives,
+ however, cannot be released under any other type of license. The
+ requirement for fonts to remain under this license does not apply
+ to any document created using the fonts or their derivatives.
+ .
+ DEFINITIONS
+ .
+ "Font Software" refers to the set of files released by the Copyright
+ Holder(s) under this license and clearly marked as such. This may
+ include source files, build scripts and documentation.
+ .
+ "Reserved Font Name" refers to any names specified as such after the
+ copyright statement(s).
+ .
+ "Original Version" refers to the collection of Font Software components as
+ distributed by the Copyright Holder(s).
+ .
+ "Modified Version" refers to any derivative made by adding to, deleting,
+ or substituting - in part or in whole - any of the components of the
+ Original Version, by changing formats or by porting the Font Software to a
+ new environment.
+ .
+ "Author" refers to any designer, engineer, programmer, technical
+ writer or other person who contributed to the Font Software.
+ .
+ PERMISSION & CONDITIONS
+ .
+ Permission is hereby granted, free of charge, to any person obtaining
+ a copy of the Font Software, to use, study, copy, merge, embed, modify,
+ redistribute, and sell modified and unmodified copies of the Font
+ Software, subject to the following conditions:
+ .
+ 1) Neither the Font Software nor any of its individual components,
+ in Original or Modified Versions, may be sold by itself.
+ .
+ 2) Original or Modified Versions of the Font Software may be bundled,
+ redistributed and/or sold with any software, provided that each copy
+ contains the above copyright notice and this license. These can be
+ included either as stand-alone text files, human-readable headers or
+ in the appropriate machine-readable metadata fields within text or
+ binary files as long as those fields can be easily viewed by the user.
+ .
+ 3) No Modified Version of the Font Software may use the Reserved Font
+ Name(s) unless explicit written permission is granted by the corresponding
+ Copyright Holder. This restriction only applies to the primary font name as
+ presented to the users.
+ .
+ 4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+ Software shall not be used to promote, endorse or advertise any
+ Modified Version, except to acknowledge the contribution(s) of the
+ Copyright Holder(s) and the Author(s) or with their explicit written
+ permission.
+ .
+ 5) The Font Software, modified or unmodified, in part or in whole,
+ must be distributed entirely under this license, and must not be
+ distributed under any other license. The requirement for fonts to
+ remain under this license does not apply to any document created
+ using the Font Software.
+ .
+ TERMINATION
+ .
+ This license becomes null and void if any of the above conditions are
+ not met.
+ .
+ DISCLAIMER
+ .
+ THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+ OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+ COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+ DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+ OTHER DEALINGS IN THE FONT SOFTWARE.
+
+License: CC0-1.0
+ CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE LEGAL
+ SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN ATTORNEY-CLIENT
+ RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS INFORMATION ON AN "AS-IS" BASIS.
+ CREATIVE COMMONS MAKES NO WARRANTIES REGARDING THE USE OF THIS DOCUMENT OR
+ THE INFORMATION OR WORKS PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR
+ DAMAGES RESULTING FROM THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
+ PROVIDED HEREUNDER.
+ .
+ Statement of Purpose
+ .
+ The laws of most jurisdictions throughout the world automatically confer
+ exclusive Copyright and Related Rights (defined below) upon the creator and
+ subsequent owner(s) (each and all, an "owner") of an original work of
+ authorship and/or a database (each, a "Work").
+ .
+ Certain owners wish to permanently relinquish those rights to a Work for the
+ purpose of contributing to a commons of creative, cultural and scientific
+ works ("Commons") that the public can reliably and without fear of later
+ claims of infringement build upon, modify, incorporate in other works, reuse
+ and redistribute as freely as possible in any form whatsoever and for any
+ purposes, including without limitation commercial purposes. These owners may
+ contribute to the Commons to promote the ideal of a free culture and the
+ further production of creative, cultural and scientific works, or to gain
+ reputation or greater distribution for their Work in part through the use and
+ efforts of others.
+ .
+ For these and/or other purposes and motivations, and without any expectation
+ of additional consideration or compensation, the person associating CC0 with
+ a Work (the "Affirmer"), to the extent that he or she is an owner of
+ Copyright and Related Rights in the Work, voluntarily elects to apply CC0 to
+ the Work and publicly distribute the Work under its terms, with knowledge of
+ his or her Copyright and Related Rights in the Work and the meaning and
+ intended legal effect of CC0 on those rights.
+ .
+ 1. Copyright and Related Rights. A Work made available under CC0 may be
+ protected by copyright and related or neighboring rights ("Copyright and
+ Related Rights"). Copyright and Related Rights include, but are not limited
+ to, the following:
+ .
+  i.   the right to reproduce, adapt, distribute, perform, display, communicate,
+       and translate a Work;
+  ii.  moral rights retained by the original author(s) and/or performer(s);
+  iii. publicity and privacy rights pertaining to a person's image or likeness
+       depicted in a Work;
+  iv.  rights protecting against unfair competition in regards to a Work,
+       subject to the limitations in paragraph 4(a), below;
+  v.   rights protecting the extraction, dissemination, use and reuse of data
+       in a Work;
+  vi.  database rights (such as those arising under Directive 96/9/EC of the
+       European Parliament and of the Council of 11 March 1996 on the legal
+       protection of databases, and under any national implementation thereof,
+       including any amended or successor version of such directive); and
+  vii. other similar, equivalent or corresponding rights throughout the world
+       based on applicable law or treaty, and any national implementations
+       thereof.
+ .
+ 2. Waiver. To the greatest extent permitted by, but not in contravention of,
+ applicable law, Affirmer hereby overtly, fully, permanently, irrevocably and
+ unconditionally waives, abandons, and surrenders all of Affirmer's Copyright
+ and Related Rights and associated claims and causes of action, whether now
+ known or unknown (including existing as well as future claims and causes of
+ action), in the Work (i) in all territories worldwide, (ii) for the maximum
+ duration provided by applicable law or treaty (including future time
+ extensions), (iii) in any current or future medium and for any number of
+ copies, and (iv) for any purpose whatsoever, including without limitation
+ commercial, advertising or promotional purposes (the "Waiver"). Affirmer
+ makes the Waiver for the benefit of each member of the public at large and to
+ the detriment of Affirmer's heirs and successors, fully intending that such
+ Waiver shall not be subject to revocation, rescission, cancellation,
+ termination, or any other legal or equitable action to disrupt the quiet
+ enjoyment of the Work by the public as contemplated by Affirmer's express
+ Statement of Purpose.
+ .
+ 3. Public License Fallback. Should any part of the Waiver for any reason be
+ judged legally invalid or ineffective under applicable law, then the Waiver
+ shall be preserved to the maximum extent permitted taking into account
+ Affirmer's express Statement of Purpose. In addition, to the extent the
+ Waiver is so judged Affirmer hereby grants to each affected person a
+ royalty-free, non transferable, non sublicensable, non exclusive, irrevocable
+ and unconditional license to exercise Affirmer's Copyright and Related Rights
+ in the Work (i) in all territories worldwide, (ii) for the maximum duration
+ provided by applicable law or treaty (including future time extensions),
+ (iii) in any current or future medium and for any number of copies, and (iv)
+ for any purpose whatsoever, including without limitation commercial,
+ advertising or promotional purposes (the "License"). The License shall be
+ deemed effective as of the date CC0 was applied by Affirmer to the Work.
+ Should any part of the License for any reason be judged legally invalid or
+ ineffective under applicable law, such partial invalidity or ineffectiveness
+ shall not invalidate the remainder of the License, and in such case Affirmer
+ hereby affirms that he or she will not (i) exercise any of his or her
+ remaining Copyright and Related Rights in the Work or (ii) assert any
+ associated claims and causes of action with respect to the Work, in either
+ case contrary to Affirmer's express Statement of Purpose.
+ .
+ 4. Limitations and Disclaimers.
+ .
+  a. No trademark or patent rights held by Affirmer are waived, abandoned,
+     surrendered, licensed or otherwise affected by this document.
+  b. Affirmer offers the Work as-is and makes no representations or warranties
+     of any kind concerning the Work, express, implied, statutory or otherwise,
+     including without limitation warranties of title, merchantability, fitness
+     for a particular purpose, non infringement, or the absence of latent or
+     other defects, accuracy, or the present or absence of errors, whether or
+     not discoverable, all to the greatest extent permissible under applicable
+     law.
+  c. Affirmer disclaims responsibility for clearing rights of other persons
+     that may apply to the Work or any use thereof, including without limitation
+     any person's Copyright and Related Rights in the Work. Further, Affirmer
+     disclaims responsibility for obtaining any necessary consents, permissions
+     or other rights required for any use of the Work.
+  d. Affirmer understands and acknowledges that Creative Commons is not a
+     party to this document and has no duty or obligation with respect to this
+     CC0 or use of the Work.

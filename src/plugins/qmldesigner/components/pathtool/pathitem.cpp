@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "pathitem.h"
 
@@ -134,17 +112,17 @@ void PathItem::writePathToProperty()
 
     ModelNode pathNode = pathModelNode(formEditorItem());
 
-    pathNode.view()->executeInTransaction("PathItem::writePathToProperty", [this, &pathNode](){
+    pathNode.view()->executeInTransaction("PathItem::writePathToProperty", [this, &pathNode]() {
         QList<ModelNode> pathSegmentNodes = pathNode.nodeListProperty("pathElements").toModelNodeList();
 
-        foreach (ModelNode pathSegment, pathSegmentNodes)
+        for (ModelNode pathSegment : pathSegmentNodes)
             pathSegment.destroy();
 
         if (!m_cubicSegments.isEmpty()) {
             pathNode.variantProperty("startX").setValue(m_cubicSegments.constFirst().firstControlPoint().coordinate().x());
             pathNode.variantProperty("startY").setValue(m_cubicSegments.constFirst().firstControlPoint().coordinate().y());
 
-            foreach (const CubicSegment &cubicSegment, m_cubicSegments) {
+            for (const CubicSegment &cubicSegment : std::as_const(m_cubicSegments)) {
                 writePathAttributes(pathNode, cubicSegment.attributes());
                 writePathPercent(pathNode, cubicSegment.percent());
 
@@ -171,7 +149,7 @@ void PathItem::writePathAsCubicSegmentsOnly()
 
             QList<ModelNode> pathSegmentNodes = pathNode.nodeListProperty("pathElements").toModelNodeList();
 
-            foreach (ModelNode pathSegment, pathSegmentNodes)
+            for (ModelNode pathSegment : pathSegmentNodes)
                 pathSegment.destroy();
 
             if (!m_cubicSegments.isEmpty()) {
@@ -179,7 +157,7 @@ void PathItem::writePathAsCubicSegmentsOnly()
                 pathNode.variantProperty("startY").setValue(m_cubicSegments.constFirst().firstControlPoint().coordinate().y());
 
 
-                foreach (const CubicSegment &cubicSegment, m_cubicSegments) {
+                for (const CubicSegment &cubicSegment : std::as_const(m_cubicSegments)) {
                     writePathAttributes(pathNode, cubicSegment.attributes());
                     writePathPercent(pathNode, cubicSegment.percent());
                     writeCubicPath(pathNode, cubicSegment);
@@ -234,7 +212,7 @@ static void drawCubicSegments(const QList<CubicSegment> &cubicSegments, QPainter
 
     QPainterPath curvePainterPath(cubicSegments.constFirst().firstControlPoint().coordinate());
 
-    foreach (const CubicSegment &cubicSegment, cubicSegments)
+    for (const CubicSegment &cubicSegment : cubicSegments)
         addCubicSegmentToPainterPath(cubicSegment, curvePainterPath);
 
     painter->setPen(QPen(Qt::black, 1, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
@@ -269,7 +247,7 @@ static void drawControlLines(const QList<CubicSegment> &cubicSegments, QPainter 
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, false);
 
-    foreach (const CubicSegment &cubicSegment, cubicSegments)
+    for (const CubicSegment &cubicSegment : cubicSegments)
             drawControlLine(cubicSegment, painter);
 
     painter->restore();
@@ -313,7 +291,7 @@ static void drawControlPoints(const QList<ControlPoint> &controlPoints, const QL
 {
     painter->save();
 
-    foreach (const ControlPoint &controlPoint, controlPoints)
+    for (const ControlPoint &controlPoint : controlPoints)
             drawControlPoint(controlPoint, selectionPoints, painter);
 
     painter->restore();
@@ -337,7 +315,7 @@ static void drawPostionOverlays(const QList<SelectionPoint> &selectedPoints, QPa
     painter->setFont(font);
     painter->setPen(QColor(0, 0, 0));
 
-    foreach (const SelectionPoint &selectedPoint, selectedPoints)
+    for (const SelectionPoint &selectedPoint : selectedPoints)
         drawPositionOverlay(selectedPoint.controlPoint, painter);
 
     painter->restore();
@@ -465,7 +443,7 @@ static QRectF boundingRectForPath(const QList<ControlPoint> &controlPoints)
     double yMinimum = 0.;
     double yMaximum = 0.;
 
-    foreach (const ControlPoint & controlPoint, controlPoints) {
+    for (const ControlPoint & controlPoint : controlPoints) {
         xMinimum = qMin(xMinimum, controlPoint.coordinate().x());
         xMaximum = qMax(xMaximum, controlPoint.coordinate().x());
         yMinimum = qMin(yMinimum, controlPoint.coordinate().y());
@@ -507,7 +485,8 @@ void PathItem::readControlPoints()
         QMap<QString, QVariant> actualAttributes;
         double percent = -1.0;
 
-        foreach (const ModelNode &childNode, pathNode.nodeListProperty("pathElements").toModelNodeList()) {
+        const QList<ModelNode> childNodes = pathNode.nodeListProperty("pathElements").toModelNodeList();
+        for (const ModelNode &childNode : childNodes) {
 
             if (childNode.type() == "QtQuick.PathAttribute") {
                 actualAttributes.insert(childNode.variantProperty("name").value().toString(), childNode.variantProperty("value").value());
@@ -554,7 +533,7 @@ static CubicSegment getMinimumDistanceSegment(const QPointF &pickPoint, const QL
     CubicSegment minimumDistanceSegment;
     double actualMinimumDistance = maximumDistance;
 
-    foreach (const CubicSegment &cubicSegment, cubicSegments) {
+    for (const CubicSegment &cubicSegment : cubicSegments) {
         double tSegment = 0.;
         double cubicSegmentMinimumDistance = cubicSegment.minimumDistance(pickPoint, tSegment);
         if (cubicSegmentMinimumDistance < actualMinimumDistance) {
@@ -689,7 +668,7 @@ const QList<ControlPoint> PathItem::controlPoints() const
     if (!m_cubicSegments.isEmpty())
         controlPointList.append(m_cubicSegments.constFirst().firstControlPoint());
 
-    foreach (const CubicSegment &cubicSegment, m_cubicSegments) {
+    for (const CubicSegment &cubicSegment : std::as_const(m_cubicSegments)) {
         controlPointList.append(cubicSegment.secondControlPoint());
         controlPointList.append(cubicSegment.thirdControlPoint());
         controlPointList.append(cubicSegment.fourthControlPoint());
@@ -703,7 +682,7 @@ const QList<ControlPoint> PathItem::controlPoints() const
 
 bool hasLineOrQuadPathElements(const QList<ModelNode> &modelNodes)
 {
-    foreach (const ModelNode &modelNode, modelNodes) {
+    for (const ModelNode &modelNode : modelNodes) {
         if (modelNode.type() == "QtQuick.PathLine"
                 || modelNode.type() == "QtQuick.PathQuad")
             return true;
@@ -752,7 +731,7 @@ static bool controlPointIsNearMousePosition(const ControlPoint &controlPoint, co
 
 static bool controlPointsAreNearMousePosition(const QList<ControlPoint> &controlPoints, const QPointF &mousePosition)
 {
-    foreach (const ControlPoint &controlPoint, controlPoints) {
+    for (const ControlPoint &controlPoint : controlPoints) {
         if (controlPointIsNearMousePosition(controlPoint, mousePosition))
             return true;
     }
@@ -762,7 +741,7 @@ static bool controlPointsAreNearMousePosition(const QList<ControlPoint> &control
 
 static ControlPoint pickControlPoint(const QList<ControlPoint> &controlPoints, const QPointF &mousePosition)
 {
-    foreach (const ControlPoint &controlPoint, controlPoints) {
+    for (const ControlPoint &controlPoint : controlPoints) {
         if (controlPointIsNearMousePosition(controlPoint, mousePosition))
             return controlPoint;
     }
@@ -837,7 +816,7 @@ void PathItem::updatePathModelNodes(const QList<SelectionPoint> &changedPoints)
         RewriterTransaction rewriterTransaction =
             formEditorItem()->qmlItemNode().view()->beginRewriterTransaction(QByteArrayLiteral("PathItem::createCubicSegmentContextMenu"));
 
-        foreach (SelectionPoint changedPoint, changedPoints)
+        for (SelectionPoint changedPoint : changedPoints)
             changedPoint.controlPoint.updateModelNode();
 
         rewriterTransaction.commit();
@@ -923,7 +902,7 @@ QList<CubicSegment> cubicSegmentsContainingControlPoint(const ControlPoint &cont
 {
     QList<CubicSegment> cubicSegmentsHasControlPoint;
 
-    foreach (const CubicSegment &cubicSegment, allCubicSegments) {
+    for (const CubicSegment &cubicSegment : allCubicSegments) {
         if (cubicSegment.controlPoints().contains(controlPoint))
             cubicSegmentsHasControlPoint.append(cubicSegment);
     }

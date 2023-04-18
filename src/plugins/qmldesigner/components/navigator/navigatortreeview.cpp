@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "navigatortreeview.h"
 
@@ -94,7 +72,7 @@ public:
             // don't draw
         } else if (element == PE_IndicatorBranch) {
             painter->save();
-            static const int decoration_size = 10;
+            const int decoration_size = 10;
             int mid_h = option->rect.x() + option->rect.width() / 2;
             int mid_v = option->rect.y() + option->rect.height() / 2;
             int bef_h = mid_h;
@@ -123,17 +101,13 @@ public:
                 const QRectF rect(bef_h, bef_v, decoration_size + 1, decoration_size + 1);
                 painter->fillRect(rect, QBrush(Theme::getColor(Theme::Color::DSpanelBackground)));
 
-                static const QPointF collapsePoints[3] = {
-                    QPointF(0.0, 0.0),
-                    QPointF(4.0, 4.0),
-                    QPointF(0.0, 8.0)
-                };
+                constexpr QPointF collapsePoints[3] = {QPointF(0.0, 0.0),
+                                                       QPointF(4.0, 4.0),
+                                                       QPointF(0.0, 8.0)};
 
-                static const QPointF expandPoints[3] = {
-                    QPointF(0.0, 0.0),
-                    QPointF(8.0, 0.0),
-                    QPointF(4.0, 4.0)
-                };
+                constexpr QPointF expandPoints[3] = {QPointF(0.0, 0.0),
+                                                     QPointF(8.0, 0.0),
+                                                     QPointF(4.0, 4.0)};
 
                 auto color = Theme::getColor(Theme::Color::DSnavigatorBranchIndicator);
                 painter->setPen(color);

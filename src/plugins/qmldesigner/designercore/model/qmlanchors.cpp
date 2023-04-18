@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlanchors.h"
 #include "bindingproperty.h"
@@ -190,7 +168,7 @@ bool detectHorizontalCycle(const ModelNode &node, QList<ModelNode> knownNodeList
     static const PropertyNameList validAnchorLines({"right", "left", "horizontalCenter"});
     static const PropertyNameList anchorNames({"anchors.right", "anchors.left", "anchors.horizontalCenter"});
 
-    foreach (const PropertyName &anchorName, anchorNames) {
+    for (const PropertyName &anchorName : anchorNames) {
         if (node.hasBindingProperty(anchorName)) {
             AbstractProperty targetProperty = node.bindingProperty(anchorName).resolveToProperty();
             if (targetProperty.isValid()) {
@@ -205,7 +183,7 @@ bool detectHorizontalCycle(const ModelNode &node, QList<ModelNode> knownNodeList
     }
 
     static const PropertyNameList anchorShortcutNames({"anchors.fill", "anchors.centerIn"});
-    foreach (const PropertyName &anchorName, anchorShortcutNames) {
+    for (const PropertyName &anchorName : anchorShortcutNames) {
         if (node.hasBindingProperty(anchorName)) {
             ModelNode targetNode = node.bindingProperty(anchorName).resolveToModelNode();
 
@@ -230,7 +208,7 @@ bool detectVerticalCycle(const ModelNode &node, QList<ModelNode> knownNodeList)
     static const PropertyNameList validAnchorLines({"top", "bottom", "verticalCenter", "baseline"});
     static const PropertyNameList anchorNames({"anchors.top", "anchors.bottom", "anchors.verticalCenter", "anchors.baseline"});
 
-    foreach (const PropertyName &anchorName, anchorNames) {
+    for (const PropertyName &anchorName : anchorNames) {
         if (node.hasBindingProperty(anchorName)) {
             AbstractProperty targetProperty = node.bindingProperty(anchorName).resolveToProperty();
             if (targetProperty.isValid()) {
@@ -245,7 +223,7 @@ bool detectVerticalCycle(const ModelNode &node, QList<ModelNode> knownNodeList)
     }
 
     static const PropertyNameList anchorShortcutNames({"anchors.fill", "anchors.centerIn"});
-    foreach (const PropertyName &anchorName, anchorShortcutNames) {
+    for (const PropertyName &anchorName : anchorShortcutNames) {
         if (node.hasBindingProperty(anchorName)) {
             ModelNode targetNode = node.bindingProperty(anchorName).resolveToModelNode();
 

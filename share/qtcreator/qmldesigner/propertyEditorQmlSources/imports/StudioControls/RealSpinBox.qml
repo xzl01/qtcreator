@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 import QtQuick.Templates 2.15 as T
@@ -78,6 +56,8 @@ T.SpinBox {
     property alias pixelsPerUnit: spinBoxInput.pixelsPerUnit
 
     property alias compressedValueTimer: myTimer
+
+    property string preFocusText: ""
 
     signal realValueModified
     signal compressedRealValueModified
@@ -162,6 +142,8 @@ T.SpinBox {
         validator: doubleValidator
 
         function handleEditingFinished() {
+            mySpinBox.focus = false
+
             // Keep the dirty state before calling setValueFromInput(),
             // it will be set to false (cleared) internally
             var valueModified = mySpinBox.dirty
@@ -174,7 +156,7 @@ T.SpinBox {
                 mySpinBox.compressedRealValueModified()
         }
 
-        onEditingFinished: handleEditingFinished()
+        onEditingFinished: spinBoxInput.handleEditingFinished()
         onTextEdited: mySpinBox.dirty = true
     }
 
@@ -281,7 +263,7 @@ T.SpinBox {
         id: myTimer
         repeat: false
         running: false
-        interval: 200
+        interval: 400
         onTriggered: mySpinBox.compressedRealValueModified()
     }
 
@@ -306,8 +288,10 @@ T.SpinBox {
     }
     onDisplayTextChanged: spinBoxInput.text = mySpinBox.displayText
     onActiveFocusChanged: {
-        if (mySpinBox.activeFocus) // QTBUG-75862 && mySpinBox.focusReason === Qt.TabFocusReason)
+        if (mySpinBox.activeFocus) { // QTBUG-75862 && mySpinBox.focusReason === Qt.TabFocusReason)
+            mySpinBox.preFocusText = spinBoxInput.text
             spinBoxInput.selectAll()
+        }
     }
 
     Keys.onPressed: function(event) {
@@ -333,8 +317,11 @@ T.SpinBox {
             mySpinBox.realStepSize = currStepSize
         }
 
-        if (event.key === Qt.Key_Escape)
-            mySpinBox.focus = false
+        if (event.key === Qt.Key_Escape) {
+            spinBoxInput.text = mySpinBox.preFocusText
+            mySpinBox.dirty = true
+            spinBoxInput.handleEditingFinished()
+        }
     }
 
     function clamp(v, lo, hi) {

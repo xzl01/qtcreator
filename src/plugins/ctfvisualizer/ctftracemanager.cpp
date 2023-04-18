@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company,
-** info@kdab.com, author Tim Henning <tim.henning@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company,
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "ctftracemanager.h"
 
-#include "ctftimelinemodel.h"
 #include "ctfstatisticsmodel.h"
+#include "ctftimelinemodel.h"
 #include "ctfvisualizerconstants.h"
+#include "ctfvisualizertr.h"
 
 #include <coreplugin/icore.h>
 #include <tracing/timelinemodelaggregator.h>
@@ -160,8 +138,8 @@ void CtfTraceManager::load(const QString &filename)
     std::ifstream file(filename.toStdString());
     if (!file.is_open()) {
         QMessageBox::warning(Core::ICore::dialogParent(),
-                             tr("CTF Visualizer"),
-                             tr("Cannot read the CTF file."));
+                             Tr::tr("CTF Visualizer"),
+                             Tr::tr("Cannot read the CTF file."));
         return;
     }
     CtfJsonParserCallback ctfParser(this);
@@ -182,8 +160,8 @@ void CtfTraceManager::finalize()
             if (!userConsentToIgnoreDeepTraces) {
                 QMessageBox::StandardButton answer
                     = QMessageBox::question(Core::ICore::dialogParent(),
-                                            tr("CTF Visualizer"),
-                                            tr("The trace contains threads with stack depth > "
+                                            Tr::tr("CTF Visualizer"),
+                                            Tr::tr("The trace contains threads with stack depth > "
                                                "512.\nDo you want to display them anyway?"),
                                             QMessageBox::Yes | QMessageBox::No,
                                             QMessageBox::No);
@@ -199,7 +177,7 @@ void CtfTraceManager::finalize()
             ++it;
         }
     }
-    for (CtfTimelineModel *model: qAsConst(m_threadModels)) {
+    for (CtfTimelineModel *model: std::as_const(m_threadModels)) {
         model->finalize(m_traceBegin, m_traceEnd,
                         m_processNames[model->m_processId], m_threadNames[model->m_threadId]);
     }
@@ -278,7 +256,7 @@ void CtfTraceManager::updateStatistics()
     });
 
     m_statisticsModel->beginLoading();
-    for (auto thread : qAsConst(m_threadModels)) {
+    for (auto thread : std::as_const(m_threadModels)) {
         if (showAll || m_threadRestrictions[thread->tid()])
         {
             const int eventCount = thread->count();
@@ -295,7 +273,7 @@ void CtfTraceManager::updateStatistics()
 void CtfTraceManager::clearAll()
 {
     m_modelAggregator->clear();
-    for (CtfTimelineModel *model: qAsConst(m_threadModels)) {
+    for (CtfTimelineModel *model: std::as_const(m_threadModels)) {
         model->deleteLater();
     }
     m_threadModels.clear();

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -43,10 +21,10 @@
     To view and modify them, select \uicontrol Projects >
     \uicontrol {Build & Run} > \uicontrol Run.
 
-    \image qtcreator-settings-run.png "Run Settings"
+    \image qtcreator-settings-run.webp {Run Settings}
 
     To prevent \QC from automatically creating run configurations, select
-    \uicontrol Tools > \uicontrol Options > \uicontrol {Build & Run},
+    \uicontrol Edit > \uicontrol Preferences > \uicontrol {Build & Run},
     and then deselect the \uicontrol {Create suitable run configurations
     automatically} check box.
 
@@ -126,7 +104,7 @@
     You can edit existing environment variables or add, reset and unset new
     variables.
 
-    \image qtcreator-run-environment.png "Run Environment section"
+    \image qtcreator-run-environment.png {Run Environment section}
 
     When running on the desktop, the \uicontrol {Build Environment} is used by
     default, but you can also use the \uicontrol {System Environment} without the
@@ -152,7 +130,7 @@
     Specify the executable to run, command line arguments, working directory,
     and environment variables to use.
 
-    \image qmldesigner-run-custom-exe.png "Run settings for custom executables"
+    \image qmldesigner-run-custom-exe.png {Run settings for custom executables}
 
     \include qtquick/creator-projects-settings-run-qtquick.qdocinc run settings qt quick ui
     \include python/creator-python-run.qdocinc run settings python

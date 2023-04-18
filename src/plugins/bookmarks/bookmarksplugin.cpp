@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bookmarksplugin.h"
 
 #include "bookmarkfilter.h"
 #include "bookmarkmanager.h"
 #include "bookmarks_global.h"
+#include "bookmarkstr.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/ieditor.h>
@@ -52,8 +31,7 @@ using namespace Utils;
 
 using namespace Bookmarks::Constants;
 
-namespace Bookmarks {
-namespace Internal {
+namespace Bookmarks::Internal {
 
 class BookmarksPluginPrivate : public QObject
 {
@@ -71,14 +49,14 @@ public:
     BookmarkFilter m_bookmarkFilter;
     BookmarkViewFactory m_bookmarkViewFactory;
 
-    QAction m_toggleAction{BookmarksPlugin::tr("Toggle Bookmark"), nullptr};
-    QAction m_editAction{BookmarksPlugin::tr("Edit Bookmark"), nullptr};
-    QAction m_prevAction{BookmarksPlugin::tr("Previous Bookmark"), nullptr};
-    QAction m_nextAction{BookmarksPlugin::tr("Next Bookmark"), nullptr};
-    QAction m_docPrevAction{BookmarksPlugin::tr("Previous Bookmark in Document"), nullptr};
-    QAction m_docNextAction{BookmarksPlugin::tr("Next Bookmark in Document"), nullptr};
-    QAction m_editBookmarkAction{BookmarksPlugin::tr("Edit Bookmark"), nullptr};
-    QAction m_bookmarkMarginAction{BookmarksPlugin::tr("Toggle Bookmark"), nullptr};
+    QAction m_toggleAction{Tr::tr("Toggle Bookmark"), nullptr};
+    QAction m_editAction{Tr::tr("Edit Bookmark"), nullptr};
+    QAction m_prevAction{Tr::tr("Previous Bookmark"), nullptr};
+    QAction m_nextAction{Tr::tr("Next Bookmark"), nullptr};
+    QAction m_docPrevAction{Tr::tr("Previous Bookmark in Document"), nullptr};
+    QAction m_docNextAction{Tr::tr("Next Bookmark in Document"), nullptr};
+    QAction m_editBookmarkAction{Tr::tr("Edit Bookmark"), nullptr};
+    QAction m_bookmarkMarginAction{Tr::tr("Toggle Bookmark"), nullptr};
 
     int m_marginActionLineNumber = 0;
     Utils::FilePath m_marginActionFileName;
@@ -89,10 +67,9 @@ BookmarksPlugin::~BookmarksPlugin()
     delete d;
 }
 
-bool BookmarksPlugin::initialize(const QStringList &, QString *)
+void BookmarksPlugin::initialize()
 {
     d = new BookmarksPluginPrivate;
-    return true;
 }
 
 BookmarksPluginPrivate::BookmarksPluginPrivate()
@@ -102,7 +79,7 @@ BookmarksPluginPrivate::BookmarksPluginPrivate()
     ActionContainer *mtools = ActionManager::actionContainer(Core::Constants::M_TOOLS);
     ActionContainer *touchBar = ActionManager::actionContainer(Core::Constants::TOUCH_BAR);
     ActionContainer *mbm = ActionManager::createMenu(Id(BOOKMARKS_MENU));
-    mbm->menu()->setTitle(BookmarksPlugin::tr("&Bookmarks"));
+    mbm->menu()->setTitle(Tr::tr("&Bookmarks"));
     mtools->addMenu(mbm);
 
     const Context editorManagerContext(Core::Constants::C_EDITORMANAGER);
@@ -110,19 +87,15 @@ BookmarksPluginPrivate::BookmarksPluginPrivate()
     // Toggle
     Command *cmd = ActionManager::registerAction(&m_toggleAction, BOOKMARKS_TOGGLE_ACTION,
                                                  editorManagerContext);
-    cmd->setDefaultKeySequence(QKeySequence(useMacShortcuts ? BookmarksPlugin::tr("Meta+M")
-                                                            : BookmarksPlugin::tr("Ctrl+M")));
+    cmd->setDefaultKeySequence(QKeySequence(useMacShortcuts ? Tr::tr("Meta+M") : Tr::tr("Ctrl+M")));
     cmd->setTouchBarIcon(Utils::Icons::MACOS_TOUCHBAR_BOOKMARK.icon());
     mbm->addAction(cmd);
-
-    cmd = ActionManager::registerAction(&m_editAction,
-                                        BOOKMARKS_EDIT_ACTION,
-                                        editorManagerContext);
-    cmd->setDefaultKeySequence(QKeySequence(useMacShortcuts ? BookmarksPlugin::tr("Meta+Shift+M")
-                                                            : BookmarksPlugin::tr("Ctrl+Shift+M")));
-    mbm->addAction(cmd);
-
     touchBar->addAction(cmd, Core::Constants::G_TOUCHBAR_EDITOR);
+
+    cmd = ActionManager::registerAction(&m_editAction, BOOKMARKS_EDIT_ACTION, editorManagerContext);
+    cmd->setDefaultKeySequence(
+        QKeySequence(useMacShortcuts ? Tr::tr("Meta+Shift+M") : Tr::tr("Ctrl+Shift+M")));
+    mbm->addAction(cmd);
 
     mbm->addSeparator();
 
@@ -130,16 +103,16 @@ BookmarksPluginPrivate::BookmarksPluginPrivate()
     m_prevAction.setIcon(Utils::Icons::PREV_TOOLBAR.icon());
     m_prevAction.setIconVisibleInMenu(false);
     cmd = ActionManager::registerAction(&m_prevAction, BOOKMARKS_PREV_ACTION, editorManagerContext);
-    cmd->setDefaultKeySequence(QKeySequence(useMacShortcuts ? BookmarksPlugin::tr("Meta+,")
-                                                            : BookmarksPlugin::tr("Ctrl+,")));
+    cmd->setDefaultKeySequence(QKeySequence(useMacShortcuts ? Tr::tr("Meta+,")
+                                                            : Tr::tr("Ctrl+,")));
     mbm->addAction(cmd);
 
     // Next
     m_nextAction.setIcon(Utils::Icons::NEXT_TOOLBAR.icon());
     m_nextAction.setIconVisibleInMenu(false);
     cmd = ActionManager::registerAction(&m_nextAction, BOOKMARKS_NEXT_ACTION, editorManagerContext);
-    cmd->setDefaultKeySequence(QKeySequence(useMacShortcuts ? BookmarksPlugin::tr("Meta+.")
-                                                            : BookmarksPlugin::tr("Ctrl+.")));
+    cmd->setDefaultKeySequence(QKeySequence(useMacShortcuts ? Tr::tr("Meta+.")
+                                                            : Tr::tr("Ctrl+.")));
     mbm->addAction(cmd);
 
     mbm->addSeparator();
@@ -246,5 +219,4 @@ void BookmarksPluginPrivate::requestContextMenu(TextEditorWidget *widget,
         menu->addAction(&m_editBookmarkAction);
 }
 
-} // namespace Internal
-} // namespace Bookmarks
+} // Bookmarks::Internal

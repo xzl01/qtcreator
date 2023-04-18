@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppcodemodelsettings.h"
 
 #include "clangdiagnosticconfigsmodel.h"
 #include "cppeditorconstants.h"
+#include "cppeditortr.h"
 #include "cpptoolsreuse.h"
 
 #include <coreplugin/icore.h>
@@ -34,6 +13,7 @@
 #include <projectexplorer/session.h>
 
 #include <utils/algorithm.h>
+#include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 #include <utils/settingsutils.h>
@@ -42,6 +22,7 @@
 #include <QHash>
 #include <QPair>
 #include <QSettings>
+#include <QStandardPaths>
 
 using namespace Utils;
 
@@ -52,9 +33,6 @@ static Id initialClangDiagnosticConfigId()
 
 static CppCodeModelSettings::PCHUsage initialPchUsage()
 { return CppCodeModelSettings::PchUse_BuildSystem; }
-
-static QString clangDiagnosticConfigKey()
-{ return QStringLiteral("ClangDiagnosticConfig"); }
 
 static QString enableLowerClazyLevelsKey()
 { return QLatin1String("enableLowerClazyLevels"); }
@@ -68,6 +46,15 @@ static QString interpretAmbiguousHeadersAsCHeadersKey()
 static QString skipIndexingBigFilesKey()
 { return QLatin1String(Constants::CPPEDITOR_SKIP_INDEXING_BIG_FILES); }
 
+static QString ignoreFilesKey()
+{ return QLatin1String(Constants::CPPEDITOR_IGNORE_FILES); }
+
+static QString ignorePatternKey()
+{ return QLatin1String(Constants::CPPEDITOR_IGNORE_PATTERN); }
+
+static QString useBuiltinPreprocessorKey()
+{ return QLatin1String(Constants::CPPEDITOR_USE_BUILTIN_PREPROCESSOR); }
+
 static QString indexerFileSizeLimitKey()
 { return QLatin1String(Constants::CPPEDITOR_INDEXER_FILE_SIZE_LIMIT); }
 
@@ -75,104 +62,30 @@ static QString clangdSettingsKey() { return QLatin1String("ClangdSettings"); }
 static QString useClangdKey() { return QLatin1String("UseClangdV7"); }
 static QString clangdPathKey() { return QLatin1String("ClangdPath"); }
 static QString clangdIndexingKey() { return QLatin1String("ClangdIndexing"); }
+static QString clangdIndexingPriorityKey() { return QLatin1String("ClangdIndexingPriority"); }
 static QString clangdHeaderInsertionKey() { return QLatin1String("ClangdHeaderInsertion"); }
 static QString clangdThreadLimitKey() { return QLatin1String("ClangdThreadLimit"); }
 static QString clangdDocumentThresholdKey() { return QLatin1String("ClangdDocumentThreshold"); }
+static QString clangdSizeThresholdEnabledKey() { return QLatin1String("ClangdSizeThresholdEnabled"); }
+static QString clangdSizeThresholdKey() { return QLatin1String("ClangdSizeThreshold"); }
 static QString clangdUseGlobalSettingsKey() { return QLatin1String("useGlobalSettings"); }
+static QString clangdblockIndexingSettingsKey() { return QLatin1String("blockIndexing"); }
 static QString sessionsWithOneClangdKey() { return QLatin1String("SessionsWithOneClangd"); }
+static QString diagnosticConfigIdKey() { return QLatin1String("diagnosticConfigId"); }
+static QString checkedHardwareKey() { return QLatin1String("checkedHardware"); }
+static QString completionResultsKey() { return QLatin1String("completionResults"); }
 
 static FilePath g_defaultClangdFilePath;
 static FilePath fallbackClangdFilePath()
 {
     if (g_defaultClangdFilePath.exists())
         return g_defaultClangdFilePath;
-    return "clangd";
-}
-
-static Id clangDiagnosticConfigIdFromSettings(QSettings *s)
-{
-    QTC_ASSERT(s->group() == QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP), return Id());
-
-    return Id::fromSetting(
-        s->value(clangDiagnosticConfigKey(), initialClangDiagnosticConfigId().toSetting()));
-}
-
-// Removed since Qt Creator 4.11
-static ClangDiagnosticConfigs removedBuiltinConfigs()
-{
-    ClangDiagnosticConfigs configs;
-
-    // Pedantic
-    ClangDiagnosticConfig config;
-    config.setId("Builtin.Pedantic");
-    config.setDisplayName(QCoreApplication::translate("ClangDiagnosticConfigsModel",
-                                                      "Pedantic checks"));
-    config.setIsReadOnly(true);
-    config.setClangOptions(QStringList{QStringLiteral("-Wpedantic")});
-    config.setClangTidyMode(ClangDiagnosticConfig::TidyMode::UseCustomChecks);
-    config.setClazyMode(ClangDiagnosticConfig::ClazyMode::UseCustomChecks);
-    configs << config;
-
-    // Everything with exceptions
-    config = ClangDiagnosticConfig();
-    config.setId("Builtin.EverythingWithExceptions");
-    config.setDisplayName(QCoreApplication::translate(
-                              "ClangDiagnosticConfigsModel",
-                              "Checks for almost everything"));
-    config.setIsReadOnly(true);
-    config.setClangOptions(QStringList{
-        QStringLiteral("-Weverything"),
-        QStringLiteral("-Wno-c++98-compat"),
-        QStringLiteral("-Wno-c++98-compat-pedantic"),
-        QStringLiteral("-Wno-unused-macros"),
-        QStringLiteral("-Wno-newline-eof"),
-        QStringLiteral("-Wno-exit-time-destructors"),
-        QStringLiteral("-Wno-global-constructors"),
-        QStringLiteral("-Wno-gnu-zero-variadic-macro-arguments"),
-        QStringLiteral("-Wno-documentation"),
-        QStringLiteral("-Wno-shadow"),
-        QStringLiteral("-Wno-switch-enum"),
-        QStringLiteral("-Wno-missing-prototypes"), // Not optimal for C projects.
-        QStringLiteral("-Wno-used-but-marked-unused"), // e.g. QTest::qWait
-    });
-    config.setClangTidyMode(ClangDiagnosticConfig::TidyMode::UseCustomChecks);
-    config.setClazyMode(ClangDiagnosticConfig::ClazyMode::UseCustomChecks);
-    configs << config;
-
-    return configs;
-}
-
-static ClangDiagnosticConfig convertToCustomConfig(const Id &id)
-{
-    const ClangDiagnosticConfig config
-        = findOrDefault(removedBuiltinConfigs(), [id](const ClangDiagnosticConfig &config) {
-              return config.id() == id;
-          });
-    return ClangDiagnosticConfigsModel::createCustomConfig(config, config.displayName());
+    return Environment::systemEnvironment().searchInPath("clangd");
 }
 
 void CppCodeModelSettings::fromSettings(QSettings *s)
 {
     s->beginGroup(QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP));
-
-    setClangCustomDiagnosticConfigs(diagnosticConfigsFromSettings(s));
-    setClangDiagnosticConfigId(clangDiagnosticConfigIdFromSettings(s));
-
-    // Qt Creator 4.11 removes some built-in configs.
-    bool write = false;
-    const Id id = m_clangDiagnosticConfigId;
-    if (id == "Builtin.Pedantic" || id == "Builtin.EverythingWithExceptions") {
-        // If one of them was used, continue to use it, but convert it to a custom config.
-        const ClangDiagnosticConfig customConfig = convertToCustomConfig(id);
-        m_clangCustomDiagnosticConfigs.append(customConfig);
-        m_clangDiagnosticConfigId = customConfig.id();
-        write = true;
-    }
-
-    // Before Qt Creator 4.8, inconsistent settings might have been written.
-    const ClangDiagnosticConfigsModel model = diagnosticConfigsModel(m_clangCustomDiagnosticConfigs);
-    if (!model.hasConfigWithId(m_clangDiagnosticConfigId))
-        setClangDiagnosticConfigId(initialClangDiagnosticConfigId());
 
     setEnableLowerClazyLevels(s->value(enableLowerClazyLevelsKey(), true).toBool());
 
@@ -186,13 +99,18 @@ void CppCodeModelSettings::fromSettings(QSettings *s)
     const QVariant skipIndexingBigFiles = s->value(skipIndexingBigFilesKey(), true);
     setSkipIndexingBigFiles(skipIndexingBigFiles.toBool());
 
+    const QVariant ignoreFiles = s->value(ignoreFilesKey(), false);
+    setIgnoreFiles(ignoreFiles.toBool());
+
+    const QVariant ignorePattern = s->value(ignorePatternKey(), "");
+    setIgnorePattern(ignorePattern.toString());
+
+    setUseBuiltinPreprocessor(s->value(useBuiltinPreprocessorKey(), true).toBool());
+
     const QVariant indexerFileSizeLimit = s->value(indexerFileSizeLimitKey(), 5);
     setIndexerFileSizeLimitInMb(indexerFileSizeLimit.toInt());
 
     s->endGroup();
-
-    if (write)
-        toSettings(s);
 
     emit changed();
 }
@@ -200,66 +118,20 @@ void CppCodeModelSettings::fromSettings(QSettings *s)
 void CppCodeModelSettings::toSettings(QSettings *s)
 {
     s->beginGroup(QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP));
-    const ClangDiagnosticConfigs previousConfigs = diagnosticConfigsFromSettings(s);
-    const Id previousConfigId = clangDiagnosticConfigIdFromSettings(s);
 
-    diagnosticConfigsToSettings(s, m_clangCustomDiagnosticConfigs);
-
-    s->setValue(clangDiagnosticConfigKey(), clangDiagnosticConfigId().toSetting());
     s->setValue(enableLowerClazyLevelsKey(), enableLowerClazyLevels());
     s->setValue(pchUsageKey(), pchUsage());
 
     s->setValue(interpretAmbiguousHeadersAsCHeadersKey(), interpretAmbigiousHeadersAsCHeaders());
     s->setValue(skipIndexingBigFilesKey(), skipIndexingBigFiles());
+    s->setValue(ignoreFilesKey(), ignoreFiles());
+    s->setValue(ignorePatternKey(), QVariant(ignorePattern()));
+    s->setValue(useBuiltinPreprocessorKey(), useBuiltinPreprocessor());
     s->setValue(indexerFileSizeLimitKey(), indexerFileSizeLimitInMb());
 
     s->endGroup();
 
-    QVector<Id> invalidated
-        = ClangDiagnosticConfigsModel::changedOrRemovedConfigs(previousConfigs,
-                                                               m_clangCustomDiagnosticConfigs);
-
-    if (previousConfigId != clangDiagnosticConfigId() && !invalidated.contains(previousConfigId))
-        invalidated.append(previousConfigId);
-
-    if (!invalidated.isEmpty())
-        emit clangDiagnosticConfigsInvalidated(invalidated);
     emit changed();
-}
-
-Id CppCodeModelSettings::clangDiagnosticConfigId() const
-{
-    if (!diagnosticConfigsModel().hasConfigWithId(m_clangDiagnosticConfigId))
-        return defaultClangDiagnosticConfigId();
-    return m_clangDiagnosticConfigId;
-}
-
-void CppCodeModelSettings::setClangDiagnosticConfigId(const Id &configId)
-{
-    m_clangDiagnosticConfigId = configId;
-}
-
-Id CppCodeModelSettings::defaultClangDiagnosticConfigId()
-{
-    return initialClangDiagnosticConfigId();
-}
-
-const ClangDiagnosticConfig CppCodeModelSettings::clangDiagnosticConfig() const
-{
-    const ClangDiagnosticConfigsModel configsModel = diagnosticConfigsModel(
-        m_clangCustomDiagnosticConfigs);
-
-    return configsModel.configWithId(clangDiagnosticConfigId());
-}
-
-ClangDiagnosticConfigs CppCodeModelSettings::clangCustomDiagnosticConfigs() const
-{
-    return m_clangCustomDiagnosticConfigs;
-}
-
-void CppCodeModelSettings::setClangCustomDiagnosticConfigs(const ClangDiagnosticConfigs &configs)
-{
-    m_clangCustomDiagnosticConfigs = configs;
 }
 
 CppCodeModelSettings::PCHUsage CppCodeModelSettings::pchUsage() const
@@ -302,6 +174,27 @@ void CppCodeModelSettings::setIndexerFileSizeLimitInMb(int sizeInMB)
     m_indexerFileSizeLimitInMB = sizeInMB;
 }
 
+bool CppCodeModelSettings::ignoreFiles() const
+{
+   return m_ignoreFiles;
+}
+
+void CppCodeModelSettings::setIgnoreFiles(bool ignoreFiles)
+{
+    m_ignoreFiles = ignoreFiles;
+}
+
+QString CppCodeModelSettings::ignorePattern() const
+{
+   return m_ignorePattern;
+}
+
+void CppCodeModelSettings::setIgnorePattern(const QString& ignorePattern)
+{
+    m_ignorePattern = ignorePattern;
+}
+
+
 bool CppCodeModelSettings::enableLowerClazyLevels() const
 {
     return m_enableLowerClazyLevels;
@@ -312,6 +205,28 @@ void CppCodeModelSettings::setEnableLowerClazyLevels(bool yesno)
     m_enableLowerClazyLevels = yesno;
 }
 
+
+QString ClangdSettings::priorityToString(const IndexingPriority &priority)
+{
+    switch (priority) {
+    case IndexingPriority::Background: return "background";
+    case IndexingPriority::Normal: return "normal";
+    case IndexingPriority::Low: return "low";
+    case IndexingPriority::Off: return {};
+    }
+    return {};
+}
+
+QString ClangdSettings::priorityToDisplayString(const IndexingPriority &priority)
+{
+    switch (priority) {
+    case IndexingPriority::Background: return Tr::tr("Background Priority");
+    case IndexingPriority::Normal: return Tr::tr("Normal Priority");
+    case IndexingPriority::Low: return Tr::tr("Low Priority");
+    case IndexingPriority::Off: return Tr::tr("Off");
+    }
+    return {};
+}
 
 ClangdSettings &ClangdSettings::instance()
 {
@@ -335,7 +250,29 @@ ClangdSettings::ClangdSettings()
 
 bool ClangdSettings::useClangd() const
 {
-    return m_data.useClangd && clangdVersion() >= QVersionNumber(13);
+    return m_data.useClangd && clangdVersion() >= QVersionNumber(14);
+}
+
+void ClangdSettings::setUseClangd(bool use) { instance().m_data.useClangd = use; }
+
+void ClangdSettings::setUseClangdAndSave(bool use)
+{
+    setUseClangd(use);
+    instance().saveSettings();
+}
+
+bool ClangdSettings::hardwareFulfillsRequirements()
+{
+    instance().m_data.haveCheckedHardwareReqirements = true;
+    instance().saveSettings();
+    const quint64 minRam = quint64(12) * 1024 * 1024 * 1024;
+    const std::optional<quint64> totalRam = Utils::HostOsInfo::totalMemoryInstalledInBytes();
+    return !totalRam || *totalRam >= minRam;
+}
+
+bool ClangdSettings::haveCheckedHardwareRequirements()
+{
+    return instance().data().haveCheckedHardwareReqirements;
 }
 
 void ClangdSettings::setDefaultClangdPath(const FilePath &filePath)
@@ -343,11 +280,41 @@ void ClangdSettings::setDefaultClangdPath(const FilePath &filePath)
     g_defaultClangdFilePath = filePath;
 }
 
+void ClangdSettings::setCustomDiagnosticConfigs(const ClangDiagnosticConfigs &configs)
+{
+    if (instance().customDiagnosticConfigs() == configs)
+        return;
+    instance().m_data.customDiagnosticConfigs = configs;
+    instance().saveSettings();
+}
+
 FilePath ClangdSettings::clangdFilePath() const
 {
     if (!m_data.executableFilePath.isEmpty())
         return m_data.executableFilePath;
     return fallbackClangdFilePath();
+}
+
+bool ClangdSettings::sizeIsOkay(const Utils::FilePath &fp) const
+{
+    return !sizeThresholdEnabled() || sizeThresholdInKb() * 1024 >= fp.fileSize();
+}
+
+ClangDiagnosticConfigs ClangdSettings::customDiagnosticConfigs() const
+{
+    return m_data.customDiagnosticConfigs;
+}
+
+Id ClangdSettings::diagnosticConfigId() const
+{
+    if (!diagnosticConfigsModel().hasConfigWithId(m_data.diagnosticConfigId))
+        return initialClangDiagnosticConfigId();
+    return m_data.diagnosticConfigId;
+}
+
+ClangDiagnosticConfig ClangdSettings::diagnosticConfig() const
+{
+    return diagnosticConfigsModel(customDiagnosticConfigs()).configWithId(diagnosticConfigId());
 }
 
 ClangdSettings::Granularity ClangdSettings::granularity() const
@@ -366,51 +333,101 @@ void ClangdSettings::setData(const Data &data)
     }
 }
 
-static QVersionNumber getClangdVersion(const FilePath &clangdFilePath)
+static FilePath getClangHeadersPathFromClang(const FilePath &clangdFilePath)
 {
-    Utils::QtcProcess clangdProc;
-    clangdProc.setCommand({clangdFilePath, {"--version"}});
-    clangdProc.start();
-    if (!clangdProc.waitForStarted() || !clangdProc.waitForFinished())
-        return{};
-    const QString output = clangdProc.allOutput();
-    static const QString versionPrefix = "clangd version ";
-    const int prefixOffset = output.indexOf(versionPrefix);
-    if (prefixOffset == -1)
+    const FilePath clangFilePath = clangdFilePath.absolutePath().pathAppended("clang")
+            .withExecutableSuffix();
+    if (!clangFilePath.exists())
         return {};
-    return QVersionNumber::fromString(output.mid(prefixOffset + versionPrefix.length()));
+    QtcProcess clang;
+    clang.setCommand({clangFilePath, {"-print-resource-dir"}});
+    clang.start();
+    if (!clang.waitForFinished())
+        return {};
+    const FilePath resourceDir = FilePath::fromUserInput(QString::fromLocal8Bit(
+            clang.readAllRawStandardOutput().trimmed()));
+    if (resourceDir.isEmpty() || !resourceDir.exists())
+        return {};
+    const FilePath includeDir = resourceDir.pathAppended("include");
+    if (!includeDir.exists())
+        return {};
+    return includeDir;
 }
 
-QVersionNumber ClangdSettings::clangdVersion(const FilePath &clangdFilePath)
+static FilePath getClangHeadersPath(const FilePath &clangdFilePath)
 {
-    static QHash<Utils::FilePath, QPair<QDateTime, QVersionNumber>> versionCache;
-    const QDateTime timeStamp = clangdFilePath.lastModified();
-    const auto it = versionCache.find(clangdFilePath);
-    if (it == versionCache.end()) {
-        const QVersionNumber version = getClangdVersion(clangdFilePath);
-        versionCache.insert(clangdFilePath, qMakePair(timeStamp, version));
-        return version;
+    const FilePath headersPath = getClangHeadersPathFromClang(clangdFilePath);
+    if (!headersPath.isEmpty())
+        return headersPath;
+
+    const QVersionNumber version = Utils::clangdVersion(clangdFilePath);
+    QTC_ASSERT(!version.isNull(), return {});
+    static const QStringList libDirs{"lib", "lib64"};
+    const QStringList versionStrings{QString::number(version.majorVersion()), version.toString()};
+    for (const QString &libDir : libDirs) {
+        for (const QString &versionString : versionStrings) {
+            const FilePath includePath = clangdFilePath.absolutePath().parentDir()
+                                             .pathAppended(libDir).pathAppended("clang")
+                                             .pathAppended(versionString).pathAppended("include");
+            if (includePath.exists())
+                return includePath;
+        }
     }
-    if (it->first != timeStamp) {
-        it->first = timeStamp;
-        it->second = getClangdVersion(clangdFilePath);
-    }
-    return it->second;
+    QTC_CHECK(false);
+    return {};
+}
+
+FilePath ClangdSettings::clangdIncludePath() const
+{
+    QTC_ASSERT(useClangd(), return {});
+    FilePath clangdPath = clangdFilePath();
+    QTC_ASSERT(!clangdPath.isEmpty() && clangdPath.exists(), return {});
+    static QHash<FilePath, FilePath> headersPathCache;
+    const auto it = headersPathCache.constFind(clangdPath);
+    if (it != headersPathCache.constEnd())
+        return *it;
+    const FilePath headersPath = getClangHeadersPath(clangdPath);
+    if (!headersPath.isEmpty())
+        headersPathCache.insert(clangdPath, headersPath);
+    return headersPath;
+}
+
+FilePath ClangdSettings::clangdUserConfigFilePath()
+{
+    return FilePath::fromString(
+                QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation))
+            / "clangd/config.yaml";
 }
 
 void ClangdSettings::loadSettings()
 {
-    Utils::fromSettings(clangdSettingsKey(), {}, Core::ICore::settings(), &m_data);
+    const auto settings = Core::ICore::settings();
+    Utils::fromSettings(clangdSettingsKey(), {}, settings, &m_data);
+
+    settings->beginGroup(QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP));
+    m_data.customDiagnosticConfigs = diagnosticConfigsFromSettings(settings);
+
+    // Pre-8.0 compat
+    static const QString oldKey("ClangDiagnosticConfig");
+    const QVariant configId = settings->value(oldKey);
+    if (configId.isValid()) {
+        m_data.diagnosticConfigId = Id::fromSetting(configId);
+        settings->setValue(oldKey, {});
+    }
+
+    settings->endGroup();
 }
 
 void ClangdSettings::saveSettings()
 {
-    Utils::toSettings(clangdSettingsKey(), {}, Core::ICore::settings(), &m_data);
+    const auto settings = Core::ICore::settings();
+    Utils::toSettings(clangdSettingsKey(), {}, settings, &m_data);
+    settings->beginGroup(QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP));
+    diagnosticConfigsToSettings(settings, m_data.customDiagnosticConfigs);
+    settings->endGroup();
 }
 
 #ifdef WITH_TESTS
-void ClangdSettings::setUseClangd(bool use) { instance().m_data.useClangd = use; }
-
 void ClangdSettings::setClangdFilePath(const FilePath &filePath)
 {
     instance().m_data.executableFilePath = filePath;
@@ -424,13 +441,18 @@ ClangdProjectSettings::ClangdProjectSettings(ProjectExplorer::Project *project) 
 
 ClangdSettings::Data ClangdProjectSettings::settings() const
 {
-    if (m_useGlobalSettings)
-        return ClangdSettings::instance().data();
-    ClangdSettings::Data data = m_customSettings;
-
+    const ClangdSettings::Data globalData = ClangdSettings::instance().data();
+    ClangdSettings::Data data = globalData;
+    if (!m_useGlobalSettings) {
+        data = m_customSettings;
     // This property is global by definition.
     data.sessionsWithOneClangd = ClangdSettings::instance().data().sessionsWithOneClangd;
 
+    // This list exists only once.
+    data.customDiagnosticConfigs = ClangdSettings::instance().data().customDiagnosticConfigs;
+}
+    if (m_blockIndexing)
+        data.indexingPriority = ClangdSettings::IndexingPriority::Off;
     return data;
 }
 
@@ -438,6 +460,7 @@ void ClangdProjectSettings::setSettings(const ClangdSettings::Data &data)
 {
     m_customSettings = data;
     saveSettings();
+    ClangdSettings::setCustomDiagnosticConfigs(data.customDiagnosticConfigs);
     emit ClangdSettings::instance().changed();
 }
 
@@ -448,12 +471,37 @@ void ClangdProjectSettings::setUseGlobalSettings(bool useGlobal)
     emit ClangdSettings::instance().changed();
 }
 
+void ClangdProjectSettings::setDiagnosticConfigId(Utils::Id configId)
+{
+    m_customSettings.diagnosticConfigId = configId;
+    saveSettings();
+}
+
+void ClangdProjectSettings::blockIndexing()
+{
+    if (m_blockIndexing)
+        return;
+    m_blockIndexing = true;
+    saveSettings();
+    emit ClangdSettings::instance().changed();
+}
+
+void ClangdProjectSettings::unblockIndexing()
+{
+    if (!m_blockIndexing)
+        return;
+    m_blockIndexing = false;
+    saveSettings();
+    // Do not emit changed here since that would restart clients with blocked indexing
+}
+
 void ClangdProjectSettings::loadSettings()
 {
     if (!m_project)
         return;
     const QVariantMap data = m_project->namedSettings(clangdSettingsKey()).toMap();
     m_useGlobalSettings = data.value(clangdUseGlobalSettingsKey(), true).toBool();
+    m_blockIndexing = data.value(clangdblockIndexingSettingsKey(), false).toBool();
     if (!m_useGlobalSettings)
         m_customSettings.fromMap(data);
 }
@@ -466,6 +514,7 @@ void ClangdProjectSettings::saveSettings()
     if (!m_useGlobalSettings)
         data = m_customSettings.toMap();
     data.insert(clangdUseGlobalSettingsKey(), m_useGlobalSettings);
+    data.insert(clangdblockIndexingSettingsKey(), m_blockIndexing);
     m_project->setNamedSettings(clangdSettingsKey(), data);
 }
 
@@ -473,13 +522,20 @@ QVariantMap ClangdSettings::Data::toMap() const
 {
     QVariantMap map;
     map.insert(useClangdKey(), useClangd);
-    if (executableFilePath != fallbackClangdFilePath())
-        map.insert(clangdPathKey(), executableFilePath.toString());
-    map.insert(clangdIndexingKey(), enableIndexing);
+    map.insert(clangdPathKey(),
+               executableFilePath != fallbackClangdFilePath() ? executableFilePath.toString()
+                                                              : QString());
+    map.insert(clangdIndexingKey(), indexingPriority != IndexingPriority::Off);
+    map.insert(clangdIndexingPriorityKey(), int(indexingPriority));
     map.insert(clangdHeaderInsertionKey(), autoIncludeHeaders);
     map.insert(clangdThreadLimitKey(), workerThreadLimit);
     map.insert(clangdDocumentThresholdKey(), documentUpdateThreshold);
+    map.insert(clangdSizeThresholdEnabledKey(), sizeThresholdEnabled);
+    map.insert(clangdSizeThresholdKey(), sizeThresholdInKb);
     map.insert(sessionsWithOneClangdKey(), sessionsWithOneClangd);
+    map.insert(diagnosticConfigIdKey(), diagnosticConfigId.toSetting());
+    map.insert(checkedHardwareKey(), true);
+    map.insert(completionResultsKey(), completionResults);
     return map;
 }
 
@@ -487,11 +543,29 @@ void ClangdSettings::Data::fromMap(const QVariantMap &map)
 {
     useClangd = map.value(useClangdKey(), true).toBool();
     executableFilePath = FilePath::fromString(map.value(clangdPathKey()).toString());
-    enableIndexing = map.value(clangdIndexingKey(), true).toBool();
+    indexingPriority = IndexingPriority(
+        map.value(clangdIndexingPriorityKey(), int(this->indexingPriority)).toInt());
+    const auto it = map.find(clangdIndexingKey());
+    if (it != map.end() && !it->toBool())
+        indexingPriority = IndexingPriority::Off;
     autoIncludeHeaders = map.value(clangdHeaderInsertionKey(), false).toBool();
     workerThreadLimit = map.value(clangdThreadLimitKey(), 0).toInt();
     documentUpdateThreshold = map.value(clangdDocumentThresholdKey(), 500).toInt();
+    sizeThresholdEnabled = map.value(clangdSizeThresholdEnabledKey(), false).toBool();
+    sizeThresholdInKb = map.value(clangdSizeThresholdKey(), 1024).toLongLong();
     sessionsWithOneClangd = map.value(sessionsWithOneClangdKey()).toStringList();
+    diagnosticConfigId = Id::fromSetting(map.value(diagnosticConfigIdKey(),
+                                                   initialClangDiagnosticConfigId().toSetting()));
+    haveCheckedHardwareReqirements = map.value(checkedHardwareKey(), false).toBool();
+    completionResults = map.value(completionResultsKey(), defaultCompletionResults()).toInt();
+}
+
+int ClangdSettings::Data::defaultCompletionResults()
+{
+    // Default clangd --limit-results value is 100
+    bool ok = false;
+    const int userValue = qtcEnvironmentVariableIntValue("QTC_CLANGD_COMPLETION_RESULTS", &ok);
+    return ok ? userValue : 100;
 }
 
 } // namespace CppEditor

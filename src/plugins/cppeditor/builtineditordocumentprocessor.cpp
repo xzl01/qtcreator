@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "builtineditordocumentprocessor.h"
 
@@ -62,7 +40,7 @@ QList<QTextEdit::ExtraSelection> toTextEditorSelections(
     QTextCharFormat errorFormat = fontSettings.toTextCharFormat(TextEditor::C_ERROR);
 
     QList<QTextEdit::ExtraSelection> result;
-    foreach (const CPlusPlus::Document::DiagnosticMessage &m, diagnostics) {
+    for (const CPlusPlus::Document::DiagnosticMessage &m : diagnostics) {
         QTextEdit::ExtraSelection sel;
         if (m.isWarning())
             sel.format = warningFormat;
@@ -108,9 +86,11 @@ CheckSymbols *createHighlighter(const CPlusPlus::Document::Ptr &doc,
     using Utils::Text::convertPosition;
 
     // Get macro definitions
-    foreach (const CPlusPlus::Macro& macro, doc->definedMacros()) {
+    for (const CPlusPlus::Macro &macro : doc->definedMacros()) {
         int line, column;
         convertPosition(textDocument, macro.utf16CharOffset(), &line, &column);
+        QTC_ASSERT(line >= 0 && column >= 0, qDebug() << doc->filePath() << macro.toString();
+                   continue);
 
         Result use(line, column, macro.nameToQString().size(), SemanticHighlighter::MacroUse);
         macroUses.append(use);
@@ -119,7 +99,7 @@ CheckSymbols *createHighlighter(const CPlusPlus::Document::Ptr &doc,
     const LanguageFeatures features = doc->languageFeatures();
 
     // Get macro uses
-    foreach (const Document::MacroUse &macro, doc->macroUses()) {
+    for (const Document::MacroUse &macro : doc->macroUses()) {
         const QString name = macro.macro().nameToQString();
 
         //Filter out QtKeywords
@@ -136,6 +116,8 @@ CheckSymbols *createHighlighter(const CPlusPlus::Document::Ptr &doc,
 
         int line, column;
         convertPosition(textDocument, macro.utf16charsBegin(), &line, &column);
+        QTC_ASSERT(line >= 0 && column >= 0, qDebug() << doc->filePath()
+                                                      << macro.macro().toString(); continue);
 
         Result use(line, column, name.size(), SemanticHighlighter::MacroUse);
         macroUses.append(use);
@@ -150,23 +132,18 @@ QList<TextEditor::BlockRange> toTextEditorBlocks(
 {
     QList<TextEditor::BlockRange> result;
     result.reserve(skippedBlocks.size());
-    foreach (const CPlusPlus::Document::Block &block, skippedBlocks)
+    for (const CPlusPlus::Document::Block &block : skippedBlocks)
         result.append(TextEditor::BlockRange(block.utf16charsBegin(), block.utf16charsEnd()));
     return result;
 }
 
 } // anonymous namespace
 
-BuiltinEditorDocumentProcessor::BuiltinEditorDocumentProcessor(
-        TextEditor::TextDocument *document,
-        bool enableSemanticHighlighter)
-    : BaseEditorDocumentProcessor(document->document(), document->filePath().toString())
-    , m_parser(new BuiltinEditorDocumentParser(document->filePath().toString(),
-                                               indexerFileSizeLimitInMb()))
+BuiltinEditorDocumentProcessor::BuiltinEditorDocumentProcessor(TextEditor::TextDocument *document)
+    : BaseEditorDocumentProcessor(document->document(), document->filePath())
+    , m_parser(new BuiltinEditorDocumentParser(document->filePath(), indexerFileSizeLimitInMb()))
     , m_codeWarningsUpdated(false)
-    , m_semanticHighlighter(enableSemanticHighlighter
-                            ? new SemanticHighlighter(document)
-                            : nullptr)
+    , m_semanticHighlighter(new SemanticHighlighter(document))
 {
     using namespace Internal;
 
@@ -176,18 +153,16 @@ BuiltinEditorDocumentProcessor::BuiltinEditorDocumentProcessor(
     config.usePrecompiledHeaders = cms->pchUsage() != CppCodeModelSettings::PchUse_None;
     m_parser->setConfiguration(config);
 
-    if (m_semanticHighlighter) {
-        m_semanticHighlighter->setHighlightingRunner(
-            [this]() -> QFuture<TextEditor::HighlightingResult> {
-                const SemanticInfo semanticInfo = m_semanticInfoUpdater.semanticInfo();
-                CheckSymbols *checkSymbols = createHighlighter(semanticInfo.doc, semanticInfo.snapshot,
-                                                               textDocument());
-                QTC_ASSERT(checkSymbols, return QFuture<TextEditor::HighlightingResult>());
-                connect(checkSymbols, &CheckSymbols::codeWarningsUpdated,
-                        this, &BuiltinEditorDocumentProcessor::onCodeWarningsUpdated);
-                return checkSymbols->start();
-            });
-    }
+    m_semanticHighlighter->setHighlightingRunner(
+                [this]() -> QFuture<TextEditor::HighlightingResult> {
+                    const SemanticInfo semanticInfo = m_semanticInfoUpdater.semanticInfo();
+                    CheckSymbols *checkSymbols = createHighlighter(semanticInfo.doc, semanticInfo.snapshot,
+                    textDocument());
+                    QTC_ASSERT(checkSymbols, return QFuture<TextEditor::HighlightingResult>());
+                    connect(checkSymbols, &CheckSymbols::codeWarningsUpdated,
+                    this, &BuiltinEditorDocumentProcessor::onCodeWarningsUpdated);
+                    return checkSymbols->start();
+                });
 
     connect(m_parser.data(), &BuiltinEditorDocumentParser::projectPartInfoUpdated,
             this, &BaseEditorDocumentProcessor::projectPartInfoUpdated);
@@ -229,7 +204,7 @@ void BuiltinEditorDocumentProcessor::recalculateSemanticInfoDetached(bool force)
 
 void BuiltinEditorDocumentProcessor::semanticRehighlight()
 {
-    if (m_semanticHighlighter && m_semanticInfoUpdater.semanticInfo().doc) {
+    if (m_semanticInfoUpdater.semanticInfo().doc) {
         if (const CPlusPlus::Document::Ptr document = m_documentSnapshot.document(filePath())) {
             m_codeWarnings = toTextEditorSelections(document->diagnosticMessages(), textDocument());
             m_codeWarningsUpdated = false;
@@ -257,22 +232,10 @@ BuiltinEditorDocumentProcessor::cursorInfo(const CursorInfoParams &params)
     return BuiltinCursorInfo::run(params);
 }
 
-QFuture<CursorInfo> BuiltinEditorDocumentProcessor::requestLocalReferences(const QTextCursor &)
+void BuiltinEditorDocumentProcessor::setSemanticHighlightingChecker(
+            const SemanticHighlightingChecker &checker)
 {
-    QFutureInterface<CursorInfo> futureInterface;
-    futureInterface.reportResult(CursorInfo());
-    futureInterface.reportFinished();
-
-    return futureInterface.future();
-}
-
-QFuture<SymbolInfo> BuiltinEditorDocumentProcessor::requestFollowSymbol(int, int)
-{
-    QFutureInterface<SymbolInfo> futureInterface;
-    futureInterface.reportResult(SymbolInfo());
-    futureInterface.reportFinished();
-
-    return futureInterface.future();
+    m_semanticHighlightingChecker = checker;
 }
 
 void BuiltinEditorDocumentProcessor::onParserFinished(CPlusPlus::Document::Ptr document,
@@ -281,13 +244,13 @@ void BuiltinEditorDocumentProcessor::onParserFinished(CPlusPlus::Document::Ptr d
     if (document.isNull())
         return;
 
-    if (document->fileName() != filePath())
+    if (document->filePath() != filePath())
         return; // some other document got updated
 
     if (document->editorRevision() != revision())
         return; // outdated content, wait for a new document to be parsed
 
-    qCDebug(log) << "document parsed" << document->fileName() << document->editorRevision();
+    qCDebug(log) << "document parsed" << document->filePath() << document->editorRevision();
 
     // Emit ifdefed out blocks
     const auto ifdefoutBlocks = toTextEditorBlocks(document->skippedBlocks());
@@ -301,18 +264,18 @@ void BuiltinEditorDocumentProcessor::onParserFinished(CPlusPlus::Document::Ptr d
 
     m_documentSnapshot = snapshot;
     const auto source = createSemanticInfoSource(false);
-    QTC_CHECK(source.snapshot.contains(document->fileName()));
+    QTC_CHECK(source.snapshot.contains(document->filePath()));
     m_semanticInfoUpdater.updateDetached(source);
 }
 
 void BuiltinEditorDocumentProcessor::onSemanticInfoUpdated(const SemanticInfo semanticInfo)
 {
     qCDebug(log) << "semantic info updated"
-                 << semanticInfo.doc->fileName() << semanticInfo.revision << semanticInfo.complete;
+                 << semanticInfo.doc->filePath() << semanticInfo.revision << semanticInfo.complete;
 
     emit semanticInfoUpdated(semanticInfo);
 
-    if (m_semanticHighlighter)
+    if (!m_semanticHighlightingChecker || m_semanticHighlightingChecker())
         m_semanticHighlighter->run();
 }
 
@@ -323,7 +286,7 @@ void BuiltinEditorDocumentProcessor::onCodeWarningsUpdated(
     if (document.isNull())
         return;
 
-    if (document->fileName() != filePath())
+    if (document->filePath() != filePath())
         return; // some other document got updated
 
     if (document->editorRevision() != revision())
@@ -336,17 +299,15 @@ void BuiltinEditorDocumentProcessor::onCodeWarningsUpdated(
     m_codeWarningsUpdated = true;
     emit codeWarningsUpdated(revision(),
                              m_codeWarnings,
-                             HeaderErrorDiagnosticWidgetCreator(),
                              TextEditor::RefactorMarkers());
 }
 
 SemanticInfo::Source BuiltinEditorDocumentProcessor::createSemanticInfoSource(bool force) const
 {
     const WorkingCopy workingCopy = CppModelManager::instance()->workingCopy();
-    const QString path = filePath();
-    return SemanticInfo::Source(path,
-                                workingCopy.source(path),
-                                workingCopy.revision(path),
+    return SemanticInfo::Source(filePath().toString(),
+                                workingCopy.source(filePath()),
+                                workingCopy.revision(filePath()),
                                 m_documentSnapshot,
                                 force);
 }

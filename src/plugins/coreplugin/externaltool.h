@@ -1,46 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
+#include <coreplugin/core_global.h>
+
 #include <utils/environment.h>
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 #include <utils/id.h>
 
 #include <QObject>
-#include <QStringList>
-#include <QProcess>
 #include <QSharedPointer>
 #include <QTextCodec>
 #include <QMetaType>
 
 namespace Utils { class QtcProcess; }
-namespace Core {
-namespace Internal {
 
-class ExternalTool : public QObject
+namespace Core {
+
+class CORE_EXPORT ExternalTool : public QObject
 {
     Q_OBJECT
 
@@ -72,15 +50,16 @@ public:
     Utils::Environment baseEnvironment() const;
     Utils::EnvironmentItems environmentUserChanges() const;
 
-    void setFileName(const Utils::FilePath &fileName);
+    void setFilePath(const Utils::FilePath &filePath);
     void setPreset(QSharedPointer<ExternalTool> preset);
-    Utils::FilePath fileName() const;
+    Utils::FilePath filePath() const;
     // all tools that are preset (changed or unchanged) have the original value here:
     QSharedPointer<ExternalTool> preset() const;
 
-    static ExternalTool *createFromXml(const QByteArray &xml, QString *errorMessage = nullptr, const QString &locale = QString());
+    static ExternalTool *createFromXml(const QByteArray &xml, QString *errorMessage = nullptr,
+                                       const QString &locale = {});
     static ExternalTool *createFromFile(const Utils::FilePath &fileName, QString *errorMessage = nullptr,
-                                        const QString &locale = QString());
+                                        const QString &locale = {});
 
     bool save(QString *errorMessage = nullptr) const;
 
@@ -123,9 +102,10 @@ private:
     QSharedPointer<ExternalTool> m_presetTool;
 };
 
-class ExternalToolRunner : public QObject
+class CORE_EXPORT ExternalToolRunner : public QObject
 {
     Q_OBJECT
+
 public:
     ExternalToolRunner(const ExternalTool *tool);
     ~ExternalToolRunner() override;
@@ -134,8 +114,7 @@ public:
     QString errorString() const;
 
 private:
-    void finished();
-    void error(QProcess::ProcessError error);
+    void done();
     void readStandardOutput();
     void readStandardError();
 
@@ -158,7 +137,6 @@ private:
     QString m_errorString;
 };
 
-} // Internal
 } // Core
 
-Q_DECLARE_METATYPE(Core::Internal::ExternalTool *)
+Q_DECLARE_METATYPE(Core::ExternalTool *)

@@ -1,51 +1,35 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "utils_global.h"
 
+#include "filepath.h"
+
 #include <QDir>
-#include <QFuture>
 #include <QMap>
+#include <QSet>
 #include <QStack>
 #include <QTextDocument>
 
 #include <functional>
 
-QT_FORWARD_DECLARE_CLASS(QTextCodec)
+QT_BEGIN_NAMESPACE
+template <typename T>
+class QFuture;
+class QTextCodec;
+QT_END_NAMESPACE
 
 namespace Utils {
 
 QTCREATOR_UTILS_EXPORT
-std::function<bool(const QString &)>
-filterFileFunction(const QStringList &filterRegs, const QStringList &exclusionRegs);
+std::function<bool(const FilePath &)> filterFileFunction(const QStringList &filterRegs,
+                                                         const QStringList &exclusionRegs);
 
 QTCREATOR_UTILS_EXPORT
-std::function<QStringList(const QStringList &)>
-filterFilesFunction(const QStringList &filters, const QStringList &exclusionFilters);
+std::function<FilePaths(const FilePaths &)> filterFilesFunction(const QStringList &filters,
+                                                                const QStringList &exclusionFilters);
 
 QTCREATOR_UTILS_EXPORT
 QStringList splitFilterUiText(const QString &text);
@@ -66,10 +50,11 @@ public:
     {
     public:
         Item() = default;
-        Item(const QString &path, QTextCodec *codec)
-            : filePath(path), encoding(codec)
+        Item(const FilePath &path, QTextCodec *codec)
+            : filePath(path)
+            , encoding(codec)
         {}
-        QString filePath;
+        FilePath filePath;
         QTextCodec *encoding = nullptr;
     };
 
@@ -122,8 +107,7 @@ protected:
 class QTCREATOR_UTILS_EXPORT FileListIterator : public FileIterator
 {
 public:
-    explicit FileListIterator(const QStringList &fileList,
-                              const QList<QTextCodec *> encodings);
+    explicit FileListIterator(const FilePaths &fileList, const QList<QTextCodec *> encodings);
 
     int maxProgress() const override;
     int currentProgress() const override;
@@ -141,7 +125,7 @@ private:
 class QTCREATOR_UTILS_EXPORT SubDirFileIterator : public FileIterator
 {
 public:
-    SubDirFileIterator(const QStringList &directories,
+    SubDirFileIterator(const FilePaths &directories,
                        const QStringList &filters,
                        const QStringList &exclusionFilters,
                        QTextCodec *encoding = nullptr);
@@ -156,10 +140,10 @@ protected:
     const Item &itemAt(int index) const override;
 
 private:
-    std::function<QStringList(const QStringList &)> m_filterFiles;
+    std::function<FilePaths(const FilePaths &)> m_filterFiles;
     QTextCodec *m_encoding;
-    QStack<QDir> m_dirs;
-    QSet<QString> m_knownDirs;
+    QStack<FilePath> m_dirs;
+    QSet<FilePath> m_knownDirs;
     QStack<qreal> m_progressValues;
     QStack<bool> m_processedValues;
     qreal m_progress;
@@ -171,7 +155,7 @@ class QTCREATOR_UTILS_EXPORT FileSearchResult
 {
 public:
     FileSearchResult() = default;
-    FileSearchResult(const QString &fileName, int lineNumber, const QString &matchingLine,
+    FileSearchResult(const FilePath &fileName, int lineNumber, const QString &matchingLine,
                      int matchStart, int matchLength,
                      const QStringList &regexpCapturedTexts)
             : fileName(fileName),
@@ -190,7 +174,7 @@ public:
     }
     bool operator!=(const FileSearchResult &o) const { return !(*this == o); }
 
-    QString fileName;
+    FilePath fileName;
     int lineNumber;
     QString matchingLine;
     int matchStart;
@@ -200,11 +184,17 @@ public:
 
 using FileSearchResultList = QList<FileSearchResult>;
 
-QTCREATOR_UTILS_EXPORT QFuture<FileSearchResultList> findInFiles(const QString &searchTerm, FileIterator *files,
-    QTextDocument::FindFlags flags, const QMap<QString, QString> &fileToContentsMap = QMap<QString, QString>());
+QTCREATOR_UTILS_EXPORT QFuture<FileSearchResultList> findInFiles(
+    const QString &searchTerm,
+    FileIterator *files,
+    QTextDocument::FindFlags flags,
+    const QMap<FilePath, QString> &fileToContentsMap = QMap<FilePath, QString>());
 
-QTCREATOR_UTILS_EXPORT QFuture<FileSearchResultList> findInFilesRegExp(const QString &searchTerm, FileIterator *files,
-    QTextDocument::FindFlags flags, const QMap<QString, QString> &fileToContentsMap = QMap<QString, QString>());
+QTCREATOR_UTILS_EXPORT QFuture<FileSearchResultList> findInFilesRegExp(
+    const QString &searchTerm,
+    FileIterator *files,
+    QTextDocument::FindFlags flags,
+    const QMap<FilePath, QString> &fileToContentsMap = QMap<FilePath, QString>());
 
 QTCREATOR_UTILS_EXPORT QString expandRegExpReplacement(const QString &replaceText, const QStringList &capturedTexts);
 QTCREATOR_UTILS_EXPORT QString matchCaseReplacement(const QString &originalText, const QString &replaceText);

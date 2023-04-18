@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtquick-timeline-view.html
@@ -38,9 +16,9 @@
     \image studio-timeline-empty.png "Empty Timeline view"
 
     Select the \inlineimage icons/plus.png
-    (\uicontrol {Add Timeline}) button to \l{Creating Timelines}
-    {create a timeline} and specify settings for it in the
-    \uicontrol {Timeline Settings} dialog.
+    (\uicontrol {Add Timeline}) button to
+    \l{Creating a Timeline}{create a timeline} and specify settings for it in
+    the \uicontrol {Timeline Settings} dialog.
 
     \image studio-timeline-settings.png "Timeline Settings dialog"
 
@@ -124,11 +102,11 @@
         \li \inlineimage icons/animation.png
         \li Opens the \uicontrol {Timeline Settings} dialog for editing
             timeline settings.
-        \li \l{Creating Timelines}
+        \li \l{Creating a Timeline}
     \row
         \li Timeline ID
         \li Displays the ID of the current timeline.
-        \li \l{Creating Timelines}
+        \li \l{Creating a Timeline}
     \row
         \li \inlineimage icons/to_first_frame.png
         \li \uicontrol {To Start (Home)} moves to the first frame on the
@@ -170,7 +148,7 @@
         \li Specifies the first frame of the timeline. Negative values are
             allowed. The difference between the start frame and the end frame
             determines the duration of the animation.
-        \li \l{Creating Timelines}
+        \li \l{Creating a Timeline}
     \row
         \li \inlineimage icons/zoom_small.png
         \li \uicontrol {Zoom Out} (\key Ctrl+-) zooms out of the view.
@@ -189,7 +167,7 @@
             the start frame and the end frame determines the duration of the
             animation, so if the start frame is 0, the end frame equals the
             duration.
-        \li \l{Creating Timelines}
+        \li \l{Creating a Timeline}
     \row
         \li State Name
         \li Displays the name of the current state.

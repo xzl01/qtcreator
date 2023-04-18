@@ -1,31 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "functionhintproposalwidget.h"
+
 #include "ifunctionhintproposalmodel.h"
 #include "codeassistant.h"
+#include "../texteditortr.h"
 
 #include <utils/algorithm.h>
 #include <utils/faketooltip.h>
@@ -154,12 +134,13 @@ FunctionHintProposalWidget::FunctionHintProposalWidget()
 
     connect(upArrow, &QAbstractButton::clicked, this, &FunctionHintProposalWidget::previousPage);
     connect(downArrow, &QAbstractButton::clicked, this, &FunctionHintProposalWidget::nextPage);
-    connect(d->m_popupFrame.data(), &QObject::destroyed, this, [this](){
+    connect(d->m_popupFrame.data(), &QObject::destroyed, this, [this] {
         qApp->removeEventFilter(this);
         deleteLater();
     });
 
     setFocusPolicy(Qt::NoFocus);
+    setFragile(true);
 }
 
 FunctionHintProposalWidget::~FunctionHintProposalWidget()
@@ -171,9 +152,6 @@ void FunctionHintProposalWidget::setAssistant(CodeAssistant *assistant)
 {
     d->m_assistant = assistant;
 }
-
-void FunctionHintProposalWidget::setReason(AssistReason)
-{}
 
 void FunctionHintProposalWidget::setKind(AssistKind)
 {}
@@ -212,7 +190,7 @@ void FunctionHintProposalWidget::showProposal(const QString &prefix)
     d->m_popupFrame->show();
 }
 
-void FunctionHintProposalWidget::updateProposal(const QString &prefix)
+void FunctionHintProposalWidget::filterProposal(const QString &prefix)
 {
     updateAndCheck(prefix);
 }
@@ -299,8 +277,6 @@ bool FunctionHintProposalWidget::eventFilter(QObject *obj, QEvent *e)
                 if (d->m_model && d->m_model->size() > 1)
                     return false;
             }
-            if (QTC_GUARD(d->m_assistant))
-                d->m_assistant->notifyChange();
         }
         break;
     case QEvent::WindowDeactivate:
@@ -367,7 +343,7 @@ bool FunctionHintProposalWidget::updateAndCheck(const QString &prefix)
 void FunctionHintProposalWidget::updateContent()
 {
     d->m_hintLabel->setText(d->m_model->text(d->m_currentHint));
-    d->m_numberLabel->setText(tr("%1 of %2").arg(d->m_currentHint + 1).arg(d->m_totalHints));
+    d->m_numberLabel->setText(Tr::tr("%1 of %2").arg(d->m_currentHint + 1).arg(d->m_totalHints));
     updatePosition();
 }
 

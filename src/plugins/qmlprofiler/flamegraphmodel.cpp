@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "flamegraphmodel.h"
-
 #include "qmlprofilermodelmanager.h"
+#include "qmlprofilertr.h"
 
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
@@ -140,7 +118,7 @@ void FlameGraphModel::loadEvent(const QmlEvent &event, const QmlEventType &type)
 
 void FlameGraphModel::finalize()
 {
-    for (FlameGraphData *child : qAsConst(m_stackBottom.children))
+    for (FlameGraphData *child : std::as_const(m_stackBottom.children))
         m_stackBottom.duration += child->duration;
 
     loadNotes(-1, false);
@@ -171,7 +149,7 @@ void FlameGraphModel::restrictToFeatures(quint64 visibleFeatures)
                                     std::bind(&FlameGraphModel::finalize, this),
                                     [this](const QString &message) {
         if (!message.isEmpty()) {
-            emit m_modelManager->error(tr("Could not re-read events from temporary trace file: %1")
+            emit m_modelManager->error(Tr::tr("Could not re-read events from temporary trace file: %1")
                                            .arg(message));
         }
         endResetModel();
@@ -182,11 +160,11 @@ void FlameGraphModel::restrictToFeatures(quint64 visibleFeatures)
 static QString nameForType(RangeType typeNumber)
 {
     switch (typeNumber) {
-    case Compiling: return FlameGraphModel::tr("Compile");
-    case Creating: return FlameGraphModel::tr("Create");
-    case Binding: return FlameGraphModel::tr("Binding");
-    case HandlingSignal: return FlameGraphModel::tr("Signal");
-    case Javascript: return FlameGraphModel::tr("JavaScript");
+    case Compiling: return Tr::tr("Compile");
+    case Creating: return Tr::tr("Create");
+    case Binding: return Tr::tr("Binding");
+    case HandlingSignal: return Tr::tr("Signal");
+    case Javascript: return Tr::tr("JavaScript");
     default: Q_UNREACHABLE();
     }
 }
@@ -200,7 +178,8 @@ QVariant FlameGraphModel::lookup(const FlameGraphData &stats, int role) const
         if (!m_typeIdsWithNotes.contains(stats.typeIndex))
             return ret;
         Timeline::TimelineNotesModel *notes = m_modelManager->notesModel();
-        foreach (const QVariant &item, notes->byTypeId(stats.typeIndex)) {
+        const QList<QVariant> items = notes->byTypeId(stats.typeIndex);
+        for (const QVariant &item : items) {
             if (ret.isEmpty())
                 ret = notes->text(item.toInt());
             else
@@ -226,7 +205,7 @@ QVariant FlameGraphModel::lookup(const FlameGraphData &stats, int role) const
         case TypeRole: return nameForType(type.rangeType());
         case RangeTypeRole: return type.rangeType();
         case DetailsRole: return type.data().isEmpty() ?
-                        FlameGraphModel::tr("Source code not available") : type.data();
+                        Tr::tr("Source code not available") : type.data();
         case LocationRole: return type.displayName();
         default: return QVariant();
         }

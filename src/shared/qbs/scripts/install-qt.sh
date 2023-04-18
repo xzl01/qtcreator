@@ -45,7 +45,7 @@ usage: install-qt [options] [components]
 
 Examples
   ./install-qt.sh --version 5.13.1 qtbase
-  ./install-qt.sh --version 5.14.0 --target android --toolchain any qtbase qtscript
+  ./install-qt.sh --version 5.14.0 --target android --toolchain any qtbase
 
 Positional arguments
   components
@@ -89,7 +89,7 @@ Options
                 android
                     any, android_armv7, android_arm64_v8a
                 desktop
-                    clang_64 (default),
+                    clang_64 (default)
                 ios
                     ios
 
@@ -261,7 +261,7 @@ function compute_url(){
         echo "${BASE_URL}/${REMOTE_PATH}"
         return 0
     elif [[ "${COMPONENT}" =~ "mingw" ]]; then
-        REMOTE_BASE="tools_mingw/qt.tools.${TOOLCHAIN}${VERSION//./}"
+        REMOTE_BASE="tools_mingw90/qt.tools.${TOOLCHAIN}${VERSION//./}"
 
         REMOTE_PATH="$(${CURL} ${BASE_URL}/${REMOTE_BASE}/ | grep -o -E "[[:alnum:]_.\-]*7z" | grep -v "meta" | head -1)"
         if [ ! -z "${REMOTE_PATH}" ]; then
@@ -348,7 +348,7 @@ for COMPONENT in ${COMPONENTS}; do
             SUBDIR="${TOOLCHAIN/win32_/}"
         elif [[ "${TOOLCHAIN}" =~ "any" ]] && [[ "${TARGET_PLATFORM}" == "android" ]]; then
             SUBDIR="android"
-        elif [ "${HOST_OS}" == "mac_x64" ] && [ ! "${VERSION}" \< "6.1.2" ]; then
+        elif [[ "${HOST_OS}" == "mac_x64" ]] && [[ ! "${VERSION}" < "6.1.2" ]] && [[ "${TARGET_PLATFORM}" == "desktop" ]]; then
             SUBDIR="macos"
         else
             SUBDIR="${TOOLCHAIN}"
@@ -378,10 +378,14 @@ for COMPONENT in ${COMPONENTS}; do
         # adjust the PATH variable.
         echo $(dirname "${CONF_FILE}")
     elif [[ "${COMPONENT}" =~ "mingw" ]]; then
+        VERSION_DIR="${VERSION//./}"
         if [[ "${TOOLCHAIN}" =~ "win64_mingw" ]]; then
-            echo "${UNPACK_DIR}/Tools/mingw${VERSION//./}_64/bin"
+            if [[ "${VERSION}" == "9.0.0" ]]; then
+                VERSION_DIR="1120"
+            fi
+            echo "${UNPACK_DIR}/Tools/mingw${VERSION_DIR}_64/bin"
         elif [[ "${TOOLCHAIN}" =~ "win32_mingw" ]]; then
-            echo "${UNPACK_DIR}/Tools/mingw${VERSION//./}_32/bin"
+            echo "${UNPACK_DIR}/Tools/mingw${VERSION_DIR}_32/bin"
         fi
     elif [[ "${COMPONENT}" =~ "qtcreator" ]]; then
         if [ "${HOST_OS}" == "mac_x64" ]; then

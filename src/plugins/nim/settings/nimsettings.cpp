@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
-** Contact: http://www.qt.io/licensing
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nimsettings.h"
-#include "nimcodestylepreferencesfactory.h"
 
 #include "../nimconstants.h"
+#include "../nimtr.h"
+#include "nimcodestylepreferencesfactory.h"
 
 #include <coreplugin/icore.h>
 
@@ -56,7 +35,7 @@ NimSettings::NimSettings()
     nimSuggestPath.setSettingsKey("Command");
     nimSuggestPath.setDisplayStyle(StringAspect::PathChooserDisplay);
     nimSuggestPath.setExpectedKind(PathChooser::ExistingCommand);
-    nimSuggestPath.setLabelText(tr("Path:"));
+    nimSuggestPath.setLabelText(Tr::tr("Path:"));
 
     readSettings(Core::ICore::settings());
 }
@@ -83,14 +62,14 @@ void NimSettings::InitializeCodeStyleSettings()
 
     m_globalCodeStyle = new SimpleCodeStylePreferences();
     m_globalCodeStyle->setDelegatingPool(pool);
-    m_globalCodeStyle->setDisplayName(tr("Global", "Settings"));
+    m_globalCodeStyle->setDisplayName(Tr::tr("Global", "Settings"));
     m_globalCodeStyle->setId(Nim::Constants::C_NIMGLOBALCODESTYLE_ID);
     pool->addCodeStyle(m_globalCodeStyle);
     TextEditorSettings::registerCodeStyle(Nim::Constants::C_NIMLANGUAGE_ID, m_globalCodeStyle);
 
     auto nimCodeStyle = new SimpleCodeStylePreferences();
     nimCodeStyle->setId("nim");
-    nimCodeStyle->setDisplayName(tr("Nim"));
+    nimCodeStyle->setDisplayName(Tr::tr("Nim"));
     nimCodeStyle->setReadOnly(true);
 
     TabSettings nimTabSettings;
@@ -132,9 +111,9 @@ void NimSettings::TerminateCodeStyleSettings()
 NimToolsSettingsPage::NimToolsSettingsPage(NimSettings *settings)
 {
     setId(Nim::Constants::C_NIMTOOLSSETTINGSPAGE_ID);
-    setDisplayName(NimSettings::tr(Nim::Constants::C_NIMTOOLSSETTINGSPAGE_DISPLAY));
+    setDisplayName(Tr::tr("Tools"));
     setCategory(Nim::Constants::C_NIMTOOLSSETTINGSPAGE_CATEGORY);
-    setDisplayCategory(NimSettings::tr("Nim"));
+    setDisplayCategory(Tr::tr("Nim"));
     setCategoryIconPath(":/nim/images/settingscategory_nim.png");
     setSettings(settings);
 
@@ -142,10 +121,10 @@ NimToolsSettingsPage::NimToolsSettingsPage(NimSettings *settings)
         using namespace Layouting;
         Column {
             Group {
-                Title("Nimsuggest"),
-                settings->nimSuggestPath
+                title("Nimsuggest"),
+                Column { settings->nimSuggestPath }
             },
-            Stretch()
+            st
         }.attachTo(widget);
      });
 }

@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include <qmldesignercorelib_global.h>
+#include <qmldesignercomponents_global.h>
 
 #include <utils/theme/theme.h>
 
@@ -38,7 +16,7 @@ QT_END_NAMESPACE
 
 namespace QmlDesigner {
 
-class QMLDESIGNERCORE_EXPORT Theme : public Utils::Theme
+class QMLDESIGNERCOMPONENTS_EXPORT Theme : public Utils::Theme
 {
     Q_OBJECT
 public:
@@ -72,22 +50,27 @@ public:
         animatedProperty,
         annotationBubble,
         annotationDecal,
+        applyMaterialToSelected,
         assign,
         bevelAll,
         bevelCorner,
         centerHorizontal,
         centerVertical,
         closeCross,
+        closeLink,
         colorPopupClose,
         columnsAndRows,
+        copyLink,
         copyStyle,
         cornerA,
         cornerB,
         cornersAll,
         curveDesigner,
         curveEditor,
+        customMaterialEditor,
         decisionNode,
         deleteColumn,
+        deleteMaterial,
         deleteRow,
         deleteTable,
         detach,
@@ -120,6 +103,7 @@ public:
         gridView,
         idAliasOff,
         idAliasOn,
+        imported,
         infinity,
         keyframe,
         linkTriangle,
@@ -127,9 +111,14 @@ public:
         listView,
         lockOff,
         lockOn,
+        materialPreviewEnvironment,
+        materialPreviewModel,
         mergeCells,
         minus,
         mirror,
+        newMaterial,
+        openLink,
+        openMaterialBrowser,
         orientation,
         paddingEdge,
         paddingFrame,
@@ -143,6 +132,24 @@ public:
         redo,
         rotationFill,
         rotationOutline,
+        s_anchors,
+        s_annotations,
+        s_arrange,
+        s_boundingBox,
+        s_component,
+        s_connections,
+        s_edit,
+        s_enterComponent,
+        s_eventList,
+        s_group,
+        s_layouts,
+        s_merging,
+        s_mouseArea,
+        s_positioners,
+        s_selection,
+        s_snapping,
+        s_timeline,
+        s_visibility,
         search,
         sectionToggle,
         splitColumns,
@@ -160,6 +167,14 @@ public:
         textFullJustification,
         textNumberedList,
         tickIcon,
+        topToolbar_annotations,
+        topToolbar_closeFile,
+        topToolbar_designMode,
+        topToolbar_enterComponent,
+        topToolbar_home,
+        topToolbar_makeComponent,
+        topToolbar_navFile,
+        topToolbar_runProject,
         translationCreateFiles,
         translationCreateReport,
         translationExport,

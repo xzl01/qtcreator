@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debuggerprotocol.h"
 #include "simplifytype.h"
@@ -32,6 +10,7 @@
 #include <utils/fileutils.h>
 #include <utils/environment.h>
 
+#include <QLoggingCategory>
 #include <QtTest>
 #include <math.h>
 
@@ -40,6 +19,8 @@
 #endif
 
 #define MSKIP_SINGLE(x) do { disarm(); QSKIP(x); } while (0)
+
+Q_LOGGING_CATEGORY(lcDumpers, "qtc.debugger.dumpers", QtDebugMsg)
 
 using namespace Debugger;
 using namespace Internal;
@@ -338,8 +319,8 @@ struct Value
         if (isFloatValue) {
             double f1 = fabs(expectedValue.toDouble());
             double f2 = fabs(actualValue.toDouble());
-            //qDebug() << "expected float: " << qPrintable(expectedValue) << f1;
-            //qDebug() << "actual   float: " << qPrintable(actualValue) << f2;
+            //qCDebug(lcDumpers) << "expected float: " << qPrintable(expectedValue) << f1;
+            //qCDebug(lcDumpers) << "actual   float: " << qPrintable(actualValue) << f2;
             if (f1 < f2)
                 std::swap(f1, f2);
             return f1 - f2 <= 0.01 * f2;
@@ -705,9 +686,22 @@ struct Profile
 struct Cxx11Profile : public Profile
 {
     Cxx11Profile()
-      : Profile("greaterThan(QT_MAJOR_VERSION,4): CONFIG += c++11\n"
-                "else: QMAKE_CXXFLAGS += -std=c++0x\n")
+        : Profile("greaterThan(QT_MAJOR_VERSION,4): CONFIG += c++11\n"
+                  "else: QMAKE_CXXFLAGS += -std=c++0x\n")
     {}
+};
+
+struct Cxx17Profile : public Profile
+{
+    Cxx17Profile()
+        : Profile("CONFIG += c++17\n")
+    {}
+};
+
+struct NonArmProfile : public Profile
+{
+    NonArmProfile()
+        : Profile(QByteArray()) {}
 };
 
 struct BoostProfile : public Profile
@@ -1069,10 +1063,19 @@ public:
         return *this;
     }
 
+    const Data &operator+(const NonArmProfile &) const
+    {
+#if defined(__APPLE__) && defined(__aarch64__)
+        disabledOnARM = true;
+#endif
+        return *this;
+    }
+
 public:
     mutable bool useQt = false;
     mutable bool useQHash = false;
     mutable bool useBoost = false;
+    mutable bool disabledOnARM = false;
     mutable int engines = AllEngines;
     mutable int skipLevels = 0;              // Levels to go 'up' before dumping variables.
     mutable bool glibcxxDebug = false;
@@ -1135,6 +1138,7 @@ private slots:
     void dumper_data();
     void init();
     void cleanup();
+    void cleanupTestCase();
 
 private:
     void disarm() { t->buildTemp.setAutoRemove(!keepTemp()); }
@@ -1157,6 +1161,7 @@ private:
     bool m_isMacGdb = false;
     bool m_isQnxGdb = false;
     bool m_useGLibCxxDebug = false;
+    int m_totalDumpTime = 0;
 };
 
 void tst_Dumpers::initTestCase()
@@ -1169,7 +1174,7 @@ void tst_Dumpers::initTestCase()
         m_debuggerBinary = "gdb";
 #endif
     }
-    qDebug() << "Debugger           : " << m_debuggerBinary;
+    qCDebug(lcDumpers) << "Debugger           : " << m_debuggerBinary;
 
     m_debuggerEngine = GdbEngine;
     if (m_debuggerBinary.endsWith("cdb.exe"))
@@ -1185,14 +1190,14 @@ void tst_Dumpers::initTestCase()
     if (qEnvironmentVariableIntValue("QTC_USE_CMAKE_FOR_TEST"))
         m_buildSystem = BuildSystem::CMake;
 
-    qDebug() << "QMake              : " << m_qmakeBinary;
-    qDebug() << "Use CMake          : " << (m_buildSystem == BuildSystem::CMake) << int(m_buildSystem);
+    qCDebug(lcDumpers) << "QMake              : " << m_qmakeBinary;
+    qCDebug(lcDumpers) << "Use CMake          : " << (m_buildSystem == BuildSystem::CMake) << int(m_buildSystem);
 
     m_useGLibCxxDebug = qgetenv("QTC_USE_GLIBCXXDEBUG_FOR_TEST").toInt();
-    qDebug() << "Use _GLIBCXX_DEBUG : " << m_useGLibCxxDebug;
+    qCDebug(lcDumpers) << "Use _GLIBCXX_DEBUG : " << m_useGLibCxxDebug;
 
     m_forceKeepTemp = qgetenv("QTC_KEEP_TEMP_FOR_TEST").toInt();
-    qDebug() << "Force keep temp    : " << m_forceKeepTemp;
+    qCDebug(lcDumpers) << "Force keep temp    : " << m_forceKeepTemp;
 
     if (m_debuggerEngine == GdbEngine) {
         QProcess debugger;
@@ -1202,10 +1207,10 @@ void tst_Dumpers::initTestCase()
         ok = debugger.waitForFinished();
         QVERIFY(ok);
         QByteArray output = debugger.readAllStandardOutput();
-        //qDebug().noquote() << "stdout: " << output;
+        //qCDebug(lcDumpers).noquote() << "stdout: " << output;
         bool usePython = !output.contains("Python scripting is not supported in this copy of GDB");
-        qDebug() << "Python             : " << (usePython ? "ok" : "*** not ok ***");
-        qDebug() << "Dumper dir         : " << DUMPERDIR;
+        qCDebug(lcDumpers) << "Python             : " << (usePython ? "ok" : "*** not ok ***");
+        qCDebug(lcDumpers) << "Dumper dir         : " << DUMPERDIR;
         QVERIFY(usePython);
 
         QString version = QString::fromLocal8Bit(output);
@@ -1234,8 +1239,8 @@ void tst_Dumpers::initTestCase()
         if (m_makeBinary.isEmpty())
             m_makeBinary = "make";
 #endif
-        qDebug() << "Make path          : " << m_makeBinary;
-        qDebug() << "Gdb version        : " << m_debuggerVersion;
+        qCDebug(lcDumpers) << "Make path          : " << m_makeBinary;
+        qCDebug(lcDumpers) << "Gdb version        : " << m_debuggerVersion;
     } else if (m_debuggerEngine == CdbEngine) {
         QByteArray envBat = qgetenv("QTC_MSVC_ENV_BAT");
         QMap <QString, QString> envPairs;
@@ -1259,13 +1264,13 @@ void tst_Dumpers::initTestCase()
         int pos = output.indexOf('\n');
         if (pos != -1)
             output = output.left(pos);
-        qDebug() << "Extracting MSVC version from: " << output;
+        qCDebug(lcDumpers) << "Extracting MSVC version from: " << output;
         QRegularExpression reg(" (\\d\\d)\\.(\\d\\d)\\.");
         QRegularExpressionMatch match = reg.match(output);
         if (match.matchType() != QRegularExpression::NoMatch)
             m_msvcVersion = QString(match.captured(1) + match.captured(2)).toInt();
     } else if (m_debuggerEngine == LldbEngine) {
-        qDebug() << "Dumper dir         : " << DUMPERDIR;
+        qCDebug(lcDumpers) << "Dumper dir         : " << DUMPERDIR;
         QProcess debugger;
         debugger.start(m_debuggerBinary, {"-v"});
         bool ok = debugger.waitForFinished(2000);
@@ -1291,7 +1296,7 @@ void tst_Dumpers::initTestCase()
             }
         }
 
-        qDebug() << "Lldb version       :" << output << ba << m_debuggerVersion;
+        qCDebug(lcDumpers) << "Lldb version       :" << output << ba << m_debuggerVersion;
         QVERIFY(m_debuggerVersion);
 
         m_env = QProcessEnvironment::systemEnvironment();
@@ -1312,6 +1317,11 @@ void tst_Dumpers::cleanup()
         logger.write(t->input.toUtf8());
     }
     delete t;
+}
+
+void tst_Dumpers::cleanupTestCase()
+{
+    qCDebug(lcDumpers) << "Dumpers total: " << QTime::fromMSecsSinceStartOfDay(m_totalDumpTime);
 }
 
 void tst_Dumpers::dumper()
@@ -1339,6 +1349,9 @@ void tst_Dumpers::dumper()
                 + QByteArray::number(data.neededLldbVersion.max)));
     }
 
+    if (data.disabledOnARM)
+        MSKIP_SINGLE(QByteArray("Test disabled on arm macOS"));
+
     QByteArray output;
     QByteArray error;
 
@@ -1351,8 +1364,8 @@ void tst_Dumpers::dumper()
         error = qmake.readAllStandardError();
         int pos0 = output.indexOf("Qt version");
         if (pos0 == -1) {
-            qDebug().noquote() << "Output: " << output;
-            qDebug().noquote() << "Error: " << error;
+            qCDebug(lcDumpers).noquote() << "Output: " << output;
+            qCDebug(lcDumpers).noquote() << "Error: " << error;
             QVERIFY(false);
         }
         pos0 += 11;
@@ -1382,7 +1395,7 @@ void tst_Dumpers::dumper()
         int pos = output.indexOf('\n');
         if (pos != -1)
             output = output.left(pos);
-        qDebug() << "Extracting GCC version from: " << output;
+        qCDebug(lcDumpers) << "Extracting GCC version from: " << output;
         if (output.contains(QByteArray("SUSE Linux"))) {
             pos = output.indexOf(')');
             output = output.mid(pos + 1).trimmed();
@@ -1398,7 +1411,7 @@ void tst_Dumpers::dumper()
         int minor = output.mid(pos1, pos2++ - pos1).toInt();
         int patch = output.mid(pos2).toInt();
         m_gccVersion = 10000 * major + 100 * minor + patch;
-        qDebug() << "GCC version: " << m_gccVersion;
+        qCDebug(lcDumpers) << "GCC version: " << m_gccVersion;
 
         if (data.neededGccVersion.min > m_gccVersion)
             MSKIP_SINGLE(QByteArray("Need minimum GCC version "
@@ -1617,23 +1630,23 @@ void tst_Dumpers::dumper()
             "-DCMAKE_PREFIX_PATH=" + dir.absolutePath(),
             "."
         };
-        //qDebug() << "Starting cmake: " << m_cmakeBinary << ' ' << qPrintable(options.join(' '));
+        //qCDebug(lcDumpers) << "Starting cmake: " << m_cmakeBinary << ' ' << qPrintable(options.join(' '));
         cmake.setProcessEnvironment(m_env);
         cmake.start(m_cmakeBinary, options);
         QVERIFY(cmake.waitForFinished());
         output = cmake.readAllStandardOutput();
         error = cmake.readAllStandardError();
-        //qDebug() << "stdout: " << output;
+        //qCDebug(lcDumpers) << "stdout: " << output;
 
         if (data.allProfile.isEmpty()) { // Nim...
             if (!error.isEmpty()) {
-                qDebug() << error; QVERIFY(false);
+                qCDebug(lcDumpers) << error; QVERIFY(false);
             }
         }
     } else {
         QProcess qmake;
         qmake.setWorkingDirectory(t->buildPath);
-        //qDebug() << "Starting qmake: " << m_qmakeBinary;
+        //qCDebug(lcDumpers) << "Starting qmake: " << m_qmakeBinary;
         QStringList options;
     #ifdef Q_OS_MACOS
         if (m_qtVersion && m_qtVersion < 0x050000)
@@ -1644,11 +1657,11 @@ void tst_Dumpers::dumper()
         QVERIFY(qmake.waitForFinished());
         output = qmake.readAllStandardOutput();
         error = qmake.readAllStandardError();
-        //qDebug() << "stdout: " << output;
+        //qCDebug(lcDumpers) << "stdout: " << output;
 
         if (data.allProfile.isEmpty()) { // Nim...
             if (!error.isEmpty()) {
-                qDebug() << error; QVERIFY(qmake.exitCode() == 0);
+                qCDebug(lcDumpers) << error; QVERIFY(qmake.exitCode() == 0);
             }
         }
     }
@@ -1661,16 +1674,16 @@ void tst_Dumpers::dumper()
     QVERIFY(make.waitForFinished());
     output = make.readAllStandardOutput();
     error = make.readAllStandardError();
-    //qDebug() << "stdout: " << output;
+    //qCDebug(lcDumpers) << "stdout: " << output;
     if (make.exitCode()) {
         if (data.useBoost && make.exitStatus() == QProcess::NormalExit)
             MSKIP_SINGLE("Compile failed - probably missing Boost?");
 
-        qDebug().noquote() << error;
-        qDebug() << "\n------------------ CODE --------------------";
-        qDebug().noquote() << fullCode;
-        qDebug() << "\n------------------ CODE --------------------";
-        qDebug().noquote() << "Project file: " << projectFile.fileName();
+        qCDebug(lcDumpers).noquote() << error;
+        qCDebug(lcDumpers) << "\n------------------ CODE --------------------";
+        qCDebug(lcDumpers).noquote() << fullCode;
+        qCDebug(lcDumpers) << "\n------------------ CODE --------------------";
+        qCDebug(lcDumpers).noquote() << "Project file: " << projectFile.fileName();
         QCOMPARE(make.exitCode(), 0);
     }
 
@@ -1684,9 +1697,9 @@ void tst_Dumpers::dumper()
         int pos1 = output.indexOf("Version:") + 8;
         int pos2 = output.indexOf("\n", pos1);
         int dwarfVersion = output.mid(pos1, pos2 - pos1).toInt();
-        //qDebug() << "OUT: " << output;
-        //qDebug() << "ERR: " << error;
-        qDebug() << "DWARF Version : " << dwarfVersion;
+        //qCDebug(lcDumpers) << "OUT: " << output;
+        //qCDebug(lcDumpers) << "ERR: " << error;
+        qCDebug(lcDumpers) << "DWARF Version : " << dwarfVersion;
 
         if (data.neededDwarfVersion.min > dwarfVersion)
             MSKIP_SINGLE(QByteArray("Need minimum DWARF version "
@@ -1712,12 +1725,12 @@ void tst_Dumpers::dumper()
         }
     };
     collectExpandedINames(data.checks);
-    for (const auto &checkset : qAsConst(data.checksets))
+    for (const auto &checkset : std::as_const(data.checksets))
         collectExpandedINames(checkset.checks);
 
     QString expanded;
     QString expandedq;
-    for (const QString &iname : qAsConst(expandedINames)) {
+    for (const QString &iname : std::as_const(expandedINames)) {
         if (!expanded.isEmpty()) {
             expanded.append(',');
             expandedq.append(',');
@@ -1813,14 +1826,17 @@ void tst_Dumpers::dumper()
     debugger.setWorkingDirectory(t->buildPath);
     debugger.start(exe, args);
     QVERIFY(debugger.waitForStarted());
+    QElapsedTimer dumperTimer;
+    dumperTimer.start();
     debugger.write(cmds.toLocal8Bit());
     QVERIFY(debugger.waitForFinished());
+    m_totalDumpTime += dumperTimer.elapsed();
     output = debugger.readAllStandardOutput();
     QByteArray fullOutput = output;
-    //qDebug() << "stdout: " << output;
+    //qCDebug(lcDumpers) << "stdout: " << output;
     error = debugger.readAllStandardError();
     if (!error.isEmpty())
-        qDebug() << error;
+        qCDebug(lcDumpers) << error;
 
     if (keepTemp()) {
         QFile logger(t->buildPath + "/output.txt");
@@ -1837,7 +1853,7 @@ void tst_Dumpers::dumper()
     if (m_debuggerEngine == GdbEngine) {
         int posDataStart = output.indexOf("data=");
         if (posDataStart == -1) {
-            qDebug().noquote() << "NO \"data=\" IN OUTPUT: " << output;
+            qCDebug(lcDumpers).noquote() << "NO \"data=\" IN OUTPUT: " << output;
             QVERIFY(posDataStart != -1);
         }
         contents = output.mid(posDataStart);
@@ -1846,25 +1862,25 @@ void tst_Dumpers::dumper()
         actual.fromStringMultiple(QString::fromLocal8Bit(contents));
         context.nameSpace = actual["qtnamespace"].data();
         actual = actual["data"];
-        //qDebug() << "FOUND NS: " << context.nameSpace;
+        //qCDebug(lcDumpers) << "FOUND NS: " << context.nameSpace;
 
     } else if (m_debuggerEngine == LldbEngine) {
-        //qDebug().noquote() << "GOT OUTPUT: " << output;
-        int pos = output.indexOf("data=[{");
+        //qCDebug(lcDumpers).noquote() << "GOT OUTPUT: " << output;
+        int pos = output.indexOf("data=[");
         QVERIFY(pos != -1);
         output = output.mid(pos);
         contents = output;
 
         int posNameSpaceStart = output.indexOf("@NS@");
         if (posNameSpaceStart == -1)
-            qDebug().noquote() << "OUTPUT: " << output;
+            qCDebug(lcDumpers).noquote() << "OUTPUT: " << output;
         QVERIFY(posNameSpaceStart != -1);
         posNameSpaceStart += sizeof("@NS@") - 1;
         int posNameSpaceEnd = output.indexOf("@", posNameSpaceStart);
         QVERIFY(posNameSpaceEnd != -1);
         context.nameSpace = QString::fromLocal8Bit(output.mid(
             posNameSpaceStart, posNameSpaceEnd - posNameSpaceStart));
-        //qDebug() << "FOUND NS: " << context.nameSpace;
+        //qCDebug(lcDumpers) << "FOUND NS: " << context.nameSpace;
         if (context.nameSpace == "::")
             context.nameSpace.clear();
         contents.replace("\\\"", "\"");
@@ -1874,7 +1890,7 @@ void tst_Dumpers::dumper()
         QByteArray locals("|script|");
         int localsBeginPos = output.indexOf(locals, output.indexOf(localsAnswerStart));
         if (localsBeginPos == -1)
-            qDebug().noquote() << "OUTPUT: " << output;
+            qCDebug(lcDumpers).noquote() << "OUTPUT: " << output;
         QVERIFY(localsBeginPos != -1);
         do {
             const int msgStart = localsBeginPos + locals.length();
@@ -1916,14 +1932,14 @@ void tst_Dumpers::dumper()
     }
 
 
-    //qDebug() << "QT VERSION " << QByteArray::number(context.qtVersion, 16);
+    //qCDebug(lcDumpers) << "QT VERSION " << QByteArray::number(context.qtVersion, 16);
     QSet<QString> seenINames;
     bool ok = true;
 
     auto test = [&](const Check &check, bool *removeIt, bool single) {
         if (!check.matches(m_debuggerEngine, m_debuggerVersion, context)) {
             if (single)
-                qDebug() << "SKIPPING NON-MATCHING TEST " << check;
+                qCDebug(lcDumpers) << "SKIPPING NON-MATCHING TEST " << check;
             return true; // we have not failed
         }
 
@@ -1934,38 +1950,38 @@ void tst_Dumpers::dumper()
         if (!item) {
             if (check.optionallyPresent)
                 return true;
-            qDebug() << "NOT SEEN: " << check.iname;
+            qCDebug(lcDumpers) << "NOT SEEN: " << check.iname;
             return false;
         }
         seenINames.insert(iname);
-        //qDebug() << "CHECKS" << i << check.iname;
+        //qCDebug(lcDumpers) << "CHECKS" << i << check.iname;
 
         *removeIt = true;
 
-        //qDebug() << "USING MATCHING TEST FOR " << iname;
+        //qCDebug(lcDumpers) << "USING MATCHING TEST FOR " << iname;
         QString name = item->realName();
         QString type = item->type;
         if (!check.expectedName.matches(name, context)) {
             if (single) {
-                qDebug() << "INAME        : " << iname;
-                qDebug() << "NAME ACTUAL  : " << name;
-                qDebug() << "NAME EXPECTED: " << check.expectedName.name;
+                qCDebug(lcDumpers) << "INAME        : " << iname;
+                qCDebug(lcDumpers) << "NAME ACTUAL  : " << name;
+                qCDebug(lcDumpers) << "NAME EXPECTED: " << check.expectedName.name;
             }
             return false;
         }
         if (!check.expectedValue.matches(item->value, context)) {
             if (single) {
-                qDebug() << "INAME         : " << iname;
-                qDebug() << "VALUE ACTUAL  : " << item->value << toHex(item->value);
-                qDebug() << "VALUE EXPECTED: " << check.expectedValue.value << toHex(check.expectedValue.value);
+                qCDebug(lcDumpers) << "INAME         : " << iname;
+                qCDebug(lcDumpers) << "VALUE ACTUAL  : " << item->value << toHex(item->value);
+                qCDebug(lcDumpers) << "VALUE EXPECTED: " << check.expectedValue.value << toHex(check.expectedValue.value);
             }
             return false;
         }
         if (!check.expectedType.matches(type, context)) {
             if (single) {
-                qDebug() << "INAME        : " << iname;
-                qDebug() << "TYPE ACTUAL  : " << type;
-                qDebug() << "TYPE EXPECTED: " << check.expectedType.type;
+                qCDebug(lcDumpers) << "INAME        : " << iname;
+                qCDebug(lcDumpers) << "TYPE ACTUAL  : " << type;
+                qCDebug(lcDumpers) << "TYPE EXPECTED: " << check.expectedType.type;
             }
             return false;
         }
@@ -1989,9 +2005,9 @@ void tst_Dumpers::dumper()
             }
         }
         if (!setok) {
-            qDebug() << "NO CHECK IN SET PASSED";
+            qCDebug(lcDumpers) << "NO CHECK IN SET PASSED";
             for (const Check &check : checkset.checks)
-                qDebug() << check;
+                qCDebug(lcDumpers) << check;
             ok = false;
         }
     }
@@ -2005,23 +2021,23 @@ void tst_Dumpers::dumper()
     }
 
     if (!data.checks.isEmpty()) {
-        qDebug() << "SOME TESTS NOT EXECUTED: ";
-        for (const Check &check : qAsConst(data.checks)) {
+        qCDebug(lcDumpers) << "SOME TESTS NOT EXECUTED: ";
+        for (const Check &check : std::as_const(data.checks)) {
             if (check.optionallyPresent) {
-                qDebug() << "  OPTIONAL TEST NOT FOUND: " << check << " IGNORED.";
+                qCDebug(lcDumpers) << "  OPTIONAL TEST NOT FOUND: " << check << " IGNORED.";
             } else {
-                qDebug() << "  COMPULSORY TEST NOT FOUND: " << check;
+                qCDebug(lcDumpers) << "  COMPULSORY TEST NOT FOUND: " << check;
                 ok = false;
             }
         }
-        qDebug() << "SEEN INAMES " << seenINames;
-        qDebug() << "EXPANDED     : " << expanded;
+        qCDebug(lcDumpers) << "SEEN INAMES " << seenINames;
+        qCDebug(lcDumpers) << "EXPANDED     : " << expanded;
     }
 
     for (int i = data.requiredMessages.size(); --i >= 0; ) {
         RequiredMessage check = data.requiredMessages.at(i);
         if (fullOutput.contains(check.message.toLatin1())) {
-            qDebug() << " EXPECTED MESSAGE TO BE MISSING, BUT FOUND: " << check.message;
+            qCDebug(lcDumpers) << " EXPECTED MESSAGE TO BE MISSING, BUT FOUND: " << check.message;
             ok = false;
         }
     }
@@ -2029,7 +2045,7 @@ void tst_Dumpers::dumper()
     if (ok) {
         m_keepTemp = false;
     } else {
-        local.forAllChildren([](WatchItem *item) { qDebug() << item->internalName(); });
+        local.forAllChildren([](WatchItem *item) { qCDebug(lcDumpers) << item->internalName(); });
 
         int pos1 = 0, pos2 = -1;
         while (true) {
@@ -2040,14 +2056,14 @@ void tst_Dumpers::dumper()
             pos2 = fullOutput.indexOf("\"}", pos1 + 1);
             if (pos2 == -1)
                 break;
-            qDebug() << "MSG: " << fullOutput.mid(pos1, pos2 - pos1 - 1);
+            qCDebug(lcDumpers) << "MSG: " << fullOutput.mid(pos1, pos2 - pos1 - 1);
         }
-        qDebug().noquote() << "CONTENTS     : " << contents;
-        qDebug().noquote() << "FULL OUTPUT  : " << fullOutput.data();
-        qDebug() << "Qt VERSION   : " << QString::number(context.qtVersion, 16);
+        qCDebug(lcDumpers).noquote() << "CONTENTS     : " << contents;
+        qCDebug(lcDumpers).noquote() << "FULL OUTPUT  : " << fullOutput.data();
+        qCDebug(lcDumpers) << "Qt VERSION   : " << QString::number(context.qtVersion, 16);
         if (m_debuggerEngine != CdbEngine)
-            qDebug() << "GCC VERSION   : " << context.gccVersion;
-        qDebug() << "BUILD DIR    : " << t->buildPath;
+            qCDebug(lcDumpers) << "GCC VERSION   : " << context.gccVersion;
+        qCDebug(lcDumpers) << "BUILD DIR    : " << t->buildPath;
     }
     QVERIFY(ok);
     disarm();
@@ -3456,18 +3472,22 @@ void tst_Dumpers::dumper_data()
 
     QTest::newRow("QPointer")
             << Data("#include <QPointer>\n"
-                    "#include <QTimer>\n",
+                    "#include <QTimer>\n"
+                    "struct MyClass : public QObject { int val = 44; };\n",
 
                     "QTimer timer;\n"
                     "QPointer<QTimer> ptr0;\n"
-                    "QPointer<QTimer> ptr1(&timer);",
+                    "QPointer<QTimer> ptr1(&timer);"
+                    "QPointer<MyClass> ptr2(new MyClass());",
 
-                    "&timer, &ptr0, &ptr1")
+                    "&timer, &ptr0, &ptr1, &ptr2")
 
                + CoreProfile()
 
                + Check("ptr0", "(null)", "@QPointer<@QTimer>")
-               + Check("ptr1", "", "@QPointer<@QTimer>");
+               + Check("ptr1", "", "@QPointer<@QTimer>")
+               + Check("ptr2.data", "", "MyClass") % NoLldbEngine
+               + Check("ptr2.data.val", "44", "int") % NoLldbEngine;
 
 
     QTest::newRow("QScopedPointer")
@@ -3493,7 +3513,11 @@ void tst_Dumpers::dumper_data()
 
     QTest::newRow("QSharedPointer")
             << Data("#include <QSharedPointer>\n"
-                    "#include <QString>\n" + fooData,
+                    "#include <QString>\n"
+                    "struct Base1 { int b1 = 42; virtual ~Base1() {} };\n"
+                    "struct Base2 { int b2 = 43; };\n"
+                    "struct MyClass : public Base2, public Base1 { int val = 44; };\n"
+                    + fooData,
 
                     "QSharedPointer<int> ptr10;\n"
                     "QSharedPointer<int> ptr11 = ptr10;\n"
@@ -3516,13 +3540,17 @@ void tst_Dumpers::dumper_data()
                     "QSharedPointer<Foo> ptr50(new Foo(1));\n"
                     "QWeakPointer<Foo> ptr51(ptr50);\n"
                     "QWeakPointer<Foo> ptr52 = ptr50;\n"
-                    "QWeakPointer<Foo> ptr53 = ptr50;\n",
+                    "QWeakPointer<Foo> ptr53 = ptr50;\n"
+
+                    "QSharedPointer<Base1> ptr60(new MyClass());\n"
+                    "QWeakPointer<Base1> ptr61(ptr60);\n",
 
                     "&ptr10, &ptr11, &ptr12, "
                     "&ptr20, &ptr21, &ptr22, "
                     "&ptr30, &ptr31, &ptr32, &ptr33, "
                     "&ptr40, &ptr41, &ptr42, &ptr43, "
-                    "&ptr50, &ptr51, &ptr52, &ptr53")
+                    "&ptr50, &ptr51, &ptr52, &ptr53, "
+                    "&ptr60, &ptr61")
 
                + CoreProfile()
 
@@ -3550,7 +3578,12 @@ void tst_Dumpers::dumper_data()
 
                + Check("ptr50", "", "@QSharedPointer<Foo>")
                + Check("ptr50.data", "", "Foo")
-               + Check("ptr53", "", "@QWeakPointer<Foo>");
+               + Check("ptr53", "", "@QWeakPointer<Foo>")
+
+               + Check("ptr60.data", "", "MyClass") % NoLldbEngine
+               + Check("ptr61.data", "", "MyClass") % NoLldbEngine
+               + Check("ptr60.data.val", "44", "int") % NoLldbEngine
+               + Check("ptr61.data.val", "44", "int") % NoLldbEngine;
 
 
     QTest::newRow("QLazilyAllocated")
@@ -3918,6 +3951,28 @@ void tst_Dumpers::dumper_data()
                + Check("empty", "(null)", "@QStringView");
 
 
+    QTest::newRow("QAnyStringView")
+            << Data("#include <QString>\n",
+
+                    "QString s = \"Hi QString\";\n"
+                    "QLatin1String l1 = QLatin1String(\"Hi QLatin1String\");\n"
+                    "const char u8[] = \"Hi Yöü\";\n"
+                    "const char asc[] = \"Hi Ascii\";\n"
+                    "QAnyStringView v_s(s);\n"
+                    "QAnyStringView v_l1(l1);\n"
+                    "QAnyStringView v_u8(u8);\n"
+                    "QAnyStringView v_asc(asc);\n",
+
+                    "&v_s, &v_l1, &v_asc, &v_u8")
+
+               + CoreProfile()
+               + QtVersion(0x60200)
+
+               + Check("v_s", "\"Hi QString\"", "@QAnyStringView")
+               + Check("v_l1", "\"Hi QLatin1String\"", "@QAnyStringView")
+               + Check("v_u8", "\"Hi Yöü\"", "@QAnyStringView")
+               + Check("v_asc", "\"Hi Ascii\"", "@QAnyStringView");
+
     QTest::newRow("QText")
             << Data("#include <QApplication>\n"
                     "#include <QTextCursor>\n"
@@ -4027,23 +4082,28 @@ void tst_Dumpers::dumper_data()
                + CheckPairish("my.1.key", "3", "unsigned int")
                + CheckPairish("my.1.value", "<1 items>", TypePattern("@QList<@QString>|@QStringList"))
                + CheckPairish("my.1.value.0", "[0]", "\"World\"", "@QString")
+               // FIXME
                //+ Check("v2", AnyValue, "@QVariant (MyType)")
-               + CheckPairish("v2.data.0.key", "1", "unsigned int") % NeedsInferiorCall
-               + CheckPairish("v2.data.0.value", "<1 items>", "@QStringList") % NeedsInferiorCall
-               + CheckPairish("v2.data.0.value.0", "[0]", "\"Hello\"", "@QString") % NeedsInferiorCall
-               + CheckPairish("v2.data.1.key", "3", "unsigned int") % NeedsInferiorCall
-               + CheckPairish("v2.data.1.value", "<1 items>", "@QStringList") % NeedsInferiorCall
-               + CheckPairish("v2.data.1.value.0", "[0]", "\"World\"", "@QString") % NeedsInferiorCall
+//               + CheckPairish("v2.data.0.key", "1", "unsigned int") % NeedsInferiorCall
+//               + CheckPairish("v2.data.0.value", "<1 items>", "@QStringList") % NeedsInferiorCall
+//               + CheckPairish("v2.data.0.value.0", "[0]", "\"Hello\"", "@QString") % NeedsInferiorCall
+//               + CheckPairish("v2.data.1.key", "3", "unsigned int") % NeedsInferiorCall
+//               + CheckPairish("v2.data.1.value", "<1 items>", "@QStringList") % NeedsInferiorCall
+//               + CheckPairish("v2.data.1.value.0", "[0]", "\"World\"", "@QString") % NeedsInferiorCall
 
                + Check("list", "<3 items>", "@QList<int>")
                + Check("list.0", "[0]", "1", "int")
                + Check("list.1", "[1]", "2", "int")
                + Check("list.2", "[2]", "3", "int")
-               //+ Check("v3", "", "@QVariant (@QList<int>)")
-               + Check("v3.data", "<3 items>", TypePattern(".*QList<int>")) % NeedsInferiorCall
-               + Check("v3.data.0", "[0]", "1", "int") % NeedsInferiorCall
-               + Check("v3.data.1", "[1]", "2", "int") % NeedsInferiorCall
-               + Check("v3.data.2", "[2]", "3", "int") % NeedsInferiorCall;
+               + Check("v3", "", "@QVariant (@QList<int>)") % NeedsInferiorCall % Qt5
+               + Check("v3.data", "<3 items>", TypePattern(".*QList<int>")) % NeedsInferiorCall % Qt5
+               + Check("v3.data.0", "[0]", "1", "int") % NeedsInferiorCall % Qt5
+               + Check("v3.data.1", "[1]", "2", "int") % NeedsInferiorCall % Qt5
+               + Check("v3.data.2", "[2]", "3", "int") % NeedsInferiorCall % Qt5
+               + Check("v3", "<3 items>", "@QVariant (@QList<int>)") % Qt6
+               + Check("v3.0", "[0]", "1", "int") % Qt6
+               + Check("v3.1", "[1]", "2", "int") % Qt6
+               + Check("v3.2", "[2]", "3", "int") % Qt6;
 
 
     QTest::newRow("QVariant2")
@@ -4211,7 +4271,7 @@ void tst_Dumpers::dumper_data()
                //+ Check("var72", "", "@QVariant (QRegion)")    FIXME
                + Check("var73", "", "@QVariant (QBitmap)")
                + Check("var74", "", "@QVariant (QCursor)")
-               + Check("var75", "", "@QVariant (QKeySequence)") % NoLldbEngine // FIXME
+               + Check("var75", "(0x0, 0x0, 0x0, 0x0)", "@QVariant (QKeySequence)")
                + Check("var76", "", "@QVariant (QPen)")
                + Check("var77", "", "@QVariant (QTextLength)")
                //+ Check("var78", Value5(""), "@QVariant (QTextFormat)")
@@ -5301,7 +5361,9 @@ void tst_Dumpers::dumper_data()
             << Data("#include <vector>\n"
                     "#include <list>\n"
                     "template<class T>\n"
-                    "class myallocator : public std::allocator<T> {};\n",
+                    "class myallocator : public std::allocator<T> {\n"
+                    "using std::allocator<T>::allocator;\n"
+                    "};\n",
 
                     "std::vector<double> v0, v1;\n"
                     "v1.push_back(1);\n"
@@ -5533,6 +5595,42 @@ void tst_Dumpers::dumper_data()
                + Check("inits.2", "[2]", "\"3\"", "char*")
 
                + Check("empty", "<0 items>", "std::initializer_list<int>");
+
+
+    QTest::newRow("StdOptional")
+        << Data("#include <optional>\n"
+                "#include <vector>\n",
+
+                "std::optional<bool> o1;\n"
+                "std::optional<bool> o2 = true;\n"
+                "std::optional<std::vector<int>> o3 = std::vector<int>{1,2,3};",
+
+                "&o1, &o2, &o3")
+
+               + Cxx17Profile()
+
+               + Check("o1", "<uninitialized>", "std::optional<bool>")
+               + Check("o2", "1", "bool") // 1 -> true is done on display
+               + Check("o3", "<3 items>", "std::vector<int>")
+               + Check("o3.1", "[1]", "2", "int");
+
+
+    QTest::newRow("StdVariant")
+        << Data("#include <variant>\n"
+                "#include <vector>\n",
+
+                "std::variant<bool, std::vector<int>> v1 = false;\n"
+                "std::variant<bool, std::vector<int>> v2 = true;\n"
+                "std::variant<bool, std::vector<int>> v3 = std::vector<int>{1,2,3};",
+
+                "&v1, &v2, &v3")
+
+               + Cxx17Profile()
+
+               + Check("v1", "0", "bool")
+               + Check("v2", "1", "bool") // 1 -> true is done on display
+               + Check("v3", "<3 items>", "std::vector<int>")
+               + Check("v3.1", "[1]", "2", "int");
 
 //    class Goo
 //    {
@@ -6079,6 +6177,29 @@ void tst_Dumpers::dumper_data()
                + Check("watch.1.12", "s.front", "13", "unsigned int") % GdbEngine;
 
 
+    QTest::newRow("Bitfield2")
+            << Data("#include <QList>\n\n"
+                    "struct Entry\n"
+                    "{\n"
+                    "    Entry(bool x) : enabled(x) {}\n"
+                    "    bool enabled : 1;\n"
+                    "    bool autorepeat : 1;\n"
+                    "    signed int id;\n"
+                    "};\n",
+
+                    "QList<Entry> list;\n"
+                    "list.append(Entry(true));\n"
+                    "list.append(Entry(false));\n",
+
+                    "&list")
+
+                + CoreProfile()
+                + Check("list.0.enabled", "1", "bool : 1") % NoCdbEngine
+                + Check("list.0.enabled", "1", "bool") % CdbEngine
+                + Check("list.1.enabled", "0", "bool : 1") % NoCdbEngine
+                + Check("list.1.enabled", "0", "bool") % CdbEngine;
+
+
     QTest::newRow("Function")
             << Data("#include <QByteArray>\n"
                     "struct Function\n"
@@ -6570,6 +6691,7 @@ void tst_Dumpers::dumper_data()
                     "&i, &sseA, &sseB")
 
                + Profile("QMAKE_CXXFLAGS += -msse2")
+               + NonArmProfile()
 
                + Check("sseA", AnyValue, "__m128")
                + Check("sseA.2", "[2]", FloatValue("4"), "float")
@@ -6708,7 +6830,9 @@ void tst_Dumpers::dumper_data()
 
 
     QTest::newRow("BoostList")
-            << Data("#include <boost/container/list.hpp>\n",
+            << Data("#include <utility>\n"
+                    "#include <boost/container/list.hpp>\n"
+                    "#include <boost/container/detail/pair.hpp>\n",
                     "typedef std::pair<int, double> p;\n"
                     "boost::container::list<p> l;\n"
                     "l.push_back(p(13, 61));\n"
@@ -6723,7 +6847,8 @@ void tst_Dumpers::dumper_data()
 
 
     QTest::newRow("BoostVector")
-            << Data("#include <boost/container/vector.hpp>\n",
+            << Data("#include <utility>\n"
+                    "#include <boost/container/vector.hpp>\n",
                     "typedef std::pair<int, double> p;\n"
                     "boost::container::vector<p> v;\n"
                     "v.push_back(p(13, 61));\n"
@@ -6738,7 +6863,8 @@ void tst_Dumpers::dumper_data()
 
 
     QTest::newRow("BoostStaticVector")
-            << Data("#include <boost/container/static_vector.hpp>\n",
+            << Data("#include <utility>\n"
+                    "#include <boost/container/static_vector.hpp>\n",
                     "typedef std::pair<int, double> p;\n"
                     "boost::container::static_vector<p, 10> v;\n"
                     "v.push_back(p(13, 61));\n"
@@ -6753,7 +6879,8 @@ void tst_Dumpers::dumper_data()
 
 
     QTest::newRow("BoostSmallVector")
-            << Data("#include <boost/container/small_vector.hpp>\n",
+            << Data("#include <utility>\n"
+                    "#include <boost/container/small_vector.hpp>\n",
                     "typedef std::pair<int, double> p;\n"
                     "boost::container::small_vector<p, 3> v0;\n"
                     "boost::container::small_vector<p, 3> v2;\n"
@@ -7278,7 +7405,11 @@ void tst_Dumpers::dumper_data()
         "struct A { int a = 1; char aa = 'a'; };\n"
         "struct B : virtual A { int b = 2; float bb = 2; };\n"
         "struct C : virtual A { int c = 3; double cc = 3; };\n"
-        "struct D : virtual B, virtual C { int d = 4; };\n";
+        "struct D : virtual B, virtual C { int d = 4; };\n"
+
+        "struct Base1 { int b1 = 42; virtual ~Base1() {} };\n"
+        "struct Base2 { int b2 = 43; };\n"
+        "struct MyClass : public Base2, public Base1 { int val = 44; };\n";
 
 
     QTest::newRow("Inheritance")
@@ -7296,9 +7427,11 @@ void tst_Dumpers::dumper_data()
                     "D dd;\n\n"
 
                     "D *dp = new D;\n"
-                    "D &dr = dd;",
+                    "D &dr = dd;\n"
 
-                    "&c.S2::v, &tt.T2::v, &dp, &dr")
+                    "Base1 *array[] = {new MyClass};\n",
+
+                    "&c.S2::v, &tt.T2::v, &dp, &dr, &array")
 
                 + Cxx11Profile()
 
@@ -7334,7 +7467,9 @@ void tst_Dumpers::dumper_data()
                 + Check("dr.@2.@1.a", "1", "int") % NoLldbEngine // C::a
                 + Check("dr.@1.b", "2", "int")
                 + Check("dr.@2.c", "3", "int")
-                + Check("dr.d", "4", "int");
+                + Check("dr.d", "4", "int")
+
+                + Check("array.0.val", "44", "int") % NoLldbEngine;
 
 
     QTest::newRow("Gdb13393")
@@ -7779,7 +7914,7 @@ void tst_Dumpers::dumper_data()
             + QmlPrivateProfile()
             + QtVersion(0x50000)
 
-            + Check("q2", FloatValue("2.5"), "@QV4::Value (double)")
+            + Check("q2", FloatValue("2.5"), "@QV4::Value (double)") % QtVersion(0, 0x604ff)
             //+ Check("v10", "(null)", "@QJSValue (null)") # Works in GUI. Why?
             + Check("v11", "true", "@QJSValue (bool)")
             + Check("v12", "1", "@QJSValue (int)")
@@ -7983,17 +8118,6 @@ void tst_Dumpers::dumper_data()
 
                + Check("str", "first, second, third", "QtcDumperTest_String");
 
-
-    QTest::newRow("UndefinedStaticMembers")
-            << Data("struct Foo { int a = 15; static int b; }; \n",
-
-                    "Foo f;",
-
-                    "&f")
-
-            + Check("f.a", "15", "int")
-            + Check("f.b", "<optimized out>", "") % GdbEngine
-            + Check("f.b", "", "<Value unavailable error>") % CdbEngine;
 
 
     QTest::newRow("LongDouble")

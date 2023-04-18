@@ -1,34 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "compilationdbparser.h"
 
+#include "compilationdatabaseconstants.h"
+#include "compilationdatabaseprojectmanagertr.h"
+
 #include <coreplugin/progressmanager/progressmanager.h>
-#include <projectexplorer/task.h>
 #include <projectexplorer/treescanner.h>
-#include <utils/mimetypes/mimetype.h>
+#include <utils/mimeutils.h>
 #include <utils/runextensions.h>
 
 #include <QCryptographicHash>
@@ -107,7 +87,7 @@ void CompilationDbParser::start()
         });
         m_treeScanner->asyncScanForFiles(m_rootPath);
         Core::ProgressManager::addTask(m_treeScanner->future(),
-                                       tr("Scan \"%1\" project tree").arg(m_projectName),
+                                       Tr::tr("Scan \"%1\" project tree").arg(m_projectName),
                                        "CompilationDatabase.Scan.Tree");
         ++m_runningParserJobs;
         connect(m_treeScanner, &TreeScanner::finished,
@@ -117,7 +97,7 @@ void CompilationDbParser::start()
     // Thread 2: Parse the project file.
     const QFuture<DbContents> future = runAsync(&CompilationDbParser::parseProject, this);
     Core::ProgressManager::addTask(future,
-                                   tr("Parse \"%1\" project").arg(m_projectName),
+                                   Tr::tr("Parse \"%1\" project").arg(m_projectName),
                                    "CompilationDatabase.Parse");
     ++m_runningParserJobs;
     m_parserWatcher.setFuture(future);
@@ -151,6 +131,9 @@ void CompilationDbParser::parserJobFinished()
 
 void CompilationDbParser::finish(ParseResult result)
 {
+    if (result != ParseResult::Failure)
+        m_guard.markAsSuccess();
+
     emit finished(result);
     deleteLater();
 }
@@ -172,13 +155,10 @@ static QStringList jsonObjectFlags(const QJsonObject &object, QSet<QString> &fla
     return flags;
 }
 
-static FilePath jsonObjectFilename(const QJsonObject &object)
+static FilePath jsonObjectFilePath(const QJsonObject &object)
 {
-    const QString workingDir = QDir::cleanPath(object["directory"].toString());
-    FilePath fileName = FilePath::fromString(QDir::cleanPath(object["file"].toString()));
-    if (fileName.toFileInfo().isRelative())
-        fileName = FilePath::fromString(QDir::cleanPath(workingDir + "/" + fileName.toString()));
-    return fileName;
+    const FilePath workingDir = FilePath::fromUserInput(object["directory"].toString());
+    return workingDir.resolvePath(object["file"].toString());
 }
 
 std::vector<DbEntry> CompilationDbParser::readJsonObjects() const
@@ -199,10 +179,10 @@ std::vector<DbEntry> CompilationDbParser::readJsonObjects() const
         }
 
         const QJsonObject object = document.object();
-        const Utils::FilePath fileName = jsonObjectFilename(object);
+        const Utils::FilePath filePath = jsonObjectFilePath(object);
         const QStringList flags = filterFromFileName(jsonObjectFlags(object, flagsCache),
-                                                     fileName.baseName());
-        result.push_back({flags, fileName, object["directory"].toString()});
+                                                     filePath.fileName());
+        result.push_back({flags, filePath, object["directory"].toString()});
 
         objectStart = m_projectFileContents.indexOf('{', objectEnd + 1);
         objectEnd = m_projectFileContents.indexOf('}', objectStart + 1);

@@ -1,35 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debuggerrunconfigurationaspect.h"
 
-#include "debuggerconstants.h"
+#include "debuggertr.h"
 
 #include <coreplugin/helpmanager.h>
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
+
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildstep.h>
 #include <projectexplorer/buildsteplist.h>
@@ -38,13 +17,14 @@
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/runconfiguration.h>
 #include <projectexplorer/target.h>
+
 #include <qtsupport/qtbuildaspects.h>
 
+#include <utils/environment.h>
 #include <utils/layoutbuilder.h>
 
 #include <QCheckBox>
 #include <QDebug>
-#include <QFormLayout>
 #include <QLabel>
 #include <QTextEdit>
 
@@ -66,7 +46,7 @@ class DebuggerLanguageAspect : public BaseAspect
 public:
     DebuggerLanguageAspect() = default;
 
-    void addToLayout(LayoutBuilder &builder) override;
+    void addToLayout(Layouting::LayoutBuilder &builder) override;
 
     bool value() const;
     void setValue(bool val);
@@ -95,7 +75,7 @@ public:
     std::function<void(bool)> m_clickCallBack;
 };
 
-void DebuggerLanguageAspect::addToLayout(LayoutBuilder &builder)
+void DebuggerLanguageAspect::addToLayout(Layouting::LayoutBuilder &builder)
 {
     QTC_CHECK(!m_checkBox);
     m_checkBox = new QCheckBox(m_label);
@@ -168,7 +148,7 @@ DebuggerRunConfigurationAspect::DebuggerRunConfigurationAspect(Target *target)
     : m_target(target)
 {
     setId("DebuggerAspect");
-    setDisplayName(tr("Debugger settings"));
+    setDisplayName(Tr::tr("Debugger settings"));
 
     setConfigWidgetCreator([this] {
         Layouting::Form builder;
@@ -176,22 +156,27 @@ DebuggerRunConfigurationAspect::DebuggerRunConfigurationAspect(Target *target)
         builder.addRow(m_qmlAspect);
         builder.addRow(m_overrideStartupAspect);
 
-        static const QByteArray env = qgetenv("QTC_DEBUGGER_MULTIPROCESS");
+        static const QString env = qtcEnvironmentVariable("QTC_DEBUGGER_MULTIPROCESS");
         if (env.toInt())
             builder.addRow(m_multiProcessAspect);
-        return builder.emerge(false);
+        return builder.emerge(Layouting::WithoutMargins);
     });
 
+    addDataExtractor(this, &DebuggerRunConfigurationAspect::useCppDebugger, &Data::useCppDebugger);
+    addDataExtractor(this, &DebuggerRunConfigurationAspect::useQmlDebugger, &Data::useQmlDebugger);
+    addDataExtractor(this, &DebuggerRunConfigurationAspect::useMultiProcess, &Data::useMultiProcess);
+    addDataExtractor(this, &DebuggerRunConfigurationAspect::overrideStartup, &Data::overrideStartup);
+
     m_cppAspect = new DebuggerLanguageAspect;
-    m_cppAspect->setLabel(tr("Enable C++"));
+    m_cppAspect->setLabel(Tr::tr("Enable C++"));
     m_cppAspect->setSettingsKey("RunConfiguration.UseCppDebugger");
     m_cppAspect->setAutoSettingsKey("RunConfiguration.UseCppDebuggerAuto");
 
     m_qmlAspect = new DebuggerLanguageAspect;
-    m_qmlAspect->setLabel(tr("Enable QML"));
+    m_qmlAspect->setLabel(Tr::tr("Enable QML"));
     m_qmlAspect->setSettingsKey("RunConfiguration.UseQmlDebugger");
     m_qmlAspect->setAutoSettingsKey("RunConfiguration.UseQmlDebuggerAuto");
-    m_qmlAspect->setInfoLabelText(tr("<a href=\""
+    m_qmlAspect->setInfoLabelText(Tr::tr("<a href=\""
         "qthelp://org.qt-project.qtcreator/doc/creator-debugging-qml.html"
         "\">What are the prerequisites?</a>"));
 
@@ -207,13 +192,13 @@ DebuggerRunConfigurationAspect::DebuggerRunConfigurationAspect(Target *target)
 
     m_multiProcessAspect = new BoolAspect;
     m_multiProcessAspect->setSettingsKey("RunConfiguration.UseMultiProcess");
-    m_multiProcessAspect->setLabel(tr("Enable Debugging of Subprocesses"),
+    m_multiProcessAspect->setLabel(Tr::tr("Enable Debugging of Subprocesses"),
                                    BoolAspect::LabelPlacement::AtCheckBox);
 
     m_overrideStartupAspect = new StringAspect;
     m_overrideStartupAspect->setSettingsKey("RunConfiguration.OverrideDebuggerStartup");
     m_overrideStartupAspect->setDisplayStyle(StringAspect::TextEditDisplay);
-    m_overrideStartupAspect->setLabelText(tr("Additional startup commands:"));
+    m_overrideStartupAspect->setLabelText(Tr::tr("Additional startup commands:"));
 }
 
 DebuggerRunConfigurationAspect::~DebuggerRunConfigurationAspect()

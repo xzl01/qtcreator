@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -41,6 +19,7 @@ enum TextStyle : quint8 {
     C_SEARCH_RESULT,
     C_SEARCH_RESULT_ALT1,
     C_SEARCH_RESULT_ALT2,
+    C_SEARCH_RESULT_CONTAINING_FUNCTION,
     C_SEARCH_SCOPE,
     C_PARENTHESES,
     C_PARENTHESES_MISMATCH,
@@ -68,6 +47,7 @@ enum TextStyle : quint8 {
     C_OVERLOADED_OPERATOR,
     C_PUNCTUATION,
     C_PREPROCESSOR,
+    C_MACRO,
     C_LABEL,
     C_COMMENT,
     C_DOXYGEN_COMMENT,
@@ -84,7 +64,6 @@ enum TextStyle : quint8 {
     C_JS_GLOBAL_VAR,
     C_QML_STATE_NAME,
     C_BINDING,
-
 
     C_DISABLED_CODE,
 
@@ -116,6 +95,17 @@ enum TextStyle : quint8 {
     C_FUNCTION_DEFINITION,
     C_OUTPUT_ARGUMENT,
     C_STATIC_MEMBER,
+
+    C_COCO_CODE_ADDED,
+    C_COCO_PARTIALLY_COVERED,
+    C_COCO_NOT_COVERED,
+    C_COCO_FULLY_COVERED,
+    C_COCO_MANUALLY_VALIDATED,
+    C_COCO_DEAD_CODE,
+    C_COCO_EXECUTION_COUNT_TOO_LOW,
+    C_COCO_NOT_COVERED_INFO,
+    C_COCO_COVERED_INFO,
+    C_COCO_MANUALLY_VALIDATED_INFO,
 
     C_LAST_STYLE_SENTINEL
 };
@@ -160,6 +150,7 @@ const char MOVE_LINE_UP[]          = "TextEditor.MoveLineUp";
 const char MOVE_LINE_DOWN[]        = "TextEditor.MoveLineDown";
 const char COPY_LINE_UP[]          = "TextEditor.CopyLineUp";
 const char COPY_LINE_DOWN[]        = "TextEditor.CopyLineDown";
+const char COPY_WITH_HTML[]        = "TextEditor.CopyWithHtml";
 const char JOIN_LINES[]            = "TextEditor.JoinLines";
 const char INSERT_LINE_ABOVE[]     = "TextEditor.InsertLineAboveCurrentLine";
 const char INSERT_LINE_BELOW[]     = "TextEditor.InsertLineBelowCurrentLine";
@@ -168,6 +159,8 @@ const char LOWERCASE_SELECTION[]   = "TextEditor.LowercaseSelection";
 const char SORT_SELECTED_LINES[]   = "TextEditor.SortSelectedLines";
 const char CUT_LINE[]              = "TextEditor.CutLine";
 const char COPY_LINE[]             = "TextEditor.CopyLine";
+const char ADD_SELECT_NEXT_FIND_MATCH[] = "TextEditor.AddSelectionNextFindMatch";
+const char ADD_CURSORS_TO_LINE_ENDS[] = "TextEditor.AddCursorsAtLineEnd";
 const char DUPLICATE_SELECTION[]   = "TextEditor.DuplicateSelection";
 const char DUPLICATE_SELECTION_AND_COMMENT[] = "TextEditor.DuplicateSelectionAndComment";
 const char DELETE_LINE[]           = "TextEditor.DeleteLine";

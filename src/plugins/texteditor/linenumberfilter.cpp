@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "linenumberfilter.h"
 
-#include "texteditor.h"
+#include "texteditortr.h"
 
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/editormanager/editormanager.h>
@@ -40,15 +18,16 @@ using LineColumn = QPair<int, int>;
 Q_DECLARE_METATYPE(LineColumn)
 
 using namespace Core;
-using namespace TextEditor;
-using namespace TextEditor::Internal;
+
+namespace TextEditor::Internal {
 
 LineNumberFilter::LineNumberFilter(QObject *parent)
   : ILocatorFilter(parent)
 {
     setId("Line in current document");
-    setDisplayName(tr("Line in Current Document"));
-    setDescription(tr("Jumps to the given line in the current document."));
+    setDisplayName(Tr::tr("Line in Current Document"));
+    setDescription(Tr::tr("Jumps to the given line in the current document."));
+    setDefaultSearchText(Tr::tr("<line>:<column>"));
     setPriority(High);
     setDefaultShortcutString("l");
     setDefaultIncludedByDefault(true);
@@ -80,11 +59,11 @@ QList<LocatorFilterEntry> LineNumberFilter::matchesFor(QFutureInterface<LocatorF
         data.second = column - 1;  // column API is 0-based
         QString text;
         if (line > 0 && column > 0)
-            text = tr("Line %1, Column %2").arg(line).arg(column);
+            text = Tr::tr("Line %1, Column %2").arg(line).arg(column);
         else if (line > 0)
-            text = tr("Line %1").arg(line);
+            text = Tr::tr("Line %1").arg(line);
         else
-            text = tr("Column %1").arg(column);
+            text = Tr::tr("Column %1").arg(column);
         value.append(LocatorFilterEntry(this, text, QVariant::fromValue(data)));
     }
     return value;
@@ -106,3 +85,5 @@ void LineNumberFilter::accept(const LocatorFilterEntry &selection,
         EditorManager::activateEditor(editor);
     }
 }
+
+} // TextEditor::Internal

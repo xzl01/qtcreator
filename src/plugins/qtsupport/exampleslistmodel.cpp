@@ -1,32 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "exampleslistmodel.h"
-#include "screenshotcropper.h"
+
+#include "qtsupporttr.h"
 
 #include <QBuffer>
+#include <QApplication>
 #include <QDir>
 #include <QFile>
 #include <QImageReader>
@@ -42,8 +22,8 @@
 #include <qtsupport/qtversionmanager.h>
 
 #include <utils/algorithm.h>
+#include <utils/environment.h>
 #include <utils/filepath.h>
-#include <utils/fileutils.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
 #include <utils/stylehelper.h>
@@ -51,6 +31,7 @@
 #include <algorithm>
 #include <memory>
 
+using namespace Core;
 using namespace Utils;
 
 namespace QtSupport {
@@ -58,8 +39,7 @@ namespace Internal {
 
 static bool debugExamples()
 {
-    static bool isDebugging = qEnvironmentVariableIsSet("QTC_DEBUG_EXAMPLESMODEL");
-    return isDebugging;
+    return qtcEnvironmentVariableIsSet("QTC_DEBUG_EXAMPLESMODEL");
 }
 
 static const char kSelectedExampleSetKey[] = "WelcomePage/SelectedExampleSet";
@@ -149,7 +129,7 @@ void ExampleSetModel::recreateModel(const QtVersions &qtVersions)
         extraManifestDirs.insert(set.manifestPath);
     }
 
-    foreach (QtVersion *version, qtVersions) {
+    for (QtVersion *version : qtVersions) {
         // sanitize away qt versions that have already been added through extra sets
         if (extraManifestDirs.contains(version->docsPath().toString())) {
             if (debugExamples()) {
@@ -246,15 +226,66 @@ int ExampleSetModel::getExtraExampleSetIndex(int i) const
     return variant.toInt();
 }
 
-ExamplesListModel::ExamplesListModel(QObject *parent)
-    : Core::ListModel(parent)
+static QString resourcePath()
 {
-    connect(&m_exampleSetModel, &ExampleSetModel::selectedExampleSetChanged,
-            this, &ExamplesListModel::updateExamples);
+    // normalize paths so QML doesn't freak out if it's wrongly capitalized on Windows
+    return Core::ICore::resourcePath().normalizedPathName().toString();
+}
+
+static QPixmap fetchPixmapAndUpdatePixmapCache(const QString &url)
+{
+    QPixmap pixmap;
+    if (QPixmapCache::find(url, &pixmap))
+        return pixmap;
+
+    if (url.startsWith("qthelp://")) {
+        QByteArray fetchedData = Core::HelpManager::fileData(url);
+        if (!fetchedData.isEmpty()) {
+            QBuffer imgBuffer(&fetchedData);
+            imgBuffer.open(QIODevice::ReadOnly);
+            QImageReader reader(&imgBuffer, QFileInfo(url).suffix().toLatin1());
+            QImage img = reader.read();
+            img.convertTo(QImage::Format_RGB32);
+            const int dpr = qApp->devicePixelRatio();
+            // boundedTo -> don't scale thumbnails up
+            const QSize scaledSize = Core::ListModel::defaultImageSize.boundedTo(img.size()) * dpr;
+            pixmap = QPixmap::fromImage(
+                img.scaled(scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            pixmap.setDevicePixelRatio(dpr);
+        }
+    } else {
+        pixmap.load(url);
+
+        if (pixmap.isNull())
+            pixmap.load(resourcePath() + "/welcomescreen/widgets/" + url);
+    }
+
+    QPixmapCache::insert(url, pixmap);
+
+    return pixmap;
+}
+
+ExamplesViewController::ExamplesViewController(ExampleSetModel *exampleSetModel,
+                                               SectionedGridView *view,
+                                               bool isExamples,
+                                               QObject *parent)
+    : QObject(parent)
+    , m_exampleSetModel(exampleSetModel)
+    , m_view(view)
+    , m_isExamples(isExamples)
+{
+    if (isExamples) {
+        connect(m_exampleSetModel,
+                &ExampleSetModel::selectedExampleSetChanged,
+                this,
+                &ExamplesViewController::updateExamples);
+    }
     connect(Core::HelpManager::Signals::instance(),
             &Core::HelpManager::Signals::documentationChanged,
             this,
-            &ExamplesListModel::updateExamples);
+            &ExamplesViewController::updateExamples);
+    view->setPixmapFunction(fetchPixmapAndUpdatePixmapCache);
+    updateExamples();
 }
 
 static QString fixStringForTags(const QString &string)
@@ -314,9 +345,11 @@ static bool isValidExampleOrDemo(ExampleItem *item)
     return ok || debugExamples();
 }
 
-void ExamplesListModel::parseExamples(QXmlStreamReader *reader,
-    const QString &projectsOffset, const QString &examplesInstallPath)
+static QList<ExampleItem *> parseExamples(QXmlStreamReader *reader,
+                                          const QString &projectsOffset,
+                                          const QString &examplesInstallPath)
 {
+    QList<ExampleItem *> result;
     std::unique_ptr<ExampleItem> item;
     const QChar slash = QLatin1Char('/');
     while (!reader->atEnd()) {
@@ -357,20 +390,23 @@ void ExamplesListModel::parseExamples(QXmlStreamReader *reader,
         case QXmlStreamReader::EndElement:
             if (reader->name() == QLatin1String("example")) {
                 if (isValidExampleOrDemo(item.get()))
-                    m_items.push_back(item.release());
+                    result.push_back(item.release());
             } else if (reader->name() == QLatin1String("examples")) {
-                return;
+                return result;
             }
             break;
         default: // nothing
             break;
         }
     }
+    return result;
 }
 
-void ExamplesListModel::parseDemos(QXmlStreamReader *reader,
-    const QString &projectsOffset, const QString &demosInstallPath)
+static QList<ExampleItem *> parseDemos(QXmlStreamReader *reader,
+                                       const QString &projectsOffset,
+                                       const QString &demosInstallPath)
 {
+    QList<ExampleItem *> result;
     std::unique_ptr<ExampleItem> item;
     const QChar slash = QLatin1Char('/');
     while (!reader->atEnd()) {
@@ -402,20 +438,22 @@ void ExamplesListModel::parseDemos(QXmlStreamReader *reader,
         case QXmlStreamReader::EndElement:
             if (reader->name() == QLatin1String("demo")) {
                 if (isValidExampleOrDemo(item.get()))
-                    m_items.push_back(item.release());
+                    result.push_back(item.release());
             } else if (reader->name() == QLatin1String("demos")) {
-                return;
+                return result;
             }
             break;
         default: // nothing
             break;
         }
     }
+    return result;
 }
 
-void ExamplesListModel::parseTutorials(QXmlStreamReader *reader, const QString &projectsOffset)
+static QList<ExampleItem *> parseTutorials(QXmlStreamReader *reader, const QString &projectsOffset)
 {
-    std::unique_ptr<ExampleItem> item;
+    QList<ExampleItem *> result;
+    std::unique_ptr<ExampleItem> item = std::make_unique<ExampleItem>();
     const QChar slash = QLatin1Char('/');
     while (!reader->atEnd()) {
         switch (reader->readNext()) {
@@ -448,34 +486,29 @@ void ExamplesListModel::parseTutorials(QXmlStreamReader *reader, const QString &
             break;
         case QXmlStreamReader::EndElement:
             if (reader->name() == QLatin1String("tutorial"))
-                m_items.push_back(item.release());
+                result.push_back(item.release());
             else if (reader->name() == QLatin1String("tutorials"))
-                return;
+                return result;
             break;
         default: // nothing
             break;
         }
     }
+    return result;
 }
 
-static QString resourcePath()
-{
-    // normalize paths so QML doesn't freak out if it's wrongly capitalized on Windows
-    return Core::ICore::resourcePath().normalizedPathName().toString();
-}
-
-void ExamplesListModel::updateExamples()
+void ExamplesViewController::updateExamples()
 {
     QString examplesInstallPath;
     QString demosInstallPath;
 
-    QStringList sources = m_exampleSetModel.exampleSources(&examplesInstallPath, &demosInstallPath);
+    const QStringList sources = m_exampleSetModel->exampleSources(&examplesInstallPath,
+                                                                  &demosInstallPath);
 
-    beginResetModel();
-    qDeleteAll(m_items);
-    m_items.clear();
+    m_view->clear();
 
-    foreach (const QString &exampleSource, sources) {
+    QList<ExampleItem *> items;
+    for (const QString &exampleSource : sources) {
         QFile exampleFile(exampleSource);
         if (!exampleFile.open(QIODevice::ReadOnly)) {
             if (debugExamples())
@@ -494,12 +527,12 @@ void ExamplesListModel::updateExamples()
         while (!reader.atEnd())
             switch (reader.readNext()) {
             case QXmlStreamReader::StartElement:
-                if (reader.name() == QLatin1String("examples"))
-                    parseExamples(&reader, examplesDir.path(), examplesInstallPath);
-                else if (reader.name() == QLatin1String("demos"))
-                    parseDemos(&reader, demosDir.path(), demosInstallPath);
-                else if (reader.name() == QLatin1String("tutorials"))
-                    parseTutorials(&reader, examplesDir.path());
+                if (m_isExamples && reader.name() == QLatin1String("examples"))
+                    items += parseExamples(&reader, examplesDir.path(), examplesInstallPath);
+                else if (m_isExamples && reader.name() == QLatin1String("demos"))
+                    items += parseDemos(&reader, demosDir.path(), demosInstallPath);
+                else if (!m_isExamples && reader.name() == QLatin1String("tutorials"))
+                    items += parseTutorials(&reader, examplesDir.path());
                 break;
             default: // nothing
                 break;
@@ -511,28 +544,31 @@ void ExamplesListModel::updateExamples()
                 << ": " << reader.errorString();
         }
     }
-    endResetModel();
-}
-
-QPixmap ExamplesListModel::fetchPixmapAndUpdatePixmapCache(const QString &url) const
-{
-    QPixmap pixmap;
-    pixmap.load(url);
-    if (pixmap.isNull())
-        pixmap.load(resourcePath() + "/welcomescreen/widgets/" + url);
-    if (pixmap.isNull()) {
-        QByteArray fetchedData = Core::HelpManager::fileData(url);
-        if (!fetchedData.isEmpty()) {
-            QBuffer imgBuffer(&fetchedData);
-            imgBuffer.open(QIODevice::ReadOnly);
-            QImageReader reader(&imgBuffer, QFileInfo(url).suffix().toLatin1());
-            QImage img = reader.read();
-            img = ScreenshotCropper::croppedImage(img, url, ListModel::defaultImageSize);
-            pixmap = QPixmap::fromImage(img);
+    if (m_isExamples) {
+        if (m_exampleSetModel->selectedQtSupports(Android::Constants::ANDROID_DEVICE_TYPE)) {
+            items = Utils::filtered(items, [](ExampleItem *item) {
+                return item->tags.contains("android");
+            });
+        } else if (m_exampleSetModel->selectedQtSupports(Ios::Constants::IOS_DEVICE_TYPE)) {
+            items = Utils::filtered(items,
+                                    [](ExampleItem *item) { return item->tags.contains("ios"); });
         }
     }
-    QPixmapCache::insert(url, pixmap);
-    return pixmap;
+    Utils::sort(items, [](ExampleItem *first, ExampleItem *second) {
+        return first->name.compare(second->name, Qt::CaseInsensitive) < 0;
+    });
+
+    QList<ExampleItem *> featured;
+    QList<ExampleItem *> other;
+    std::tie(featured, other) = Utils::partition(items,
+                                                 [](ExampleItem *i) { return i->isHighlighted; });
+
+    if (!featured.isEmpty()) {
+        m_view->addSection({Tr::tr("Featured", "Category for highlighted examples"), 0},
+                           static_container_cast<ListItem *>(featured));
+    }
+    m_view->addSection({Tr::tr("Other", "Category for all other examples"), 1},
+                       static_container_cast<ListItem *>(other));
 }
 
 void ExampleSetModel::updateQtVersionList()
@@ -615,8 +651,9 @@ QStringList ExampleSetModel::exampleSources(QString *examplesInstallPath, QStrin
         examplesPath = exampleSet.examplesPath;
         demosPath = exampleSet.examplesPath;
     } else if (currentType == ExampleSetModel::QtExampleSet) {
-        int qtId = getQtId(m_selectedExampleSetIndex);
-        foreach (QtVersion *version, QtVersionManager::versions()) {
+        const int qtId = getQtId(m_selectedExampleSetIndex);
+        const QtVersions versions = QtVersionManager::versions();
+        for (QtVersion *version : versions) {
             if (version->uniqueId() == qtId) {
                 manifestScanPath = version->docsPath().toString();
                 examplesPath = version->examplesPath().toString();
@@ -631,11 +668,12 @@ QStringList ExampleSetModel::exampleSources(QString *examplesInstallPath, QStrin
         const QStringList examplesPattern(QLatin1String("examples-manifest.xml"));
         const QStringList demosPattern(QLatin1String("demos-manifest.xml"));
         QFileInfoList fis;
-        foreach (QFileInfo subDir, dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        const QFileInfoList subDirs = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (QFileInfo subDir : subDirs) {
             fis << QDir(subDir.absoluteFilePath()).entryInfoList(examplesPattern);
             fis << QDir(subDir.absoluteFilePath()).entryInfoList(demosPattern);
         }
-        foreach (const QFileInfo &fi, fis)
+        for (const QFileInfo &fi : std::as_const(fis))
             sources.append(fi.filePath());
     }
     if (examplesInstallPath)
@@ -646,29 +684,6 @@ QStringList ExampleSetModel::exampleSources(QString *examplesInstallPath, QStrin
     return sources;
 }
 
-QString prefixForItem(const ExampleItem *item)
-{
-    QTC_ASSERT(item, return {});
-    if (item->isHighlighted)
-        return QLatin1String("0000 ");
-    return QString();
-}
-
-QVariant ExamplesListModel::data(const QModelIndex &index, int role) const
-{
-    if (!index.isValid() || index.row() >= m_items.count())
-        return QVariant();
-
-    ExampleItem *item = static_cast<ExampleItem *>(m_items.at(index.row()));
-    switch (role)
-    {
-    case Qt::DisplayRole: // for search only
-        return QString(prefixForItem(item) + item->name + ' ' + item->tags.join(' '));
-    default:
-        return ListModel::data(index, role);
-    }
-}
-
 void ExampleSetModel::selectExampleSet(int index)
 {
     if (index != m_selectedExampleSetIndex) {
@@ -677,6 +692,8 @@ void ExampleSetModel::selectExampleSet(int index)
         if (getType(m_selectedExampleSetIndex) == ExampleSetModel::QtExampleSet) {
             QtVersion *selectedQtVersion = QtVersionManager::version(getQtId(m_selectedExampleSetIndex));
             m_selectedQtTypes = selectedQtVersion->targetDeviceTypes();
+        } else {
+            m_selectedQtTypes.clear();
         }
         emit selectedExampleSetChanged(m_selectedExampleSetIndex);
     }
@@ -712,46 +729,6 @@ void ExampleSetModel::tryToInitialize()
             this, &ExampleSetModel::updateQtVersionList);
 
     updateQtVersionList();
-}
-
-
-ExamplesListModelFilter::ExamplesListModelFilter(ExamplesListModel *sourceModel, bool showTutorialsOnly, QObject *parent) :
-    Core::ListModelFilter(sourceModel, parent),
-    m_showTutorialsOnly(showTutorialsOnly),
-    m_examplesListModel(sourceModel)
-{
-}
-
-bool ExamplesListModelFilter::leaveFilterAcceptsRowBeforeFiltering(const Core::ListItem *item,
-                                                                   bool *earlyExitResult) const
-{
-    QTC_ASSERT(earlyExitResult, return false);
-
-    const bool isTutorial = static_cast<const ExampleItem *>(item)->type == Tutorial;
-
-    if (m_showTutorialsOnly) {
-        *earlyExitResult = isTutorial;
-        return !isTutorial;
-    }
-
-    if (isTutorial) {
-        *earlyExitResult = false;
-        return true;
-    }
-
-    if (m_examplesListModel->exampleSetModel()->selectedQtSupports(Android::Constants::ANDROID_DEVICE_TYPE)
-        && !item->tags.contains("android")) {
-        *earlyExitResult = false;
-        return true;
-    }
-
-    if (m_examplesListModel->exampleSetModel()->selectedQtSupports(Ios::Constants::IOS_DEVICE_TYPE)
-        && !item->tags.contains("ios")) {
-        *earlyExitResult = false;
-        return true;
-    }
-
-    return false;
 }
 
 } // namespace Internal

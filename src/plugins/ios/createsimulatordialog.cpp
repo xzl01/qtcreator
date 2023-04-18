@@ -1,62 +1,62 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "createsimulatordialog.h"
-#include "ui_createsimulatordialog.h"
+
+#include "iostr.h"
 #include "simulatorcontrol.h"
 
 #include <utils/algorithm.h>
+#include <utils/layoutbuilder.h>
 #include <utils/runextensions.h>
 
+#include <QApplication>
+#include <QComboBox>
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
-#include <QVariant>
 
-namespace Ios {
-namespace Internal {
-
-using namespace std::placeholders;
+namespace Ios::Internal {
 
 CreateSimulatorDialog::CreateSimulatorDialog(QWidget *parent)
     : QDialog(parent)
-    , m_ui(new Ui::CreateSimulatorDialog)
 {
-    m_ui->setupUi(this);
-    m_ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(false);
+    resize(320, 160);
+    setWindowTitle(Tr::tr("Create Simulator"));
 
-    const auto enableOk = [this]() {
-        m_ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(
-                    !m_ui->nameEdit->text().isEmpty() &&
-                    m_ui->deviceTypeCombo->currentIndex() > 0 &&
-                    m_ui->runtimeCombo->currentIndex() > 0);
+    m_nameEdit = new QLineEdit(this);
+    m_deviceTypeCombo = new QComboBox(this);
+    m_runtimeCombo = new QComboBox(this);
+
+    auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+    buttonBox->button(QDialogButtonBox::Ok)->setEnabled(false);
+
+    using namespace Utils::Layouting;
+
+    Column {
+        Form {
+            Tr::tr("Simulator name:"), m_nameEdit, br,
+            Tr::tr("Device type:"), m_deviceTypeCombo, br,
+            Tr::tr("OS version:"), m_runtimeCombo, br,
+        },
+        buttonBox
+    }.attachTo(this);
+
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    const auto enableOk = [this, buttonBox] {
+        buttonBox->button(QDialogButtonBox::Ok)->setEnabled(
+                    !m_nameEdit->text().isEmpty() &&
+                    m_deviceTypeCombo->currentIndex() > 0 &&
+                    m_runtimeCombo->currentIndex() > 0);
     };
 
-    const auto indexChanged = QOverload<int>::of(&QComboBox::currentIndexChanged);
-    connect(m_ui->nameEdit, &QLineEdit::textChanged, enableOk);
-    connect(m_ui->runtimeCombo, indexChanged, enableOk);
-    connect(m_ui->deviceTypeCombo, indexChanged, [this, enableOk]() {
-        populateRuntimes(m_ui->deviceTypeCombo->currentData().value<DeviceTypeInfo>());
+    connect(m_nameEdit, &QLineEdit::textChanged, this, enableOk);
+    connect(m_runtimeCombo, &QComboBox::currentIndexChanged, this, enableOk);
+    connect(m_deviceTypeCombo, &QComboBox::currentIndexChanged, this, [this, enableOk] {
+        populateRuntimes(m_deviceTypeCombo->currentData().value<DeviceTypeInfo>());
         enableOk();
     });
 
@@ -75,7 +75,6 @@ CreateSimulatorDialog::CreateSimulatorDialog(QWidget *parent)
 CreateSimulatorDialog::~CreateSimulatorDialog()
 {
     m_futureSync.waitForFinished();
-    delete m_ui;
 }
 
 /*!
@@ -83,7 +82,7 @@ CreateSimulatorDialog::~CreateSimulatorDialog()
  */
 QString CreateSimulatorDialog::name() const
 {
-    return m_ui->nameEdit->text();
+    return m_nameEdit->text();
 }
 
 /*!
@@ -95,7 +94,7 @@ QString CreateSimulatorDialog::name() const
  */
 RuntimeInfo CreateSimulatorDialog::runtime() const
 {
-    return m_ui->runtimeCombo->currentData().value<RuntimeInfo>();
+    return m_runtimeCombo->currentData().value<RuntimeInfo>();
 }
 
 /*!
@@ -103,7 +102,7 @@ RuntimeInfo CreateSimulatorDialog::runtime() const
  */
 DeviceTypeInfo CreateSimulatorDialog::deviceType() const
 {
-    return m_ui->deviceTypeCombo->currentData().value<DeviceTypeInfo>();
+    return m_deviceTypeCombo->currentData().value<DeviceTypeInfo>();
 }
 
 /*!
@@ -111,30 +110,30 @@ DeviceTypeInfo CreateSimulatorDialog::deviceType() const
  */
 void CreateSimulatorDialog::populateDeviceTypes(const QList<DeviceTypeInfo> &deviceTypes)
 {
-    m_ui->deviceTypeCombo->clear();
-    m_ui->deviceTypeCombo->addItem(tr("None"));
+    m_deviceTypeCombo->clear();
+    m_deviceTypeCombo->addItem(Tr::tr("None"));
 
     if (deviceTypes.isEmpty())
         return;
 
-    m_ui->deviceTypeCombo->insertSeparator(1);
+    m_deviceTypeCombo->insertSeparator(1);
 
     auto addItems = [this, deviceTypes](const QString &filter) {
-        auto filteredTypes = Utils::filtered(deviceTypes, [filter](const DeviceTypeInfo &type){
+        const auto filteredTypes = Utils::filtered(deviceTypes, [filter](const DeviceTypeInfo &type){
             return type.name.contains(filter, Qt::CaseInsensitive);
         });
-        foreach (auto type, filteredTypes) {
-            m_ui->deviceTypeCombo->addItem(type.name, QVariant::fromValue<DeviceTypeInfo>(type));
+        for (auto type : filteredTypes) {
+            m_deviceTypeCombo->addItem(type.name, QVariant::fromValue<DeviceTypeInfo>(type));
         }
         return filteredTypes.count();
     };
 
     if (addItems(QStringLiteral("iPhone")) > 0)
-        m_ui->deviceTypeCombo->insertSeparator(m_ui->deviceTypeCombo->count());
+        m_deviceTypeCombo->insertSeparator(m_deviceTypeCombo->count());
     if (addItems(QStringLiteral("iPad")) > 0)
-        m_ui->deviceTypeCombo->insertSeparator(m_ui->deviceTypeCombo->count());
+        m_deviceTypeCombo->insertSeparator(m_deviceTypeCombo->count());
     if (addItems(QStringLiteral("TV")) > 0)
-        m_ui->deviceTypeCombo->insertSeparator(m_ui->deviceTypeCombo->count());
+        m_deviceTypeCombo->insertSeparator(m_deviceTypeCombo->count());
     addItems(QStringLiteral("Watch"));
 }
 
@@ -147,20 +146,20 @@ void CreateSimulatorDialog::populateDeviceTypes(const QList<DeviceTypeInfo> &dev
  */
 void CreateSimulatorDialog::populateRuntimes(const DeviceTypeInfo &deviceType)
 {
-    m_ui->runtimeCombo->clear();
-    m_ui->runtimeCombo->addItem(tr("None"));
+    m_runtimeCombo->clear();
+    m_runtimeCombo->addItem(Tr::tr("None"));
 
     if (deviceType.name.isEmpty())
         return;
 
-    m_ui->runtimeCombo->insertSeparator(1);
+    m_runtimeCombo->insertSeparator(1);
 
     auto addItems = [this](const QString &filter) {
-        auto filteredTypes = Utils::filtered(m_runtimes, [filter](const RuntimeInfo &runtime){
+        const auto filteredTypes = Utils::filtered(m_runtimes, [filter](const RuntimeInfo &runtime){
             return runtime.name.contains(filter, Qt::CaseInsensitive);
         });
-        foreach (auto runtime, filteredTypes) {
-            m_ui->runtimeCombo->addItem(runtime.name, QVariant::fromValue<RuntimeInfo>(runtime));
+        for (auto runtime : filteredTypes) {
+            m_runtimeCombo->addItem(runtime.name, QVariant::fromValue<RuntimeInfo>(runtime));
         }
     };
 
@@ -174,5 +173,4 @@ void CreateSimulatorDialog::populateRuntimes(const DeviceTypeInfo &deviceType)
         addItems(QStringLiteral("watchOS"));
 }
 
-} // namespace Internal
-} // namespace Ios
+} // Ios::Internal

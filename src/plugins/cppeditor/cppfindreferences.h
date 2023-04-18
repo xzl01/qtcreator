@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,10 +7,14 @@
 
 #include <coreplugin/find/searchresultwindow.h>
 #include <cplusplus/FindUsages.h>
+#include <utils/filepath.h>
+#include <utils/link.h>
 
 #include <QObject>
 #include <QPointer>
 #include <QFuture>
+
+#include <functional>
 
 QT_FORWARD_DECLARE_CLASS(QTimer)
 
@@ -41,17 +23,11 @@ class SearchResultItem;
 class SearchResult;
 } // namespace Core
 
-namespace ProjectExplorer { class Node; }
-
 namespace CppEditor {
 class CppModelManager;
 
 Core::SearchResultColor::Style CPPEDITOR_EXPORT
-colorStyleForUsageType(CPlusPlus::Usage::Type type);
-
-void CPPEDITOR_EXPORT renameFilesForSymbol(const QString &oldSymbolName,
-                                           const QString &newSymbolName,
-                                           const QVector<ProjectExplorer::Node *> &files);
+colorStyleForUsageType(CPlusPlus::Usage::Tags tags);
 
 class CPPEDITOR_EXPORT CppSearchResultFilter : public Core::SearchResultFilter
 {
@@ -72,9 +48,9 @@ class CppFindReferencesParameters
 {
 public:
     QList<QByteArray> symbolId;
-    QByteArray symbolFileName;
+    Utils::FilePath symbolFilePath;
     QString prettySymbolName;
-    QVector<ProjectExplorer::Node *> filesToRename;
+    Utils::FilePaths filesToRename;
     bool categorize = false;
 };
 
@@ -91,17 +67,24 @@ public:
 public:
     void findUsages(CPlusPlus::Symbol *symbol, const CPlusPlus::LookupContext &context);
     void renameUsages(CPlusPlus::Symbol *symbol, const CPlusPlus::LookupContext &context,
-                      const QString &replacement = QString());
+                      const QString &replacement = QString(),
+                      const std::function<void()> &callback = {});
 
     void findMacroUses(const CPlusPlus::Macro &macro);
     void renameMacroUses(const CPlusPlus::Macro &macro, const QString &replacement = QString());
 
+    void checkUnused(Core::SearchResult *search, const Utils::Link &link, CPlusPlus::Symbol *symbol,
+                     const CPlusPlus::LookupContext &context, const Utils::LinkHandler &callback);
+
 private:
-    void onReplaceButtonClicked(const QString &text, const QList<Core::SearchResultItem> &items, bool preserveCase);
-    void searchAgain();
+    void setupSearch(Core::SearchResult *search);
+    void onReplaceButtonClicked(Core::SearchResult *search, const QString &text,
+                                const QList<Core::SearchResultItem> &items, bool preserveCase);
+    void searchAgain(Core::SearchResult *search);
 
     void findUsages(CPlusPlus::Symbol *symbol, const CPlusPlus::LookupContext &context,
-                    const QString &replacement, bool replace);
+                    const QString &replacement, const std::function<void ()> &callback,
+                    bool replace);
     void findMacroUses(const CPlusPlus::Macro &macro, const QString &replacement,
                        bool replace);
     void findAll_helper(Core::SearchResult *search, CPlusPlus::Symbol *symbol,

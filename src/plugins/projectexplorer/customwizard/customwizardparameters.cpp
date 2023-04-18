@@ -1,36 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "customwizardparameters.h"
+
 #include "customwizardscriptgenerator.h"
+#include "../projectexplorertr.h"
 
 #include <coreplugin/icore.h>
 #include <cppeditor/cppeditorconstants.h>
 
 #include <utils/macroexpander.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
 #include <utils/templateengine.h>
@@ -176,7 +156,7 @@ bool CustomWizardValidationRule::validateRules(const QList<CustomWizardValidatio
     if (rules.isEmpty())
         return true;
     QJSEngine engine;
-    foreach (const CustomWizardValidationRule &rule, rules)
+    for (const CustomWizardValidationRule &rule : rules)
     if (!rule.validate(engine, replacementMap)) {
         *errorMessage = rule.message;
         CustomWizardContext::replaceFields(replacementMap, errorMessage);
@@ -250,7 +230,7 @@ static inline bool assignLanguageElementText(QXmlStreamReader &reader,
     const auto elementLanguage = reader.attributes().value(QLatin1String(langAttributeC));
     if (elementLanguage.isEmpty()) {
         // Try to find a translation for our built-in Wizards
-        *target = QCoreApplication::translate("ProjectExplorer::CustomWizard", reader.readElementText().toLatin1().constData());
+        *target = Tr::tr(reader.readElementText().toLatin1().constData());
         return true;
     }
     if (elementLanguage == desiredLanguage) {
@@ -302,7 +282,7 @@ static bool parseCustomProjectElement(QXmlStreamReader &reader,
 static inline QMap<QString, QString> attributesToStringMap(const QXmlStreamAttributes &attributes)
 {
     QMap<QString, QString> rc;
-    foreach (const QXmlStreamAttribute &attribute, attributes)
+    for (const QXmlStreamAttribute &attribute : attributes)
         rc.insert(attribute.name().toString(), attribute.value().toString());
     return rc;
 }
@@ -452,9 +432,9 @@ static inline IWizardFactory::WizardKind kindAttribute(const QXmlStreamReader &r
 static inline QSet<Id> readRequiredFeatures(const QXmlStreamReader &reader)
 {
     QString value = reader.attributes().value(QLatin1String(featuresRequiredC)).toString();
-    QStringList stringList = value.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    const QStringList stringList = value.split(QLatin1Char(','), Qt::SkipEmptyParts);
     QSet<Id> features;
-    foreach (const QString &string, stringList)
+    for (const QString &string : stringList)
         features |= Id::fromString(string);
     return features;
 }
@@ -708,7 +688,7 @@ static inline QString passThrough(const QString &in) { return in; }
 static inline QString headerGuard(const QString &in)
 {
     QString result;
-    foreach (const QChar c, in) {
+    for (const QChar c : in) {
         if (c.isLetterOrNumber())
             result.append(c.toUpper());
         else
@@ -721,7 +701,7 @@ static inline QString structName(const QString &in)
 {
     bool capNeeded = true;
     QString result;
-    foreach (const QChar c, in) {
+    for (const QChar c : in) {
         if (c.isLetterOrNumber()) {
             if (capNeeded) {
                 result.append(c.toUpper());

@@ -1,45 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include "perfprofilertr.h"
 #include "perftracepointdialog.h"
-#include "ui_perftracepointdialog.h"
 
 #include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorerconstants.h>
-#include <projectexplorer/runcontrol.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
 
 #include <utils/qtcassert.h>
+#include <utils/qtcprocess.h>
+#include <utils/layoutbuilder.h>
 
-#include <QVBoxLayout>
-#include <QHBoxLayout>
+#include <QComboBox>
+#include <QDialogButtonBox>
+#include <QLabel>
 #include <QPushButton>
+#include <QTextEdit>
 #include <QTimer>
+
+const char ELEVATE_METHOD_NA[] = "n.a";
+const char ELEVATE_METHOD_PKEXEC[] = "pkexec";
+const char ELEVATE_METHOD_SUDO[] = "sudo";
 
 using namespace ProjectExplorer;
 using namespace Utils;
@@ -47,10 +32,24 @@ using namespace Utils;
 namespace PerfProfiler {
 namespace Internal {
 
-PerfTracePointDialog::PerfTracePointDialog() :
-    m_ui(new Ui::PerfTracePointDialog)
+PerfTracePointDialog::PerfTracePointDialog()
 {
-    m_ui->setupUi(this);
+    resize(400, 300);
+    m_label = new QLabel(Tr::tr("Run the following script as root to create trace points?"));
+    m_textEdit = new QTextEdit;
+    m_privilegesChooser = new QComboBox;
+    m_privilegesChooser->addItems({ELEVATE_METHOD_NA, ELEVATE_METHOD_PKEXEC, ELEVATE_METHOD_SUDO});
+    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+
+    using namespace Utils::Layouting;
+    Column {
+        m_label,
+        m_textEdit,
+        Form {
+            Tr::tr("Elevate privileges using:"), m_privilegesChooser, br,
+        },
+        m_buttonBox,
+    }.attachTo(this);
 
     if (const Target *target = SessionManager::startupTarget()) {
         const Kit *kit = target->kit();
@@ -58,7 +57,7 @@ PerfTracePointDialog::PerfTracePointDialog() :
 
         m_device = DeviceKitAspect::device(kit);
         if (!m_device) {
-            m_ui->textEdit->setPlainText(tr("Error: No device available for active target."));
+            m_textEdit->setPlainText(Tr::tr("Error: No device available for active target."));
             return;
         }
     }
@@ -71,83 +70,59 @@ PerfTracePointDialog::PerfTracePointDialog() :
 
     QFile file(":/perfprofiler/tracepoints.sh");
     if (file.open(QIODevice::ReadOnly)) {
-        m_ui->textEdit->setPlainText(QString::fromUtf8(file.readAll()));
+        m_textEdit->setPlainText(QString::fromUtf8(file.readAll()));
     } else {
-        m_ui->textEdit->setPlainText(tr("Error: Failed to load trace point script %1: %2.")
-                                         .arg(file.fileName()).arg(file.errorString()));
+        m_textEdit->setPlainText(Tr::tr("Error: Failed to load trace point script %1: %2.")
+                                 .arg(file.fileName()).arg(file.errorString()));
     }
 
-    m_ui->privilegesChooser->setCurrentText(m_device->type() == Constants::DESKTOP_DEVICE_TYPE
-                                            ? QLatin1String("pkexec") : QLatin1String("n.a."));
+    m_privilegesChooser->setCurrentText(
+                QLatin1String(m_device->type() == Constants::DESKTOP_DEVICE_TYPE
+                              ? ELEVATE_METHOD_PKEXEC : ELEVATE_METHOD_NA));
+
+    connect(m_buttonBox, &QDialogButtonBox::accepted, this, &PerfTracePointDialog::accept);
+    connect(m_buttonBox, &QDialogButtonBox::rejected, this, &PerfTracePointDialog::reject);
 }
 
-PerfTracePointDialog::~PerfTracePointDialog()
-{
-    if (m_process && m_process->state() != QProcess::NotRunning) {
-        DeviceProcess *process = m_process.release();
-        connect(process, &DeviceProcess::finished, process, &QObject::deleteLater);
-        process->kill();
-        QTimer::singleShot(10000, process, &QObject::deleteLater);
-    }
-}
+PerfTracePointDialog::~PerfTracePointDialog() = default;
 
 void PerfTracePointDialog::runScript()
 {
-    m_ui->label->setText(tr("Executing script..."));
-    m_ui->textEdit->setReadOnly(true);
-    m_ui->privilegesChooser->setEnabled(false);
-    m_ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(false);
+    m_label->setText(Tr::tr("Executing script..."));
+    m_textEdit->setReadOnly(true);
+    m_privilegesChooser->setEnabled(false);
+    m_buttonBox->button(QDialogButtonBox::Ok)->setEnabled(false);
 
-    m_process.reset(m_device->createProcess(this));
+    m_process.reset(new QtcProcess(this));
+    m_process->setWriteData(m_textEdit->toPlainText().toUtf8());
+    m_textEdit->clear();
 
-    Runnable runnable;
-    const QString elevate = m_ui->privilegesChooser->currentText();
-    if (elevate != QLatin1String("n.a."))
-        runnable.command = {FilePath::fromString(elevate), {"sh"}};
+    const QString elevate = m_privilegesChooser->currentText();
+    if (elevate != QLatin1String(ELEVATE_METHOD_NA))
+        m_process->setCommand({m_device->filePath(elevate), {"sh"}});
     else
-        runnable.command = {"sh", {}};
+        m_process->setCommand({m_device->filePath("sh"), {}});
 
-    connect(m_process.get(), &DeviceProcess::started,
-            this, &PerfTracePointDialog::feedScriptToProcess);
-
-    connect(m_process.get(), &DeviceProcess::finished,
-            this, &PerfTracePointDialog::handleProcessFinished);
-
-    connect(m_process.get(), &DeviceProcess::errorOccurred,
-            this, &PerfTracePointDialog::handleProcessError);
-
-    m_process->start(runnable);
+    connect(m_process.get(), &QtcProcess::done, this, &PerfTracePointDialog::handleProcessDone);
+    m_process->start();
 }
 
-void PerfTracePointDialog::feedScriptToProcess()
+void PerfTracePointDialog::handleProcessDone()
 {
-    m_process->write(m_ui->textEdit->toPlainText().toUtf8());
-    m_ui->textEdit->clear();
-}
-
-void PerfTracePointDialog::handleProcessFinished()
-{
-    if (m_process->exitCode() != 0) {
-        m_ui->label->setText(tr("Failed to create trace points."));
-    } else {
-        m_ui->label->setText(tr("Created trace points for: %1")
-                             .arg(QString::fromUtf8(
-                                      m_process->readAllStandardOutput().trimmed()
-                                      .replace('\n', ", "))));
-    }
-    m_ui->textEdit->setHtml(QString::fromUtf8(m_process->readAllStandardError()));
-    m_ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(true);
-    m_ui->buttonBox->button(QDialogButtonBox::Cancel)->setEnabled(false);
-}
-
-void PerfTracePointDialog::handleProcessError(QProcess::ProcessError error)
-{
+    const QProcess::ProcessError error = m_process->error();
+    QString message;
     if (error == QProcess::FailedToStart) {
-        m_ui->label->setText(tr("Failed to run trace point script: %1").arg(error));
-        m_ui->textEdit->setText(QString::fromUtf8(m_process->readAllStandardError()));
-        m_ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(true);
-        m_ui->buttonBox->button(QDialogButtonBox::Cancel)->setEnabled(false);
+        message = Tr::tr("Failed to run trace point script: %1").arg(error);
+    } else if ((m_process->exitStatus() == QProcess::CrashExit) || (m_process->exitCode() != 0)) {
+        message = Tr::tr("Failed to create trace points.");
+    } else {
+        message = Tr::tr("Created trace points for: %1").arg(
+            m_process->readAllStandardOutput().trimmed().replace('\n', ", "));
     }
+    m_label->setText(message);
+    m_textEdit->setHtml(m_process->readAllStandardError());
+    m_buttonBox->button(QDialogButtonBox::Ok)->setEnabled(true);
+    m_buttonBox->button(QDialogButtonBox::Cancel)->setEnabled(false);
 }
 
 void PerfTracePointDialog::accept()

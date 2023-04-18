@@ -1,42 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qttesttreeitem.h"
+
 #include "qttestconfiguration.h"
 #include "qttestparser.h"
-#include "qttestframework.h"
+#include "../autotesttr.h"
+#include "../itestframework.h"
 
 #include <cppeditor/cppmodelmanager.h>
 #include <projectexplorer/session.h>
 #include <utils/qtcassert.h>
 
+using namespace Utils;
+
 namespace Autotest {
 namespace Internal {
 
 QtTestTreeItem::QtTestTreeItem(ITestFramework *testFramework, const QString &name,
-                               const Utils::FilePath &filePath, TestTreeItem::Type type)
+                               const FilePath &filePath, TestTreeItem::Type type)
     : TestTreeItem(testFramework, name, filePath, type)
 {
     if (type == TestDataTag)
@@ -62,10 +44,9 @@ QVariant QtTestTreeItem::data(int column, int role) const
     case Qt::ToolTipRole: {
         QString toolTip = TestTreeItem::data(column, role).toString();
         if (m_multiTest && type() == TestCase) {
-            toolTip.append(QCoreApplication::translate("QtTestTreeItem",
-                            "<p>Multiple testcases inside a single executable are not officially "
-                            "supported. Depending on the implementation they might get executed "
-                            "or not, but never will be explicitly selectable.</p>"));
+            toolTip.append(Tr::tr("<p>Multiple testcases inside a single executable are not officially "
+                                  "supported. Depending on the implementation they might get executed "
+                                  "or not, but never will be explicitly selectable.</p>"));
         }
         return toolTip;
         break;
@@ -106,6 +87,13 @@ Qt::ItemFlags QtTestTreeItem::flags(int column) const
 
 Qt::CheckState QtTestTreeItem::checked() const
 {
+    switch (type()) {
+    case TestDataFunction:
+    case TestSpecialFunction:
+        return Qt::Unchecked;
+    default:
+        break;
+    }
     return m_multiTest ? Qt::Unchecked : TestTreeItem::checked();
 }
 
@@ -300,7 +288,7 @@ QList<ITestConfiguration *> QtTestTreeItem::getFailedTestConfigurations() const
     return result;
 }
 
-QList<ITestConfiguration *> QtTestTreeItem::getTestConfigurationsForFile(const Utils::FilePath &fileName) const
+QList<ITestConfiguration *> QtTestTreeItem::getTestConfigurationsForFile(const FilePath &fileName) const
 {
     QList<ITestConfiguration *> result;
 
@@ -335,7 +323,7 @@ TestTreeItem *QtTestTreeItem::find(const TestParseResult *result)
     switch (type()) {
     case Root:
         if (result->framework->grouping()) {
-            const Utils::FilePath path = result->fileName.absolutePath();
+            const FilePath path = result->fileName.absolutePath();
             for (int row = 0; row < childCount(); ++row) {
                 TestTreeItem *group = childItem(row);
                 if (group->filePath() != path)
@@ -408,7 +396,7 @@ bool QtTestTreeItem::modify(const TestParseResult *result)
 
 TestTreeItem *QtTestTreeItem::createParentGroupNode() const
 {
-    const Utils::FilePath &absPath = filePath().absolutePath();
+    const FilePath &absPath = filePath().absolutePath();
     return new QtTestTreeItem(framework(), absPath.baseName(), absPath, TestTreeItem::GroupNode);
 }
 
@@ -417,7 +405,7 @@ bool QtTestTreeItem::isGroupable() const
     return type() == TestCase;
 }
 
-TestTreeItem *QtTestTreeItem::findChildByFileNameAndType(const Utils::FilePath &file,
+TestTreeItem *QtTestTreeItem::findChildByFileNameAndType(const FilePath &file,
                                                          const QString &name, Type type) const
 {
     return findFirstLevelChildItem([file, name, type](const TestTreeItem *other) {
@@ -438,8 +426,9 @@ TestTreeItem *QtTestTreeItem::findChildByNameAndInheritanceAndMultiTest(const QS
 
 QString QtTestTreeItem::nameSuffix() const
 {
-    static const QString inherited{QCoreApplication::translate("QtTestTreeItem", "inherited")};
-    static const QString multi{QCoreApplication::translate("QtTestTreeItem", "multiple testcases")};
+    static const QString inherited = Tr::tr("inherited");
+    static const QString multi = Tr::tr("multiple testcases");
+
     QString suffix;
     if (m_inherited)
         suffix.append(inherited);

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -110,6 +88,8 @@ public:
 
     Utils::FilePaths filesGeneratedFrom(const Utils::FilePath &file) const final;
     QVariant additionalData(Utils::Id id) const final;
+    QList<QPair<Utils::Id, QString>> generators() const override;
+    void runGenerator(Utils::Id id) override;
 
     void asyncUpdate();
     void buildFinished(bool success);
@@ -133,14 +113,16 @@ public:
     void warnOnToolChainMismatch(const QmakeProFile *pro) const;
     void testToolChain(ProjectExplorer::ToolChain *tc, const Utils::FilePath &path) const;
 
+    QString deviceRoot() const;
+
     /// \internal
     QtSupport::ProFileReader *createProFileReader(const QmakeProFile *qmakeProFile);
     /// \internal
-    QMakeGlobals *qmakeGlobals();
+    QMakeGlobals *qmakeGlobals() const;
     /// \internal
-    QMakeVfs *qmakeVfs();
+    QMakeVfs *qmakeVfs() const;
     /// \internal
-    QString qmakeSysroot();
+    const Utils::FilePath &qmakeSysroot() const;
     /// \internal
     void destroyProFileReader(QtSupport::ProFileReader *reader);
     void deregisterFromCacheManager();
@@ -181,6 +163,9 @@ public:
     void scheduleUpdateAllNowOrLater();
 
 private:
+    ProjectExplorer::ExtraCompiler *findExtraCompiler(
+            const ExtraCompilerFilter &filter) const override;
+
     void scheduleUpdateAll(QmakeProFile::AsyncUpdateDelay delay);
     void scheduleUpdateAllLater() { scheduleUpdateAll(QmakeProFile::ParseLater); }
 
@@ -199,7 +184,7 @@ private:
     int m_qmakeGlobalsRefCnt = 0;
     bool m_invalidateQmakeVfsContents = false;
 
-    QString m_qmakeSysroot;
+    Utils::FilePath m_qmakeSysroot;
 
     std::unique_ptr<QFutureInterface<void>> m_asyncUpdateFutureInterface;
     int m_pendingEvaluateFuturesCount = 0;

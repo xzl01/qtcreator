@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page creator-editor-quick-fixes.html
@@ -47,7 +25,7 @@
     In the context menu, select \uicontrol {Refactoring} and then select a
     refactoring action.
 
-    You can also press \key {Alt+Enter} to open a context menu that contains
+    You can also press \key {Alt+Enter} to open a context menu that has
     refactoring actions available in the current cursor position.
 
     \if defined(qtcreator)
@@ -104,17 +82,18 @@
 
     You can specify settings for the refactoring actions either globally for
     all projects or separately for each project. To specify global options,
-    select \uicontrol Tools > \uicontrol Options > \uicontrol C++ >
+    select \uicontrol Edit > \uicontrol Preferences > \uicontrol C++ >
     \uicontrol {Quick Fixes}.
 
     To specify custom settings for a particular project, select
     \uicontrol Projects > \uicontrol {Project Settings} >
-    \uicontrol {Quick Fixes} > \uicontrol {Custom Settings}.
+    \uicontrol {Quick Fixes}, and then deselect \uicontrol {Use global settings}.
 
     \image qtcreator-refactoring-options-locations.png "Quick Fixes settings"
 
     To revert to global settings, select \uicontrol {Reset to Global}. To
-    delete the custom settings, select \uicontrol {Delete Custom Settings File}.
+    delete the custom settings, select \uicontrol {Use global settings}, and
+    then select \uicontrol {Delete Custom Settings File}.
 
     \section2 Function Locations
 
@@ -166,6 +145,9 @@
     removed. The real Type must contain the given Type. For example, \c int
     matches \c int32_t but not \c vector<int>, and \c vector matches
     \c {std::pmr::vector<int>} but not \c {std::optional<vector<int>>}.
+
+    To return non-trivial objects by using a \c const reference, select the
+    \uicontrol {Return non-value types by const reference} check box.
     \endif
 
     \section1 Summary of Refactoring Actions
@@ -205,7 +187,7 @@
             \li Activation
         \row
             \li Add Curly Braces
-            \li Adds curly braces to an if statement that does not contain a
+            \li Adds curly braces to an if statement that does not have a
                 compound statement. For example, rewrites
 
     \code
@@ -626,7 +608,7 @@
                 selection are rewritten.
 
             \li Declarations with pointers or references and selections
-                containing such declarations
+                that have such declarations
         \row
             \li Create Getter and Setter Member Functions
             \li Creates either both getter and setter member functions for
@@ -741,6 +723,13 @@
     \code
     Foo * localFoo = new Foo;
     \endcode
+
+                By default, \QC uses the \c auto variable type when creating the
+                variable. To label the variable with its actual type, select
+                \uicontrol Edit > \uicontrol Preferences > \uicontrol C++ >
+                \uicontrol {Quick Fixes}, and then deselect the
+                \uicontrol {Use type "auto" when creating new variables} check
+                box.
 
             \li Function call or class name
         \row
@@ -871,7 +860,7 @@
 
             \li QML type name.
                 \if defined(qtdesignstudio)
-                This action is also available in \l {Form Editor}.
+                This action is also available in the \l {2D} view.
                 \endif
         \row
             \li Split Initializer

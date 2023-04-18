@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debugview.h"
 #include "debugviewwidget.h"
@@ -38,19 +16,20 @@
 #include <qmlitemnode.h>
 
 #include <utils/algorithm.h>
+#include <utils/smallstringio.h>
 
 namespace   {
 const QString lineBreak = QStringLiteral("<br>");
 
 bool isDebugViewEnabled()
 {
-    return QmlDesigner::DesignerSettings::getValue(
+    return QmlDesigner::QmlDesignerPlugin::settings().value(
         QmlDesigner::DesignerSettingsKey::ENABLE_DEBUGVIEW).toBool();
 }
 
 bool isDebugViewShown()
 {
-    return QmlDesigner::DesignerSettings::getValue(
+    return QmlDesigner::QmlDesignerPlugin::settings().value(
         QmlDesigner::DesignerSettingsKey::SHOW_DEBUGVIEW).toBool();
 }
 
@@ -60,8 +39,9 @@ namespace QmlDesigner {
 
 namespace  Internal {
 
-DebugView::DebugView(QObject *parent) : AbstractView(parent),
-    m_debugViewWidget(new DebugViewWidget)
+DebugView::DebugView(ExternalDependenciesInterface &externalDependencies)
+    : AbstractView{externalDependencies}
+    , m_debugViewWidget(new DebugViewWidget)
 {
 }
 
@@ -90,12 +70,12 @@ void DebugView::importsChanged(const QList<Import> &addedImports, const QList<Im
     if (isDebugViewEnabled()) {
         QString message;
         message += QString("added imports:") += lineBreak;
-        foreach (const Import &import, addedImports) {
+        for (const Import &import : addedImports) {
             message += import.toImportString() += lineBreak;
         }
 
         message += QString("removed imports:") += lineBreak;
-        foreach (const Import &import, removedImports) {
+        for (const Import &import : removedImports) {
             message += import.toImportString() += lineBreak;
         }
 
@@ -110,9 +90,11 @@ void DebugView::nodeCreated(const ModelNode &createdNode)
         QString string;
         message.setString(&string);
         message << createdNode;
+        message << createdNode.majorVersion() << "." << createdNode.minorVersion();
         message << createdNode.nodeSource();
-        message << "MetaInfo " << createdNode.metaInfo().isValid();
+        message << "MetaInfo " << createdNode.metaInfo().isValid() << " ";
         if (createdNode.metaInfo().isValid()) {
+            message << createdNode.metaInfo().majorVersion() << "." << createdNode.metaInfo().minorVersion();
             message << createdNode.metaInfo().componentFileName();
         }
         log("::nodeCreated:", message.readAll());
@@ -126,7 +108,8 @@ void DebugView::nodeAboutToBeRemoved(const ModelNode &removedNode)
         QString string;
         message.setString(&string);
         message << removedNode << lineBreak;
-        foreach (const ModelNode &modelNode, removedNode.allSubModelNodes()) {
+        const QList<ModelNode> modelNodes = removedNode.allSubModelNodes();
+        for (const ModelNode &modelNode : modelNodes) {
             message << "child node:" << modelNode << lineBreak;
         }
 
@@ -192,7 +175,7 @@ void DebugView::variantPropertiesChanged(const QList<VariantProperty> &propertyL
         QTextStream message;
         QString string;
         message.setString(&string);
-        foreach (const VariantProperty &property, propertyList) {
+        for (const VariantProperty &property : propertyList) {
             message << property;
         }
         log("::variantPropertiesChanged:", string);
@@ -206,7 +189,7 @@ void DebugView::bindingPropertiesChanged(const QList<BindingProperty> &propertyL
         QTextStream message;
         QString string;
         message.setString(&string);
-        foreach (const BindingProperty &property, propertyList) {
+        for (const BindingProperty &property : propertyList) {
             message << property;
         }
         log("::Binding properties changed:", string);
@@ -219,7 +202,7 @@ void DebugView::signalHandlerPropertiesChanged(const QVector<SignalHandlerProper
         QTextStream message;
         QString string;
         message.setString(&string);
-        foreach (const SignalHandlerProperty &property, propertyList) {
+        for (const SignalHandlerProperty &property : propertyList) {
             message << property;
         }
         log("::signalHandlerPropertiesChanged:", string);
@@ -239,10 +222,46 @@ void DebugView::rootNodeTypeChanged(const QString &type, int majorVersion, int m
     }
 }
 
+namespace {
+QTextStream &operator<<(QTextStream &stream, AuxiliaryDataType type)
+{
+    switch (type) {
+    case AuxiliaryDataType::None:
+        stream << "None";
+        break;
+    case AuxiliaryDataType::NodeInstancePropertyOverwrite:
+        stream << "NodeInstancePropertyOverwrite";
+        break;
+    case AuxiliaryDataType::NodeInstanceAuxiliary:
+        stream << "NodeInstanceAuxiliary";
+        break;
+    case AuxiliaryDataType::Document:
+        stream << "Permanent";
+        break;
+    case AuxiliaryDataType::Temporary:
+        stream << "Temporary";
+        break;
+    }
+
+    return stream;
+}
+} // namespace
+
+static QString rectFToString(const QRectF &rect)
+{
+    return QString::number(rect.x()) + " " + QString::number(rect.y()) + " "
+           + QString::number(rect.width()) + " " + QString::number(rect.height());
+}
+
+static QString sizeToString(const QSize &size)
+{
+    return QString::number(size.width()) + " " + QString::number(size.height());
+}
+
 void DebugView::selectedNodesChanged(const QList<ModelNode> &selectedNodes /*selectedNodeList*/,
                                      const QList<ModelNode> & /*lastSelectedNodeList*/)
 {
-    foreach (const ModelNode &selectedNode, selectedNodes) {
+    for (const ModelNode &selectedNode : selectedNodes) {
         QTextStream message;
         QString string;
         message.setString(&string);
@@ -256,6 +275,10 @@ void DebugView::selectedNodesChanged(const QList<ModelNode> &selectedNodes /*sel
         for (const SignalHandlerProperty &property : selectedNode.signalProperties())
             message << property << lineBreak;
 
+        message << lineBreak;
+
+        message << lineBreak;
+        message << "metaInfo valid: " << selectedNode.metaInfo().isValid();
         message << lineBreak;
 
         if (selectedNode.metaInfo().isValid()) {
@@ -281,14 +304,53 @@ void DebugView::selectedNodesChanged(const QList<ModelNode> &selectedNodes /*sel
                 message << name << " ";
 
             message << lineBreak;
+            message << "Is QtQuickItem: "
+                    << selectedNode.metaInfo().isBasedOn(model()->qtQuickItemMetaInfo());
         }
 
-        const QHash<PropertyName, QVariant> data = selectedNode.auxiliaryData();
+        message << lineBreak;
+        message << "Is item or window: " << QmlItemNode::isItemOrWindow(selectedNode);
+        message << lineBreak;
 
-        PropertyNameList names = data.keys();
-        Utils::sort(names);
-        for (const PropertyName &name : qAsConst(names)) {
-            message << name << ' ' << data.value(name).toString() << lineBreak;
+        message << lineBreak;
+        message << "Is graphical item: " << selectedNode.metaInfo().isGraphicalItem();
+        message << lineBreak;
+
+        message << lineBreak;
+        message << "Is valid object node: " << QmlItemNode::isValidQmlObjectNode(selectedNode);
+        message << lineBreak;
+
+        message << "version: "
+                << QString::number(selectedNode.metaInfo().majorVersion()) + "."
+                       + QString::number(selectedNode.metaInfo().minorVersion());
+
+        message << lineBreak;
+
+        QmlItemNode itemNode(selectedNode);
+        if (itemNode.isValid()) {
+            message << lineBreak;
+            message << "Item Node";
+            message << lineBreak;
+            message << "BR ";
+            message << rectFToString(itemNode.instanceBoundingRect());
+            message << lineBreak;
+            message << "BR content ";
+            message << rectFToString(itemNode.instanceContentItemBoundingRect());
+            message << lineBreak;
+            message << "PM ";
+            message << sizeToString(itemNode.instanceRenderPixmap().size());
+            message << lineBreak;
+        }
+
+        auto auxiliaryData = selectedNode.auxiliaryData();
+        AuxiliaryDatas sortedaAuxiliaryData{auxiliaryData.begin(), auxiliaryData.end()};
+
+        Utils::sort(sortedaAuxiliaryData, [](const auto &first, const auto &second) {
+            return first.first < second.first;
+        });
+        for (const auto &element : sortedaAuxiliaryData) {
+            message << element.first.type << ' ' << element.first.name.data() << ' '
+                    << element.second.toString() << lineBreak;
         }
 
         log("::selectedNodesChanged:", string);
@@ -305,14 +367,16 @@ void DebugView::propertiesRemoved(const QList<AbstractProperty> &propertyList)
         QTextStream message;
         QString string;
         message.setString(&string);
-        foreach (const AbstractProperty &property, propertyList) {
+        for (const AbstractProperty &property : propertyList) {
             message << property;
         }
         log("::propertiesRemoved:", string);
     }
 }
 
-void DebugView::auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &data)
+void DebugView::auxiliaryDataChanged(const ModelNode &node,
+                                     AuxiliaryDataKeyView key,
+                                     const QVariant &data)
 {
     if (isDebugViewEnabled()) {
         QTextStream message;
@@ -320,7 +384,8 @@ void DebugView::auxiliaryDataChanged(const ModelNode &node, const PropertyName &
         message.setString(&string);
 
         message << node;
-        message << name;
+        message << key.type;
+        message << QByteArray{key.name};
         message << data.toString();
 
         log("::auxiliaryDataChanged:", string);
@@ -334,11 +399,11 @@ void DebugView::documentMessagesChanged(const QList<DocumentMessage> &errors, co
          QString string;
          message.setString(&string);
 
-         foreach (const DocumentMessage &error, errors) {
+         for (const DocumentMessage &error : errors) {
              message << error.toString();
          }
 
-         foreach (const DocumentMessage &warning, warnings) {
+         for (const DocumentMessage &warning : warnings) {
              message << warning.toString();
          }
 
@@ -360,7 +425,7 @@ void DebugView::rewriterEndTransaction()
 
 WidgetInfo DebugView::widgetInfo()
 {
-    return createWidgetInfo(m_debugViewWidget.data(), nullptr, QStringLiteral("DebugView"), WidgetInfo::LeftPane, 0, tr("Debug View"));
+    return createWidgetInfo(m_debugViewWidget.data(), QStringLiteral("DebugView"), WidgetInfo::LeftPane, 0, tr("Debug View"));
 }
 
 bool DebugView::hasWidget() const
@@ -380,7 +445,7 @@ void DebugView::instancePropertyChanged(const QList<QPair<ModelNode, PropertyNam
 
         using Pair = QPair<ModelNode, PropertyName>;
 
-        foreach (const Pair &pair, propertyList) {
+        for (const Pair &pair : propertyList) {
             message << pair.first;
             message << lineBreak;
             message << pair.second;
@@ -401,7 +466,7 @@ void DebugView::instancesCompleted(const QVector<ModelNode> &completedNodeList)
         QString string;
         message.setString(&string);
 
-        foreach (const ModelNode &modelNode, completedNodeList) {
+        for (const ModelNode &modelNode : completedNodeList) {
             message << modelNode << lineBreak;
             if (QmlItemNode::isValidQmlItemNode(modelNode)) {
                 message << "parent: " << QmlItemNode(modelNode).instanceParent() << lineBreak;
@@ -419,7 +484,8 @@ void DebugView::instanceInformationsChanged(const QMultiHash<ModelNode, Informat
         QString string;
         message.setString(&string);
 
-        foreach (const ModelNode &modelNode, informationChangedHash.keys()) {
+        const QList<ModelNode> modelNodes = informationChangedHash.keys();
+        for (const ModelNode &modelNode : modelNodes) {
             message << modelNode;
             message << informationChangedHash.value(modelNode);
         }
@@ -444,7 +510,7 @@ void DebugView::instancesChildrenChanged(const QVector<ModelNode> & nodeList)
         QString string;
         message.setString(&string);
 
-        foreach (const ModelNode &modelNode, nodeList) {
+        for (const ModelNode &modelNode : nodeList) {
             message << modelNode << lineBreak;
             if (QmlItemNode::isValidQmlItemNode(modelNode)) {
                 message << "parent: " << QmlItemNode(modelNode).instanceParent() << lineBreak;
@@ -464,11 +530,11 @@ void DebugView::customNotification(const AbstractView *view, const QString &iden
 
         message << view;
         message << identifier;
-        foreach (const ModelNode &node, nodeList) {
+        for (const ModelNode &node : nodeList) {
             message << node;
         }
 
-        foreach (const QVariant &variant, data) {
+        for (const QVariant &variant : data) {
             message << variant.toString();
         }
 
@@ -513,14 +579,21 @@ void DebugView::instancesToken(const QString &/*tokenName*/, int /*tokenNumber*/
 
 }
 
-void DebugView::currentStateChanged(const ModelNode &/*node*/)
+void DebugView::currentStateChanged(const ModelNode &node)
 {
+    if (isDebugViewEnabled()) {
+        QTextStream message;
+        QString string;
+        message.setString(&string);
 
+        message << node;
+
+        log("::currentStateChanged:", string);
+    }
 }
 
-void DebugView::nodeOrderChanged(const NodeListProperty &listProperty)
+void DebugView::nodeOrderChanged([[maybe_unused]] const NodeListProperty &listProperty)
 {
-    Q_UNUSED(listProperty)
     if (isDebugViewEnabled()) {
         QTextStream message;
         QString string;

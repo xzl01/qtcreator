@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -32,19 +10,17 @@
 
 #include <projectexplorer/devicesupport/idevice.h>
 
+#include <utils/qtcprocess.h>
+
 #include <QElapsedTimer>
 
-namespace Debugger {
-namespace Internal {
-
-class CdbCommand;
+namespace Debugger::Internal {
 
 class CdbEngine : public CppDebuggerEngine
 {
     Q_OBJECT
 
 public:
-    using CdbCommandPtr = QSharedPointer<CdbCommand>;
     using CommandHandler = std::function<void (const DebuggerResponse &)>;
 
     explicit CdbEngine();
@@ -99,13 +75,11 @@ public:
     void loadAdditionalQmlStack() override;
     void listBreakpoints();
 
-    static QString extensionLibraryName(bool is64Bit);
+    static QString extensionLibraryName(bool is64Bit, bool isArm = false);
 
 private:
-    void readyReadStandardOut();
-    void readyReadStandardError();
-    void processError();
-    void processFinished();
+    void processStarted();
+    void processDone();
     void runCommand(const DebuggerCommand &cmd) override;
     void adjustOperateByInstruction(bool);
 
@@ -157,13 +131,13 @@ private:
     void doContinueInferior();
     void parseOutputLine(QString line);
     bool isCdbProcessRunning() const { return m_process.state() != QProcess::NotRunning; }
-    bool canInterruptInferior() const;
     inline void postDisassemblerCommand(quint64 address, DisassemblerAgent *agent);
     void postDisassemblerCommand(quint64 address, quint64 endAddress,
                                  DisassemblerAgent *agent);
     void postResolveSymbol(const QString &module, const QString &function,
                            DisassemblerAgent *agent);
     void showScriptMessages(const QString &message) const;
+    void showScriptMessages(const GdbMi &message) const;
     void handleInitialSessionIdle();
     // Builtin commands
     void handleStackTrace(const DebuggerResponse &);
@@ -195,13 +169,13 @@ private:
     unsigned parseStackTrace(const GdbMi &data, bool sourceStepInto);
     void mergeStartParametersSourcePathMap();
     void checkQtSdkPdbFiles(const QString &module);
+    BreakpointParameters parseBreakPoint(const GdbMi &gdbmi);
 
     const QString m_tokenPrefix;
     void handleSetupFailure(const QString &errorMessage);
 
     Utils::QtcProcess m_process;
     DebuggerStartMode m_effectiveStartMode = NoStartMode;
-    QByteArray m_outputBuffer;
     //! Debugger accessible (expecting commands)
     bool m_accessible = false;
     StopMode m_stopMode = NoStopRequested;
@@ -221,6 +195,7 @@ private:
         wow64Stack64Bit
     } m_wow64State = wow64Uninitialized;
     QElapsedTimer m_logTimer;
+    QString m_extensionFileName;
     QString m_extensionMessageBuffer;
     bool m_sourceStepInto = false;
     int m_watchPointX = 0;
@@ -228,7 +203,6 @@ private:
     QSet<Breakpoint> m_pendingBreakpointMap;
     bool m_autoBreakPointCorrection = false;
     QMultiHash<QString, quint64> m_symbolAddressCache;
-    bool m_ignoreCdbOutput = false;
     QList<InterruptCallback> m_interrupCallbacks;
     QList<SourcePathMapping> m_sourcePathMappings;
     QScopedPointer<GdbMi> m_coreStopReason;
@@ -237,5 +211,4 @@ private:
     mutable CPlusPlus::Snapshot m_codeModelSnapshot;
 };
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal

@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debugmessagesmodel.h"
 #include "qmlprofilerconstants.h"
+#include "qmlprofilertr.h"
 #include <tracing/timelineformattime.h>
 
 namespace QmlProfiler {
@@ -32,7 +11,7 @@ namespace Internal {
 
 DebugMessagesModel::DebugMessagesModel(QmlProfilerModelManager *manager,
                                        Timeline::TimelineModelAggregator *parent) :
-    QmlProfilerTimelineModel(manager, DebugMessage, MaximumRangeType, ProfileDebugMessages, parent),
+    QmlProfilerTimelineModel(manager, DebugMessage, UndefinedRangeType, ProfileDebugMessages, parent),
     m_maximumMsgType(-1)
 {
 }
@@ -48,17 +27,17 @@ QRgb DebugMessagesModel::color(int index) const
 }
 
 static const char *messageTypes[] = {
-    QT_TRANSLATE_NOOP("DebugMessagesModel", "Debug Message"),
-    QT_TRANSLATE_NOOP("DebugMessagesModel", "Warning Message"),
-    QT_TRANSLATE_NOOP("DebugMessagesModel", "Critical Message"),
-    QT_TRANSLATE_NOOP("DebugMessagesModel", "Fatal Message"),
-    QT_TRANSLATE_NOOP("DebugMessagesModel", "Info Message"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Debug Message"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Warning Message"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Critical Message"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Fatal Message"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Info Message"),
 };
 
 QString DebugMessagesModel::messageType(uint i)
 {
-    return i < sizeof(messageTypes) / sizeof(char *) ? tr(messageTypes[i]) :
-                                                       tr("Unknown Message %1").arg(i);
+    return i < sizeof(messageTypes) / sizeof(char *) ? Tr::tr(messageTypes[i]) :
+                                                       Tr::tr("Unknown Message %1").arg(i);
 }
 
 QVariantList DebugMessagesModel::labels() const
@@ -81,10 +60,10 @@ QVariantMap DebugMessagesModel::details(int index) const
 
     QVariantMap result;
     result.insert(QLatin1String("displayName"), messageType(type.detailType()));
-    result.insert(tr("Timestamp"), Timeline::formatTime(startTime(index),
+    result.insert(Tr::tr("Timestamp"), Timeline::formatTime(startTime(index),
                                                         manager->traceDuration()));
-    result.insert(tr("Message"), m_data[index].text);
-    result.insert(tr("Location"), type.displayName());
+    result.insert(Tr::tr("Message"), m_data[index].text);
+    result.insert(Tr::tr("Location"), type.displayName());
     return result;
 }
 

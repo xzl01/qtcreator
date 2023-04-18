@@ -1,38 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "autotestconstants.h"
 
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 
 #include <QColor>
-#include <QMetaType>
-#include <QSharedPointer>
-#include <QString>
+
+#include <optional>
 
 namespace Autotest {
 
@@ -80,22 +57,41 @@ inline auto qHash(const ResultType &result)
     return QT_PREPEND_NAMESPACE(qHash(int(result)));
 }
 
+class TestResult;
+
+struct ResultHooks
+{
+    using OutputStringHook = std::function<QString(const TestResult &, bool)>;
+    using FindTestItemHook = std::function<ITestTreeItem *(const TestResult &)>;
+    using DirectParentHook = std::function<bool(const TestResult &, const TestResult &, bool *)>;
+    using IntermediateHook = std::function<bool(const TestResult &, const TestResult &)>;
+    using CreateResultHook = std::function<TestResult(const TestResult &)>;
+    QVariant extraData;
+    OutputStringHook outputString = {};
+    FindTestItemHook findTestItem = {};
+    DirectParentHook directParent = {};
+    IntermediateHook intermediate = {};
+    CreateResultHook createResult = {};
+};
+
 class TestResult
 {
 public:
     TestResult() = default;
-    TestResult(const QString &id, const QString &name);
+    TestResult(const QString &id, const QString &name, const ResultHooks &hooks = {});
     virtual ~TestResult() {}
 
-    virtual const QString outputString(bool selected) const;
-    virtual const ITestTreeItem *findTestTreeItem() const;
+    bool isValid() const;
+    const QString outputString(bool selected) const;
+    const ITestTreeItem *findTestTreeItem() const;
 
-    QString id() const { return m_id; }
+    QString id() const { return m_id.value_or(QString()); }
     QString name() const { return m_name; }
     ResultType result() const { return m_result; }
     QString description() const { return m_description; }
     Utils::FilePath fileName() const { return m_file; }
     int line() const { return m_line; }
+    QVariant extraData() const { return m_hooks.extraData; }
 
     void setDescription(const QString &description) { m_description = description; }
     void setFileName(const Utils::FilePath &fileName) { m_file = fileName; }
@@ -107,19 +103,19 @@ public:
     static QString resultToString(const ResultType type);
     static QColor colorForType(const ResultType type);
 
-    virtual bool isDirectParentOf(const TestResult *other, bool *needsIntermediate) const;
-    virtual bool isIntermediateFor(const TestResult *other) const;
-    virtual TestResult *createIntermediateResultFor(const TestResult *other);
+    bool isDirectParentOf(const TestResult &other, bool *needsIntermediate) const;
+    bool isIntermediateFor(const TestResult &other) const;
+    TestResult intermediateResult() const;
+
 private:
-    QString m_id;
+    std::optional<QString> m_id = {};
     QString m_name;
     ResultType m_result = ResultType::Invalid;  // the real result..
     QString m_description;
     Utils::FilePath m_file;
     int m_line = 0;
+    ResultHooks m_hooks = {};
 };
-
-using TestResultPtr = QSharedPointer<TestResult>;
 
 } // namespace Autotest
 

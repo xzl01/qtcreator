@@ -32,14 +32,16 @@
 #include <QDir>
 #include <QStack>
 
-#include <tuple>
-#include <cstring>
-
 #include <dwarf.h>
+
+#if HAVE_DWFL_GET_DEBUGINFOD_CLIENT
+#include <debuginfod.h>
+#endif
 
 PerfSymbolTable::PerfSymbolTable(qint32 pid, Dwfl_Callbacks *callbacks, PerfUnwind *parent) :
     m_perfMapFile(QDir::tempPath() + QDir::separator()
-                  + QString::fromLatin1("perf-%1.map").arg(pid)),
+                  + QLatin1String("perf-%1.map").arg(QString::number(pid))),
+    m_hasPerfMap(m_perfMapFile.exists()),
     m_cacheIsDirty(false),
     m_unwind(parent),
     m_callbacks(callbacks),
@@ -54,6 +56,19 @@ PerfSymbolTable::PerfSymbolTable(qint32 pid, Dwfl_Callbacks *callbacks, PerfUnwi
 
     m_dwfl = dwfl_begin(m_callbacks);
 
+#if HAVE_DWFL_GET_DEBUGINFOD_CLIENT
+    auto client = dwfl_get_debuginfod_client(m_dwfl);
+    debuginfod_set_user_data(client, this);
+    debuginfod_set_progressfn(client, [](debuginfod_client* client, long numerator, long denominator) {
+        auto self = reinterpret_cast<PerfSymbolTable*>(debuginfod_get_user_data(client));
+        auto url = self->m_unwind->resolveString(QByteArray(debuginfod_get_url(client)));
+        self->m_unwind->sendDebugInfoDownloadProgress(url, numerator, denominator);
+        // NOTE: eventually we could add a back channel to allow the user to cancel an ongoing download
+        //       to do so, we'd have to return any non-zero value here then
+        return 0;
+    });
+#endif
+
     dwfl_report_begin(m_dwfl);
 
     // "DWFL can not be used until this function returns 0"
@@ -65,143 +80,6 @@ PerfSymbolTable::~PerfSymbolTable()
 {
     dwfl_end(m_dwfl);
 }
-
-static pid_t nextThread(Dwfl *dwfl, void *arg, void **threadArg)
-{
-    /* Stop after first thread. */
-    if (*threadArg != nullptr)
-        return 0;
-
-    *threadArg = arg;
-    return dwfl_pid(dwfl);
-}
-
-static void *memcpyTarget(Dwarf_Word *result, int wordWidth)
-{
-    if (wordWidth == 4)
-        return (uint32_t *)result;
-
-    Q_ASSERT(wordWidth == 8);
-    return result;
-}
-
-static void doMemcpy(Dwarf_Word *result, const void *src, int wordWidth)
-{
-    Q_ASSERT(wordWidth > 0);
-    *result = 0; // initialize, as we might only overwrite half of it
-    std::memcpy(memcpyTarget(result, wordWidth), src, static_cast<size_t>(wordWidth));
-}
-
-static quint64 registerAbi(const PerfRecordSample *sample)
-{
-    const quint64 abi = sample->registerAbi();
-    Q_ASSERT(abi > 0); // ABI 0 means "no registers" - we shouldn't unwind in this case.
-    return abi - 1;
-}
-
-static bool accessDsoMem(const PerfUnwind::UnwindInfo *ui, Dwarf_Addr addr,
-                         Dwarf_Word *result, int wordWidth)
-{
-    Q_ASSERT(wordWidth > 0);
-    // TODO: Take the pgoff into account? Or does elf_getdata do that already?
-    auto mod = ui->unwind->symbolTable(ui->sample->pid())->module(addr);
-    if (!mod)
-        return false;
-
-    Dwarf_Addr bias;
-    Elf_Scn *section = dwfl_module_address_section(mod, &addr, &bias);
-
-    if (section) {
-        Elf_Data *data = elf_getdata(section, nullptr);
-        if (data && data->d_buf && data->d_size > addr) {
-            doMemcpy(result, static_cast<char *>(data->d_buf) + addr, wordWidth);
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool memoryRead(Dwfl *, Dwarf_Addr addr, Dwarf_Word *result, void *arg)
-{
-    PerfUnwind::UnwindInfo *ui = static_cast<PerfUnwind::UnwindInfo *>(arg);
-    const int wordWidth =
-            PerfRegisterInfo::s_wordWidth[ui->unwind->architecture()][registerAbi(ui->sample)];
-
-    /* Check overflow. */
-    if (addr + sizeof(Dwarf_Word) < addr) {
-        qDebug() << "Invalid memory read requested by dwfl" << Qt::hex << addr;
-        ui->firstGuessedFrame = ui->frames.length();
-        return false;
-    }
-
-    const QByteArray &stack = ui->sample->userStack();
-
-    quint64 start = ui->sample->registerValue(
-                PerfRegisterInfo::s_perfSp[ui->unwind->architecture()]);
-    Q_ASSERT(stack.size() >= 0);
-    quint64 end = start + static_cast<quint64>(stack.size());
-
-    if (addr < start || addr + sizeof(Dwarf_Word) > end) {
-        // not stack, try reading from ELF
-        if (ui->unwind->ipIsInKernelSpace(addr)) {
-            // DWARF unwinding is not done for the kernel
-            qWarning() << "DWARF unwind tried to access kernel space" << Qt::hex << addr;
-            return false;
-        }
-        if (!accessDsoMem(ui, addr, result, wordWidth)) {
-            ui->firstGuessedFrame = ui->frames.length();
-            const QHash<quint64, Dwarf_Word> &stackValues = ui->stackValues[ui->sample->pid()];
-            auto it = stackValues.find(addr);
-            if (it == stackValues.end()) {
-                return false;
-            } else {
-                *result = *it;
-            }
-        }
-    } else {
-        doMemcpy(result, &(stack.data()[addr - start]), wordWidth);
-        ui->stackValues[ui->sample->pid()][addr] = *result;
-    }
-    return true;
-}
-
-static bool setInitialRegisters(Dwfl_Thread *thread, void *arg)
-{
-    const PerfUnwind::UnwindInfo *ui = static_cast<PerfUnwind::UnwindInfo *>(arg);
-    const quint64 abi = registerAbi(ui->sample);
-    const uint architecture = ui->unwind->architecture();
-    const int numRegs = PerfRegisterInfo::s_numRegisters[architecture][abi];
-    Q_ASSERT(numRegs >= 0);
-    QVarLengthArray<Dwarf_Word, 64> dwarfRegs(numRegs);
-    for (int i = 0; i < numRegs; ++i) {
-        dwarfRegs[i] = ui->sample->registerValue(
-                    PerfRegisterInfo::s_perfToDwarf[architecture][abi][i]);
-    }
-
-    // Go one frame up to get the rest of the stack at interworking veneers.
-    if (ui->isInterworking) {
-        dwarfRegs[static_cast<int>(PerfRegisterInfo::s_dwarfIp[architecture][abi])] =
-                dwarfRegs[static_cast<int>(PerfRegisterInfo::s_dwarfLr[architecture][abi])];
-    }
-
-    int dummyBegin = PerfRegisterInfo::s_dummyRegisters[architecture][0];
-    int dummyNum = PerfRegisterInfo::s_dummyRegisters[architecture][1] - dummyBegin;
-
-    if (dummyNum > 0) {
-        QVarLengthArray<Dwarf_Word, 64> dummyRegs(dummyNum);
-        std::memset(dummyRegs.data(), 0, static_cast<size_t>(dummyNum) * sizeof(Dwarf_Word));
-        if (!dwfl_thread_state_registers(thread, dummyBegin, static_cast<uint>(dummyNum),
-                                         dummyRegs.data()))
-            return false;
-    }
-
-    return dwfl_thread_state_registers(thread, 0, static_cast<uint>(numRegs), dwarfRegs.data());
-}
-
-static const Dwfl_Thread_Callbacks threadCallbacks = {
-    nextThread, nullptr, memoryRead, setInitialRegisters, nullptr, nullptr
-};
 
 static bool findInExtraPath(QFileInfo &path, const QString &fileName)
 {
@@ -237,14 +115,12 @@ static QStringList splitPath(const QString &path)
     return path.split(QDir::listSeparator(), Qt::SkipEmptyParts);
 }
 
-QFileInfo PerfSymbolTable::findFile(const char *path, const QString &fileName,
-                                    const QByteArray &buildId) const
+QFileInfo PerfSymbolTable::findFile(const QString& path, const QString& fileName, const QByteArray& buildId) const
 {
     QFileInfo fullPath;
     // first try to find the debug information via build id, if available
     if (!buildId.isEmpty()) {
-        const QString buildIdPath = QString::fromUtf8(path) + QDir::separator()
-                + QString::fromUtf8(buildId.toHex());
+        const QString buildIdPath = path + QDir::separator() + QString::fromUtf8(buildId.toHex());
         foreach (const QString &extraPath, splitPath(m_unwind->debugPath())) {
             fullPath.setFile(extraPath);
             if (findBuildIdPath(fullPath, buildIdPath))
@@ -267,25 +143,23 @@ QFileInfo PerfSymbolTable::findFile(const char *path, const QString &fileName,
     }
 
     // last fall-back, try the system root
-    fullPath.setFile(m_unwind->systemRoot() + QString::fromUtf8(path));
+    fullPath.setFile(m_unwind->systemRoot() + path);
     return fullPath;
 }
 
 void PerfSymbolTable::registerElf(const PerfRecordMmap &mmap, const QByteArray &buildId)
 {
-    QString filePath(mmap.filename());
+    const auto filePath = QString::fromUtf8(mmap.filename());
     // special regions, such as [heap], [vdso], [stack], [kernel.kallsyms]_text ... as well as //anon
-    const bool isSpecialRegion = (filePath.startsWith('[') && filePath.contains(']'))
-                              || filePath.startsWith(QLatin1String("/dev/"))
-                              || filePath.startsWith(QLatin1String("/memfd:"))
-                              || filePath.startsWith(QLatin1String("/SYSV"))
-                              || filePath == QLatin1String("//anon");
+    const bool isSpecialRegion = (filePath.startsWith(QLatin1Char('[')) && filePath.contains(QLatin1Char(']')))
+        || filePath.startsWith(QLatin1String("/dev/")) || filePath.startsWith(QLatin1String("/memfd:"))
+        || filePath.startsWith(QLatin1String("/SYSV")) || filePath == QLatin1String("//anon");
     const auto fileName = isSpecialRegion ? QString() : QFileInfo(filePath).fileName();
     QFileInfo fullPath;
     if (isSpecialRegion) {
         // don not set fullPath, these regions don't represent a real file
     } else if (mmap.pid() != PerfUnwind::s_kernelPid) {
-        fullPath = findFile(mmap.filename(), fileName, buildId);
+        fullPath = findFile(filePath, fileName, buildId);
 
         if (!fullPath.isFile()) {
             m_unwind->sendError(PerfUnwind::MissingElfFile,
@@ -325,7 +199,7 @@ int PerfSymbolTable::insertSubprogram(CuDieRangeMapping *cudie, Dwarf_Die *top, 
     dwarf_decl_line(top, &line);
     int column = 0;
     dwarf_decl_column(top, &column);
-    const QByteArray file = dwarf_decl_file(top);
+    const QByteArray file = absoluteSourcePath(dwarf_decl_file(top), cudie->cudie());
 
     qint32 fileId = m_unwind->resolveString(file);
     int locationId = m_unwind->resolveLocation(PerfUnwind::Location(entry, relAddr, fileId, m_pid, line,
@@ -345,9 +219,10 @@ int PerfSymbolTable::parseDie(CuDieRangeMapping *cudie, Dwarf_Die *top, quint64 
         PerfUnwind::Location location(entry);
         Dwarf_Attribute attr;
         Dwarf_Word val = 0;
-        const QByteArray file
-                = (dwarf_formudata(dwarf_attr(top, DW_AT_call_file, &attr), &val) == 0)
-                ? dwarf_filesrc (files, val, nullptr, nullptr) : "";
+        const QByteArray file = absoluteSourcePath((dwarf_formudata(dwarf_attr(top, DW_AT_call_file, &attr), &val) == 0)
+                                                       ? dwarf_filesrc(files, val, nullptr, nullptr)
+                                                       : "",
+                                                   cudie->cudie());
         location.file = m_unwind->resolveString(file);
         location.line
                 = (dwarf_formudata(dwarf_attr(top, DW_AT_call_line, &attr), &val) == 0)
@@ -465,41 +340,70 @@ Dwfl_Module *PerfSymbolTable::module(quint64 addr, const PerfElfMap::ElfInfo &el
     return reportElf(elf);
 }
 
-static QFileInfo findDebugInfoFile(const QString &root, const QString &file,
-                                   const QString &debugLinkString)
+QFileInfo PerfSymbolTable::findDebugInfoFile(
+        const QString &root, const QString &file,
+        const QString &debugLinkString)
 {
     auto dir = QFileInfo(root).dir();
     const auto folder = QFileInfo(file).path();
 
     QFileInfo debugLinkFile;
 
+    // try in .debug folder
     if (!folder.isEmpty()) {
-        debugLinkFile.setFile(dir, folder + QDir::separator() + debugLinkString);
+        debugLinkFile.setFile(dir.path() + QDir::separator() + folder + QDir::separator() + QLatin1String(".debug")
+                              + QDir::separator() + debugLinkString);
         if (debugLinkFile.isFile())
             return debugLinkFile;
     }
 
-    debugLinkFile.setFile(dir, file + QDir::separator() + debugLinkString);
-    if (debugLinkFile.isFile())
-        return debugLinkFile;
-
-    // try again in .debug folder
-    if (!folder.isEmpty()) {
-        debugLinkFile.setFile(dir, folder + QDir::separator() + QLatin1String(".debug")
-                                    + QDir::separator() + debugLinkString);
-        if (debugLinkFile.isFile())
-            return debugLinkFile;
-    }
-
-    debugLinkFile.setFile(dir, file + QDir::separator() + QLatin1String(".debug")
-                                + QDir::separator() + debugLinkString);
+    debugLinkFile.setFile(dir.path() + QDir::separator() + file + QDir::separator() + QLatin1String(".debug")
+                          + QDir::separator() + debugLinkString);
     if (debugLinkFile.isFile())
         return debugLinkFile;
 
     // try again in /usr/lib/debug folder
-    debugLinkFile.setFile(dir, QLatin1String("usr") + QDir::separator() + QLatin1String("lib")
-                                + QDir::separator() + QLatin1String("debug") + QDir::separator() + folder
-                                + QDir::separator() + debugLinkString);
+    // some distros use for example /usr/lib/debug/lib (ubuntu) and some use /usr/lib/debug/usr/lib (fedora)
+    const auto usr = QString(QDir::separator() + QLatin1String("usr") + QDir::separator());
+    auto folderWithoutUsr = folder;
+    folderWithoutUsr.replace(usr, QDir::separator());
+
+    // make sure both (/usr/ and /) are searched
+    for (const auto& path : {folderWithoutUsr, QString(usr + folderWithoutUsr)}) {
+        debugLinkFile.setFile(dir.path() + QDir::separator() + QLatin1String("usr") + QDir::separator()
+                              + QLatin1String("lib") + QDir::separator() + QLatin1String("debug") + QDir::separator()
+                              + path + QDir::separator() + debugLinkString);
+
+        if (debugLinkFile.isFile()) {
+            return debugLinkFile;
+        }
+    }
+
+    debugLinkFile.setFile(dir.path() + QDir::separator() + QLatin1String("usr") + QDir::separator()
+                          + QLatin1String("lib") + QDir::separator() + QLatin1String("debug") + QDir::separator()
+                          + folder + QDir::separator() + debugLinkString);
+
+    if (debugLinkFile.isFile()) {
+        return debugLinkFile;
+    }
+
+    debugLinkFile.setFile(dir,
+                          QLatin1String("usr") + QDir::separator() + QLatin1String("lib") + QDir::separator()
+                              + QLatin1String("debug") + QDir::separator() + debugLinkString);
+
+    if (debugLinkFile.isFile()) {
+        return debugLinkFile;
+    }
+
+    // try the default files
+    if (!folder.isEmpty()) {
+        debugLinkFile.setFile(dir.path() + QDir::separator() + folder + QDir::separator() + debugLinkString);
+        if (debugLinkFile.isFile()) {
+            return debugLinkFile;
+        }
+    }
+
+    debugLinkFile.setFile(dir.path() + QDir::separator() + file + QDir::separator() + debugLinkString);
 
     return debugLinkFile;
 }
@@ -515,8 +419,9 @@ int PerfSymbolTable::findDebugInfo(Dwfl_Module *module, const char *moduleName, 
 
     // fall-back, mostly for situations where we loaded a file via it's build-id.
     // search all known paths for the debug link in that case
-    const auto debugLinkString = QFile(debugLink).fileName();
-    auto debugLinkFile = findFile(debugLink, debugLinkString);
+    const auto debugLinkPath = QString::fromUtf8(debugLink);
+    const auto debugLinkString = QFile(debugLinkPath).fileName();
+    auto debugLinkFile = findFile(debugLinkPath, debugLinkString);
     if (!debugLinkFile.isFile()) {
         // fall-back to original file path with debug link file name
         const auto &elf = m_elfs.findElf(base);
@@ -525,9 +430,9 @@ int PerfSymbolTable::findDebugInfo(Dwfl_Module *module, const char *moduleName, 
     }
 
     /// FIXME: find a proper solution to this
-    if (!debugLinkFile.isFile() && QByteArray(file).endsWith("/elf")) {
+    if (!debugLinkFile.isFile() && QByteArray::fromRawData(file, strlen(file)).endsWith("/elf")) {
         // fall-back to original file if it's in a build-id path
-        debugLinkFile.setFile(file);
+        debugLinkFile.setFile(QString::fromUtf8(file));
     }
 
     if (!debugLinkFile.isFile())
@@ -550,7 +455,7 @@ PerfElfMap::ElfInfo PerfSymbolTable::findElf(quint64 ip) const
     return m_elfs.findElf(ip);
 }
 
-int symbolIndex(const Elf64_Rel &rel)
+int symbolIndex(Elf64_Rel rel)
 {
     return ELF64_R_SYM(rel.r_info);
 }
@@ -560,12 +465,12 @@ int symbolIndex(const Elf64_Rela &rel)
     return ELF64_R_SYM(rel.r_info);
 }
 
-int symbolIndex(const Elf32_Rel &rel)
+int symbolIndex(Elf32_Rel rel)
 {
     return ELF32_R_SYM(rel.r_info);
 }
 
-int symbolIndex(const Elf32_Rela &rel)
+int symbolIndex(Elf32_Rela rel)
 {
     return ELF32_R_SYM(rel.r_info);
 }
@@ -704,10 +609,10 @@ static QByteArray fakeSymbolFromSection(Dwfl_Module *mod, Dwarf_Addr addr)
     }
 
     auto str = elf_strptr(elf, textSectionIndex, nameOffset);
-    if (!str || str == QLatin1String(".text"))
+    if (!str || str == QByteArrayLiteral(".text"))
         return {};
 
-    if (str == QLatin1String(".plt") && entsize > 0) {
+    if (str == QByteArrayLiteral(".plt") && entsize > 0) {
         const auto *pltSymbol = findPltSymbol(elf, addr / entsize);
         if (pltSymbol)
             return demangle(pltSymbol) + "@plt";
@@ -721,35 +626,6 @@ static QByteArray fakeSymbolFromSection(Dwfl_Module *mod, Dwarf_Addr addr)
     sym.append(QByteArray::number(quint64(moduleAddr), 16));
     sym.append('>');
     return sym;
-}
-
-static quint64 symbolAddress(quint64 addr, bool isArmArch)
-{
-    // For dwfl API call we need the raw pointer into symtab, so we need to adjust ip.
-    return (!isArmArch || (addr & 1)) ? addr : addr + 1;
-}
-
-static quint64 alignedAddress(quint64 addr, bool isArmArch)
-{
-    // Adjust addr back. The symtab entries are 1 off for all practical purposes.
-    return (isArmArch && (addr & 1)) ? addr - 1 : addr;
-}
-
-static PerfAddressCache::SymbolCache cacheSymbols(Dwfl_Module *module, quint64 elfStart, bool isArmArch)
-{
-    PerfAddressCache::SymbolCache cache;
-
-    const auto numSymbols = dwfl_module_getsymtab(module);
-    for (int i = 0; i < numSymbols; ++i) {
-        GElf_Sym sym;
-        GElf_Addr symAddr;
-        const auto symbol = dwfl_module_getsym_info(module, i, &sym, &symAddr, nullptr, nullptr, nullptr);
-        if (symbol) {
-            const quint64 start = alignedAddress(sym.st_value, isArmArch);
-            cache.append({symAddr - elfStart, start, sym.st_size, symbol});
-        }
-    }
-    return cache;
 }
 
 int PerfSymbolTable::lookupFrame(Dwarf_Addr ip, bool isKernel,
@@ -778,7 +654,7 @@ int PerfSymbolTable::lookupFrame(Dwarf_Addr ip, bool isKernel,
     Dwfl_Module *mod = module(ip, elf);
 
     const bool isArmArch = (m_unwind->architecture() == PerfRegisterInfo::ARCH_ARM);
-    PerfUnwind::Location addressLocation(symbolAddress(ip, isArmArch), 0, -1, m_pid);
+    PerfUnwind::Location addressLocation(PerfAddressCache::symbolAddress(ip, isArmArch), 0, -1, m_pid);
     PerfUnwind::Location functionLocation(addressLocation);
 
     QByteArray symname;
@@ -792,7 +668,7 @@ int PerfSymbolTable::lookupFrame(Dwarf_Addr ip, bool isKernel,
             // cache all symbols in a sorted lookup table and demangle them on-demand
             // note that the symbols within the symtab aren't necessarily sorted,
             // which makes searching repeatedly via dwfl_module_addrinfo potentially very slow
-            addressCache->setSymbolCache(elf.originalPath, cacheSymbols(mod, elfStart, isArmArch));
+            addressCache->setSymbolCache(elf.originalPath, PerfAddressCache::extractSymbols(mod, elfStart, isArmArch));
         }
 
         auto cachedAddrInfo = addressCache->findSymbol(elf.originalPath, addressLocation.address - elfStart);
@@ -801,7 +677,7 @@ int PerfSymbolTable::lookupFrame(Dwarf_Addr ip, bool isKernel,
             symname = cachedAddrInfo.symname;
             start = cachedAddrInfo.value;
             size = cachedAddrInfo.size;
-            relAddr = alignedAddress(start + off, isArmArch);
+            relAddr = PerfAddressCache::alignedAddress(start + off, isArmArch);
 
             Dwarf_Addr bias = 0;
             functionLocation.address -= off; // in case we don't find anything better
@@ -813,15 +689,10 @@ int PerfSymbolTable::lookupFrame(Dwarf_Addr ip, bool isKernel,
             if (cudie) {
                 bias = cudie->bias();
                 const auto offset = addressLocation.address - bias;
-                auto srcloc = dwarf_getsrc_die(cudie->cudie(), offset);
-                if (srcloc) {
-                    const char* srcfile = dwarf_linesrc(srcloc, nullptr, nullptr);
-                    if (srcfile) {
-                        const QByteArray file = srcfile;
-                        addressLocation.file = m_unwind->resolveString(file);
-                        dwarf_lineno(srcloc, &addressLocation.line);
-                        dwarf_linecol(srcloc, &addressLocation.column);
-                    }
+                if (auto srcloc = findSourceLocation(cudie->cudie(), offset)) {
+                    addressLocation.file = m_unwind->resolveString(srcloc.file);
+                    addressLocation.line = srcloc.line;
+                    addressLocation.column = srcloc.column;
                 }
 
                 auto *subprogram = cudie->findSubprogramDie(offset);
@@ -834,7 +705,8 @@ int PerfSymbolTable::lookupFrame(Dwarf_Addr ip, bool isKernel,
                         dwarf_entrypc(&die, &entry);
                         symname = cudie->dieName(&die); // use name of inlined function as symbol
                         functionLocation.address = entry + bias;
-                        functionLocation.file = m_unwind->resolveString(dwarf_decl_file(&die));
+                        functionLocation.file =
+                            m_unwind->resolveString(absoluteSourcePath(dwarf_decl_file(&die), cudie->cudie()));
                         dwarf_decl_line(&die, &functionLocation.line);
                         dwarf_decl_column(&die, &functionLocation.column);
                     }(scopes.isEmpty() ? *subprogram->die() : scopes.last());
@@ -921,7 +793,7 @@ QByteArray PerfSymbolTable::symbolFromPerfMap(quint64 ip, GElf_Off *offset) cons
 
 void PerfSymbolTable::updatePerfMap()
 {
-    if (!m_perfMapFile.exists())
+    if (!m_hasPerfMap)
         return;
 
     if (!m_perfMapFile.isOpen())
@@ -953,7 +825,7 @@ bool PerfSymbolTable::containsAddress(quint64 address) const
     return m_elfs.isAddressInRange(address);
 }
 
-Dwfl *PerfSymbolTable::attachDwfl(void *arg)
+Dwfl *PerfSymbolTable::attachDwfl(const Dwfl_Thread_Callbacks *callbacks, PerfUnwind::UnwindInfo *unwindInfo)
 {
     if (static_cast<pid_t>(m_pid) == dwfl_pid(m_dwfl))
         return m_dwfl; // Already attached, nothing to do
@@ -961,14 +833,13 @@ Dwfl *PerfSymbolTable::attachDwfl(void *arg)
     // only attach state when we have the required information for stack unwinding
     // for normal symbol resolution and inline frame resolution this is not needed
     // most notably, this isn't needed for frame pointer callchains
-    PerfUnwind::UnwindInfo *unwindInfo = static_cast<PerfUnwind::UnwindInfo *>(arg);
     const auto sampleType = unwindInfo->sample->type();
     const auto hasSampleRegsUser = (sampleType & PerfEventAttributes::SAMPLE_REGS_USER);
     const auto hasSampleStackUser = (sampleType & PerfEventAttributes::SAMPLE_STACK_USER);
     if (!hasSampleRegsUser || !hasSampleStackUser)
         return nullptr;
 
-    if (!dwfl_attach_state(m_dwfl, m_firstElf.elf(), m_pid, &threadCallbacks, arg)) {
+    if (!dwfl_attach_state(m_dwfl, m_firstElf.elf(), m_pid, callbacks, unwindInfo)) {
         qWarning() << m_pid << "failed to attach state" << dwfl_errmsg(dwfl_errno());
         return nullptr;
     }

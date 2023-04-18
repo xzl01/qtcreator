@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "environmentaspectwidget.h"
 
 #include "environmentwidget.h"
+#include "projectexplorertr.h"
 
 #include <utils/environment.h>
 #include <utils/qtcassert.h>
@@ -41,9 +20,8 @@ namespace ProjectExplorer {
 // EnvironmentAspectWidget:
 // --------------------------------------------------------------------
 
-EnvironmentAspectWidget::EnvironmentAspectWidget(EnvironmentAspect *aspect, QWidget *additionalWidget) :
-    m_aspect(aspect),
-    m_additionalWidget(additionalWidget)
+EnvironmentAspectWidget::EnvironmentAspectWidget(EnvironmentAspect *aspect)
+    : m_aspect(aspect)
 {
     QTC_CHECK(m_aspect);
 
@@ -52,10 +30,16 @@ EnvironmentAspectWidget::EnvironmentAspectWidget(EnvironmentAspect *aspect, QWid
     topLayout->setContentsMargins(0, 0, 0, 25);
 
     auto baseEnvironmentWidget = new QWidget;
-    auto baseLayout = new QHBoxLayout(baseEnvironmentWidget);
-    baseLayout->setContentsMargins(0, 0, 0, 0);
-    auto label = new QLabel(tr("Base environment for this run configuration:"), this);
-    baseLayout->addWidget(label);
+    m_baseLayout = new QHBoxLayout(baseEnvironmentWidget);
+    m_baseLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto label = [aspect]() {
+        if (aspect->labelText().isEmpty())
+            aspect->setLabelText(Tr::tr("Base environment for this run configuration:"));
+        aspect->setupLabel();
+        return aspect->label();
+    };
+    m_baseLayout->addWidget(label());
 
     m_baseEnvironmentComboBox = new QComboBox;
     for (const QString &displayName : m_aspect->displayNames())
@@ -64,13 +48,11 @@ EnvironmentAspectWidget::EnvironmentAspectWidget(EnvironmentAspect *aspect, QWid
         m_baseEnvironmentComboBox->setEnabled(false);
     m_baseEnvironmentComboBox->setCurrentIndex(m_aspect->baseEnvironmentBase());
 
-    connect(m_baseEnvironmentComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_baseEnvironmentComboBox, &QComboBox::currentIndexChanged,
             this, &EnvironmentAspectWidget::baseEnvironmentSelected);
 
-    baseLayout->addWidget(m_baseEnvironmentComboBox);
-    baseLayout->addStretch(10);
-    if (additionalWidget)
-        baseLayout->addWidget(additionalWidget);
+    m_baseLayout->addWidget(m_baseEnvironmentComboBox);
+    m_baseLayout->addStretch(10);
 
     const EnvironmentWidget::Type widgetType = aspect->isLocal()
             ? EnvironmentWidget::TypeLocal : EnvironmentWidget::TypeRemote;
@@ -92,28 +74,22 @@ EnvironmentAspectWidget::EnvironmentAspectWidget(EnvironmentAspect *aspect, QWid
             this, &EnvironmentAspectWidget::environmentChanged);
 }
 
-EnvironmentAspect *EnvironmentAspectWidget::aspect() const
+void EnvironmentAspectWidget::addWidget(QWidget *widget)
 {
-    return m_aspect;
-}
-
-QWidget *EnvironmentAspectWidget::additionalWidget() const
-{
-    return m_additionalWidget;
+    m_baseLayout->addWidget(widget);
 }
 
 void EnvironmentAspectWidget::baseEnvironmentSelected(int idx)
 {
-    m_ignoreChange = true;
+    const Utils::GuardLocker locker(m_ignoreChanges);
     m_aspect->setBaseEnvironmentBase(idx);
     m_environmentWidget->setBaseEnvironment(m_aspect->modifiedBaseEnvironment());
     m_environmentWidget->setBaseEnvironmentText(m_aspect->currentDisplayName());
-    m_ignoreChange = false;
 }
 
 void EnvironmentAspectWidget::changeBaseEnvironment()
 {
-    if (m_ignoreChange)
+    if (m_ignoreChanges.isLocked())
         return;
 
     int base = m_aspect->baseEnvironmentBase();
@@ -127,21 +103,20 @@ void EnvironmentAspectWidget::changeBaseEnvironment()
 
 void EnvironmentAspectWidget::userChangesEdited()
 {
-    m_ignoreChange = true;
+    const Utils::GuardLocker locker(m_ignoreChanges);
     m_aspect->setUserEnvironmentChanges(m_environmentWidget->userChanges());
-    m_ignoreChange = false;
 }
 
 void EnvironmentAspectWidget::changeUserChanges(Utils::EnvironmentItems changes)
 {
-    if (m_ignoreChange)
+    if (m_ignoreChanges.isLocked())
         return;
     m_environmentWidget->setUserChanges(changes);
 }
 
 void EnvironmentAspectWidget::environmentChanged()
 {
-    if (m_ignoreChange)
+    if (m_ignoreChanges.isLocked())
         return;
     m_environmentWidget->setBaseEnvironment(m_aspect->modifiedBaseEnvironment());
 }

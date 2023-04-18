@@ -1,37 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "qmlprofilermodelmanager.h"
-#include "qmlprofilerconstants.h"
-#include "qmlprofilertracefile.h"
-#include "qmlprofilernotesmodel.h"
 #include "qmlprofilerdetailsrewriter.h"
+#include "qmlprofilermodelmanager.h"
+#include "qmlprofilernotesmodel.h"
+#include "qmlprofilertr.h"
+#include "qmlprofilertracefile.h"
 
 #include <coreplugin/progressmanager/progressmanager.h>
 #include <tracing/tracestashfile.h>
-#include <utils/runextensions.h>
 #include <utils/qtcassert.h>
 
 #include <QDebug>
@@ -45,19 +22,19 @@
 namespace QmlProfiler {
 
 static const char *ProfileFeatureNames[] = {
-    QT_TRANSLATE_NOOP("MainView", "JavaScript"),
-    QT_TRANSLATE_NOOP("MainView", "Memory Usage"),
-    QT_TRANSLATE_NOOP("MainView", "Pixmap Cache"),
-    QT_TRANSLATE_NOOP("MainView", "Scene Graph"),
-    QT_TRANSLATE_NOOP("MainView", "Animations"),
-    QT_TRANSLATE_NOOP("MainView", "Painting"),
-    QT_TRANSLATE_NOOP("MainView", "Compiling"),
-    QT_TRANSLATE_NOOP("MainView", "Creating"),
-    QT_TRANSLATE_NOOP("MainView", "Binding"),
-    QT_TRANSLATE_NOOP("MainView", "Handling Signal"),
-    QT_TRANSLATE_NOOP("MainView", "Input Events"),
-    QT_TRANSLATE_NOOP("MainView", "Debug Messages"),
-    QT_TRANSLATE_NOOP("MainView", "Quick3D")
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "JavaScript"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Memory Usage"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Pixmap Cache"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Scene Graph"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Animations"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Painting"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Compiling"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Creating"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Binding"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Handling Signal"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Input Events"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Debug Messages"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Quick3D")
 };
 
 Q_STATIC_ASSERT(sizeof(ProfileFeatureNames) == sizeof(char *) * MaximumProfileFeature);
@@ -77,7 +54,6 @@ private:
 
 class QmlProfilerEventStorage : public Timeline::TraceEventStorage
 {
-    Q_DECLARE_TR_FUNCTIONS(QmlProfilerEventStorage)
 public:
     using ErrorHandler = std::function<void(const QString &)>;
 
@@ -198,7 +174,7 @@ void QmlProfilerModelManager::replayQmlEvents(QmlEventLoader loader,
 
     if (!result && errorHandler) {
         errorHandler(future.isCanceled() ? QString()
-                                         : tr("Failed to replay QML events from stash file."));
+                                         : Tr::tr("Failed to replay QML events from stash file."));
     } else if (result && finalizer) {
         finalizer();
     }
@@ -225,7 +201,7 @@ void QmlProfilerModelManager::clearTypeStorage()
 static QString getDisplayName(const QmlEventType &event)
 {
     if (event.location().filename().isEmpty()) {
-        return QmlProfilerModelManager::tr("<bytecode>");
+        return Tr::tr("<bytecode>");
     } else {
         const QString filePath = QUrl(event.location().filename()).path();
         return filePath.mid(filePath.lastIndexOf(QLatin1Char('/')) + 1) + QLatin1Char(':') +
@@ -241,7 +217,7 @@ static QString getInitialDetails(const QmlEventType &event)
         details = details.replace(QLatin1Char('\n'),QLatin1Char(' ')).simplified();
         if (details.isEmpty()) {
             if (event.rangeType() == Javascript)
-                details = QmlProfilerModelManager::tr("anonymous function");
+                details = Tr::tr("anonymous function");
         } else {
             QRegularExpression rewrite(QLatin1String("^\\(function \\$(\\w+)\\(\\) \\{ (return |)(.+) \\}\\)$"));
             QRegularExpressionMatch match = rewrite.match(details);
@@ -284,7 +260,7 @@ void QmlProfilerModelManager::populateFileFinder(const ProjectExplorer::Target *
     d->detailsRewriter->populateFileFinder(target);
 }
 
-QString QmlProfilerModelManager::findLocalFile(const QString &remoteFile)
+Utils::FilePath QmlProfilerModelManager::findLocalFile(const QString &remoteFile)
 {
     return d->detailsRewriter->getLocalFile(remoteFile);
 }
@@ -323,8 +299,10 @@ int QmlProfilerModelManager::appendEventType(QmlEventType &&type)
     const QmlEventLocation &location = type.location();
     if (location.isValid()) {
         const RangeType rangeType = type.rangeType();
-        const QmlEventLocation localLocation(d->detailsRewriter->getLocalFile(location.filename()),
-                                             location.line(), location.column());
+        const QmlEventLocation localLocation(d->detailsRewriter->getLocalFile(location.filename())
+                                                 .toString(),
+                                             location.line(),
+                                             location.column());
 
         // location and type are invalid after this
         const int typeIndex = TimelineTraceManager::appendEventType(std::move(type));
@@ -350,9 +328,12 @@ void QmlProfilerModelManager::setEventType(int typeIndex, QmlEventType &&type)
         // Only bindings and signal handlers need rewriting
         if (type.rangeType() == Binding || type.rangeType() == HandlingSignal)
             d->detailsRewriter->requestDetailsForLocation(typeIndex, location);
-        d->textMarkModel->addTextMarkId(typeIndex, QmlEventLocation(
-                                            d->detailsRewriter->getLocalFile(location.filename()),
-                                            location.line(), location.column()));
+        d->textMarkModel->addTextMarkId(typeIndex,
+                                        QmlEventLocation(d->detailsRewriter
+                                                             ->getLocalFile(location.filename())
+                                                             .toString(),
+                                                         location.line(),
+                                                         location.column()));
     }
 
     TimelineTraceManager::setEventType(typeIndex, std::move(type));
@@ -393,7 +374,7 @@ QmlProfilerModelManager::rangeFilter(qint64 rangeStart, qint64 rangeEnd) const
             // Double-check if rangeStart has been crossed. Some versions of Qt send dirty data.
             qint64 adjustedTimestamp = event.timestamp();
             if (event.timestamp() < rangeStart && !crossedRangeStart) {
-                if (type.rangeType() != MaximumRangeType) {
+                if (type.rangeType() != UndefinedRangeType) {
                     if (event.rangeStage() == RangeStart)
                         stack.push(event);
                     else if (event.rangeStage() == RangeEnd && !stack.isEmpty())
@@ -406,7 +387,7 @@ QmlProfilerModelManager::rangeFilter(qint64 rangeStart, qint64 rangeEnd) const
                 }
             } else {
                 if (!crossedRangeStart) {
-                    for (auto stashed : qAsConst(stack)) {
+                    for (auto stashed : std::as_const(stack)) {
                         stashed.setTimestamp(rangeStart);
                         loader(stashed, eventType(stashed.typeIndex()));
                     }
@@ -414,7 +395,7 @@ QmlProfilerModelManager::rangeFilter(qint64 rangeStart, qint64 rangeEnd) const
                     crossedRangeStart = true;
                 }
                 if (event.timestamp() > rangeEnd) {
-                    if (type.rangeType() != MaximumRangeType) {
+                    if (type.rangeType() != UndefinedRangeType) {
                         if (event.rangeStage() == RangeEnd) {
                             if (stack.isEmpty()) {
                                 QmlEvent endEvent(event);
@@ -500,7 +481,7 @@ QmlProfilerEventStorage::QmlProfilerEventStorage(
     : m_file("qmlprofiler-data"), m_errorHandler(errorHandler)
 {
     if (!m_file.open())
-        errorHandler(tr("Cannot open temporary trace file to store events."));
+        errorHandler(Tr::tr("Cannot open temporary trace file to store events."));
 }
 
 int QmlProfilerEventStorage::append(Timeline::TraceEvent &&event)
@@ -520,13 +501,13 @@ void QmlProfilerEventStorage::clear()
     m_size = 0;
     m_file.clear();
     if (!m_file.open())
-        m_errorHandler(tr("Failed to reset temporary trace file."));
+        m_errorHandler(Tr::tr("Failed to reset temporary trace file."));
 }
 
 void QmlProfilerEventStorage::finalize()
 {
     if (!m_file.flush())
-        m_errorHandler(tr("Failed to flush temporary trace file."));
+        m_errorHandler(Tr::tr("Failed to flush temporary trace file."));
 }
 
 QmlProfilerEventStorage::ErrorHandler QmlProfilerEventStorage::errorHandler() const
@@ -547,13 +528,13 @@ bool QmlProfilerEventStorage::replay(
     case Timeline::TraceStashFile<QmlEvent>::ReplaySuccess:
         return true;
     case Timeline::TraceStashFile<QmlEvent>::ReplayOpenFailed:
-        m_errorHandler(tr("Could not re-open temporary trace file."));
+        m_errorHandler(Tr::tr("Could not re-open temporary trace file."));
         break;
     case Timeline::TraceStashFile<QmlEvent>::ReplayLoadFailed:
         // Happens if the loader rejects an event. Not an actual error
         break;
     case Timeline::TraceStashFile<QmlEvent>::ReplayReadPastEnd:
-        m_errorHandler(tr("Read past end in temporary trace file."));
+        m_errorHandler(Tr::tr("Read past end in temporary trace file."));
         break;
     }
     return false;

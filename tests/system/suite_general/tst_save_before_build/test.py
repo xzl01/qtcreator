@@ -1,33 +1,11 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 source("../../shared/qtcreator.py")
 
 
 def __openBuildAndRunSettings__():
-    invokeMenuItem("Tools", "Options...")
+    invokeMenuItem("Edit", "Preferences...")
     mouseClick(waitForObjectItem(":Options_QListView", "Build & Run"))
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "General")
 
@@ -51,25 +29,32 @@ def main():
     if not startedWithoutPluginError():
         return
     verifySaveBeforeBuildChecked(False)
-    for buildSystem in ["CMake", "qmake"]:
+    for buildSystem in ["CMake", "Qbs"]:
         projectName = "SampleApp-" + buildSystem
         ensureSaveBeforeBuildChecked(False)
         # create qt quick application
         createNewQtQuickApplication(tempDir(), projectName, buildSystem=buildSystem)
+        lineForIteration = 1 # qbs project file holds line number of definition start
         for expectDialog in [True, False]:
             verifySaveBeforeBuildChecked(not expectDialog)
             if buildSystem == "CMake":
                 files = ["%s.CMakeLists\\.txt" % projectName,
-                         "%s.%s.Source Files.main\\.cpp" % (projectName, projectName),
-                         "%s.%s.qml\.qrc./.main\\.qml" % (projectName, projectName)]
-            elif buildSystem == "qmake":
-                files = ["%s.%s\\.pro" % (projectName, projectName),
-                         "%s.Sources.main\\.cpp" % projectName,
-                         "%s.Resources.qml\.qrc./.main\\.qml" % projectName]
+                         "%s.app%s.Source Files.main\\.cpp" % (projectName, projectName),
+                         "%s.app%s.Main\\.qml" % (projectName, projectName)]
+            elif buildSystem == "Qbs":
+                lineForIteration += 1 # after opening the file we'll add a newline
+                lowerPN = projectName.lower()
+                files = ["%s.%s\\.qbs:%d" % (lowerPN, lowerPN, lineForIteration),
+                         "%s.%s.main\\.cpp" % (lowerPN, lowerPN),
+                         "%s.%s.Group 1.Main\\.qml" % (lowerPN, lowerPN)]
             for i, file in enumerate(files):
                 if not openDocument(file):
                     test.fatal("Could not open file '%s'" % simpleFileName(file))
                     continue
+
+                matching = re.match("^(.+)(:\\d+)", file)
+                if matching is not None:
+                    file = matching.group(1)
                 test.log("Changing file '%s'" % simpleFileName(file))
                 typeLines(getEditorForFileSuffix(file, True), "")
                 # try to compile

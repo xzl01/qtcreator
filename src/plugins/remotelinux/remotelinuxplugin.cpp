@@ -1,56 +1,35 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "remotelinuxplugin.h"
 
+#include "customcommanddeploystep.h"
+#include "genericdirectuploadstep.h"
+#include "killappstep.h"
 #include "linuxdevice.h"
+#include "makeinstallstep.h"
 #include "remotelinux_constants.h"
-#include "remotelinuxqmltoolingsupport.h"
+#include "remotelinuxdeployconfiguration.h"
 #include "remotelinuxcustomrunconfiguration.h"
 #include "remotelinuxdebugsupport.h"
 #include "remotelinuxdeployconfiguration.h"
 #include "remotelinuxrunconfiguration.h"
-
-#include "genericdirectuploadstep.h"
-#include "makeinstallstep.h"
-#include "remotelinuxcheckforfreediskspacestep.h"
-#include "remotelinuxdeployconfiguration.h"
-#include "remotelinuxcustomcommanddeploymentstep.h"
-#include "remotelinuxkillappstep.h"
 #include "rsyncdeploystep.h"
 #include "tarpackagecreationstep.h"
-#include "uploadandinstalltarpackagestep.h"
+#include "tarpackagedeploystep.h"
 
 #ifdef WITH_TESTS
 #include "filesystemaccess_test.h"
 #endif
 
 #include <projectexplorer/kitinformation.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/target.h>
 
+#include <utils/fsengine/fsengine.h>
+
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace RemoteLinux {
 namespace Internal {
@@ -63,7 +42,7 @@ public:
     {
         registerStep<Step>(Step::stepId());
         setDisplayName(Step::displayName());
-        setSupportedConfiguration(genericDeployConfigurationId());
+        setSupportedConfiguration(RemoteLinux::Constants::DeployToGenericLinux);
         setSupportedStepList(ProjectExplorer::Constants::BUILDSTEPS_DEPLOY);
     }
 };
@@ -75,42 +54,16 @@ public:
     RemoteLinuxRunConfigurationFactory runConfigurationFactory;
     RemoteLinuxCustomRunConfigurationFactory customRunConfigurationFactory;
     RemoteLinuxDeployConfigurationFactory deployConfigurationFactory;
-    GenericDeployStepFactory<TarPackageCreationStep> tarPackageCreationStepFactory;
-    GenericDeployStepFactory<UploadAndInstallTarPackageStep> uploadAndInstallTarPackageStepFactory;
+    TarPackageCreationStepFactory tarPackageCreationStepFactory;
+    TarPackageDeployStepFactory tarPackageDeployStepFactory;
     GenericDeployStepFactory<GenericDirectUploadStep> genericDirectUploadStepFactory;
     GenericDeployStepFactory<RsyncDeployStep> rsyncDeployStepFactory;
-    GenericDeployStepFactory<RemoteLinuxCustomCommandDeploymentStep>
-        customCommandDeploymentStepFactory;
-    GenericDeployStepFactory<RemoteLinuxCheckForFreeDiskSpaceStep>
-        checkForFreeDiskSpaceStepFactory;
-    GenericDeployStepFactory<RemoteLinuxKillAppStep> remoteLinuxKillAppStepFactory;
+    CustomCommandDeployStepFactory customCommandDeployStepFactory;
+    KillAppStepFactory killAppStepFactory;
     GenericDeployStepFactory<MakeInstallStep> makeInstallStepFactory;
-
-    const QList<Utils::Id> supportedRunConfigs {
-        runConfigurationFactory.runConfigurationId(),
-        customRunConfigurationFactory.runConfigurationId(),
-        "QmlProjectManager.QmlRunConfiguration"
-    };
-
-    RunWorkerFactory runnerFactory{
-        RunWorkerFactory::make<SimpleTargetRunner>(),
-        {ProjectExplorer::Constants::NORMAL_RUN_MODE},
-        supportedRunConfigs,
-        {Constants::GenericLinuxOsType}
-    };
-    RunWorkerFactory debuggerFactory{
-        RunWorkerFactory::make<LinuxDeviceDebugSupport>(),
-        {ProjectExplorer::Constants::DEBUG_RUN_MODE},
-        supportedRunConfigs,
-        {Constants::GenericLinuxOsType}
-    };
-    RunWorkerFactory qmlToolingFactory{
-        RunWorkerFactory::make<RemoteLinuxQmlToolingSupport>(),
-        {ProjectExplorer::Constants::QML_PROFILER_RUN_MODE,
-         ProjectExplorer::Constants::QML_PREVIEW_RUN_MODE},
-        supportedRunConfigs,
-        {Constants::GenericLinuxOsType}
-    };
+    RemoteLinuxRunWorkerFactory runWorkerFactory;
+    RemoteLinuxDebugWorkerFactory debugWorkerFactory;
+    RemoteLinuxQmlToolingWorkerFactory qmlToolingWorkerFactory;
 };
 
 static RemoteLinuxPluginPrivate *dd = nullptr;
@@ -118,30 +71,22 @@ static RemoteLinuxPluginPrivate *dd = nullptr;
 RemoteLinuxPlugin::RemoteLinuxPlugin()
 {
     setObjectName(QLatin1String("RemoteLinuxPlugin"));
+    FSEngine::registerDeviceScheme(u"ssh");
 }
 
 RemoteLinuxPlugin::~RemoteLinuxPlugin()
 {
+    FSEngine::unregisterDeviceScheme(u"ssh");
     delete dd;
 }
 
-QVector<QObject *> RemoteLinuxPlugin::createTestObjects() const
+void RemoteLinuxPlugin::initialize()
 {
-    return {
-#ifdef WITH_TESTS
-        new FileSystemAccessTest,
-#endif
-    };
-}
-
-bool RemoteLinuxPlugin::initialize(const QStringList &arguments, QString *errorMessage)
-{
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorMessage)
-
     dd = new RemoteLinuxPluginPrivate;
 
-    return true;
+#ifdef WITH_TESTS
+    addTest<FileSystemAccessTest>();
+#endif
 }
 
 } // namespace Internal

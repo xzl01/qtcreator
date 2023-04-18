@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljssimplereader.h"
 
@@ -35,6 +13,7 @@
 #include "qqmljsparser_p.h"
 #endif
 
+#include "qmljstr.h"
 #include "qmljsutils.h"
 
 #include <QFile>
@@ -132,7 +111,7 @@ static Q_LOGGING_CATEGORY(simpleReaderLog, "qtc.qmljs.simpleReader", QtWarningMs
             file.close();
             return readFromSource(QString::fromLocal8Bit(source));
         }
-        addError(tr("Cannot find file %1.").arg(fileName));
+        addError(Tr::tr("Cannot find file %1.").arg(fileName));
         return false;
     }
 
@@ -179,14 +158,14 @@ static Q_LOGGING_CATEGORY(simpleReaderLog, "qtc.qmljs.simpleReader", QtWarningMs
     bool SimpleAbstractStreamReader::readDocument(AST::UiProgram * ast)
     {
         if (!ast) {
-            addError(tr("Could not parse document."));
+            addError(Tr::tr("Could not parse document."));
             return false;
         }
 
         AST::UiObjectDefinition *uiObjectDefinition = AST::cast<AST::UiObjectDefinition *>(
             ast->members->member);
         if (!uiObjectDefinition) {
-            addError(tr("Expected document to contain a single object definition."));
+            addError(Tr::tr("Expected document to contain a single object definition."));
             return false;
         }
         readChild(uiObjectDefinition);
@@ -259,7 +238,7 @@ static Q_LOGGING_CATEGORY(simpleReaderLog, "qtc.qmljs.simpleReader", QtWarningMs
         AST::ExpressionStatement *expStmt = AST::cast<AST::ExpressionStatement *>(
             uiScriptBinding->statement);
         if (!expStmt) {
-            addError(tr("Expected expression statement after colon."),
+            addError(Tr::tr("Expected expression statement after colon."),
                      uiScriptBinding->statement->firstSourceLocation());
             return std::make_pair(QVariant(), SourceLocation());
         }
@@ -361,7 +340,7 @@ static Q_LOGGING_CATEGORY(simpleReaderLog, "qtc.qmljs.simpleReader", QtWarningMs
 
         if (m_currentNode.toStrongRef().data()->propertyNames().contains(name)) {
             auto previousSourceLoc = m_currentNode.toStrongRef().data()->property(name).nameLocation;
-            addError(tr("Property is defined twice, previous definition at %1:%2")
+            addError(Tr::tr("Property is defined twice, previous definition at %1:%2")
                          .arg(QString::number(previousSourceLoc.startLine),
                               QString::number(previousSourceLoc.startColumn)),
                      currentSourceLocation());

@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "errorwidget.h"
-#include "tableview.h"
 #include "scxmleditorconstants.h"
+#include "scxmleditortr.h"
+#include "tableview.h"
 
-#include <QLayout>
 #include <QFile>
 #include <QFileDialog>
 #include <QHeaderView>
+#include <QLayout>
 #include <QMessageBox>
 #include <QSortFilterProxyModel>
 #include <QTextStream>
@@ -38,6 +17,8 @@
 #include <QToolButton>
 
 #include <coreplugin/icore.h>
+
+#include <utils/fileutils.h>
 #include <utils/utilsicons.h>
 
 using namespace ScxmlEditor::OutputPane;
@@ -56,34 +37,34 @@ ErrorWidget::ErrorWidget(QWidget *parent)
 
     m_errorsTable->setModel(m_proxyModel);
 
-    connect(m_errorsTable, &TableView::entered, [this](const QModelIndex &ind) {
+    connect(m_errorsTable, &TableView::entered, this, [this](const QModelIndex &ind) {
         if (ind.isValid())
             emit warningEntered(m_warningModel->getWarning(m_proxyModel->mapToSource(ind)));
     });
 
-    connect(m_errorsTable, &TableView::pressed, [this](const QModelIndex &ind) {
+    connect(m_errorsTable, &TableView::pressed, this, [this](const QModelIndex &ind) {
         if (ind.isValid())
             emit warningSelected(m_warningModel->getWarning(m_proxyModel->mapToSource(ind)));
     });
 
-    connect(m_errorsTable, &TableView::doubleClicked, [this](const QModelIndex &ind) {
+    connect(m_errorsTable, &TableView::doubleClicked, this, [this](const QModelIndex &ind) {
         if (ind.isValid())
             emit warningDoubleClicked(m_warningModel->getWarning(m_proxyModel->mapToSource(ind)));
     });
 
-    connect(m_errorsTable, &TableView::mouseExited, this, [this](){
+    connect(m_errorsTable, &TableView::mouseExited, this, [this] {
         emit mouseExited();
     });
 
-    connect(m_showErrors, &QToolButton::toggled, [this](bool show) {
+    connect(m_showErrors, &QToolButton::toggled, this, [this](bool show) {
         m_warningModel->setShowWarnings(Warning::ErrorType, show);
     });
 
-    connect(m_showWarnings, &QToolButton::toggled, [this](bool show) {
+    connect(m_showWarnings, &QToolButton::toggled, this, [this](bool show) {
         m_warningModel->setShowWarnings(Warning::WarningType, show);
     });
 
-    connect(m_showInfos, &QToolButton::toggled, [this](bool show) {
+    connect(m_showInfos, &QToolButton::toggled, this, [this](bool show) {
         m_warningModel->setShowWarnings(Warning::InfoType, show);
     });
 
@@ -162,7 +143,7 @@ void ErrorWidget::updateWarnings()
     int warningCount = m_warningModel->count(Warning::WarningType);
     int infoCount = m_warningModel->count(Warning::InfoType);
 
-    m_title = tr("Errors(%1) / Warnings(%2) / Info(%3)").arg(errorCount).arg(warningCount).arg(infoCount);
+    m_title = Tr::tr("Errors(%1) / Warnings(%2) / Info(%3)").arg(errorCount).arg(warningCount).arg(infoCount);
     if (errorCount > 0)
         m_icon = m_showErrors->icon();
     else if (warningCount > 0)
@@ -204,13 +185,13 @@ QString ErrorWidget::modifyExportedValue(const QString &val)
 
 void ErrorWidget::exportWarnings()
 {
-    FilePath fileName = FileUtils::getSaveFilePath(this, tr("Export to File"), {}, tr("CSV files (*.csv)"));
+    FilePath fileName = FileUtils::getSaveFilePath(this, Tr::tr("Export to File"), {}, Tr::tr("CSV files (*.csv)"));
     if (fileName.isEmpty())
         return;
 
     QFile file(fileName.toString());
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, tr("Export Failed"), tr("Cannot open file %1.").arg(fileName.toUserOutput()));
+        QMessageBox::warning(this, Tr::tr("Export Failed"), Tr::tr("Cannot open file %1.").arg(fileName.toUserOutput()));
         file.close();
         return;
     }

@@ -1,109 +1,87 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include <QAbstractListModel>
-#include <QDateTime>
-#include <QDir>
-#include <QHash>
-#include <QIcon>
-#include <QPair>
-#include <QSet>
+#include <QFileInfo>
+#include <QFileSystemModel>
+#include <QSortFilterProxyModel>
 
-namespace Utils { class FileSystemWatcher; }
+#include <utils/filesystemwatcher.h>
+#include <utils/qtcassert.h>
 
 namespace QmlDesigner {
 
-class SynchronousImageCache;
-class AssetsLibraryDir;
-
-class AssetsLibraryModel : public QAbstractListModel
+class AssetsLibraryModel : public QSortFilterProxyModel
 {
     Q_OBJECT
 
-    Q_PROPERTY(bool isEmpty READ isEmpty WRITE setIsEmpty NOTIFY isEmptyChanged)
-
 public:
-    AssetsLibraryModel(Utils::FileSystemWatcher *fileSystemWatcher, QObject *parent = nullptr);
+    AssetsLibraryModel(QObject *parent = nullptr);
 
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QHash<int, QByteArray> roleNames() const override;
-
-    void refresh();
-    void setRootPath(const QString &path);
+    void setRootPath(const QString &newPath);
     void setSearchText(const QString &searchText);
 
-    bool isEmpty() const;
+    Q_PROPERTY(bool haveFiles READ haveFiles NOTIFY haveFilesChanged);
 
-    static const QStringList &supportedImageSuffixes();
-    static const QStringList &supportedFragmentShaderSuffixes();
-    static const QStringList &supportedShaderSuffixes();
-    static const QStringList &supportedFontSuffixes();
-    static const QStringList &supportedAudioSuffixes();
-    static const QStringList &supportedVideoSuffixes();
-    static const QStringList &supportedTexture3DSuffixes();
-    static const QSet<QString> &supportedSuffixes();
+    Q_INVOKABLE QString rootPath() const;
+    Q_INVOKABLE QString filePath(const QModelIndex &index) const;
+    Q_INVOKABLE QString fileName(const QModelIndex &index) const;
 
-    const QSet<QString> &previewableSuffixes() const;
+    Q_INVOKABLE QModelIndex indexForPath(const QString &path) const;
+    Q_INVOKABLE QModelIndex rootIndex() const;
+    Q_INVOKABLE bool isDirectory(const QString &path) const;
+    Q_INVOKABLE bool isDirectory(const QModelIndex &index) const;
+    Q_INVOKABLE QModelIndex parentDirIndex(const QString &path) const;
+    Q_INVOKABLE QModelIndex parentDirIndex(const QModelIndex &index) const;
+    Q_INVOKABLE QString parentDirPath(const QString &path) const;
+    Q_INVOKABLE void syncHaveFiles();
 
-    static void saveExpandedState(bool expanded, const QString &assetPath);
-    static bool loadExpandedState(const QString &assetPath);
-
-    enum class DirExpandState {
-        SomeExpanded,
-        AllExpanded,
-        AllCollapsed
-    };
-    Q_ENUM(DirExpandState)
-
-    Q_INVOKABLE void toggleExpandAll(bool expand);
-    Q_INVOKABLE DirExpandState getAllExpandedState() const;
-    Q_INVOKABLE void deleteFiles(const QStringList &filePaths);
+    Q_INVOKABLE QList<QModelIndex> parentIndices(const QModelIndex &index) const;
+    Q_INVOKABLE bool indexIsValid(const QModelIndex &index) const;
+    Q_INVOKABLE QString currentProjectDirPath() const;
+    Q_INVOKABLE QString contentDirPath() const;
+    Q_INVOKABLE bool requestDeleteFiles(const QStringList &filePaths);
+    Q_INVOKABLE void deleteFiles(const QStringList &filePaths, bool dontAskAgain);
     Q_INVOKABLE bool renameFolder(const QString &folderPath, const QString &newName);
-    Q_INVOKABLE void addNewFolder(const QString &folderPath);
-    Q_INVOKABLE void deleteFolder(const QString &folderPath);
-    Q_INVOKABLE QObject *rootDir() const;
+    Q_INVOKABLE bool addNewFolder(const QString &folderPath);
+    Q_INVOKABLE bool deleteFolderRecursively(const QModelIndex &folderIndex);
+    Q_INVOKABLE bool allFilePathsAreImages(const QStringList &filePaths) const;
+
+    Q_INVOKABLE QString getUniqueEffectPath(const QString &parentFolder, const QString &effectName);
+    Q_INVOKABLE bool createNewEffect(const QString &effectPath, bool openEffectMaker = true);
+
+    Q_INVOKABLE bool canCreateEffects() const;
+
+    int columnCount(const QModelIndex &parent = QModelIndex()) const override
+    {
+        int result = QSortFilterProxyModel::columnCount(parent);
+        return std::min(result, 1);
+    }
+
+    bool haveFiles() const { return m_haveFiles; }
 
 signals:
-    void isEmptyChanged();
+    void directoryLoaded(const QString &path);
+    void rootPathChanged();
+    void haveFilesChanged();
+    void fileChanged(const QString &path);
 
 private:
-
-    void setIsEmpty(bool empty);
-
-    QHash<QString, QPair<QDateTime, QIcon>> m_iconCache;
+    void setHaveFiles(bool value);
+    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
+    void resetModel();
+    void createBackendModel();
+    void destroyBackendModel();
+    bool checkHaveFiles(const QModelIndex &parentIdx) const;
+    bool checkHaveFiles() const;
+    QString getUniqueName(const QString &oldName);
 
     QString m_searchText;
-    Utils::FileSystemWatcher *m_fileSystemWatcher = nullptr;
-    AssetsLibraryDir *m_assetsDir = nullptr;
-    bool m_isEmpty = true;
-
-    QHash<int, QByteArray> m_roleNames;
-    inline static QHash<QString, bool> m_expandedStateHash; // <assetPath, isExpanded>
+    QString m_rootPath;
+    QFileSystemModel *m_sourceFsModel = nullptr;
+    bool m_haveFiles = false;
+    Utils::FileSystemWatcher *m_fileWatcher = nullptr;
 };
 
 } // namespace QmlDesigner

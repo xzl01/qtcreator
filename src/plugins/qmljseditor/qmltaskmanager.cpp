@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmltaskmanager.h"
 #include "qmljseditor.h"
@@ -63,7 +41,7 @@ QmlTaskManager::QmlTaskManager()
 static Tasks convertToTasks(const QList<DiagnosticMessage> &messages, const FilePath &fileName, Utils::Id category)
 {
     Tasks result;
-    foreach (const DiagnosticMessage &msg, messages) {
+    for (const DiagnosticMessage &msg : messages) {
         Task::TaskType type = msg.isError() ? Task::Error : Task::Warning;
         Task task(type, msg.message, fileName, msg.loc.startLine, category);
         result += task;
@@ -74,25 +52,26 @@ static Tasks convertToTasks(const QList<DiagnosticMessage> &messages, const File
 static Tasks convertToTasks(const QList<StaticAnalysis::Message> &messages, const FilePath &fileName, Utils::Id category)
 {
     QList<DiagnosticMessage> diagnostics;
-    foreach (const StaticAnalysis::Message &msg, messages)
+    for (const StaticAnalysis::Message &msg : messages)
         diagnostics += msg.toDiagnosticMessage();
     return convertToTasks(diagnostics, fileName, category);
 }
 
-void QmlTaskManager::collectMessages(
-        QFutureInterface<FileErrorMessages> &future,
-        Snapshot snapshot, QList<ModelManagerInterface::ProjectInfo> projectInfos,
-        ViewerContext vContext, bool updateSemantic)
+void QmlTaskManager::collectMessages(QFutureInterface<FileErrorMessages> &future,
+                                     Snapshot snapshot,
+                                     const QList<ModelManagerInterface::ProjectInfo> &projectInfos,
+                                     ViewerContext vContext,
+                                     bool updateSemantic)
 {
-    foreach (const ModelManagerInterface::ProjectInfo &info, projectInfos) {
-        QHash<QString, QList<DiagnosticMessage> > linkMessages;
+    for (const ModelManagerInterface::ProjectInfo &info : projectInfos) {
+        QHash<Utils::FilePath, QList<DiagnosticMessage>> linkMessages;
         ContextPtr context;
         if (updateSemantic) {
             QmlJS::Link link(snapshot, vContext, QmlJS::LibraryInfo());
             context = link(&linkMessages);
         }
 
-        foreach (const QString &fileName, info.sourceFiles) {
+        for (const Utils::FilePath &fileName : std::as_const(info.sourceFiles)) {
             Document::Ptr document = snapshot.document(fileName);
             if (!document)
                 continue;
@@ -101,17 +80,17 @@ void QmlTaskManager::collectMessages(
             result.fileName = fileName;
             if (document->language().isFullySupportedLanguage()) {
                 result.tasks = convertToTasks(document->diagnosticMessages(),
-                                              FilePath::fromString(fileName),
+                                              fileName,
                                               Constants::TASK_CATEGORY_QML);
 
                 if (updateSemantic) {
                     result.tasks += convertToTasks(linkMessages.value(fileName),
-                                                   FilePath::fromString(fileName),
+                                                   fileName,
                                                    Constants::TASK_CATEGORY_QML_ANALYSIS);
 
                     Check checker(document, context);
                     result.tasks += convertToTasks(checker(),
-                                                   FilePath::fromString(fileName),
+                                                   fileName,
                                                    Constants::TASK_CATEGORY_QML_ANALYSIS);
                 }
             }
@@ -155,17 +134,17 @@ void QmlTaskManager::updateMessagesNow(bool updateSemantic)
     m_messageCollector.setFuture(future);
 }
 
-void QmlTaskManager::documentsRemoved(const QStringList &path)
+void QmlTaskManager::documentsRemoved(const Utils::FilePaths &path)
 {
-    foreach (const QString &item, path)
+    for (const Utils::FilePath &item : path)
         removeTasksForFile(item);
 }
 
 void QmlTaskManager::displayResults(int begin, int end)
 {
     for (int i = begin; i < end; ++i) {
-        FileErrorMessages result = m_messageCollector.resultAt(i);
-        foreach (const Task &task, result.tasks) {
+        const ProjectExplorer::Tasks tasks = m_messageCollector.resultAt(i).tasks;
+        for (const Task &task : tasks) {
             insertTask(task);
         }
     }
@@ -179,17 +158,17 @@ void QmlTaskManager::displayAllResults()
 
 void QmlTaskManager::insertTask(const Task &task)
 {
-    Tasks tasks = m_docsWithTasks.value(task.file.toString());
+    Tasks tasks = m_docsWithTasks.value(task.file);
     tasks.append(task);
-    m_docsWithTasks.insert(task.file.toString(), tasks);
+    m_docsWithTasks.insert(task.file, tasks);
     TaskHub::addTask(task);
 }
 
-void QmlTaskManager::removeTasksForFile(const QString &fileName)
+void QmlTaskManager::removeTasksForFile(const Utils::FilePath &fileName)
 {
     if (m_docsWithTasks.contains(fileName)) {
         const Tasks tasks = m_docsWithTasks.value(fileName);
-        foreach (const Task &task, tasks)
+        for (const Task &task : tasks)
             TaskHub::removeTask(task);
         m_docsWithTasks.remove(fileName);
     }

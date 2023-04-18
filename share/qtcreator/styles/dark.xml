@@ -11,10 +11,12 @@
   <style name="DiffFile" foreground="#55ff55"/>
   <style name="DiffLocation" foreground="#ffff55"/>
   <style name="DisabledCode" foreground="#777777" background="#222222"/>
+  <style name="VisualWhitespace" foreground="#404040"/>
   <style name="Doxygen.Comment" foreground="#55ffff"/>
   <style name="Doxygen.Tag" foreground="#00a0a0"/>
   <style name="Field"/>
   <style name="Function"/>
+  <style name="Macro"/>
   <style name="Global"/>
   <style name="Keyword" foreground="#ffff55"/>
   <style name="PrimitiveType" foreground="#ffff55"/>
@@ -36,6 +38,7 @@
   <style name="SearchResult" background="#555500"/>
   <style name="SearchResultAlt1" foreground="#aaaaff" background="#363655"/>
   <style name="SearchResultAlt2" foreground="#ffaaaa" background="#553636"/>
+  <style name="SearchResultContainingFunction" foreground="#aaaaaa" background="#000000"/>
   <style name="SearchScope" background="#222200"/>
   <style name="Selection" foreground="#000000" background="#aaaaaa"/>
   <style name="Static" foreground="#55ff55" italic="true"/>

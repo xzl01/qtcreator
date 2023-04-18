@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -36,15 +14,15 @@
 
     \title Editing State Charts
 
-    State charts provide a graphical way of modeling how a system reacts to
-    stimuli. This is done by defining the possible \e states that the system can
+    State charts are a graphical way of modeling how a system reacts to
+    stimuli. They define the \e states that the system can
     be in, and how the system can move from one state to another (\e transitions
-    between states). A key characteristic of event-driven systems (such as Qt
-    applications) is that behavior often depends not only on the last or current
-    \e event, but also the events that preceded it. With state charts, this
-    information is easy to express.
+    between states). The behavior of event-driven systems (such as Qt
+    applications) often depends not only on the last or current
+    \e event, but also on earlier events. With state charts, you
+    can easily share this information.
 
-    \QC provides a project wizard for adding \l{https://www.w3.org/TR/scxml/}
+    \QC has a project wizard for adding \l{https://www.w3.org/TR/scxml/}
     {State Chart XML (SCXML)} files with boilerplate code to projects and an
     experimental SCXML editor for editing the state charts. You can use the
     SCXML editor to add \e states and \e transitions to the files. You can then
@@ -90,7 +68,7 @@
     chart, select \inlineimage icons/statistics.png
     (\uicontrol {View Statistics}).
 
-    To search from the state chart, use the \uicontrol Search pane. The search
+    To search from the state chart, use \l {Search Results}. The search
     checks the whole SCXML tree for attributes that match the search criteria.
 
     To save the currently visible part of the state chart as an image, select
@@ -151,7 +129,7 @@
         \li \e Initial state is the state the state machine enters when it
             starts.
 
-        \li \e {Parallel state} contains child states that execute in parallel
+        \li \e {Parallel state} has child states that execute in parallel
             and are all active simultaneously. Events are processed
             independently by each child state and may trigger different
             transitions for each child.

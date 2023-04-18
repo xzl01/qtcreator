@@ -1,45 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: KDAB (info@kdab.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qnxdebugsupport.h"
 
 #include "qnxconstants.h"
-#include "qnxdevice.h"
-#include "qnxrunconfiguration.h"
-#include "slog2inforunner.h"
 #include "qnxqtversion.h"
-#include "qnxutils.h"
+#include "qnxtr.h"
+#include "slog2inforunner.h"
 
 #include <coreplugin/icore.h>
 
 #include <debugger/debuggerkitinformation.h>
 #include <debugger/debuggerruncontrol.h>
+#include <debugger/debuggertr.h>
 
 #include <projectexplorer/devicesupport/deviceprocessesdialog.h>
-#include <projectexplorer/devicesupport/deviceprocesslist.h>
 #include <projectexplorer/devicesupport/deviceusedportsgatherer.h>
+#include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/kit.h>
 #include <projectexplorer/kitchooser.h>
 #include <projectexplorer/kitinformation.h>
@@ -53,8 +30,10 @@
 
 #include <qtsupport/qtkitinformation.h>
 
+#include <utils/fileutils.h>
 #include <utils/pathchooser.h>
 #include <utils/portlist.h>
+#include <utils/processinfo.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 
@@ -67,8 +46,7 @@ using namespace Debugger;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Qnx {
-namespace Internal {
+namespace Qnx::Internal {
 
 const char QNX_DEBUG_EXECUTABLE[] = "pdebug";
 
@@ -103,21 +81,21 @@ public:
     {
         setId("QnxDebuggeeRunner");
 
-        setStarter([this, runControl, portsGatherer] {
-            Runnable r = runControl->runnable();
+        setStartModifier([this, portsGatherer] {
+            CommandLine cmd = commandLine();
             QStringList arguments;
             if (portsGatherer->useGdbServer()) {
                 int pdebugPort = portsGatherer->gdbServer().port();
-                r.command.setExecutable(FilePath::fromString(QNX_DEBUG_EXECUTABLE));
+                cmd.setExecutable(device()->filePath(QNX_DEBUG_EXECUTABLE));
                 arguments.append(QString::number(pdebugPort));
             }
             if (portsGatherer->useQmlServer()) {
                 arguments.append(QmlDebug::qmlDebugTcpArguments(QmlDebug::QmlDebuggerServices,
                                                                 portsGatherer->qmlServer()));
             }
-            r.command.setArguments(ProcessArgs::joinArgs(arguments));
+            cmd.setArguments(ProcessArgs::joinArgs(arguments));
+            setCommandLine(cmd);
 
-            doStart(r, runControl->device());
         });
     }
 };
@@ -125,31 +103,37 @@ public:
 
 // QnxDebugSupport
 
-QnxDebugSupport::QnxDebugSupport(RunControl *runControl)
-    : DebuggerRunTool(runControl)
+class QnxDebugSupport : public Debugger::DebuggerRunTool
 {
-    setId("QnxDebugSupport");
-    appendMessage(tr("Preparing remote side..."), LogMessageFormat);
+public:
+    explicit QnxDebugSupport(ProjectExplorer::RunControl *runControl)
+        : DebuggerRunTool(runControl)
+    {
+        setId("QnxDebugSupport");
+        appendMessage(Tr::tr("Preparing remote side..."), LogMessageFormat);
 
-    setUsePortsGatherer(isCppDebugging(), isQmlDebugging());
+        setUsePortsGatherer(isCppDebugging(), isQmlDebugging());
 
-    auto debuggeeRunner = new QnxDebuggeeRunner(runControl, portsGatherer());
-    debuggeeRunner->addStartDependency(portsGatherer());
+        auto debuggeeRunner = new QnxDebuggeeRunner(runControl, portsGatherer());
+        debuggeeRunner->addStartDependency(portsGatherer());
 
-    auto slog2InfoRunner = new Slog2InfoRunner(runControl);
-    debuggeeRunner->addStartDependency(slog2InfoRunner);
+        auto slog2InfoRunner = new Slog2InfoRunner(runControl);
+        debuggeeRunner->addStartDependency(slog2InfoRunner);
 
-    addStartDependency(debuggeeRunner);
+        addStartDependency(debuggeeRunner);
 
-    Kit *k = runControl->kit();
+        Kit *k = runControl->kit();
 
-    setStartMode(AttachToRemoteServer);
-    setCloseMode(KillAtClose);
-    setUseCtrlCStub(true);
-    setSolibSearchPath(searchPaths(k));
-    if (auto qtVersion = dynamic_cast<QnxQtVersion *>(QtSupport::QtKitAspect::qtVersion(k)))
-        setSysRoot(qtVersion->qnxTarget());
-}
+        setStartMode(AttachToRemoteServer);
+        setCloseMode(KillAtClose);
+        setUseCtrlCStub(true);
+        setSolibSearchPath(FileUtils::toFilePathList(searchPaths(k)));
+        if (auto qtVersion = dynamic_cast<QnxQtVersion *>(QtSupport::QtKitAspect::qtVersion(k))) {
+            setSysRoot(qtVersion->qnxTarget());
+            modifyDebuggerEnvironment(qtVersion->environment());
+        }
+    }
+};
 
 
 // QnxAttachDebugDialog
@@ -160,11 +144,11 @@ public:
     QnxAttachDebugDialog(KitChooser *kitChooser)
         : DeviceProcessesDialog(kitChooser, Core::ICore::dialogParent())
     {
-        auto sourceLabel = new QLabel(QnxDebugSupport::tr("Project source directory:"), this);
+        auto sourceLabel = new QLabel(Tr::tr("Project source directory:"), this);
         m_projectSource = new PathChooser(this);
         m_projectSource->setExpectedKind(PathChooser::ExistingDirectory);
 
-        auto binaryLabel = new QLabel(QnxDebugSupport::tr("Local executable:"), this);
+        auto binaryLabel = new QLabel(Tr::tr("Local executable:"), this);
         m_localExecutable = new PathChooser(this);
         m_localExecutable->setExpectedKind(PathChooser::File);
 
@@ -197,30 +181,31 @@ public:
         setId("PDebugRunner");
         addStartDependency(portsGatherer);
 
-        setStarter([this, runControl, portsGatherer] {
+        setStartModifier([this, portsGatherer] {
             const int pdebugPort = portsGatherer->gdbServer().port();
-
-            Runnable r;
-            r.command = {QNX_DEBUG_EXECUTABLE, {QString::number(pdebugPort)}};
-            doStart(r, runControl->device());
+            setCommandLine({QNX_DEBUG_EXECUTABLE, {QString::number(pdebugPort)}});
         });
     }
 };
 
-QnxAttachDebugSupport::QnxAttachDebugSupport(RunControl *runControl)
-    : DebuggerRunTool(runControl)
+class QnxAttachDebugSupport : public Debugger::DebuggerRunTool
 {
-    setId("QnxAttachDebugSupport");
+public:
+    explicit QnxAttachDebugSupport(ProjectExplorer::RunControl *runControl)
+        : DebuggerRunTool(runControl)
+    {
+        setId("QnxAttachDebugSupport");
 
-    setUsePortsGatherer(isCppDebugging(), isQmlDebugging());
+        setUsePortsGatherer(isCppDebugging(), isQmlDebugging());
 
-    if (isCppDebugging()) {
-        auto pdebugRunner = new PDebugRunner(runControl, portsGatherer());
-        addStartDependency(pdebugRunner);
+        if (isCppDebugging()) {
+            auto pdebugRunner = new PDebugRunner(runControl, portsGatherer());
+            addStartDependency(pdebugRunner);
+        }
     }
-}
+};
 
-void QnxAttachDebugSupport::showProcessesDialog()
+void showAttachToProcessDialog()
 {
     auto kitChooser = new KitChooser;
     kitChooser->setKitPredicate([](const Kit *k) {
@@ -228,7 +213,7 @@ void QnxAttachDebugSupport::showProcessesDialog()
     });
 
     QnxAttachDebugDialog dlg(kitChooser);
-    dlg.addAcceptButton(DeviceProcessesDialog::tr("&Attach to Process"));
+    dlg.addAcceptButton(::Debugger::Tr::tr("&Attach to Process"));
     dlg.showAllDevices();
     if (dlg.exec() == QDialog::Rejected)
         return;
@@ -238,13 +223,9 @@ void QnxAttachDebugSupport::showProcessesDialog()
         return;
 
     // FIXME: That should be somehow related to the selected kit.
-    auto startRunConfig = SessionManager::startupRunConfiguration();
-    auto runConfig = qobject_cast<QnxRunConfiguration *>(startRunConfig);
-    if (!runConfig)
-        return;
+    auto runConfig = SessionManager::startupRunConfiguration();
 
-    DeviceProcessItem process = dlg.currentProcess();
-    const int pid = process.pid;
+    const int pid = dlg.currentProcess().processId;
 //    QString projectSourceDirectory = dlg.projectSource();
     FilePath localExecutable = dlg.localExecutable();
     if (localExecutable.isEmpty()) {
@@ -253,16 +234,16 @@ void QnxAttachDebugSupport::showProcessesDialog()
     }
 
     auto runControl = new RunControl(ProjectExplorer::Constants::DEBUG_RUN_MODE);
-    runControl->setRunConfiguration(runConfig);
+    runControl->copyDataFromRunConfiguration(runConfig);
     auto debugger = new QnxAttachDebugSupport(runControl);
     debugger->setStartMode(AttachToRemoteServer);
     debugger->setCloseMode(DetachAtClose);
     debugger->setSymbolFile(localExecutable);
     debugger->setUseCtrlCStub(true);
     debugger->setAttachPid(pid);
-//    setRunControlName(tr("Remote: \"%1\" - Process %2").arg(remoteChannel).arg(m_process.pid));
-    debugger->setRunControlName(tr("Remote QNX process %1").arg(pid));
-    debugger->setSolibSearchPath(searchPaths(kit));
+//    setRunControlName(Tr::tr("Remote: \"%1\" - Process %2").arg(remoteChannel).arg(m_process.pid));
+    debugger->setRunControlName(Tr::tr("Remote QNX process %1").arg(pid));
+    debugger->setSolibSearchPath(FileUtils::toFilePathList(searchPaths(kit)));
     if (auto qtVersion = dynamic_cast<QnxQtVersion *>(QtSupport::QtKitAspect::qtVersion(kit)))
         debugger->setSysRoot(qtVersion->qnxTarget());
     debugger->setUseContinueInsteadOfRun(true);
@@ -270,5 +251,13 @@ void QnxAttachDebugSupport::showProcessesDialog()
     ProjectExplorerPlugin::startRunControl(runControl);
 }
 
-} // namespace Internal
-} // namespace Qnx
+// QnxDebugWorkerFactory
+
+QnxDebugWorkerFactory::QnxDebugWorkerFactory()
+{
+    setProduct<QnxDebugSupport>();
+    addSupportedRunMode(ProjectExplorer::Constants::DEBUG_RUN_MODE);
+    addSupportedRunConfig(Constants::QNX_RUNCONFIG_ID);
+}
+
+} // Qnx::Internal

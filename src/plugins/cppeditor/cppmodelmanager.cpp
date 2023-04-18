@@ -1,75 +1,72 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppmodelmanager.h"
 
 #include "abstracteditorsupport.h"
-#include "abstractoverviewmodel.h"
 #include "baseeditordocumentprocessor.h"
-#include "builtinindexingsupport.h"
+#include "compileroptionsbuilder.h"
+#include "cppcanonicalsymbol.h"
 #include "cppcodemodelinspectordumper.h"
+#include "cppcodemodelsettings.h"
 #include "cppcurrentdocumentfilter.h"
 #include "cppeditorconstants.h"
-#include "cppeditorplugin.h"
+#include "cppeditortr.h"
 #include "cppfindreferences.h"
 #include "cppincludesfilter.h"
 #include "cppindexingsupport.h"
 #include "cpplocatordata.h"
 #include "cpplocatorfilter.h"
 #include "cppbuiltinmodelmanagersupport.h"
-#include "cpprefactoringchanges.h"
-#include "cpprefactoringengine.h"
+#include "cppprojectfile.h"
 #include "cppsourceprocessor.h"
 #include "cpptoolsjsextension.h"
 #include "cpptoolsreuse.h"
 #include "editordocumenthandle.h"
-#include "stringtable.h"
 #include "symbolfinder.h"
 #include "symbolsfindfilter.h"
-#include "followsymbolinterface.h"
 
+#include <coreplugin/actionmanager/actionmanager.h>
+#include <coreplugin/coreconstants.h>
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/editormanager/editormanager.h>
+#include <coreplugin/find/searchresultwindow.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/jsexpander.h>
+#include <coreplugin/messagemanager.h>
+#include <coreplugin/progressmanager/futureprogress.h>
 #include <coreplugin/progressmanager/progressmanager.h>
 #include <coreplugin/vcsmanager.h>
 #include <cplusplus/ASTPath.h>
+#include <cplusplus/ExpressionUnderCursor.h>
 #include <cplusplus/TypeOfExpression.h>
 #include <extensionsystem/pluginmanager.h>
+
+#include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/gcctoolchain.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectmacro.h>
+#include <projectexplorer/projectnodes.h>
+#include <projectexplorer/projecttree.h>
 #include <projectexplorer/session.h>
+#include <projectexplorer/target.h>
+
 #include <texteditor/textdocument.h>
+
+#include <utils/environment.h>
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
+#include <utils/qtcprocess.h>
+#include <utils/runextensions.h>
+#include <utils/savefile.h>
+#include <utils/temporarydirectory.h>
 
+#include <QAction>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
@@ -77,10 +74,15 @@
 #include <QMutexLocker>
 #include <QReadLocker>
 #include <QReadWriteLock>
+#include <QRegularExpression>
+#include <QRegularExpressionMatch>
 #include <QTextBlock>
+#include <QThread>
 #include <QThreadPool>
 #include <QTimer>
 #include <QWriteLocker>
+
+#include <memory>
 
 #if defined(QTCREATOR_WITH_DUMP_AST) && defined(Q_CC_GNU)
 #define WITH_AST_DUMP
@@ -88,10 +90,11 @@
 #include <sstream>
 #endif
 
-static const bool DumpProjectInfo = qgetenv("QTC_DUMP_PROJECT_INFO") == "1";
-
 using namespace CPlusPlus;
 using namespace ProjectExplorer;
+using namespace Utils;
+
+static const bool DumpProjectInfo = qtcEnvironmentVariable("QTC_DUMP_PROJECT_INFO") == "1";
 
 #ifdef QTCREATOR_WITH_DUMP_AST
 
@@ -137,8 +140,6 @@ protected:
 
 namespace CppEditor {
 
-using REType = RefactoringEngineType;
-
 namespace Internal {
 
 static CppModelManager *m_instance;
@@ -169,7 +170,7 @@ public:
 
     // The members below are cached/(re)calculated from the projects and/or their project parts
     bool m_dirty;
-    QStringList m_projectFiles;
+    Utils::FilePaths m_projectFiles;
     ProjectExplorer::HeaderPaths m_headerPaths;
     ProjectExplorer::Macros m_definedMacros;
 
@@ -179,8 +180,9 @@ public:
     QSet<AbstractEditorSupport *> m_extraEditorSupports;
 
     // Model Manager Supports for e.g. completion and highlighting
-    ModelManagerSupport::Ptr m_builtinModelManagerSupport;
-    ModelManagerSupport::Ptr m_activeModelManagerSupport;
+    BuiltinModelManagerSupport m_builtinModelManagerSupport;
+    std::unique_ptr<ModelManagerSupport> m_extendedModelManagerSupport;
+    ModelManagerSupport *m_activeModelManagerSupport = &m_builtinModelManagerSupport;
 
     // Indexing
     CppIndexingSupport *m_internalIndexingSupport;
@@ -198,10 +200,6 @@ public:
     QTimer m_delayedGcTimer;
     QTimer m_fallbackProjectPartTimer;
 
-    // Refactoring
-    using REHash = QMap<REType, RefactoringEngineInterface *>;
-    REHash m_refactoringEngines;
-
     CppLocatorData m_locatorData;
     std::unique_ptr<Core::ILocatorFilter> m_locatorFilter;
     std::unique_ptr<Core::ILocatorFilter> m_classesFilter;
@@ -209,6 +207,8 @@ public:
     std::unique_ptr<Core::ILocatorFilter> m_functionsFilter;
     std::unique_ptr<Core::IFindFilter> m_symbolsFindFilter;
     std::unique_ptr<Core::ILocatorFilter> m_currentDocumentFilter;
+
+    QList<Document::DiagnosticMessage> m_diagnosticMessages;
 };
 
 } // namespace Internal
@@ -263,18 +263,18 @@ const char pp_configuration[] =
     "#define __ptr32\n"
     "#define __ptr64\n";
 
-QSet<QString> CppModelManager::timeStampModifiedFiles(const QList<Document::Ptr> &documentsToCheck)
+QSet<FilePath> CppModelManager::timeStampModifiedFiles(const QList<Document::Ptr> &documentsToCheck)
 {
-    QSet<QString> sourceFiles;
+    QSet<FilePath> sourceFiles;
 
-    foreach (const Document::Ptr doc, documentsToCheck) {
+    for (const Document::Ptr &doc : documentsToCheck) {
         const QDateTime lastModified = doc->lastModified();
 
         if (!lastModified.isNull()) {
-            QFileInfo fileInfo(doc->fileName());
+            const FilePath filePath = doc->filePath();
 
-            if (fileInfo.exists() && fileInfo.lastModified() != lastModified)
-                sourceFiles.insert(doc->fileName());
+            if (filePath.exists() && filePath.lastModified() != lastModified)
+                sourceFiles.insert(filePath);
         }
     }
 
@@ -294,7 +294,7 @@ CppSourceProcessor *CppModelManager::createSourceProcessor()
 {
     CppModelManager *that = instance();
     return new CppSourceProcessor(that->snapshot(), [that](const Document::Ptr &doc) {
-        const Document::Ptr previousDocument = that->document(doc->fileName());
+        const Document::Ptr previousDocument = that->document(doc->filePath());
         const unsigned newRevision = previousDocument.isNull()
                 ? 1U
                 : previousDocument->revision() + 1;
@@ -304,69 +304,359 @@ CppSourceProcessor *CppModelManager::createSourceProcessor()
     });
 }
 
-QString CppModelManager::editorConfigurationFileName()
+const FilePath &CppModelManager::editorConfigurationFileName()
 {
-    return QLatin1String("<per-editor-defines>");
+    static const FilePath config = FilePath::fromPathPart(u"<per-editor-defines>");
+    return config;
 }
 
-static RefactoringEngineInterface *getRefactoringEngine(CppModelManagerPrivate::REHash &engines)
+ModelManagerSupport *CppModelManager::modelManagerSupport(Backend backend) const
 {
-    QTC_ASSERT(!engines.empty(), return nullptr;);
-    RefactoringEngineInterface *currentEngine = engines[REType::BuiltIn];
-    if (engines.find(REType::ClangCodeModel) != engines.end()) {
-        currentEngine = engines[REType::ClangCodeModel];
-    } else if (engines.find(REType::ClangRefactoring) != engines.end()) {
-        RefactoringEngineInterface *engine = engines[REType::ClangRefactoring];
-        if (engine->isRefactoringEngineAvailable())
-            currentEngine = engine;
-    }
-    return currentEngine;
+    return backend == Backend::Builtin
+            ? &d->m_builtinModelManagerSupport : d->m_activeModelManagerSupport;
 }
 
 void CppModelManager::startLocalRenaming(const CursorInEditor &data,
                                          const ProjectPart *projectPart,
-                                         RenameCallback &&renameSymbolsCallback)
+                                         RenameCallback &&renameSymbolsCallback,
+                                         Backend backend)
 {
-    RefactoringEngineInterface *engine = getRefactoringEngine(d->m_refactoringEngines);
-    QTC_ASSERT(engine, return;);
-    engine->startLocalRenaming(data, projectPart, std::move(renameSymbolsCallback));
+    instance()->modelManagerSupport(backend)
+            ->startLocalRenaming(data, projectPart, std::move(renameSymbolsCallback));
 }
 
-void CppModelManager::globalRename(const CursorInEditor &data, UsagesCallback &&renameCallback,
-                                   const QString &replacement)
+void CppModelManager::globalRename(const CursorInEditor &data, const QString &replacement,
+                                   const std::function<void()> &callback, Backend backend)
 {
-    RefactoringEngineInterface *engine = getRefactoringEngine(d->m_refactoringEngines);
-    QTC_ASSERT(engine, return;);
-    engine->globalRename(data, std::move(renameCallback), replacement);
+    instance()->modelManagerSupport(backend)->globalRename(data, replacement, callback);
 }
 
-void CppModelManager::findUsages(const CursorInEditor &data,
-                                 UsagesCallback &&showUsagesCallback) const
+void CppModelManager::findUsages(const CursorInEditor &data, Backend backend)
 {
-    RefactoringEngineInterface *engine = getRefactoringEngine(d->m_refactoringEngines);
-    QTC_ASSERT(engine, return;);
-    engine->findUsages(data, std::move(showUsagesCallback));
+    instance()->modelManagerSupport(backend)->findUsages(data);
 }
 
-void CppModelManager::globalFollowSymbol(
-        const CursorInEditor &data,
-        Utils::ProcessLinkCallback &&processLinkCallback,
-        const CPlusPlus::Snapshot &snapshot,
-        const CPlusPlus::Document::Ptr &documentFromSemanticInfo,
-        SymbolFinder *symbolFinder,
-        bool inNextSplit) const
+void CppModelManager::switchHeaderSource(bool inNextSplit, Backend backend)
 {
-    RefactoringEngineInterface *engine = getRefactoringEngine(d->m_refactoringEngines);
-    QTC_ASSERT(engine, return;);
-    engine->globalFollowSymbol(data, std::move(processLinkCallback), snapshot, documentFromSemanticInfo,
-                               symbolFinder, inNextSplit);
+    const Core::IDocument *currentDocument = Core::EditorManager::currentDocument();
+    QTC_ASSERT(currentDocument, return);
+    instance()->modelManagerSupport(backend)->switchHeaderSource(currentDocument->filePath(),
+                                                                 inNextSplit);
 }
 
-bool CppModelManager::positionRequiresSignal(const QString &filePath, const QByteArray &content,
-                                             int position) const
+void CppModelManager::showPreprocessedFile(bool inNextSplit)
+{
+    const Core::IDocument *doc = Core::EditorManager::currentDocument();
+    QTC_ASSERT(doc, return);
+
+    static const auto showError = [](const QString &reason) {
+        Core::MessageManager::writeFlashing(Tr::tr("Cannot show preprocessed file: %1")
+                                            .arg(reason));
+    };
+    static const auto showFallbackWarning = [](const QString &reason) {
+        Core::MessageManager::writeSilently(
+            Tr::tr("Falling back to built-in preprocessor: %1").arg(reason));
+    };
+    static const auto saveAndOpen = [](const FilePath &filePath, const QByteArray &contents,
+                                       bool inNextSplit) {
+        SaveFile f(filePath);
+        if (!f.open()) {
+            showError(Tr::tr("Failed to open output file \"%1\".").arg(filePath.toUserOutput()));
+            return;
+        }
+        f.write(contents);
+        if (!f.commit()) {
+            showError(Tr::tr("Failed to write output file \"%1\".").arg(filePath.toUserOutput()));
+            return;
+        }
+        f.close();
+        openEditor(filePath, inNextSplit, Core::Constants::K_DEFAULT_TEXT_EDITOR_ID);
+    };
+
+    const FilePath &filePath = doc->filePath();
+    const QString outFileName = filePath.completeBaseName() + "_preprocessed." + filePath.suffix();
+    const auto outFilePath = FilePath::fromString(
+                TemporaryDirectory::masterTemporaryDirectory()->filePath(outFileName));
+    const auto useBuiltinPreprocessor = [filePath, outFilePath, inNextSplit,
+                                         contents = doc->contents()] {
+        const Document::Ptr preprocessedDoc = instance()->snapshot()
+                .preprocessedDocument(contents, filePath);
+        QByteArray content = R"(/* Created using Qt Creator's built-in preprocessor. */
+/* See Tools -> Debug Qt Creator -> Inspect C++ Code Model for the parameters used.
+ * Adapt the respective setting in Edit -> Preferences -> C++ -> Code Model to invoke
+ * the actual compiler instead.
+ */
+)";
+        saveAndOpen(outFilePath, content.append(preprocessedDoc->utf8Source()), inNextSplit);
+    };
+
+    if (codeModelSettings()->useBuiltinPreprocessor()) {
+        useBuiltinPreprocessor();
+        return;
+    }
+
+    const Project * const project = ProjectTree::currentProject();
+    if (!project || !project->activeTarget()
+            || !project->activeTarget()->activeBuildConfiguration()) {
+        showFallbackWarning(Tr::tr("Could not determine which compiler to invoke."));
+        useBuiltinPreprocessor();
+        return;
+    }
+
+    const ToolChain * tc = nullptr;
+    const ProjectFile classifier(filePath, ProjectFile::classify(filePath.toString()));
+    if (classifier.isC()) {
+        tc = ToolChainKitAspect::cToolChain(project->activeTarget()->kit());
+    } else if (classifier.isCxx() || classifier.isHeader()) {
+        tc = ToolChainKitAspect::cxxToolChain(project->activeTarget()->kit());
+    } else {
+        showFallbackWarning(Tr::tr("Could not determine which compiler to invoke."));
+        useBuiltinPreprocessor();
+        return;
+    }
+
+    const bool isGcc = dynamic_cast<const GccToolChain *>(tc);
+    const bool isMsvc = !isGcc
+            && (tc->typeId() == ProjectExplorer::Constants::MSVC_TOOLCHAIN_TYPEID
+                || tc->typeId() == ProjectExplorer::Constants::CLANG_CL_TOOLCHAIN_TYPEID);
+    if (!isGcc && !isMsvc) {
+        showFallbackWarning(Tr::tr("Could not determine compiler command line."));
+        useBuiltinPreprocessor();
+        return;
+    }
+
+    const ProjectPart::ConstPtr projectPart = Utils::findOrDefault(
+                instance()->projectPart(filePath), [](const ProjectPart::ConstPtr &pp) {
+        return pp->belongsToProject(ProjectTree::currentProject());
+    });
+    if (!projectPart) {
+        showFallbackWarning(Tr::tr("Could not determine compiler command line."));
+        useBuiltinPreprocessor();
+        return;
+    }
+
+    CompilerOptionsBuilder optionsBuilder(*projectPart);
+    optionsBuilder.setNativeMode();
+    optionsBuilder.setClStyle(isMsvc);
+    optionsBuilder.build(classifier.kind, UsePrecompiledHeaders::No);
+    QStringList compilerArgs = optionsBuilder.options();
+    if (isGcc)
+        compilerArgs.append({"-E", "-o", outFilePath.toUserOutput()});
+    else
+        compilerArgs.append("/E");
+    compilerArgs.append(filePath.toUserOutput());
+    const CommandLine compilerCommandLine(tc->compilerCommand(), compilerArgs);
+    const auto compiler = new QtcProcess(instance());
+    compiler->setCommand(compilerCommandLine);
+    compiler->setEnvironment(project->activeTarget()->activeBuildConfiguration()->environment());
+    connect(compiler, &QtcProcess::done, instance(), [compiler, outFilePath, inNextSplit,
+                                                      useBuiltinPreprocessor, isMsvc] {
+        compiler->deleteLater();
+        if (compiler->result() != ProcessResult::FinishedWithSuccess) {
+            showFallbackWarning("Compiler failed to run");
+            useBuiltinPreprocessor();
+            return;
+        }
+        if (isMsvc)
+            saveAndOpen(outFilePath, compiler->readAllRawStandardOutput(), inNextSplit);
+        else
+            openEditor(outFilePath, inNextSplit, Core::Constants::K_DEFAULT_TEXT_EDITOR_ID);
+    });
+    compiler->start();
+}
+
+class FindUnusedActionsEnabledSwitcher
+{
+public:
+    FindUnusedActionsEnabledSwitcher()
+        : actions{Core::ActionManager::command("CppTools.FindUnusedFunctions"),
+                  Core::ActionManager::command("CppTools.FindUnusedFunctionsInSubProject")}
+    {
+        for (Core::Command * const action : actions)
+            action->action()->setEnabled(false);
+    }
+    ~FindUnusedActionsEnabledSwitcher()
+    {
+        for (Core::Command * const action : actions)
+            action->action()->setEnabled(true);
+    }
+private:
+    const QList<Core::Command *> actions;
+};
+using FindUnusedActionsEnabledSwitcherPtr = std::shared_ptr<FindUnusedActionsEnabledSwitcher>;
+
+static void checkNextFunctionForUnused(
+        const QPointer<Core::SearchResult> &search,
+        const std::shared_ptr<QFutureInterface<bool>> &findRefsFuture,
+        const FindUnusedActionsEnabledSwitcherPtr &actionsSwitcher)
+{
+    if (!search || findRefsFuture->isCanceled())
+        return;
+    QVariantMap data = search->userData().toMap();
+    QVariant &remainingLinks = data["remaining"];
+    QVariantList remainingLinksList = remainingLinks.toList();
+    QVariant &activeLinks = data["active"];
+    QVariantList activeLinksList = activeLinks.toList();
+    if (remainingLinksList.isEmpty()) {
+        if (activeLinksList.isEmpty()) {
+            search->finishSearch(false);
+            findRefsFuture->reportFinished();
+        }
+        return;
+    }
+    const auto link = qvariant_cast<Link>(remainingLinksList.takeFirst());
+    activeLinksList << QVariant::fromValue(link);
+    remainingLinks = remainingLinksList;
+    activeLinks = activeLinksList;
+    search->setUserData(data);
+    CppModelManager::instance()->modelManagerSupport(CppModelManager::Backend::Best)
+            ->checkUnused(link, search, [search, link, findRefsFuture, actionsSwitcher](const Link &) {
+        if (!search || findRefsFuture->isCanceled())
+            return;
+        const int newProgress = findRefsFuture->progressValue() + 1;
+        findRefsFuture->setProgressValueAndText(newProgress, Tr::tr("Checked %1 of %2 functions")
+                .arg(newProgress).arg(findRefsFuture->progressMaximum()));
+        QVariantMap data = search->userData().toMap();
+        QVariant &activeLinks = data["active"];
+        QVariantList activeLinksList = activeLinks.toList();
+        QTC_CHECK(activeLinksList.removeOne(QVariant::fromValue(link)));
+        activeLinks = activeLinksList;
+        search->setUserData(data);
+        checkNextFunctionForUnused(search, findRefsFuture, actionsSwitcher);
+    });
+}
+
+void CppModelManager::findUnusedFunctions(const FilePath &folder)
+{
+    const auto actionsSwitcher = std::make_shared<FindUnusedActionsEnabledSwitcher>();
+
+    // Step 1: Employ locator to find all functions
+    Core::ILocatorFilter *const functionsFilter
+            = Utils::findOrDefault(Core::ILocatorFilter::allLocatorFilters(),
+                                   Utils::equal(&Core::ILocatorFilter::id,
+                                                Id(Constants::FUNCTIONS_FILTER_ID)));
+    QTC_ASSERT(functionsFilter, return);
+    const QPointer<Core::SearchResult> search
+            = Core::SearchResultWindow::instance()
+            ->startNewSearch(Tr::tr("Find Unused Functions"),
+                             {},
+                             {},
+                             Core::SearchResultWindow::SearchOnly,
+                             Core::SearchResultWindow::PreserveCaseDisabled,
+                             "CppEditor");
+    connect(search, &Core::SearchResult::activated, [](const Core::SearchResultItem &item) {
+        Core::EditorManager::openEditorAtSearchResult(item);
+    });
+    Core::SearchResultWindow::instance()->popup(Core::IOutputPane::ModeSwitch
+                                                | Core::IOutputPane::WithFocus);
+    const auto locatorWatcher = new QFutureWatcher<Core::LocatorFilterEntry>(search);
+    functionsFilter->prepareSearch({});
+    connect(search, &Core::SearchResult::canceled, locatorWatcher, [locatorWatcher] {
+        locatorWatcher->cancel();
+    });
+    connect(locatorWatcher, &QFutureWatcher<Core::LocatorFilterEntry>::finished, search,
+            [locatorWatcher, search, folder, actionsSwitcher] {
+        locatorWatcher->deleteLater();
+        if (locatorWatcher->isCanceled()) {
+            search->finishSearch(true);
+            return;
+        }
+        Links links;
+        for (int i = 0; i < locatorWatcher->future().resultCount(); ++i) {
+            const Core::LocatorFilterEntry &entry = locatorWatcher->resultAt(i);
+            static const QStringList prefixBlacklist{"main(", "~", "qHash(", "begin()", "end()",
+                    "cbegin()", "cend()", "constBegin()", "constEnd()"};
+            if (Utils::anyOf(prefixBlacklist, [&entry](const QString &prefix) {
+                    return entry.displayName.startsWith(prefix); })) {
+                continue;
+            }
+            Link link;
+            if (entry.internalData.canConvert<Link>())
+                link = qvariant_cast<Link>(entry.internalData);
+            else if (const auto item = qvariant_cast<IndexItem::Ptr>(entry.internalData))
+                link = Link(item->filePath(), item->line(), item->column());
+
+            if (link.hasValidTarget() && link.targetFilePath.isReadableFile()
+                    && (folder.isEmpty() || link.targetFilePath.isChildOf(folder))
+                    && SessionManager::projectForFile(link.targetFilePath)) {
+                links << link;
+            }
+        }
+        if (links.isEmpty()) {
+            search->finishSearch(false);
+            return;
+        }
+        QVariantMap remainingAndActiveLinks;
+        remainingAndActiveLinks.insert("active", QVariantList());
+        remainingAndActiveLinks.insert("remaining",
+            Utils::transform<QVariantList>(links, [](const Link &l) { return QVariant::fromValue(l);
+        }));
+        search->setUserData(remainingAndActiveLinks);
+        const auto findRefsFuture = std::make_shared<QFutureInterface<bool>>();
+        Core::FutureProgress *const progress
+                = Core::ProgressManager::addTask(findRefsFuture->future(),
+                                                 Tr::tr("Finding Unused Functions"),
+                                                 "CppEditor.FindUnusedFunctions");
+        connect(progress,
+                &Core::FutureProgress::canceled,
+                search,
+                [search, future = std::weak_ptr<QFutureInterface<bool>>(findRefsFuture)] {
+            search->finishSearch(true);
+            if (const auto f = future.lock()) {
+                f->cancel();
+                f->reportFinished();
+            }
+        });
+        findRefsFuture->setProgressRange(0, links.size());
+        connect(search, &Core::SearchResult::canceled, [findRefsFuture] {
+            findRefsFuture->cancel();
+            findRefsFuture->reportFinished();
+        });
+
+        // Step 2: Forward search results one by one to backend to check which functions are unused.
+        //         We keep several requests in flight for decent throughput.
+        const int inFlightCount = std::min(QThread::idealThreadCount() / 2 + 1, int(links.size()));
+        for (int i = 0; i < inFlightCount; ++i)
+            checkNextFunctionForUnused(search, findRefsFuture, actionsSwitcher);
+    });
+    locatorWatcher->setFuture(
+                Utils::runAsync([functionsFilter](QFutureInterface<Core::LocatorFilterEntry> &future) {
+                    future.reportResults(functionsFilter->matchesFor(future, {}));
+                }));
+}
+
+void CppModelManager::checkForUnusedSymbol(Core::SearchResult *search,
+                                           const Link &link,
+                                           CPlusPlus::Symbol *symbol,
+                                           const CPlusPlus::LookupContext &context,
+                                           const LinkHandler &callback)
+{
+    instance()->d->m_findReferences->checkUnused(search, link, symbol, context, callback);
+}
+
+int argumentPositionOf(const AST *last, const CallAST *callAst)
+{
+    if (!callAst || !callAst->expression_list)
+        return false;
+
+    int num = 0;
+    for (ExpressionListAST *it = callAst->expression_list; it; it = it->next) {
+        ++num;
+        const ExpressionAST *const arg = it->value;
+        if (arg->firstToken() <= last->firstToken()
+            && arg->lastToken() >= last->lastToken()) {
+            return num;
+        }
+    }
+    return 0;
+}
+
+SignalSlotType CppModelManager::getSignalSlotType(const FilePath &filePath,
+                                                  const QByteArray &content,
+                                                  int position) const
 {
     if (content.isEmpty())
-        return false;
+        return SignalSlotType::None;
 
     // Insert a dummy prefix if we don't have a real one. Otherwise the AST path will not contain
     // anything after the CallAST.
@@ -375,35 +665,42 @@ bool CppModelManager::positionRequiresSignal(const QString &filePath, const QByt
         fixedContent.insert(position, 'x');
 
     const Snapshot snapshot = this->snapshot();
-    const Document::Ptr document = snapshot.preprocessedDocument(fixedContent,
-                                                                 Utils::FilePath::fromString(filePath));
+    const Document::Ptr document = snapshot.preprocessedDocument(fixedContent, filePath);
     document->check();
     QTextDocument textDocument(QString::fromUtf8(fixedContent));
     QTextCursor cursor(&textDocument);
     cursor.setPosition(position);
 
-    // Are we at the second argument of a function call?
     const QList<AST *> path = ASTPath(document)(cursor);
-    if (path.isEmpty() || !path.last()->asSimpleName())
-        return false;
+    if (path.isEmpty())
+        return SignalSlotType::None;
     const CallAST *callAst = nullptr;
     for (auto it = path.crbegin(); it != path.crend(); ++it) {
         if ((callAst = (*it)->asCall()))
             break;
     }
-    if (!callAst)
-        return false;
-    if (!callAst->expression_list || !callAst->expression_list->next)
-        return false;
-    const ExpressionAST * const secondArg = callAst->expression_list->next->value;
-    if (secondArg->firstToken() > path.last()->firstToken()
-            || secondArg->lastToken() < path.last()->lastToken()) {
-        return false;
-    }
 
-    // Is the function called "connect" or "disconnect"?
-    if (!callAst->base_expression)
-        return false;
+    if (!callAst || !callAst->base_expression)
+        return SignalSlotType::None;
+
+    const int argumentPosition = argumentPositionOf(path.last(), callAst);
+    if (argumentPosition != 2 && argumentPosition != 4)
+        return SignalSlotType::None;
+
+    const NameAST *nameAst = nullptr;
+    if (const IdExpressionAST * const idAst = callAst->base_expression->asIdExpression())
+        nameAst = idAst->name;
+    else if (const MemberAccessAST * const ast = callAst->base_expression->asMemberAccess())
+        nameAst = ast->member_name;
+    if (!nameAst || !nameAst->name)
+        return SignalSlotType::None;
+    const Identifier * const id = nameAst->name->identifier();
+    if (!id)
+        return SignalSlotType::None;
+    const QString funcName = QString::fromUtf8(id->chars(), id->size());
+    if (funcName != "connect" && funcName != "disconnect")
+        return SignalSlotType::None;
+
     Scope *scope = document->globalNamespace();
     for (auto it = path.crbegin(); it != path.crend(); ++it) {
         if (const CompoundStatementAST * const stmtAst = (*it)->asCompoundStatement()) {
@@ -411,18 +708,14 @@ bool CppModelManager::positionRequiresSignal(const QString &filePath, const QByt
             break;
         }
     }
-    const NameAST *nameAst = nullptr;
     const LookupContext context(document, snapshot);
-    if (const IdExpressionAST * const idAst = callAst->base_expression->asIdExpression()) {
-        nameAst = idAst->name;
-    } else if (const MemberAccessAST * const ast = callAst->base_expression->asMemberAccess()) {
-        nameAst = ast->member_name;
+    if (const MemberAccessAST * const ast = callAst->base_expression->asMemberAccess()) {
         TypeOfExpression exprType;
         exprType.setExpandTemplates(true);
         exprType.init(document, snapshot);
         const QList<LookupItem> typeMatches = exprType(ast->base_expression, document, scope);
         if (typeMatches.isEmpty())
-            return false;
+            return SignalSlotType::None;
         const std::function<const NamedType *(const FullySpecifiedType &)> getNamedType
                 = [&getNamedType](const FullySpecifiedType &type ) -> const NamedType * {
             Type * const t = type.type();
@@ -438,22 +731,14 @@ bool CppModelManager::positionRequiresSignal(const QString &filePath, const QByt
         if (!namedType && typeMatches.first().declaration())
             namedType = getNamedType(typeMatches.first().declaration()->type());
         if (!namedType)
-            return false;
+            return SignalSlotType::None;
         const ClassOrNamespace * const result = context.lookupType(namedType->name(), scope);
         if (!result)
-            return false;
+            return SignalSlotType::None;
         scope = result->rootClass();
         if (!scope)
-            return false;
+            return SignalSlotType::None;
     }
-    if (!nameAst || !nameAst->name)
-        return false;
-    const Identifier * const id = nameAst->name->identifier();
-    if (!id)
-        return false;
-    const QString funcName = QString::fromUtf8(id->chars(), id->size());
-    if (funcName != "connect" && funcName != "disconnect")
-        return false;
 
     // Is the function a member function of QObject?
     const QList<LookupItem> matches = context.lookup(nameAst->name, scope);
@@ -464,32 +749,32 @@ bool CppModelManager::positionRequiresSignal(const QString &filePath, const QByt
         if (!klass || !klass->name())
             continue;
         const Identifier * const classId = klass->name()->identifier();
-        if (classId && QString::fromUtf8(classId->chars(), classId->size()) == "QObject")
-            return true;
+        if (classId && QString::fromUtf8(classId->chars(), classId->size()) == "QObject") {
+            QString expression;
+            LanguageFeatures features = LanguageFeatures::defaultFeatures();
+            CPlusPlus::ExpressionUnderCursor expressionUnderCursor(features);
+            for (int i = cursor.position(); i > 0; --i)
+                if (textDocument.characterAt(i) == '(') {
+                    cursor.setPosition(i);
+                    break;
+                }
+
+            expression = expressionUnderCursor(cursor);
+
+            if (expression.endsWith(QLatin1String("SIGNAL"))
+                    || (expression.endsWith(QLatin1String("SLOT")) && argumentPosition == 4))
+                return SignalSlotType::OldStyleSignal;
+
+            if (argumentPosition == 2)
+                return SignalSlotType::NewStyleSignal;
+        }
     }
-
-    return false;
+    return SignalSlotType::None;
 }
 
-void CppModelManager::addRefactoringEngine(RefactoringEngineType type,
-                                           RefactoringEngineInterface *refactoringEngine)
+FollowSymbolUnderCursor &CppModelManager::builtinFollowSymbol()
 {
-    instance()->d->m_refactoringEngines[type] = refactoringEngine;
-}
-
-void CppModelManager::removeRefactoringEngine(RefactoringEngineType type)
-{
-    instance()->d->m_refactoringEngines.remove(type);
-}
-
-RefactoringEngineInterface *CppModelManager::builtinRefactoringEngine()
-{
-    return instance()->d->m_refactoringEngines.value(RefactoringEngineType::BuiltIn);
-}
-
-FollowSymbolInterface &CppModelManager::builtinFollowSymbol()
-{
-    return instance()->d->m_builtinModelManagerSupport->followSymbolInterface();
+    return instance()->d->m_builtinModelManagerSupport.followSymbolInterface();
 }
 
 template<class FilterClass>
@@ -560,17 +845,7 @@ Core::ILocatorFilter *CppModelManager::currentDocumentFilter() const
     return d->m_currentDocumentFilter.get();
 }
 
-FollowSymbolInterface &CppModelManager::followSymbolInterface() const
-{
-    return d->m_activeModelManagerSupport->followSymbolInterface();
-}
-
-std::unique_ptr<AbstractOverviewModel> CppModelManager::createOverviewModel() const
-{
-    return d->m_activeModelManagerSupport->createOverviewModel();
-}
-
-QString CppModelManager::configurationFileName()
+const FilePath &CppModelManager::configurationFileName()
 {
     return Preprocessor::configurationFileName();
 }
@@ -579,7 +854,7 @@ void CppModelManager::updateModifiedSourceFiles()
 {
     const Snapshot snapshot = this->snapshot();
     QList<Document::Ptr> documentsToCheck;
-    foreach (const Document::Ptr document, snapshot)
+    for (const Document::Ptr &document : snapshot)
         documentsToCheck << document;
 
     updateSourceFiles(timeStampModifiedFiles(documentsToCheck));
@@ -616,8 +891,8 @@ void CppModelManager::initCppTools()
     connect(Core::VcsManager::instance(), &Core::VcsManager::repositoryChanged,
             this, &CppModelManager::updateModifiedSourceFiles);
     connect(Core::DocumentManager::instance(), &Core::DocumentManager::filesChangedInternally,
-            [this](const Utils::FilePaths &filePaths) {
-        updateSourceFiles(Utils::transform<QSet>(filePaths, &Utils::FilePath::toString));
+            [this](const FilePaths &filePaths) {
+        updateSourceFiles(toSet(filePaths));
     });
 
     connect(this, &CppModelManager::documentUpdated,
@@ -634,15 +909,6 @@ void CppModelManager::initCppTools()
     setSymbolsFindFilter(std::make_unique<SymbolsFindFilter>(this));
     setCurrentDocumentFilter(
                 std::make_unique<Internal::CppCurrentDocumentFilter>(this));
-}
-
-void CppModelManager::initializeBuiltinModelManagerSupport()
-{
-    d->m_builtinModelManagerSupport
-            = BuiltinModelManagerSupportProvider().createModelManagerSupport();
-    d->m_activeModelManagerSupport = d->m_builtinModelManagerSupport;
-    d->m_refactoringEngines[RefactoringEngineType::BuiltIn] =
-            &d->m_activeModelManagerSupport->refactoringEngineInterface();
 }
 
 CppModelManager::CppModelManager()
@@ -666,7 +932,7 @@ CppModelManager::CppModelManager()
             this, &CppModelManager::onSourceFilesRefreshed);
 
     d->m_findReferences = new CppFindReferences(this);
-    d->m_indexerEnabled = qgetenv("QTC_NO_CODE_INDEXER") != "1";
+    d->m_indexerEnabled = qtcEnvironmentVariable("QTC_NO_CODE_INDEXER") != "1";
 
     d->m_dirty = true;
 
@@ -709,9 +975,7 @@ CppModelManager::CppModelManager()
     qRegisterMetaType<QList<Document::DiagnosticMessage>>(
                 "QList<CPlusPlus::Document::DiagnosticMessage>");
 
-    initializeBuiltinModelManagerSupport();
-
-    d->m_internalIndexingSupport = new BuiltinIndexingSupport;
+    d->m_internalIndexingSupport = new CppIndexingSupport;
 
     initCppTools();
 }
@@ -730,10 +994,10 @@ Snapshot CppModelManager::snapshot() const
     return d->m_snapshot;
 }
 
-Document::Ptr CppModelManager::document(const QString &fileName) const
+Document::Ptr CppModelManager::document(const FilePath &filePath) const
 {
     QMutexLocker locker(&d->m_snapshotMutex);
-    return d->m_snapshot.document(fileName);
+    return d->m_snapshot.document(filePath);
 }
 
 /// Replace the document in the snapshot.
@@ -743,7 +1007,7 @@ bool CppModelManager::replaceDocument(Document::Ptr newDoc)
 {
     QMutexLocker locker(&d->m_snapshotMutex);
 
-    Document::Ptr previous = d->m_snapshot.document(newDoc->fileName());
+    Document::Ptr previous = d->m_snapshot.document(newDoc->filePath());
     if (previous && (newDoc->revision() != 0 && newDoc->revision() < previous->revision()))
         // the new document is outdated
         return false;
@@ -764,23 +1028,23 @@ void CppModelManager::ensureUpdated()
     d->m_dirty = false;
 }
 
-QStringList CppModelManager::internalProjectFiles() const
+FilePaths CppModelManager::internalProjectFiles() const
 {
-    QStringList files;
-    for (const ProjectData &projectData : qAsConst(d->m_projectData)) {
+    FilePaths files;
+    for (const ProjectData &projectData : std::as_const(d->m_projectData)) {
         for (const ProjectPart::ConstPtr &part : projectData.projectInfo->projectParts()) {
             for (const ProjectFile &file : part->files)
                 files += file.path;
         }
     }
-    files.removeDuplicates();
+    FilePath::removeDuplicates(files);
     return files;
 }
 
 ProjectExplorer::HeaderPaths CppModelManager::internalHeaderPaths() const
 {
     ProjectExplorer::HeaderPaths headerPaths;
-    for (const ProjectData &projectData: qAsConst(d->m_projectData)) {
+    for (const ProjectData &projectData: std::as_const(d->m_projectData)) {
         for (const ProjectPart::ConstPtr &part : projectData.projectInfo->projectParts()) {
             for (const ProjectExplorer::HeaderPath &path : part->headerPaths) {
                 ProjectExplorer::HeaderPath hp(QDir::cleanPath(path.path), path.type);
@@ -808,7 +1072,7 @@ ProjectExplorer::Macros CppModelManager::internalDefinedMacros() const
 {
     ProjectExplorer::Macros macros;
     QSet<ProjectExplorer::Macro> alreadyIn;
-    for (const ProjectData &projectData : qAsConst(d->m_projectData)) {
+    for (const ProjectData &projectData : std::as_const(d->m_projectData)) {
         for (const ProjectPart::ConstPtr &part : projectData.projectInfo->projectParts()) {
             addUnique(part->toolChainMacros, macros, alreadyIn);
             addUnique(part->projectMacros, macros, alreadyIn);
@@ -847,16 +1111,16 @@ void CppModelManager::removeExtraEditorSupport(AbstractEditorSupport *editorSupp
     d->m_extraEditorSupports.remove(editorSupport);
 }
 
-CppEditorDocumentHandle *CppModelManager::cppEditorDocument(const QString &filePath) const
+CppEditorDocumentHandle *CppModelManager::cppEditorDocument(const FilePath &filePath) const
 {
     if (filePath.isEmpty())
         return nullptr;
 
     QMutexLocker locker(&d->m_cppEditorDocumentsMutex);
-    return d->m_cppEditorDocuments.value(filePath, 0);
+    return d->m_cppEditorDocuments.value(filePath.toString(), 0);
 }
 
-BaseEditorDocumentProcessor *CppModelManager::cppEditorDocumentProcessor(const QString &filePath)
+BaseEditorDocumentProcessor *CppModelManager::cppEditorDocumentProcessor(const FilePath &filePath)
 {
     const auto document = instance()->cppEditorDocument(filePath);
     return document ? document->processor() : nullptr;
@@ -865,12 +1129,12 @@ BaseEditorDocumentProcessor *CppModelManager::cppEditorDocumentProcessor(const Q
 void CppModelManager::registerCppEditorDocument(CppEditorDocumentHandle *editorDocument)
 {
     QTC_ASSERT(editorDocument, return);
-    const QString filePath = editorDocument->filePath();
+    const FilePath filePath = editorDocument->filePath();
     QTC_ASSERT(!filePath.isEmpty(), return);
 
     QMutexLocker locker(&d->m_cppEditorDocumentsMutex);
-    QTC_ASSERT(d->m_cppEditorDocuments.value(filePath, 0) == 0, return);
-    d->m_cppEditorDocuments.insert(filePath, editorDocument);
+    QTC_ASSERT(d->m_cppEditorDocuments.value(filePath.toString(), 0) == 0, return);
+    d->m_cppEditorDocuments.insert(filePath.toString(), editorDocument);
 }
 
 void CppModelManager::unregisterCppEditorDocument(const QString &filePath)
@@ -907,10 +1171,21 @@ void CppModelManager::findUsages(Symbol *symbol, const LookupContext &context)
 
 void CppModelManager::renameUsages(Symbol *symbol,
                                    const LookupContext &context,
-                                   const QString &replacement)
+                                   const QString &replacement,
+                                   const std::function<void()> &callback)
 {
     if (symbol->identifier())
-        d->m_findReferences->renameUsages(symbol, context, replacement);
+        d->m_findReferences->renameUsages(symbol, context, replacement, callback);
+}
+
+void CppModelManager::renameUsages(const Document::Ptr &doc, const QTextCursor &cursor,
+                                   const Snapshot &snapshot, const QString &replacement,
+                                   const std::function<void ()> &callback)
+{
+    Internal::CanonicalSymbol cs(doc, snapshot);
+    CPlusPlus::Symbol *canonicalSymbol = cs(cursor);
+    if (canonicalSymbol)
+        renameUsages(canonicalSymbol, cs.context(), replacement, callback);
 }
 
 void CppModelManager::findMacroUsages(const CPlusPlus::Macro &macro)
@@ -933,14 +1208,15 @@ WorkingCopy CppModelManager::buildWorkingCopyList()
 {
     WorkingCopy workingCopy;
 
-    foreach (const CppEditorDocumentHandle *cppEditorDocument, cppEditorDocuments()) {
+    const QList<CppEditorDocumentHandle *> cppEditorDocumentList = cppEditorDocuments();
+    for (const CppEditorDocumentHandle *cppEditorDocument : cppEditorDocumentList) {
         workingCopy.insert(cppEditorDocument->filePath(),
                            cppEditorDocument->contents(),
                            cppEditorDocument->revision());
     }
 
-    for (AbstractEditorSupport *es : qAsConst(d->m_extraEditorSupports))
-        workingCopy.insert(es->fileName(), es->contents(), es->revision());
+    for (AbstractEditorSupport *es : std::as_const(d->m_extraEditorSupports))
+        workingCopy.insert(es->filePath(), es->contents(), es->revision());
 
     // Add the project configuration file
     QByteArray conf = codeModelConfiguration();
@@ -965,37 +1241,63 @@ CppLocatorData *CppModelManager::locatorData() const
     return &d->m_locatorData;
 }
 
-static QSet<QString> tooBigFilesRemoved(const QSet<QString> &files, int fileSizeLimitInMb)
+static QSet<QString> filteredFilesRemoved(const QSet<QString> &files, int fileSizeLimitInMb,
+                                          bool ignoreFiles,
+                                          const QString& ignorePattern)
 {
-    if (fileSizeLimitInMb <= 0)
+    if (fileSizeLimitInMb <= 0 && !ignoreFiles)
         return files;
 
     QSet<QString> result;
-    QFileInfo fileInfo;
+    QList<QRegularExpression> regexes;
+    const QStringList wildcards = ignorePattern.split('\n');
 
-    for (const QString &filePath : files) {
-        fileInfo.setFile(filePath);
-        if (fileSizeExceedsLimit(fileInfo, fileSizeLimitInMb))
+    for (const QString &wildcard : wildcards)
+        regexes.append(QRegularExpression::fromWildcard(wildcard, Qt::CaseInsensitive,
+                                                        QRegularExpression::UnanchoredWildcardConversion));
+
+    for (const QString &file : files) {
+        const FilePath filePath = FilePath::fromString(file);
+        if (fileSizeLimitInMb > 0 && fileSizeExceedsLimit(filePath, fileSizeLimitInMb))
             continue;
+        bool skip = false;
+        if (ignoreFiles) {
+            for (const QRegularExpression &rx: std::as_const(regexes)) {
+                QRegularExpressionMatch match = rx.match(filePath.absoluteFilePath().path());
+                if (match.hasMatch()) {
+                    const QString msg = Tr::tr("C++ Indexer: Skipping file \"%1\" "
+                                               "because its path matches the ignore pattern.")
+                                    .arg(filePath.displayName());
+                    QMetaObject::invokeMethod(Core::MessageManager::instance(),
+                                              [msg]() { Core::MessageManager::writeSilently(msg); });
+                    skip = true;
+                    break;
+                }
+            }
+        }
 
-        result << filePath;
+        if (!skip)
+            result << filePath.toString();
     }
 
     return result;
 }
 
-QFuture<void> CppModelManager::updateSourceFiles(const QSet<QString> &sourceFiles,
+QFuture<void> CppModelManager::updateSourceFiles(const QSet<FilePath> &sourceFiles,
                                                  ProgressNotificationMode mode)
 {
     if (sourceFiles.isEmpty() || !d->m_indexerEnabled)
         return QFuture<void>();
 
-    const QSet<QString> filteredFiles = tooBigFilesRemoved(sourceFiles, indexerFileSizeLimitInMb());
+    const QSet<QString> filteredFiles = filteredFilesRemoved(transform(sourceFiles, &FilePath::toString),
+                                                             indexerFileSizeLimitInMb(),
+                                                             codeModelSettings()->ignoreFiles(),
+                                                             codeModelSettings()->ignorePattern());
 
     return d->m_internalIndexingSupport->refreshSourceFiles(filteredFiles, mode);
 }
 
-QList<ProjectInfo::ConstPtr> CppModelManager::projectInfos() const
+ProjectInfoList CppModelManager::projectInfos() const
 {
     QReadLocker locker(&d->m_projectLock);
     return Utils::transform<QList<ProjectInfo::ConstPtr>>(d->m_projectData,
@@ -1012,26 +1314,27 @@ ProjectInfo::ConstPtr CppModelManager::projectInfo(ProjectExplorer::Project *pro
 void CppModelManager::removeProjectInfoFilesAndIncludesFromSnapshot(const ProjectInfo &projectInfo)
 {
     QMutexLocker snapshotLocker(&d->m_snapshotMutex);
-    foreach (const ProjectPart::ConstPtr &projectPart, projectInfo.projectParts()) {
-        foreach (const ProjectFile &cxxFile, projectPart->files) {
-            foreach (const QString &fileName, d->m_snapshot.allIncludesForDocument(cxxFile.path))
-                d->m_snapshot.remove(fileName);
+    for (const ProjectPart::ConstPtr &projectPart : projectInfo.projectParts()) {
+        for (const ProjectFile &cxxFile : std::as_const(projectPart->files)) {
+            const QSet<FilePath> filePaths = d->m_snapshot.allIncludesForDocument(cxxFile.path);
+            for (const FilePath &filePath : filePaths)
+                d->m_snapshot.remove(filePath);
             d->m_snapshot.remove(cxxFile.path);
         }
     }
 }
 
-QList<CppEditorDocumentHandle *> CppModelManager::cppEditorDocuments() const
+const QList<CppEditorDocumentHandle *> CppModelManager::cppEditorDocuments() const
 {
     QMutexLocker locker(&d->m_cppEditorDocumentsMutex);
     return d->m_cppEditorDocuments.values();
 }
 
 /// \brief Remove all given files from the snapshot.
-void CppModelManager::removeFilesFromSnapshot(const QSet<QString> &filesToRemove)
+void CppModelManager::removeFilesFromSnapshot(const QSet<FilePath> &filesToRemove)
 {
     QMutexLocker snapshotLocker(&d->m_snapshotMutex);
-    for (const QString &file : filesToRemove)
+    for (const FilePath &file : filesToRemove)
         d->m_snapshot.remove(file);
 }
 
@@ -1050,16 +1353,16 @@ public:
     bool configurationChanged() const { return m_new.configurationChanged(m_old); }
     bool configurationOrFilesChanged() const { return m_new.configurationOrFilesChanged(m_old); }
 
-    QSet<QString> addedFiles() const
+    QSet<FilePath> addedFiles() const
     {
-        QSet<QString> addedFilesSet = m_newSourceFiles;
+        QSet<FilePath> addedFilesSet = m_newSourceFiles;
         addedFilesSet.subtract(m_oldSourceFiles);
         return addedFilesSet;
     }
 
-    QSet<QString> removedFiles() const
+    QSet<FilePath> removedFiles() const
     {
-        QSet<QString> removedFilesSet = m_oldSourceFiles;
+        QSet<FilePath> removedFilesSet = m_oldSourceFiles;
         removedFilesSet.subtract(m_newSourceFiles);
         return removedFilesSet;
     }
@@ -1072,13 +1375,13 @@ public:
     }
 
     /// Returns a list of common files that have a changed timestamp.
-    QSet<QString> timeStampModifiedFiles(const Snapshot &snapshot) const
+    QSet<FilePath> timeStampModifiedFiles(const Snapshot &snapshot) const
     {
-        QSet<QString> commonSourceFiles = m_newSourceFiles;
+        QSet<FilePath> commonSourceFiles = m_newSourceFiles;
         commonSourceFiles.intersect(m_oldSourceFiles);
 
         QList<Document::Ptr> documentsToCheck;
-        for (const QString &file : commonSourceFiles) {
+        for (const FilePath &file : commonSourceFiles) {
             if (Document::Ptr document = snapshot.document(file))
                 documentsToCheck << document;
         }
@@ -1091,7 +1394,7 @@ private:
     {
         QSet<QString> ids;
 
-        foreach (const ProjectPart::ConstPtr &projectPart, projectParts)
+        for (const ProjectPart::ConstPtr &projectPart : projectParts)
             ids.insert(projectPart->id());
 
         return ids;
@@ -1099,10 +1402,10 @@ private:
 
 private:
     const ProjectInfo &m_old;
-    const QSet<QString> m_oldSourceFiles;
+    const QSet<FilePath> m_oldSourceFiles;
 
     const ProjectInfo &m_new;
-    const QSet<QString> m_newSourceFiles;
+    const QSet<FilePath> m_newSourceFiles;
 };
 
 /// Make sure that m_projectLock is locked for writing when calling this.
@@ -1110,12 +1413,11 @@ void CppModelManager::recalculateProjectPartMappings()
 {
     d->m_projectPartIdToProjectProjectPart.clear();
     d->m_fileToProjectParts.clear();
-    for (const ProjectData &projectData : qAsConst(d->m_projectData)) {
+    for (const ProjectData &projectData : std::as_const(d->m_projectData)) {
         for (const ProjectPart::ConstPtr &projectPart : projectData.projectInfo->projectParts()) {
             d->m_projectPartIdToProjectProjectPart[projectPart->id()] = projectPart;
             for (const ProjectFile &cxxFile : projectPart->files)
-                d->m_fileToProjectParts[Utils::FilePath::fromString(cxxFile.path)].append(
-                            projectPart);
+                d->m_fileToProjectParts[cxxFile.path.canonicalPath()].append(projectPart);
         }
     }
 
@@ -1145,9 +1447,10 @@ void CppModelManager::updateCppEditorDocuments(bool projectsUpdated) const
 {
     // Refresh visible documents
     QSet<Core::IDocument *> visibleCppEditorDocuments;
-    foreach (Core::IEditor *editor, Core::EditorManager::visibleEditors()) {
+    const QList<Core::IEditor *> editors = Core::EditorManager::visibleEditors();
+    for (Core::IEditor *editor: editors) {
         if (Core::IDocument *document = editor->document()) {
-            const QString filePath = document->filePath().toString();
+            const FilePath filePath = document->filePath();
             if (CppEditorDocumentHandle *theCppEditorDocument = cppEditorDocument(filePath)) {
                 visibleCppEditorDocuments.insert(document);
                 theCppEditorDocument->processor()->run(projectsUpdated);
@@ -1159,8 +1462,8 @@ void CppModelManager::updateCppEditorDocuments(bool projectsUpdated) const
     QSet<Core::IDocument *> invisibleCppEditorDocuments
         = Utils::toSet(Core::DocumentModel::openedDocuments());
     invisibleCppEditorDocuments.subtract(visibleCppEditorDocuments);
-    foreach (Core::IDocument *document, invisibleCppEditorDocuments) {
-        const QString filePath = document->filePath().toString();
+    for (Core::IDocument *document : std::as_const(invisibleCppEditorDocuments)) {
+        const FilePath filePath = document->filePath();
         if (CppEditorDocumentHandle *theCppEditorDocument = cppEditorDocument(filePath)) {
             const CppEditorDocumentHandle::RefreshReason refreshReason = projectsUpdated
                     ? CppEditorDocumentHandle::ProjectUpdate
@@ -1171,12 +1474,12 @@ void CppModelManager::updateCppEditorDocuments(bool projectsUpdated) const
 }
 
 QFuture<void> CppModelManager::updateProjectInfo(const ProjectInfo::ConstPtr &newProjectInfo,
-                                                 const QSet<QString> &additionalFiles)
+                                                 const QSet<FilePath> &additionalFiles)
 {
     if (!newProjectInfo)
         return {};
 
-    QSet<QString> filesToReindex;
+    QSet<FilePath> filesToReindex;
     QStringList removedProjectParts;
     bool filesRemoved = false;
 
@@ -1188,7 +1491,7 @@ QFuture<void> CppModelManager::updateProjectInfo(const ProjectInfo::ConstPtr &ne
     { // Only hold the lock for a limited scope, so the dumping afterwards does not deadlock.
         QWriteLocker projectLocker(&d->m_projectLock);
 
-        const QSet<QString> newSourceFiles = newProjectInfo->sourceFiles();
+        const QSet<FilePath> newSourceFiles = newProjectInfo->sourceFiles();
 
         // Check if we can avoid a full reindexing
         const auto it = d->m_projectData.find(project);
@@ -1210,18 +1513,18 @@ QFuture<void> CppModelManager::updateProjectInfo(const ProjectInfo::ConstPtr &ne
 
                 // Otherwise check for added and modified files
                 } else {
-                    const QSet<QString> addedFiles = comparer.addedFiles();
+                    const QSet<FilePath> addedFiles = comparer.addedFiles();
                     filesToReindex.unite(addedFiles);
 
-                    const QSet<QString> modifiedFiles = comparer.timeStampModifiedFiles(snapshot());
+                    const QSet<FilePath> modifiedFiles = comparer.timeStampModifiedFiles(snapshot());
                     filesToReindex.unite(modifiedFiles);
                 }
 
                 // Announce and purge the removed files from the snapshot
-                const QSet<QString> removedFiles = comparer.removedFiles();
+                const QSet<FilePath> removedFiles = comparer.removedFiles();
                 if (!removedFiles.isEmpty()) {
                     filesRemoved = true;
-                    emit aboutToRemoveFiles(Utils::toList(removedFiles));
+                    emit aboutToRemoveFiles(transform<QStringList>(removedFiles, &FilePath::toString));
                     removeFilesFromSnapshot(removedFiles);
                 }
             }
@@ -1289,7 +1592,7 @@ ProjectPart::ConstPtr CppModelManager::projectPartForId(const QString &projectPa
 QList<ProjectPart::ConstPtr> CppModelManager::projectPart(const Utils::FilePath &fileName) const
 {
     QReadLocker locker(&d->m_projectLock);
-    return d->m_fileToProjectParts.value(fileName);
+    return d->m_fileToProjectParts.value(fileName.canonicalPath());
 }
 
 QList<ProjectPart::ConstPtr> CppModelManager::projectPartFromDependencies(
@@ -1300,7 +1603,7 @@ QList<ProjectPart::ConstPtr> CppModelManager::projectPartFromDependencies(
 
     QReadLocker locker(&d->m_projectLock);
     for (const Utils::FilePath &dep : deps)
-        parts.unite(Utils::toSet(d->m_fileToProjectParts.value(dep)));
+        parts.unite(Utils::toSet(d->m_fileToProjectParts.value(dep.canonicalPath())));
 
     return parts.values();
 }
@@ -1316,19 +1619,14 @@ bool CppModelManager::isCppEditor(Core::IEditor *editor)
     return editor->context().contains(ProjectExplorer::Constants::CXX_LANGUAGE_ID);
 }
 
-bool CppModelManager::supportsOutline(const TextEditor::TextDocument *document)
+bool CppModelManager::usesClangd(const TextEditor::TextDocument *document)
 {
-    return instance()->d->m_activeModelManagerSupport->supportsOutline(document);
-}
-
-bool CppModelManager::supportsLocalUses(const TextEditor::TextDocument *document)
-{
-    return instance()->d->m_activeModelManagerSupport->supportsLocalUses(document);
+    return instance()->d->m_activeModelManagerSupport->usesClangd(document);
 }
 
 bool CppModelManager::isClangCodeModelActive() const
 {
-    return d->m_activeModelManagerSupport != d->m_builtinModelManagerSupport;
+    return d->m_activeModelManagerSupport != &d->m_builtinModelManagerSupport;
 }
 
 void CppModelManager::emitDocumentUpdated(Document::Ptr doc)
@@ -1407,7 +1705,7 @@ void CppModelManager::onActiveProjectChanged(ProjectExplorer::Project *project)
 
 void CppModelManager::onSourceFilesRefreshed() const
 {
-    if (BuiltinIndexingSupport::isFindErrorsIndexingActive()) {
+    if (CppIndexingSupport::isFindErrorsIndexingActive()) {
         QTimer::singleShot(1, QCoreApplication::instance(), &QCoreApplication::quit);
         qDebug("FindErrorsIndexing: Done, requesting Qt Creator to quit.");
     }
@@ -1418,7 +1716,7 @@ void CppModelManager::onCurrentEditorChanged(Core::IEditor *editor)
     if (!editor || !editor->document())
         return;
 
-    const QString filePath = editor->document()->filePath().toString();
+    const FilePath filePath = editor->document()->filePath();
     if (CppEditorDocumentHandle *theCppEditorDocument = cppEditorDocument(filePath)) {
         const CppEditorDocumentHandle::RefreshReason refreshReason
                 = theCppEditorDocument->refreshReason();
@@ -1437,17 +1735,17 @@ void CppModelManager::onAboutToLoadSession()
     GC();
 }
 
-QSet<QString> CppModelManager::dependingInternalTargets(const Utils::FilePath &file) const
+QSet<QString> CppModelManager::dependingInternalTargets(const FilePath &file) const
 {
     QSet<QString> result;
     const Snapshot snapshot = this->snapshot();
     QTC_ASSERT(snapshot.contains(file), return result);
     bool wasHeader;
-    const QString correspondingFile
-            = correspondingHeaderOrSource(file.toString(), &wasHeader, CacheUsage::ReadOnly);
-    const Utils::FilePaths dependingFiles = snapshot.filesDependingOn(
-                wasHeader ? file : Utils::FilePath::fromString(correspondingFile));
-    for (const Utils::FilePath &fn : qAsConst(dependingFiles)) {
+    const FilePath correspondingFile
+            = correspondingHeaderOrSource(file, &wasHeader, CacheUsage::ReadOnly);
+    const FilePaths dependingFiles = snapshot.filesDependingOn(
+                wasHeader ? file : correspondingFile);
+    for (const FilePath &fn : std::as_const(dependingFiles)) {
         for (const ProjectPart::ConstPtr &part : projectPart(fn))
             result.insert(part->buildSystemTarget);
     }
@@ -1481,17 +1779,46 @@ void CppModelManager::renameIncludes(const Utils::FilePath &oldFilePath,
 
     const TextEditor::RefactoringChanges changes;
 
-    foreach (Snapshot::IncludeLocation loc,
-             snapshot().includeLocationsOfDocument(oldFilePath.toString())) {
-        TextEditor::RefactoringFilePtr file = changes.file(
-            Utils::FilePath::fromString(loc.first->fileName()));
+    QString oldFileName = oldFilePath.fileName();
+    QString newFileName = newFilePath.fileName();
+    const bool isUiFile = oldFilePath.suffix() == "ui" && newFilePath.suffix() == "ui";
+    if (isUiFile) {
+        oldFileName = "ui_" + oldFilePath.baseName() + ".h";
+        newFileName = "ui_" + newFilePath.baseName() + ".h";
+    }
+    static const auto getProductNode = [](const FilePath &filePath) -> const Node * {
+        const Node * const fileNode = ProjectTree::nodeForFile(filePath);
+        if (!fileNode)
+            return nullptr;
+        const ProjectNode *productNode = fileNode->parentProjectNode();
+        while (productNode && !productNode->isProduct())
+            productNode = productNode->parentProjectNode();
+        if (!productNode)
+            productNode = fileNode->getProject()->rootProjectNode();
+        return productNode;
+    };
+    const Node * const productNodeForUiFile = isUiFile ? getProductNode(oldFilePath) : nullptr;
+    if (isUiFile && !productNodeForUiFile)
+        return;
+
+    const QList<Snapshot::IncludeLocation> locations = snapshot().includeLocationsOfDocument(
+        isUiFile ? FilePath::fromString(oldFileName) : oldFilePath);
+    for (const Snapshot::IncludeLocation &loc : locations) {
+        const FilePath filePath = loc.first->filePath();
+
+        // Larger projects can easily have more than one ui file with the same name.
+        // Replace only if ui file and including source file belong to the same product.
+        if (isUiFile && getProductNode(filePath) != productNodeForUiFile)
+            continue;
+
+        TextEditor::RefactoringFilePtr file = changes.file(filePath);
         const QTextBlock &block = file->document()->findBlockByNumber(loc.second - 1);
-        const int replaceStart = block.text().indexOf(oldFilePath.fileName());
+        const int replaceStart = block.text().indexOf(oldFileName);
         if (replaceStart > -1) {
             Utils::ChangeSet changeSet;
             changeSet.replace(block.position() + replaceStart,
-                              block.position() + replaceStart + oldFilePath.fileName().length(),
-                              newFilePath.fileName());
+                              block.position() + replaceStart + oldFileName.length(),
+                              newFileName);
             file->setChangeSet(changeSet);
             file->apply();
         }
@@ -1533,13 +1860,13 @@ QSet<QString> CppModelManager::symbolsInFiles(const QSet<Utils::FilePath> &files
 
                 const CPlusPlus::Identifier *symId = sym->identifier();
                 // Add any class, function or namespace identifiers
-                if ((sym->isClass() || sym->isFunction() || sym->isNamespace()) && symId
+                if ((sym->asClass() || sym->asFunction() || sym->asNamespace()) && symId
                     && symId->chars()) {
                     uniqueSymbols.insert(QString::fromUtf8(symId->chars()));
                 }
 
                 // Handle specific case : get "Foo" in "void Foo::function() {}"
-                if (sym->isFunction() && !sym->asFunction()->isDeclaration()) {
+                if (sym->asFunction() && !sym->asFunction()->asDeclaration()) {
                     const char *className = belongingClassName(sym->asFunction());
                     if (className)
                         uniqueSymbols.insert(QString::fromUtf8(className));
@@ -1580,7 +1907,7 @@ void CppModelManager::setupFallbackProjectPart()
         if (sysroot.isEmpty())
             sysroot = Utils::FilePath::fromString(defaultTc->sysRoot());
         Utils::Environment env = defaultKit->buildEnvironment();
-        tcInfo = ToolChainInfo(defaultTc, sysroot.toString(), env);
+        tcInfo = ToolChainInfo(defaultTc, sysroot, env);
         const auto macroInspectionWrapper = [runner = tcInfo.macroInspectionRunner](
                 const QStringList &flags) {
             ToolChain::MacroInspectionReport report = runner(flags);
@@ -1604,31 +1931,32 @@ void CppModelManager::GC()
         return;
 
     // Collect files of opened editors and editor supports (e.g. ui code model)
-    QStringList filesInEditorSupports;
-    foreach (const CppEditorDocumentHandle *editorDocument, cppEditorDocuments())
+    FilePaths filesInEditorSupports;
+    const QList<CppEditorDocumentHandle *> editorDocuments = cppEditorDocuments();
+    for (const CppEditorDocumentHandle *editorDocument : editorDocuments)
         filesInEditorSupports << editorDocument->filePath();
 
-    foreach (AbstractEditorSupport *abstractEditorSupport, abstractEditorSupports())
-        filesInEditorSupports << abstractEditorSupport->fileName();
+    const QSet<AbstractEditorSupport *> abstractEditorSupportList = abstractEditorSupports();
+    for (AbstractEditorSupport *abstractEditorSupport : abstractEditorSupportList)
+        filesInEditorSupports << abstractEditorSupport->filePath();
 
     Snapshot currentSnapshot = snapshot();
     QSet<Utils::FilePath> reachableFiles;
     // The configuration file is part of the project files, which is just fine.
     // If single files are open, without any project, then there is no need to
     // keep the configuration file around.
-    QStringList todo = filesInEditorSupports + projectFiles();
+    FilePaths todo = filesInEditorSupports + projectFiles();
 
     // Collect all files that are reachable from the project files
     while (!todo.isEmpty()) {
-        const QString file = todo.last();
+        const FilePath filePath = todo.last();
         todo.removeLast();
 
-        const Utils::FilePath fileName = Utils::FilePath::fromString(file);
-        if (reachableFiles.contains(fileName))
+        if (reachableFiles.contains(filePath))
             continue;
-        reachableFiles.insert(fileName);
+        reachableFiles.insert(filePath);
 
-        if (Document::Ptr doc = currentSnapshot.document(file))
+        if (Document::Ptr doc = currentSnapshot.document(filePath))
             todo += doc->includedFiles();
     }
 
@@ -1656,28 +1984,50 @@ void CppModelManager::finishedRefreshingSourceFiles(const QSet<QString> &files)
 }
 
 void CppModelManager::activateClangCodeModel(
-        ModelManagerSupportProvider *modelManagerSupportProvider)
+        std::unique_ptr<ModelManagerSupport> &&modelManagerSupport)
 {
-    QTC_ASSERT(modelManagerSupportProvider, return);
-
-    d->m_activeModelManagerSupport = modelManagerSupportProvider->createModelManagerSupport();
-    d->m_refactoringEngines[RefactoringEngineType::ClangCodeModel] =
-            &d->m_activeModelManagerSupport->refactoringEngineInterface();
+    d->m_extendedModelManagerSupport = std::move(modelManagerSupport);
+    d->m_activeModelManagerSupport = d->m_extendedModelManagerSupport.get();
 }
 
 CppCompletionAssistProvider *CppModelManager::completionAssistProvider() const
 {
-    return d->m_activeModelManagerSupport->completionAssistProvider();
-}
-
-CppCompletionAssistProvider *CppModelManager::functionHintAssistProvider() const
-{
-    return d->m_activeModelManagerSupport->functionHintAssistProvider();
+    return d->m_builtinModelManagerSupport.completionAssistProvider();
 }
 
 TextEditor::BaseHoverHandler *CppModelManager::createHoverHandler() const
 {
-    return d->m_activeModelManagerSupport->createHoverHandler();
+    return d->m_builtinModelManagerSupport.createHoverHandler();
+}
+
+void CppModelManager::followSymbol(const CursorInEditor &data,
+                                   const Utils::LinkHandler &processLinkCallback,
+                                   bool resolveTarget, bool inNextSplit, Backend backend)
+{
+    instance()->modelManagerSupport(backend)->followSymbol(data, processLinkCallback,
+                                                           resolveTarget, inNextSplit);
+}
+
+void CppModelManager::followSymbolToType(const CursorInEditor &data,
+                                         const Utils::LinkHandler &processLinkCallback,
+                                         bool inNextSplit, Backend backend)
+{
+    instance()->modelManagerSupport(backend)->followSymbolToType(data, processLinkCallback,
+                                                                 inNextSplit);
+}
+
+void CppModelManager::switchDeclDef(const CursorInEditor &data,
+                                    const Utils::LinkHandler &processLinkCallback,
+                                    Backend backend)
+{
+    instance()->modelManagerSupport(backend)->switchDeclDef(data, processLinkCallback);
+}
+
+Core::ILocatorFilter *CppModelManager::createAuxiliaryCurrentDocumentFilter()
+{
+    const auto filter = new Internal::CppCurrentDocumentFilter(instance());
+    filter->makeAuxiliary();
+    return filter;
 }
 
 BaseEditorDocumentProcessor *CppModelManager::createEditorDocumentProcessor(
@@ -1691,7 +2041,7 @@ CppIndexingSupport *CppModelManager::indexingSupport()
     return d->m_internalIndexingSupport;
 }
 
-QStringList CppModelManager::projectFiles()
+FilePaths CppModelManager::projectFiles()
 {
     QWriteLocker locker(&d->m_projectLock);
     ensureUpdated();
@@ -1735,6 +2085,20 @@ SymbolFinder *CppModelManager::symbolFinder()
 QThreadPool *CppModelManager::sharedThreadPool()
 {
     return &d->m_threadPool;
+}
+
+bool CppModelManager::setExtraDiagnostics(const QString &fileName,
+                                          const QString &kind,
+                                          const QList<Document::DiagnosticMessage> &diagnostics)
+{
+    d->m_diagnosticMessages = diagnostics;
+    emit diagnosticsChanged(fileName, kind);
+    return true;
+}
+
+const QList<Document::DiagnosticMessage> CppModelManager::diagnosticMessages()
+{
+    return d->m_diagnosticMessages;
 }
 
 } // namespace CppEditor

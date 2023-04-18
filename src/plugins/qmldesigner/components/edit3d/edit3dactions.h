@@ -1,30 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #pragma once
-
-#include "view3dactioncommand.h"
 
 #include <abstractaction.h>
 
@@ -34,28 +10,41 @@
 namespace QmlDesigner {
 
 using SelectionContextOperation = std::function<void(const SelectionContext &)>;
+class Edit3DView;
 
 class Edit3DActionTemplate : public DefaultAction
 {
+    Q_OBJECT
 
 public:
-    Edit3DActionTemplate(const QString &description, SelectionContextOperation action,
-                         View3DActionCommand::Type type);
+    Edit3DActionTemplate(const QString &description,
+                         SelectionContextOperation action,
+                         Edit3DView *view,
+                         View3DActionType type);
 
     void actionTriggered(bool b) override;
 
     SelectionContextOperation m_action;
-    View3DActionCommand::Type m_type;
+    Edit3DView *m_view = nullptr;
+    View3DActionType m_type;
 };
 
 class Edit3DAction : public AbstractAction
 {
 public:
-    Edit3DAction(const QByteArray &menuId, View3DActionCommand::Type type,
-                 const QString &description, const QKeySequence &key, bool checkable, bool checked,
-                 const QIcon &iconOff, const QIcon &iconOn,
+    Edit3DAction(const QByteArray &menuId,
+                 View3DActionType type,
+                 const QString &description,
+                 const QKeySequence &key,
+                 bool checkable,
+                 bool checked,
+                 const QIcon &iconOff,
+                 const QIcon &iconOn,
+                 Edit3DView *view,
                  SelectionContextOperation selectionAction = nullptr,
                  const QString &toolTip = {});
+
+    virtual ~Edit3DAction();
 
     QByteArray category() const override;
 
@@ -74,21 +63,31 @@ public:
         return m_menuId;
     }
 
+    View3DActionType actionType() const;
+
 protected:
     bool isVisible(const SelectionContext &selectionContext) const override;
     bool isEnabled(const SelectionContext &selectionContext) const override;
 
 private:
     QByteArray m_menuId;
+    Edit3DActionTemplate *m_actionTemplate = nullptr;
 };
 
 class Edit3DCameraAction : public Edit3DAction
 {
 public:
-    Edit3DCameraAction(const QByteArray &menuId, View3DActionCommand::Type type,
-                       const QString &description, const QKeySequence &key, bool checkable, bool checked,
-                       const QIcon &iconOff, const QIcon &iconOn,
+    Edit3DCameraAction(const QByteArray &menuId,
+                       View3DActionType type,
+                       const QString &description,
+                       const QKeySequence &key,
+                       bool checkable,
+                       bool checked,
+                       const QIcon &iconOff,
+                       const QIcon &iconOn,
+                       Edit3DView *view,
                        SelectionContextOperation selectionAction = nullptr);
+
 protected:
     bool isEnabled(const SelectionContext &selectionContext) const override;
 };

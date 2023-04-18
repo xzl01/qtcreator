@@ -1,36 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "stringutils.h"
 
+#include "algorithm.h"
 #include "hostosinfo.h"
+#include "qtcassert.h"
+#include "filepath.h"
+#include "utilstr.h"
 
-#include <utils/algorithm.h>
-#include <utils/qtcassert.h>
+#ifdef QT_WIDGETS_LIB
+#include <QApplication>
+#include <QClipboard>
+#endif
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonValue>
@@ -88,42 +71,6 @@ QTCREATOR_UTILS_EXPORT QString commonPrefix(const QStringList &strings)
     if (!commonLength)
         return QString();
     return strings.at(0).left(commonLength);
-}
-
-QTCREATOR_UTILS_EXPORT QString commonPath(const QStringList &files)
-{
-    QStringList appendedSlashes = Utils::transform(files, [](const QString &file) -> QString {
-        if (!file.endsWith('/'))
-            return QString(file + '/');
-        return file;
-    });
-    QString common = commonPrefix(appendedSlashes);
-    // Find common directory part: "C:\foo\bar" -> "C:\foo"
-    int lastSeparatorPos = common.lastIndexOf('/');
-    if (lastSeparatorPos == -1)
-        lastSeparatorPos = common.lastIndexOf('\\');
-    if (lastSeparatorPos == -1)
-        return QString();
-    if (HostOsInfo::isAnyUnixHost() && lastSeparatorPos == 0) // Unix: "/a", "/b" -> '/'
-        lastSeparatorPos = 1;
-    common.truncate(lastSeparatorPos);
-    return common;
-}
-
-QTCREATOR_UTILS_EXPORT QString withTildeHomePath(const QString &path)
-{
-    if (HostOsInfo::isWindowsHost())
-        return path;
-
-    static const QString homePath = QDir::homePath();
-
-    QFileInfo fi(QDir::cleanPath(path));
-    QString outPath = fi.absoluteFilePath();
-    if (outPath.startsWith(homePath))
-        outPath = '~' + outPath.mid(homePath.size());
-    else
-        outPath = path;
-    return outPath;
 }
 
 static bool validateVarName(const QString &varName)
@@ -391,7 +338,7 @@ QString formatElapsedTime(qint64 elapsed)
     elapsed += 500; // round up
     const QString format = QString::fromLatin1(elapsed >= 3600000 ? "h:mm:ss" : "mm:ss");
     const QString time = QTime(0, 0).addMSecs(elapsed).toString(format);
-    return QCoreApplication::translate("StringUtils", "Elapsed time: %1.").arg(time);
+    return Tr::tr("Elapsed time: %1.").arg(time);
 }
 
 /*
@@ -400,9 +347,6 @@ QString formatElapsedTime(qint64 elapsed)
  */
 QString wildcardToRegularExpression(const QString &original)
 {
-#if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
-    using qsizetype = int;
-#endif
     const qsizetype wclen = original.size();
     QString rx;
     rx.reserve(wclen + wclen / 16);
@@ -459,11 +403,7 @@ QString wildcardToRegularExpression(const QString &original)
         }
     }
 
-#if QT_VERSION >= QT_VERSION_CHECK(5, 12, 0)
     return QRegularExpression::anchoredPattern(rx);
-#else
-    return "\\A" + rx + "\\z";
-#endif
 }
 
 QTCREATOR_UTILS_EXPORT QString languageNameFromLanguageCode(const QString &languageCode)
@@ -475,6 +415,116 @@ QTCREATOR_UTILS_EXPORT QString languageNameFromLanguageCode(const QString &langu
     if (!nativeLanguageName.isEmpty() && languageName != nativeLanguageName)
         languageName += " - " + locale.nativeLanguageName();
     return languageName;
+}
+
+#ifdef QT_WIDGETS_LIB
+QTCREATOR_UTILS_EXPORT void setClipboardAndSelection(const QString &text)
+{
+    QClipboard *clipboard = QApplication::clipboard();
+    clipboard->setText(text);
+    if (clipboard->supportsSelection())
+        clipboard->setText(text, QClipboard::Selection);
+}
+#endif
+
+QTCREATOR_UTILS_EXPORT QString chopIfEndsWith(QString str, QChar c)
+{
+    if (str.endsWith(c))
+        str.chop(1);
+
+    return str;
+}
+
+QTCREATOR_UTILS_EXPORT QStringView chopIfEndsWith(QStringView str, QChar c)
+{
+    if (str.endsWith(c))
+        str.chop(1);
+
+    return str;
+}
+
+QTCREATOR_UTILS_EXPORT QString normalizeNewlines(const QString &text)
+{
+    QString res = text;
+    const auto newEnd = std::unique(res.begin(), res.end(), [](const QChar c1, const QChar c2) {
+        return c1 == '\r' && c2 == '\r'; // QTCREATORBUG-24556
+    });
+    res.chop(std::distance(newEnd, res.end()));
+    res.replace("\r\n", "\n");
+    return res;
+}
+
+/*!
+    Joins all the not empty string list's \a strings into a single string with each element
+    separated by the given separator (which can be an empty string).
+*/
+QTCREATOR_UTILS_EXPORT QString joinStrings(const QStringList &strings, QChar separator)
+{
+    QString result;
+    for (const QString &string : strings) {
+        if (string.isEmpty())
+            continue;
+        if (!result.isEmpty())
+            result += separator;
+        result += string;
+    }
+    return result;
+}
+
+/*!
+    Returns a copy of \a string that has \a ch characters removed from the start.
+*/
+QTCREATOR_UTILS_EXPORT QString trimFront(const QString &string, QChar ch)
+{
+    const int size = string.size();
+    int i = 0;
+    while (i < size) {
+        if (string.at(i) != ch)
+            break;
+        ++i;
+    }
+    if (i == 0)
+        return string;
+    if (i == size)
+        return {};
+    return string.mid(i);
+}
+
+/*!
+    Returns a copy of \a string that has \a ch characters removed from the end.
+*/
+QTCREATOR_UTILS_EXPORT QString trimBack(const QString &string, QChar ch)
+{
+    const int size = string.size();
+    int i = 0;
+    while (i < size) {
+        if (string.at(size - i - 1) != ch)
+            break;
+        ++i;
+    }
+    if (i == 0)
+        return string;
+    if (i == size)
+        return {};
+    return string.chopped(i);
+}
+
+/*!
+    Returns a copy of \a string that has \a ch characters removed from the start and the end.
+*/
+QTCREATOR_UTILS_EXPORT QString trim(const QString &string, QChar ch)
+{
+    return trimFront(trimBack(string, ch), ch);
+}
+
+QTCREATOR_UTILS_EXPORT QString appendHelper(const QString &base, int n)
+{
+    return base + QString::number(n);
+}
+
+QTCREATOR_UTILS_EXPORT FilePath appendHelper(const FilePath &base, int n)
+{
+    return base.stringAppended(QString::number(n));
 }
 
 } // namespace Utils

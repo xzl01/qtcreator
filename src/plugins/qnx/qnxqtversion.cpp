@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: KDAB (info@kdab.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qnxqtversion.h"
 
 #include "qnxconstants.h"
+#include "qnxtr.h"
 #include "qnxutils.h"
 
 #include <coreplugin/featureprovider.h>
@@ -44,8 +23,7 @@
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Qnx {
-namespace Internal {
+namespace Qnx::Internal {
 
 const char SDP_PATH_KEY[] = "SDKPath";
 
@@ -68,7 +46,7 @@ public:
         sdpPathChooser->setHistoryCompleter("Qnx.Sdp.History");
         sdpPathChooser->setFilePath(version->sdpPath());
 
-        connect(sdpPathChooser, &PathChooser::rawPathChanged, [this, version, sdpPathChooser] {
+        connect(sdpPathChooser, &PathChooser::rawPathChanged, this, [this, version, sdpPathChooser] {
             version->setSdpPath(sdpPathChooser->filePath());
             emit changed();
         });
@@ -80,8 +58,7 @@ QnxQtVersion::QnxQtVersion() = default;
 QString QnxQtVersion::description() const
 {
     //: Qt Version is meant for QNX
-    return QCoreApplication::translate("Qnx::Internal::QnxQtVersion", "QNX %1")
-            .arg(QnxUtils::cpuDirShortDescription(cpuDir()));
+    return Tr::tr("QNX %1").arg(QnxUtils::cpuDirShortDescription(cpuDir()));
 }
 
 QSet<Id> QnxQtVersion::availableFeatures() const
@@ -103,7 +80,7 @@ QString QnxQtVersion::qnxHost() const
     if (!m_environmentUpToDate)
         updateEnvironment();
 
-    for (const EnvironmentItem &item : qAsConst(m_qnxEnv)) {
+    for (const EnvironmentItem &item : std::as_const(m_qnxEnv)) {
         if (item.name == QLatin1String(QNX_HOST_KEY))
             return item.value;
     }
@@ -135,14 +112,14 @@ QString QnxQtVersion::cpuDir() const
 QVariantMap QnxQtVersion::toMap() const
 {
     QVariantMap result = QtVersion::toMap();
-    result.insert(SDP_PATH_KEY, sdpPath().toVariant());
+    result.insert(SDP_PATH_KEY, sdpPath().toSettings());
     return result;
 }
 
 void QnxQtVersion::fromMap(const QVariantMap &map)
 {
     QtVersion::fromMap(map);
-    setSdpPath(FilePath::fromVariant(map.value(SDP_PATH_KEY)));
+    setSdpPath(FilePath::fromSettings(map.value(SDP_PATH_KEY)));
 }
 
 Abis QnxQtVersion::detectQtAbis() const
@@ -179,8 +156,7 @@ bool QnxQtVersion::isValid() const
 QString QnxQtVersion::invalidReason() const
 {
     if (sdpPath().isEmpty())
-        return QCoreApplication::translate("Qnx::Internal::QnxQtVersion",
-                                           "No SDP path was set up.");
+        return Tr::tr("No SDP path was set up.");
     return QtSupport::QtVersion::invalidReason();
 }
 
@@ -222,5 +198,4 @@ QnxQtVersionFactory::QnxQtVersionFactory()
     setRestrictionChecker([](const SetupData &setup) { return setup.isQnx; });
 }
 
-} // namespace Internal
-} // namespace Qnx
+} // Qnx::Internal

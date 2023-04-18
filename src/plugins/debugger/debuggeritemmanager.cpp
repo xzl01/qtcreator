@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debuggeritemmanager.h"
+
 #include "debuggeritem.h"
-#include "debuggerkitinformation.h"
+#include "debuggertr.h"
 
 #include <coreplugin/dialogs/ioptionspage.h>
 #include <coreplugin/icore.h>
@@ -48,7 +27,6 @@
 #include <utils/treemodel.h>
 #include <utils/winutils.h>
 
-#include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -59,6 +37,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QPushButton>
+#include <QTimer>
 #include <QTreeView>
 #include <QWidget>
 
@@ -80,10 +59,11 @@ class DebuggerItemModel;
 
 class DebuggerItemManagerPrivate
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::DebuggerItemManager)
 public:
     DebuggerItemManagerPrivate();
     ~DebuggerItemManagerPrivate();
+
+    void extensionsInitialized();
 
     void restoreDebuggers();
     void saveDebuggers();
@@ -111,8 +91,6 @@ static DebuggerItemManagerPrivate *d = nullptr;
 
 class DebuggerItemConfigWidget : public QWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::DebuggerItemManager)
-
 public:
     explicit DebuggerItemConfigWidget();
     void load(const DebuggerItem *item);
@@ -190,8 +168,6 @@ public:
 
 class DebuggerItemModel : public TreeModel<TreeItem, StaticTreeItem, DebuggerTreeItem>
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::DebuggerOptionsPage)
-
 public:
     DebuggerItemModel();
 
@@ -225,7 +201,7 @@ const DebuggerItem *findDebugger(const Predicate &pred)
 
 DebuggerItemModel::DebuggerItemModel()
 {
-    setHeader({tr("Name"), tr("Path"), tr("Type")});
+    setHeader({Tr::tr("Name"), Tr::tr("Path"), Tr::tr("Type")});
     rootItem()->appendChild(
         new StaticTreeItem({ProjectExplorer::Constants::msgAutoDetected()},
                            {ProjectExplorer::Constants::msgAutoDetectedToolTip()}));
@@ -320,9 +296,10 @@ DebuggerItemConfigWidget::DebuggerItemConfigWidget()
         DebuggerItem item;
         item.setCommand(m_binaryChooser->filePath());
         errorMessage->clear();
-        item.reinitializeFromFile({}, errorMessage);
+        item.reinitializeFromFile(errorMessage);
         return errorMessage->isEmpty();
     });
+    m_binaryChooser->setAllowPathFromDevice(true);
 
     m_workingDirectoryChooser = new PathChooser(this);
     m_workingDirectoryChooser->setExpectedKind(PathChooser::Directory);
@@ -334,7 +311,7 @@ DebuggerItemConfigWidget::DebuggerItemConfigWidget()
     m_cdbLabel->setOpenExternalLinks(true);
 
     m_versionLabel = new QLineEdit(this);
-    m_versionLabel->setPlaceholderText(tr("Unknown"));
+    m_versionLabel->setPlaceholderText(Tr::tr("Unknown"));
     m_versionLabel->setEnabled(false);
 
     m_abis = new QLineEdit(this);
@@ -342,17 +319,17 @@ DebuggerItemConfigWidget::DebuggerItemConfigWidget()
 
     auto formLayout = new QFormLayout(this);
     formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    formLayout->addRow(new QLabel(tr("Name:")), m_displayNameLineEdit);
+    formLayout->addRow(new QLabel(Tr::tr("Name:")), m_displayNameLineEdit);
     formLayout->addRow(m_cdbLabel);
-    formLayout->addRow(new QLabel(tr("Path:")), m_binaryChooser);
-    formLayout->addRow(new QLabel(tr("Type:")), m_typeLineEdit);
-    formLayout->addRow(new QLabel(tr("ABIs:")), m_abis);
-    formLayout->addRow(new QLabel(tr("Version:")), m_versionLabel);
-    formLayout->addRow(new QLabel(tr("Working directory:")), m_workingDirectoryChooser);
+    formLayout->addRow(new QLabel(Tr::tr("Path:")), m_binaryChooser);
+    formLayout->addRow(new QLabel(Tr::tr("Type:")), m_typeLineEdit);
+    formLayout->addRow(new QLabel(Tr::tr("ABIs:")), m_abis);
+    formLayout->addRow(new QLabel(Tr::tr("Version:")), m_versionLabel);
+    formLayout->addRow(new QLabel(Tr::tr("Working directory:")), m_workingDirectoryChooser);
 
-    connect(m_binaryChooser, &PathChooser::pathChanged,
+    connect(m_binaryChooser, &PathChooser::textChanged,
             this, &DebuggerItemConfigWidget::binaryPathHasChanged);
-    connect(m_workingDirectoryChooser, &PathChooser::pathChanged,
+    connect(m_workingDirectoryChooser, &PathChooser::textChanged,
             this, &DebuggerItemConfigWidget::store);
     connect(m_displayNameLineEdit, &QLineEdit::textChanged,
             this, &DebuggerItemConfigWidget::store);
@@ -413,10 +390,10 @@ void DebuggerItemConfigWidget::load(const DebuggerItem *item)
     QString versionCommand;
     if (item->engineType() == CdbEngineType) {
         const bool is64bit = is64BitWindowsSystem();
-        const QString versionString = is64bit ? tr("64-bit version") : tr("32-bit version");
+        const QString versionString = is64bit ? Tr::tr("64-bit version") : Tr::tr("32-bit version");
         //: Label text for path configuration. %2 is "x-bit version".
         text = "<html><body><p>"
-                + tr("Specify the path to the "
+                + Tr::tr("Specify the path to the "
                      "<a href=\"%1\">Windows Console Debugger executable</a>"
                      " (%2) here.").arg(QLatin1String(debuggingToolsWikiLinkC), versionString)
                 + "</p></body></html>";
@@ -460,13 +437,12 @@ void DebuggerItemConfigWidget::binaryPathHasChanged()
 
 class DebuggerConfigWidget : public IOptionsPageWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::DebuggerOptionsPage)
 public:
     DebuggerConfigWidget()
     {
-        m_addButton = new QPushButton(tr("Add"), this);
+        m_addButton = new QPushButton(Tr::tr("Add"), this);
 
-        m_cloneButton = new QPushButton(tr("Clone"), this);
+        m_cloneButton = new QPushButton(Tr::tr("Clone"), this);
         m_cloneButton->setEnabled(false);
 
         m_delButton = new QPushButton(this);
@@ -555,7 +531,7 @@ void DebuggerConfigWidget::cloneDebugger()
     DebuggerItem newItem;
     newItem.createId();
     newItem.setCommand(item->command());
-    newItem.setUnexpandedDisplayName(d->uniqueDisplayName(tr("Clone of %1").arg(item->displayName())));
+    newItem.setUnexpandedDisplayName(d->uniqueDisplayName(Tr::tr("Clone of %1").arg(item->displayName())));
     newItem.reinitializeFromFile();
     newItem.setAutoDetected(false);
     d->m_model->addDebugger(newItem, true);
@@ -567,7 +543,7 @@ void DebuggerConfigWidget::addDebugger()
     DebuggerItem item;
     item.createId();
     item.setEngineType(NoEngineType);
-    item.setUnexpandedDisplayName(d->uniqueDisplayName(tr("New Debugger")));
+    item.setUnexpandedDisplayName(d->uniqueDisplayName(Tr::tr("New Debugger")));
     item.setAutoDetected(false);
     d->m_model->addDebugger(item, true);
     m_debuggerView->setCurrentIndex(d->m_model->lastIndex());
@@ -597,7 +573,7 @@ void DebuggerConfigWidget::updateButtons()
     m_container->setVisible(item != nullptr);
     m_cloneButton->setEnabled(item && item->isValid() && item->canClone());
     m_delButton->setEnabled(item && !item->isAutoDetected());
-    m_delButton->setText(item && titem->m_removed ? tr("Restore") : tr("Remove"));
+    m_delButton->setText(item && titem->m_removed ? Tr::tr("Restore") : Tr::tr("Remove"));
 }
 
 // --------------------------------------------------------------------------
@@ -606,12 +582,10 @@ void DebuggerConfigWidget::updateButtons()
 
 class DebuggerOptionsPage : public Core::IOptionsPage
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::DebuggerOptionsPage)
-
 public:
     DebuggerOptionsPage() {
         setId(ProjectExplorer::Constants::DEBUGGER_SETTINGS_PAGE_ID);
-        setDisplayName(tr("Debuggers"));
+        setDisplayName(Tr::tr("Debuggers"));
         setCategory(ProjectExplorer::Constants::KITS_SETTINGS_CATEGORY);
         setWidgetCreator([] { return new DebuggerConfigWidget; });
     }
@@ -621,11 +595,9 @@ void DebuggerItemManagerPrivate::autoDetectCdbDebuggers()
 {
     FilePaths cdbs;
 
-    const QStringList programDirs = {
-        QString::fromLocal8Bit(qgetenv("ProgramFiles")),
-        QString::fromLocal8Bit(qgetenv("ProgramFiles(x86)")),
-        QString::fromLocal8Bit(qgetenv("ProgramW6432"))
-    };
+    const QStringList programDirs = {qtcEnvironmentVariable("ProgramFiles"),
+                                     qtcEnvironmentVariable("ProgramFiles(x86)"),
+                                     qtcEnvironmentVariable("ProgramW6432")};
 
     QFileInfoList kitFolders;
 
@@ -669,15 +641,17 @@ void DebuggerItemManagerPrivate::autoDetectCdbDebuggers()
 
     for (const QFileInfo &kitFolderFi : kitFolders) {
         const QString path = kitFolderFi.absoluteFilePath();
-        const QFileInfo cdb32(path + "/Debuggers/x86/cdb.exe");
-        if (cdb32.isExecutable())
-            cdbs.append(FilePath::fromString(cdb32.absoluteFilePath()));
-        const QFileInfo cdb64(path + "/Debuggers/x64/cdb.exe");
-        if (cdb64.isExecutable())
-            cdbs.append(FilePath::fromString(cdb64.absoluteFilePath()));
+        QStringList abis = {"x86", "x64"};
+        if (HostOsInfo::hostArchitecture() == HostOsInfo::HostArchitectureArm64)
+            abis << "arm64";
+        for (const QString &abi: abis) {
+            const QFileInfo cdbBinary(path + "/Debuggers/" + abi + "/cdb.exe");
+            if (cdbBinary.isExecutable())
+                cdbs.append(FilePath::fromString(cdbBinary.absoluteFilePath()));
+        }
     }
 
-    for (const FilePath &cdb : qAsConst(cdbs)) {
+    for (const FilePath &cdb : std::as_const(cdbs)) {
         if (DebuggerItemManager::findByCommand(cdb))
             continue;
         DebuggerItem item;
@@ -686,7 +660,7 @@ void DebuggerItemManagerPrivate::autoDetectCdbDebuggers()
         item.setAbis(Abi::abisOfBinary(cdb));
         item.setCommand(cdb);
         item.setEngineType(CdbEngineType);
-        item.setUnexpandedDisplayName(uniqueDisplayName(tr("Auto-detected CDB at %1").arg(cdb.toUserOutput())));
+        item.setUnexpandedDisplayName(uniqueDisplayName(Tr::tr("Auto-detected CDB at %1").arg(cdb.toUserOutput())));
         item.reinitializeFromFile(); // collect version number
         m_model->addDebugger(item);
     }
@@ -730,27 +704,7 @@ void DebuggerItemManagerPrivate::autoDetectGdbOrLldbDebuggers(const FilePaths &s
 {
     const QStringList filters = {"gdb-i686-pc-mingw32", "gdb-i686-pc-mingw32.exe", "gdb",
                                  "gdb.exe", "lldb", "lldb.exe", "lldb-[1-9]*",
-                                 "arm-none-eabi-gdb-py.exe"};
-
-//    DebuggerItem result;
-//    result.setAutoDetected(true);
-//    result.setDisplayName(tr("Auto-detected for Tool Chain %1").arg(tc->displayName()));
-    /*
-    // Check suggestions from the SDK.
-    Environment env = Environment::systemEnvironment();
-    if (tc) {
-        tc->addToEnvironment(env); // Find MinGW gdb in toolchain environment.
-        QString path = tc->suggestedDebugger().toString(); // Won't compile
-        if (!path.isEmpty()) {
-            const QFileInfo fi(path);
-            if (!fi.isAbsolute())
-                path = env.searchInPath(path);
-            result.command = FileName::fromString(path);
-            result.engineType = engineTypeFromBinary(path);
-            return maybeAddDebugger(result, false);
-        }
-    }
-    */
+                                 "arm-none-eabi-gdb-py.exe", "*-*-*-gdb"};
 
     if (searchPaths.isEmpty())
         return;
@@ -763,7 +717,7 @@ void DebuggerItemManagerPrivate::autoDetectGdbOrLldbDebuggers(const FilePaths &s
         proc.setCommand({"xcrun", {"--find", "lldb"}});
         proc.runBlocking();
         // FIXME:
-        if (proc.result() == QtcProcess::FinishedWithSuccess) {
+        if (proc.result() == ProcessResult::FinishedWithSuccess) {
             QString lPath = proc.allOutput().trimmed();
             if (!lPath.isEmpty()) {
                 const QFileInfo fi(lPath);
@@ -779,12 +733,15 @@ void DebuggerItemManagerPrivate::autoDetectGdbOrLldbDebuggers(const FilePaths &s
 
     paths = Utils::filteredUnique(paths);
 
-    const auto addSuspect = [&suspects](const FilePath &entry) { suspects.append(entry); return true; };
+    const auto addSuspect = [&suspects](const FilePath &entry) {
+        suspects.append(entry);
+        return IterationPolicy::Continue;
+    };
     for (const FilePath &path : paths)
         path.iterateDirectory(addSuspect, {filters, QDir::Files | QDir::Executable});
 
-    QStringList logMessages{tr("Searching debuggers...")};
-    for (const FilePath &command : qAsConst(suspects)) {
+    QStringList logMessages{Tr::tr("Searching debuggers...")};
+    for (const FilePath &command : std::as_const(suspects)) {
         const auto commandMatches = [command](const DebuggerTreeItem *titem) {
             return titem->m_item.command() == command;
         };
@@ -796,18 +753,16 @@ void DebuggerItemManagerPrivate::autoDetectGdbOrLldbDebuggers(const FilePaths &s
         DebuggerItem item;
         item.createId();
         item.setDetectionSource(detectionSource);
-        // Intentionally set items with non-empty source as manual for now to
-        // give the user a chance to remove them. FIXME: Think of a better way.
-        item.setAutoDetected(detectionSource.isEmpty());
+        item.setAutoDetected(true);
         item.setCommand(command);
         item.reinitializeFromFile();
         if (item.engineType() == NoEngineType)
             continue;
         //: %1: Debugger engine type (GDB, LLDB, CDB...), %2: Path
-        const QString name = detectionSource.isEmpty() ? tr("System %1 at %2") : tr("Detected %1 at %2");
+        const QString name = detectionSource.isEmpty() ? Tr::tr("System %1 at %2") : Tr::tr("Detected %1 at %2");
         item.setUnexpandedDisplayName(name.arg(item.engineTypeName()).arg(command.toUserOutput()));
         m_model->addDebugger(item);
-        logMessages.append(tr("Found: \"%1\"").arg(command.toUserOutput()));
+        logMessages.append(Tr::tr("Found: \"%1\"").arg(command.toUserOutput()));
     }
     if (logMessage)
         *logMessage = logMessages.join('\n');
@@ -848,7 +803,7 @@ void DebuggerItemManagerPrivate::autoDetectUvscDebuggers()
         item.setVersion(uVisionVersion);
         item.setEngineType(UvscEngineType);
         item.setUnexpandedDisplayName(
-                    uniqueDisplayName(tr("Auto-detected uVision at %1")
+                    uniqueDisplayName(Tr::tr("Auto-detected uVision at %1")
                                       .arg(uVision.toUserOutput())));
         m_model->addDebugger(item);
     }
@@ -866,6 +821,10 @@ DebuggerItemManagerPrivate::DebuggerItemManagerPrivate()
     m_model = new DebuggerItemModel;
     m_optionsPage = new DebuggerOptionsPage;
     ExtensionSystem::PluginManager::addObject(m_optionsPage);
+}
+
+void DebuggerItemManagerPrivate::extensionsInitialized()
+{
     restoreDebuggers();
 }
 
@@ -937,7 +896,8 @@ void DebuggerItemManagerPrivate::readDebuggers(const FilePath &fileName, bool is
                                   .arg(item.command().toUserOutput(), item.id().toString(), fileName.toUserOutput());
                     continue;
                 }
-                if (!item.command().isExecutableFile()) {
+                // FIXME: During startup, devices are not yet available, so we cannot check if the file still exists.
+                if (!item.command().needsDevice() && !item.command().isExecutableFile()) {
                     qWarning() << QString("DebuggerItem \"%1\" (%2) read from \"%3\" dropped since the command is not executable.")
                                   .arg(item.command().toUserOutput(), item.id().toString(), fileName.toUserOutput());
                     continue;
@@ -995,13 +955,18 @@ void DebuggerItemManagerPrivate::saveDebuggers()
 DebuggerItemManager::DebuggerItemManager()
 {
     new DebuggerItemManagerPrivate;
-    connect(ICore::instance(), &ICore::saveSettingsRequested,
-            this, [] { d->saveDebuggers(); });
+    QObject::connect(ICore::instance(), &ICore::saveSettingsRequested,
+                     [] { d->saveDebuggers(); });
 }
 
 DebuggerItemManager::~DebuggerItemManager()
 {
     delete d;
+}
+
+void DebuggerItemManager::extensionsInitialized()
+{
+    d->extensionsInitialized();
 }
 
 const QList<DebuggerItem> DebuggerItemManager::debuggers()
@@ -1055,7 +1020,7 @@ void DebuggerItemManager::autoDetectDebuggersForDevice(const FilePaths &searchPa
 void DebuggerItemManager::removeDetectedDebuggers(const QString &detectionSource,
                                                   QString *logMessage)
 {
-    QStringList logMessages{tr("Removing debugger entries...")};
+    QStringList logMessages{Tr::tr("Removing debugger entries...")};
     QList<DebuggerTreeItem *> toBeRemoved;
 
     d->m_model->forItemsAtLevel<2>([detectionSource, &toBeRemoved](DebuggerTreeItem *titem) {
@@ -1069,7 +1034,7 @@ void DebuggerItemManager::removeDetectedDebuggers(const QString &detectionSource
             toBeRemoved.append(titem);
     });
     for (DebuggerTreeItem *current : toBeRemoved) {
-        logMessages.append(tr("Removed \"%1\"").arg(current->m_item.displayName()));
+        logMessages.append(Tr::tr("Removed \"%1\"").arg(current->m_item.displayName()));
         d->m_model->destroyItem(current);
     }
 
@@ -1080,7 +1045,7 @@ void DebuggerItemManager::removeDetectedDebuggers(const QString &detectionSource
 void DebuggerItemManager::listDetectedDebuggers(const QString &detectionSource, QString *logMessage)
 {
     QTC_ASSERT(logMessage, return);
-    QStringList logMessages{tr("Debuggers:")};
+    QStringList logMessages{Tr::tr("Debuggers:")};
     d->m_model->forItemsAtLevel<2>([detectionSource, &logMessages](DebuggerTreeItem *titem) {
         if (titem->m_item.detectionSource() == detectionSource)
             logMessages.append(titem->m_item.displayName());

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppcodegen_test.h"
 
@@ -40,6 +18,7 @@
     tests the InsertionPointLocator.
  */
 using namespace CPlusPlus;
+using namespace Utils;
 
 using CppEditor::Tests::TemporaryDir;
 
@@ -49,7 +28,7 @@ namespace {
 Document::Ptr createDocument(const QString &filePath, const QByteArray &text,
                              int expectedGlobalSymbolCount)
 {
-    Document::Ptr document = Document::create(filePath);
+    Document::Ptr document = Document::create(FilePath::fromString(filePath));
     document->setUtf8Source(text);
     document->check();
     QTC_ASSERT(document->diagnosticMessages().isEmpty(), return Document::Ptr());
@@ -64,10 +43,10 @@ Document::Ptr createDocumentAndFile(TemporaryDir *temporaryDir,
                                     int expectedGlobalSymbolCount)
 {
     QTC_ASSERT(temporaryDir, return Document::Ptr());
-    const QString absoluteFilePath = temporaryDir->createFile(relativeFilePath, text);
+    const FilePath absoluteFilePath = temporaryDir->createFile(relativeFilePath, text);
     QTC_ASSERT(!absoluteFilePath.isEmpty(), return Document::Ptr());
 
-    return createDocument(absoluteFilePath, text, expectedGlobalSymbolCount);
+    return createDocument(absoluteFilePath.toString(), text, expectedGlobalSymbolCount);
 }
 
 } // anonymous namespace
@@ -95,7 +74,7 @@ void CodegenTest::testPublicInEmptyClass()
     CppRefactoringChanges changes(snapshot);
     InsertionPointLocator find(changes);
     InsertionLocation loc = find.methodDeclarationInClass(
-                doc->fileName(),
+                doc->filePath(),
                 foo,
                 InsertionPointLocator::Public);
     QVERIFY(loc.isValid());
@@ -129,7 +108,7 @@ void CodegenTest::testPublicInNonemptyClass()
     CppRefactoringChanges changes(snapshot);
     InsertionPointLocator find(changes);
     InsertionLocation loc = find.methodDeclarationInClass(
-                doc->fileName(),
+                doc->filePath(),
                 foo,
                 InsertionPointLocator::Public);
     QVERIFY(loc.isValid());
@@ -163,7 +142,7 @@ void CodegenTest::testPublicBeforeProtected()
     CppRefactoringChanges changes(snapshot);
     InsertionPointLocator find(changes);
     InsertionLocation loc = find.methodDeclarationInClass(
-                doc->fileName(),
+                doc->filePath(),
                 foo,
                 InsertionPointLocator::Public);
     QVERIFY(loc.isValid());
@@ -198,7 +177,7 @@ void CodegenTest::testPrivateAfterProtected()
     CppRefactoringChanges changes(snapshot);
     InsertionPointLocator find(changes);
     InsertionLocation loc = find.methodDeclarationInClass(
-                doc->fileName(),
+                doc->filePath(),
                 foo,
                 InsertionPointLocator::Private);
     QVERIFY(loc.isValid());
@@ -233,7 +212,7 @@ void CodegenTest::testProtectedInNonemptyClass()
     CppRefactoringChanges changes(snapshot);
     InsertionPointLocator find(changes);
     InsertionLocation loc = find.methodDeclarationInClass(
-                doc->fileName(),
+                doc->filePath(),
                 foo,
                 InsertionPointLocator::Protected);
     QVERIFY(loc.isValid());
@@ -268,7 +247,7 @@ void CodegenTest::testProtectedBetweenPublicAndPrivate()
     CppRefactoringChanges changes(snapshot);
     InsertionPointLocator find(changes);
     InsertionLocation loc = find.methodDeclarationInClass(
-                doc->fileName(),
+                doc->filePath(),
                 foo,
                 InsertionPointLocator::Protected);
     QVERIFY(loc.isValid());
@@ -324,7 +303,7 @@ void CodegenTest::testQtdesignerIntegration()
     CppRefactoringChanges changes(snapshot);
     InsertionPointLocator find(changes);
     InsertionLocation loc = find.methodDeclarationInClass(
-                doc->fileName(),
+                doc->filePath(),
                 foo,
                 InsertionPointLocator::PrivateSlot);
     QVERIFY(loc.isValid());
@@ -373,7 +352,7 @@ void CodegenTest::testDefinitionEmptyClass()
     QList<InsertionLocation> locList = find.methodDefinition(decl);
     QVERIFY(locList.size() == 1);
     InsertionLocation loc = locList.first();
-    QCOMPARE(loc.fileName(), sourceDocument->fileName());
+    QCOMPARE(loc.filePath(), sourceDocument->filePath());
     QCOMPARE(loc.prefix(), QLatin1String("\n\n"));
     QCOMPARE(loc.suffix(), QString());
     QCOMPARE(loc.line(), 3);
@@ -409,7 +388,7 @@ void CodegenTest::testDefinitionFirstMember()
     Document::Ptr sourceDocument = createDocumentAndFile(&temporaryDir, "file.cpp", sourceText, 3);
     QVERIFY(sourceDocument);
     sourceDocument->addIncludeFile(Document::Include(QLatin1String("file.h"),
-                                                     headerDocument->fileName(), 1,
+                                                     headerDocument->filePath(), 1,
                                                      Client::IncludeLocal));
 
     Snapshot snapshot;
@@ -431,7 +410,7 @@ void CodegenTest::testDefinitionFirstMember()
     QList<InsertionLocation> locList = find.methodDefinition(decl);
     QVERIFY(locList.size() == 1);
     InsertionLocation loc = locList.first();
-    QCOMPARE(loc.fileName(), sourceDocument->fileName());
+    QCOMPARE(loc.filePath(), sourceDocument->filePath());
     QCOMPARE(loc.line(), 4);
     QCOMPARE(loc.column(), 1);
     QCOMPARE(loc.suffix(), QLatin1String("\n\n"));
@@ -468,7 +447,7 @@ void CodegenTest::testDefinitionLastMember()
     Document::Ptr sourceDocument = createDocumentAndFile(&temporaryDir, "file.cpp", sourceText, 3);
     QVERIFY(sourceDocument);
     sourceDocument->addIncludeFile(Document::Include(QLatin1String("file.h"),
-                                                     headerDocument->fileName(), 1,
+                                                     headerDocument->filePath(), 1,
                                                      Client::IncludeLocal));
 
     Snapshot snapshot;
@@ -490,7 +469,7 @@ void CodegenTest::testDefinitionLastMember()
     QList<InsertionLocation> locList = find.methodDefinition(decl);
     QVERIFY(locList.size() == 1);
     InsertionLocation loc = locList.first();
-    QCOMPARE(loc.fileName(), sourceDocument->fileName());
+    QCOMPARE(loc.filePath(), sourceDocument->filePath());
     QCOMPARE(loc.line(), 7);
     QCOMPARE(loc.column(), 2);
     QCOMPARE(loc.prefix(), QLatin1String("\n\n"));
@@ -534,7 +513,7 @@ void CodegenTest::testDefinitionMiddleMember()
     Document::Ptr sourceDocument = createDocumentAndFile(&temporaryDir, "file.cpp", sourceText, 4);
     QVERIFY(sourceDocument);
     sourceDocument->addIncludeFile(Document::Include(QLatin1String("file.h"),
-                                                     headerDocument->fileName(), 1,
+                                                     headerDocument->filePath(), 1,
                                                      Client::IncludeLocal));
 
     Snapshot snapshot;
@@ -556,7 +535,7 @@ void CodegenTest::testDefinitionMiddleMember()
     QList<InsertionLocation> locList = find.methodDefinition(decl);
     QVERIFY(locList.size() == 1);
     InsertionLocation loc = locList.first();
-    QCOMPARE(loc.fileName(), sourceDocument->fileName());
+    QCOMPARE(loc.filePath(), sourceDocument->filePath());
     QCOMPARE(loc.line(), 7);
     QCOMPARE(loc.column(), 2);
     QCOMPARE(loc.prefix(), QLatin1String("\n\n"));
@@ -594,7 +573,7 @@ void CodegenTest::testDefinitionMiddleMemberSurroundedByUndefined()
     Document::Ptr sourceDocument = createDocumentAndFile(&temporaryDir, "file.cpp", sourceText, 3);
     QVERIFY(sourceDocument);
     sourceDocument->addIncludeFile(Document::Include(QLatin1String("file.h"),
-                                                     headerDocument->fileName(), 1,
+                                                     headerDocument->filePath(), 1,
                                                      Client::IncludeLocal));
 
     Snapshot snapshot;
@@ -616,7 +595,7 @@ void CodegenTest::testDefinitionMiddleMemberSurroundedByUndefined()
     QList<InsertionLocation> locList = find.methodDefinition(decl);
     QVERIFY(locList.size() == 1);
     InsertionLocation loc = locList.first();
-    QCOMPARE(loc.fileName(), sourceDocument->fileName());
+    QCOMPARE(loc.filePath(), sourceDocument->filePath());
     QCOMPARE(loc.line(), 4);
     QCOMPARE(loc.column(), 1);
     QCOMPARE(loc.prefix(), QString());
@@ -657,7 +636,7 @@ void CodegenTest::testDefinitionMemberSpecificFile()
     Document::Ptr sourceDocument = createDocumentAndFile(&temporaryDir, "file.cpp", sourceText, 3);
     QVERIFY(sourceDocument);
     sourceDocument->addIncludeFile(Document::Include(QLatin1String("file.h"),
-                                                     headerDocument->fileName(), 1,
+                                                     headerDocument->filePath(), 1,
                                                      Client::IncludeLocal));
 
     Snapshot snapshot;
@@ -676,14 +655,15 @@ void CodegenTest::testDefinitionMemberSpecificFile()
 
     CppRefactoringChanges changes(snapshot);
     InsertionPointLocator find(changes);
-    QList<InsertionLocation> locList = find.methodDefinition(decl, true, sourceDocument->fileName());
+    QList<InsertionLocation> locList =
+            find.methodDefinition(decl, true, sourceDocument->filePath());
     QVERIFY(locList.size() == 1);
     InsertionLocation loc = locList.first();
-    QCOMPARE(loc.fileName(), sourceDocument->fileName());
+    QCOMPARE(loc.filePath(), sourceDocument->filePath());
     QCOMPARE(loc.line(), 7);
     QCOMPARE(loc.column(), 2);
     QCOMPARE(loc.prefix(), QLatin1String("\n\n"));
     QCOMPARE(loc.suffix(), QString());
 }
 
-} // namespace CppEditor::Internal
+} // CppEditor::Internal

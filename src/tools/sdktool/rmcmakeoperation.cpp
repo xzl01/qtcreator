@@ -1,38 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rmcmakeoperation.h"
 
-#include "addkeysoperation.h"
 #include "addcmakeoperation.h"
+#include "addkeysoperation.h"
 #include "findkeyoperation.h"
 #include "findvalueoperation.h"
 #include "getoperation.h"
 #include "rmkeysoperation.h"
 
 #include <iostream>
+
+#ifdef WITH_TESTS
+#include <QTest>
+#endif
+
+#include <QLoggingCategory>
+
+Q_LOGGING_CATEGORY(rmcmakelog, "qtc.sdktool.operations.rmcmake", QtWarningMsg)
 
 // CMake file stuff:
 const char COUNT[] = "CMakeTools.Count";
@@ -64,7 +50,7 @@ bool RmCMakeOperation::setArguments(const QStringList &args)
 
         if (current == "--id") {
             if (next.isNull()) {
-                std::cerr << "No parameter for --id given." << std::endl << std::endl;
+                qCCritical(rmcmakelog) << "No parameter for --id given.";
                 return false;
             }
             ++i; // skip next;
@@ -73,8 +59,9 @@ bool RmCMakeOperation::setArguments(const QStringList &args)
         }
     }
 
-    if (m_id.isEmpty())
-        std::cerr << "No id given." << std::endl << std::endl;
+    if (m_id.isEmpty()) {
+        qCCritical(rmcmakelog) << "No id given.";
+    }
 
     return !m_id.isEmpty();
 }
@@ -93,45 +80,55 @@ int RmCMakeOperation::execute() const
 }
 
 #ifdef WITH_TESTS
-bool RmCMakeOperation::test() const
+void RmCMakeOperation::unittest()
 {
     // Add cmakes:
     QVariantMap map = AddCMakeOperation::initializeCMake();
     const QVariantMap emptyMap = map;
-    map = AddCMakeData{"testId", "name", "/tmp/test",
-                       {{"ExtraKey", QVariant("ExtraValue")}}}.addCMake(map);
-    map = AddCMakeData{"testId2", "other name", "/tmp/test2", {}}.addCMake(map);
+    AddCMakeData d;
+    d.m_id = "testId";
+    d.m_displayName = "name";
+    d.m_path = "/tmp/test";
+    d.m_extra = {{"ExtraKey", QVariant("ExtraValue")}};
+    map = d.addCMake(map);
 
-    QVariantMap result = RmCMakeData{"nonexistent"}.rmCMake(QVariantMap());
-    if (!result.isEmpty())
-        return false;
+    d.m_id = "testId2";
+    d.m_displayName = "other name";
+    d.m_path = "/tmp/test2";
+    d.m_extra = {};
+    map = d.addCMake(map);
 
-    result = RmCMakeData{"nonexistent"}.rmCMake(map);
-    if (result != map)
-        return false;
+    RmCMakeData rmD;
+    rmD.m_id = "nonexistent";
+
+    QTest::ignoreMessage(QtCriticalMsg, "Error: Count found in cmake tools file seems wrong.");
+
+    QVERIFY(rmD.rmCMake(QVariantMap()).isEmpty());
+    QCOMPARE(rmD.rmCMake(map), map);
 
     // Remove from map with both testId and testId2:
-    result = RmCMakeData{"testId2"}.rmCMake(map);
-    if (result == map
-            || result.value(COUNT, 0).toInt() != 1
-            || !result.contains(QString::fromLatin1(PREFIX) + "0")
-            || result.value(QString::fromLatin1(PREFIX) + "0") != map.value(QString::fromLatin1(PREFIX) + "0"))
-        return false;
+    rmD.m_id = "testId2";
+    QVariantMap result = rmD.rmCMake(map);
+    QVERIFY(result != map);
+
+    QCOMPARE(result.value(COUNT, 0).toInt(), 1);
+    QVERIFY(result.contains(QString::fromLatin1(PREFIX) + "0"));
+    QCOMPARE(result.value(QString::fromLatin1(PREFIX) + "0"),
+             map.value(QString::fromLatin1(PREFIX) + "0"));
 
     // Remove from map with both testId and testId2:
-    result = RmCMakeData{"testId"}.rmCMake(map);
-    if (result == map
-            || result.value(COUNT, 0).toInt() != 1
-            || !result.contains(QString::fromLatin1(PREFIX) + "0")
-            || result.value(QString::fromLatin1(PREFIX) + "0") != map.value(QString::fromLatin1(PREFIX) + "1"))
-        return false;
+    rmD.m_id = "testId";
+    result = rmD.rmCMake(map);
+    QVERIFY(result != map);
+    QCOMPARE(result.value(COUNT, 0).toInt(), 1);
+    QVERIFY(result.contains(QString::fromLatin1(PREFIX) + "0"));
+    QCOMPARE(result.value(QString::fromLatin1(PREFIX) + "0"),
+             map.value(QString::fromLatin1(PREFIX) + "1"));
 
     // Remove from map without testId!
-    result = RmCMakeData{"testId2"}.rmCMake(result);
-    if (result != emptyMap)
-        return false;
-
-    return true;
+    rmD.m_id = "testId2";
+    result = rmD.rmCMake(result);
+    QCOMPARE(result, emptyMap);
 }
 #endif
 
@@ -141,13 +138,14 @@ QVariantMap RmCMakeData::rmCMake(const QVariantMap &map) const
     bool ok;
     int count = GetOperation::get(map, COUNT).toInt(&ok);
     if (!ok || count < 0) {
-        std::cerr << "Error: Count found in cmake tools file seems wrong." << std::endl;
+        qCCritical(rmcmakelog) << "Error: Count found in cmake tools file seems wrong.";
         return map;
     }
 
     QVariantList cmList;
     for (int i = 0; i < count; ++i) {
-        QVariantMap cmData = GetOperation::get(map, QString::fromLatin1(PREFIX) + QString::number(i)).toMap();
+        QVariantMap cmData
+            = GetOperation::get(map, QString::fromLatin1(PREFIX) + QString::number(i)).toMap();
         if (cmData.value(ID).toString() != m_id)
             cmList.append(cmData);
     }
@@ -159,4 +157,3 @@ QVariantMap RmCMakeData::rmCMake(const QVariantMap &map) const
 
     return newMap;
 }
-

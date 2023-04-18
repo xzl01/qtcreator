@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \previouspage external-tool-spec.html
@@ -259,7 +237,7 @@
     Use \c{QDir::toNativeSeparators()} for file and directory names that you
     pass to \c{tr().arg()}.
 
-    Do not use markup that spans the whole string, because that can be confusing
+    Do not use markup that spans the whole string because that can be confusing
     for translators. For example, instead of:
 
     \code
@@ -404,7 +382,7 @@
             \li  Dialog that provides feedback to users, in the form of status
                  information, a warning, or an error message.
                  \image qtcreator-error-message.png "Message box"
-                 Output from Qt Creator should be displayed in output panes,
+                 Output from Qt Creator should be displayed in output views,
                  instead.
             \li  Use the event as the title and provide a solution in the
                  message box.
@@ -417,10 +395,10 @@
                  Use descriptive, but short mode names. They have to fit in the
                  \uicontrol {Mode selector}.
         \row
-            \li  Output pane
-            \li  A pane displayed in the task pane that displays output from Qt Creator.
-                 \image qtcreator-output-pane.png "Output pane"
-            \li  Use descriptive names for output panes.
+            \li  Output
+            \li  Views to display output from Qt Creator.
+                 \image qtcreator-output-pane.png "Output"
+            \li  Use descriptive names for output views.
         \row
             \li  Sidebar
             \li  A view available in the \uicontrol Edit and \uicontrol Debug modes that
@@ -435,7 +413,7 @@
                  provides them with functions for managing the information.
                  Available in \uicontrol Debug mode, for interaction with the program
                  that is running under the control of the debugger.
-                 \image qtcreator-debugger-views.png "Views"
+                 \image qtcreator-debugger-views.webp "Views"
             \li  Use descriptive names for views.
     \endtable
 

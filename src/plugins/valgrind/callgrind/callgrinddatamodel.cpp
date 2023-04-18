@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "callgrinddatamodel.h"
 
 #include "callgrindparsedata.h"
 #include "callgrindfunction.h"
 #include "callgrindcostitem.h"
+#include "../valgrindtr.h"
 
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
@@ -230,8 +209,8 @@ QVariant DataModel::data(const QModelIndex &index, int role) const
 
         QString entry = "<dt>%1</dt><dd>%2</dd>\n";
         // body, function info first
-        ret += entry.arg(tr("Function:")).arg(func->name().toHtmlEscaped());
-        ret += entry.arg(tr("File:")).arg(func->file());
+        ret += entry.arg(Tr::tr("Function:")).arg(func->name().toHtmlEscaped());
+        ret += entry.arg(Tr::tr("File:")).arg(func->file());
         if (!func->costItems().isEmpty()) {
             const CostItem *firstItem = func->costItems().constFirst();
             for (int i = 0; i < d->m_data->positions().size(); ++i) {
@@ -239,17 +218,17 @@ QVariant DataModel::data(const QModelIndex &index, int role) const
                        .arg(firstItem->position(i));
             }
         }
-        ret += entry.arg(tr("Object:")).arg(func->object());
-        ret += entry.arg(tr("Called:")).arg(tr("%n time(s)", nullptr, func->called()));
+        ret += entry.arg(Tr::tr("Object:")).arg(func->object());
+        ret += entry.arg(Tr::tr("Called:")).arg(Tr::tr("%n time(s)", nullptr, func->called()));
         ret += "</dl><p/>";
 
         // self/inclusive costs
         entry = "<td class='group'>%1</td><td>%2</td>";
         ret += "<table>";
         ret += "<thead><tr class='head'>";
-        ret += "<td>" + tr("Events") + "</td>";
-        ret += entry.arg(tr("Self costs")).arg(tr("(%)"));
-        ret += entry.arg(tr("Incl. costs")).arg(tr("(%)"));
+        ret += "<td>" + Tr::tr("Events") + "</td>";
+        ret += entry.arg(Tr::tr("Self costs")).arg(Tr::tr("(%)"));
+        ret += entry.arg(Tr::tr("Incl. costs")).arg(Tr::tr("(%)"));
         ret += "</tr></thead>";
         ret += "<tbody>";
         for (int i = 0; i < d->m_data->events().size(); ++i) {
@@ -264,8 +243,8 @@ QVariant DataModel::data(const QModelIndex &index, int role) const
             ret += "<td class='head'><nobr>" +
                     noWrap(ParseData::prettyStringForEvent(d->m_data->events().at(i)))
                     + "</nobr></td>";
-            ret += entry.arg(selfCost).arg(tr("(%1%)").arg(relSelfCost));
-            ret += entry.arg(inclCost).arg(tr("(%1%)").arg(relInclCost));
+            ret += entry.arg(selfCost).arg(Tr::tr("(%1%)").arg(relSelfCost));
+            ret += entry.arg(inclCost).arg(Tr::tr("(%1%)").arg(relInclCost));
             ret += "</tr>";
         }
         ret += "</tbody></table>";
@@ -317,22 +296,22 @@ QVariant DataModel::headerData(int section, Qt::Orientation orientation, int rol
 
         const QString prettyCostStr = ParseData::prettyStringForEvent(d->m_data->events().at(d->m_event));
         if (section == SelfCostColumn)
-            return tr("%1 cost spent in a given function excluding costs from called functions.").arg(prettyCostStr);
+            return Tr::tr("%1 cost spent in a given function excluding costs from called functions.").arg(prettyCostStr);
         if (section == InclusiveCostColumn)
-            return tr("%1 cost spent in a given function including costs from called functions.").arg(prettyCostStr);
+            return Tr::tr("%1 cost spent in a given function including costs from called functions.").arg(prettyCostStr);
         return QVariant();
     }
 
     if (section == NameColumn)
-        return tr("Function");
+        return Tr::tr("Function");
     if (section == LocationColumn)
-        return tr("Location");
+        return Tr::tr("Location");
     if (section == CalledColumn)
-        return tr("Called");
+        return Tr::tr("Called");
     if (section == SelfCostColumn)
-        return tr("Self Cost: %1").arg(d->m_data ? d->m_data->events().value(d->m_event) : QString());
+        return Tr::tr("Self Cost: %1").arg(d->m_data ? d->m_data->events().value(d->m_event) : QString());
     if (section == InclusiveCostColumn)
-        return tr("Incl. Cost: %1").arg(d->m_data ? d->m_data->events().value(d->m_event) : QString());
+        return Tr::tr("Incl. Cost: %1").arg(d->m_data ? d->m_data->events().value(d->m_event) : QString());
 
     return QVariant();
 }

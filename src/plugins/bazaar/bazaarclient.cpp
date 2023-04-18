@@ -1,34 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Hugues Delorme
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Hugues Delorme
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bazaarclient.h"
+
+#include "bazaarsettings.h"
+#include "bazaartr.h"
 #include "constants.h"
 
 #include <vcsbase/vcsbaseplugin.h>
-#include <vcsbase/vcsoutputwindow.h>
 #include <vcsbase/vcsbaseeditorconfig.h>
+#include <vcsbase/vcscommand.h>
+#include <vcsbase/vcsoutputwindow.h>
 
 #include <utils/hostosinfo.h>
 
@@ -41,20 +23,18 @@
 using namespace Utils;
 using namespace VcsBase;
 
-namespace Bazaar {
-namespace Internal {
+namespace Bazaar::Internal {
 
 // Parameter widget controlling whitespace diff mode, associated with a parameter
 class BazaarDiffConfig : public VcsBaseEditorConfig
 {
-    Q_OBJECT
 public:
     BazaarDiffConfig(BazaarSettings &settings, QToolBar *toolBar) :
         VcsBaseEditorConfig(toolBar)
     {
-        mapSetting(addToggleButton("-w", tr("Ignore Whitespace")),
+        mapSetting(addToggleButton("-w", Tr::tr("Ignore Whitespace")),
                    &settings.diffIgnoreWhiteSpace);
-        mapSetting(addToggleButton("-B", tr("Ignore Blank Lines")),
+        mapSetting(addToggleButton("-B", Tr::tr("Ignore Blank Lines")),
                    &settings.diffIgnoreBlankLines);
     }
 
@@ -73,28 +53,27 @@ public:
 
 class BazaarLogConfig : public VcsBaseEditorConfig
 {
-    Q_OBJECT
 public:
     BazaarLogConfig(BazaarSettings &settings, QToolBar *toolBar) :
         VcsBaseEditorConfig(toolBar)
     {
-        mapSetting(addToggleButton("--verbose", tr("Verbose"),
-                                   tr("Show files changed in each revision.")),
+        mapSetting(addToggleButton("--verbose", Tr::tr("Verbose"),
+                                   Tr::tr("Show files changed in each revision.")),
                    &settings.logVerbose);
-        mapSetting(addToggleButton("--forward", tr("Forward"),
-                                   tr("Show from oldest to newest.")),
+        mapSetting(addToggleButton("--forward", Tr::tr("Forward"),
+                                   Tr::tr("Show from oldest to newest.")),
                    &settings.logForward);
-        mapSetting(addToggleButton("--include-merges", tr("Include Merges"),
-                                   tr("Show merged revisions.")),
+        mapSetting(addToggleButton("--include-merges", Tr::tr("Include Merges"),
+                                   Tr::tr("Show merged revisions.")),
                    &settings.logIncludeMerges);
 
         const QList<ChoiceItem> logChoices = {
-            {tr("Detailed"), "long"},
-            {tr("Moderately Short"), "short"},
-            {tr("One Line"), "line"},
-            {tr("GNU Change Log"), "gnu-changelog"}
+            {Tr::tr("Detailed"), "long"},
+            {Tr::tr("Moderately Short"), "short"},
+            {Tr::tr("One Line"), "line"},
+            {Tr::tr("GNU Change Log"), "gnu-changelog"}
         };
-        mapSetting(addChoices(tr("Format"), { "--log-format=%1" }, logChoices),
+        mapSetting(addChoices(Tr::tr("Format"), { "--log-format=%1" }, logChoices),
                    &settings.logFormat);
     }
 };
@@ -150,10 +129,9 @@ bool BazaarClient::synchronousUncommit(const FilePath &workingDir,
          << revisionSpec(revision)
          << extraOptions;
 
-    QtcProcess proc;
-    vcsFullySynchronousExec(proc, workingDir, args);
-    VcsOutputWindow::append(proc.stdOut());
-    return proc.result() == QtcProcess::FinishedWithSuccess;
+    const CommandResult result = vcsSynchronousExec(workingDir, args);
+    VcsOutputWindow::append(result.cleanedStdOut());
+    return result.result() == ProcessResult::FinishedWithSuccess;
 }
 
 void BazaarClient::commit(const FilePath &repositoryRoot, const QStringList &files,
@@ -163,12 +141,12 @@ void BazaarClient::commit(const FilePath &repositoryRoot, const QStringList &fil
                           QStringList(extraOptions) << QLatin1String("-F") << commitMessageFile);
 }
 
-VcsBaseEditorWidget *BazaarClient::annotate(
-        const FilePath &workingDir, const QString &file, const QString &revision,
-        int lineNumber, const QStringList &extraOptions)
+void BazaarClient::annotate(const Utils::FilePath &workingDir, const QString &file,
+                            int lineNumber, const QString &revision,
+                            const QStringList &extraOptions, int firstLine)
 {
-    return VcsBaseClient::annotate(workingDir, file, revision, lineNumber,
-                                   QStringList(extraOptions) << QLatin1String("--long"));
+    VcsBaseClient::annotate(workingDir, file, lineNumber, revision,
+                            QStringList(extraOptions) << QLatin1String("--long"), firstLine);
 }
 
 bool BazaarClient::isVcsDirectory(const FilePath &filePath) const
@@ -186,17 +164,13 @@ FilePath BazaarClient::findTopLevelForFile(const FilePath &file) const
 
 bool BazaarClient::managesFile(const FilePath &workingDirectory, const QString &fileName) const
 {
-    QStringList args(QLatin1String("status"));
-    args << fileName;
-
-    QtcProcess proc;
-    vcsFullySynchronousExec(proc, workingDirectory, args);
-    if (proc.result() != QtcProcess::FinishedWithSuccess)
+    const CommandResult result = vcsSynchronousExec(workingDirectory, {"status", fileName});
+    if (result.result() != ProcessResult::FinishedWithSuccess)
         return false;
-    return proc.rawStdOut().startsWith("unknown");
+    return result.rawStdOut().startsWith("unknown");
 }
 
-void BazaarClient::view(const QString &source, const QString &id, const QStringList &extraOptions)
+void BazaarClient::view(const FilePath &source, const QString &id, const QStringList &extraOptions)
 {
     QStringList args(QLatin1String("log"));
     args << QLatin1String("-p") << QLatin1String("-v") << extraOptions;
@@ -213,7 +187,7 @@ Utils::Id BazaarClient::vcsEditorKind(VcsCommandTag cmd) const
     case LogCommand:
         return Constants::FILELOG_ID;
     default:
-        return Utils::Id();
+        return {};
     }
 }
 
@@ -231,8 +205,8 @@ ExitCodeInterpreter BazaarClient::exitCodeInterpreter(VcsCommandTag cmd) const
 {
     if (cmd == DiffCommand) {
         return [](int code) {
-            return (code < 0 || code > 2) ? QtcProcess::FinishedWithError
-                                          : QtcProcess::FinishedWithSuccess;
+            return (code < 0 || code > 2) ? ProcessResult::FinishedWithError
+                                          : ProcessResult::FinishedWithSuccess;
         };
     }
     return {};
@@ -290,7 +264,4 @@ BazaarClient::StatusItem BazaarClient::parseStatusLine(const QString &line) cons
     return item;
 }
 
-} // namespace Internal
-} // namespace Bazaar
-
-#include "bazaarclient.moc"
+} // namespace Bazaar::Internal

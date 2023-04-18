@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "icon.h"
 #include "utils_global.h"
+
+#include "icon.h"
 
 namespace Utils {
 namespace Icons {
@@ -58,6 +37,7 @@ QTCREATOR_UTILS_EXPORT extern const Icon BOOKMARK_TOOLBAR;
 QTCREATOR_UTILS_EXPORT extern const Icon BOOKMARK_TEXTEDITOR;
 QTCREATOR_UTILS_EXPORT extern const Icon SNAPSHOT_TOOLBAR;
 QTCREATOR_UTILS_EXPORT extern const Icon NEWSEARCH_TOOLBAR;
+QTCREATOR_UTILS_EXPORT extern const Icon SETTINGS;
 QTCREATOR_UTILS_EXPORT extern const Icon SETTINGS_TOOLBAR;
 
 QTCREATOR_UTILS_EXPORT extern const Icon NEWFILE;
@@ -69,8 +49,9 @@ QTCREATOR_UTILS_EXPORT extern const Icon SAVEFILE_TOOLBAR;
 QTCREATOR_UTILS_EXPORT extern const Icon EXPORTFILE_TOOLBAR;
 QTCREATOR_UTILS_EXPORT extern const Icon MULTIEXPORTFILE_TOOLBAR;
 
-QTCREATOR_UTILS_EXPORT extern const Icon UNKNOWN_FILE;
 QTCREATOR_UTILS_EXPORT extern const Icon DIR;
+QTCREATOR_UTILS_EXPORT extern const Icon HELP;
+QTCREATOR_UTILS_EXPORT extern const Icon UNKNOWN_FILE;
 
 QTCREATOR_UTILS_EXPORT extern const Icon UNDO;
 QTCREATOR_UTILS_EXPORT extern const Icon UNDO_TOOLBAR;
@@ -89,6 +70,7 @@ QTCREATOR_UTILS_EXPORT extern const Icon ARROW_UP;
 QTCREATOR_UTILS_EXPORT extern const Icon ARROW_UP_TOOLBAR;
 QTCREATOR_UTILS_EXPORT extern const Icon ARROW_DOWN;
 QTCREATOR_UTILS_EXPORT extern const Icon ARROW_DOWN_TOOLBAR;
+QTCREATOR_UTILS_EXPORT extern const Icon MINUS_TOOLBAR;
 QTCREATOR_UTILS_EXPORT extern const Icon MINUS;
 QTCREATOR_UTILS_EXPORT extern const Icon PLUS_TOOLBAR;
 QTCREATOR_UTILS_EXPORT extern const Icon PLUS;

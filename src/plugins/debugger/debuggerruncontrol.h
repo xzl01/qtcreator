@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -46,8 +24,6 @@ class DebugServerPortsGatherer;
 
 class DEBUGGER_EXPORT DebuggerRunTool : public ProjectExplorer::RunWorker
 {
-    Q_OBJECT
-
 public:
     enum AllowTerminal { DoAllowTerminal, DoNotAllowTerminal };
     explicit DebuggerRunTool(ProjectExplorer::RunControl *runControl,
@@ -68,7 +44,7 @@ public:
     void setUsePortsGatherer(bool useCpp, bool useQml);
     DebugServerPortsGatherer *portsGatherer() const;
 
-    void setSolibSearchPath(const QStringList &list);
+    void setSolibSearchPath(const Utils::FilePaths &list);
     void addSolibSearchDir(const QString &str);
 
     static void setBreakOnMainNextTime();
@@ -76,7 +52,6 @@ public:
     void setInferior(const ProjectExplorer::Runnable &runnable);
     void setInferiorExecutable(const Utils::FilePath &executable);
     void setInferiorEnvironment(const Utils::Environment &env); // Used by GammaRay plugin
-    void setInferiorDevice(ProjectExplorer::IDevice::ConstPtr device); // Used by cdbengine
     void setRunControlName(const QString &name);
     void setStartMessage(const QString &msg);
     void addQmlServerInferiorCommandLineArgumentIfNeeded();
@@ -132,6 +107,8 @@ public:
     Internal::TerminalRunner *terminalRunner() const;
     DebuggerEngineType cppEngineType() const;
 
+    Internal::DebuggerRunParameters &runParameters() { return m_runParameters; }
+
 private:
     bool fixupParameters();
     void handleEngineStarted(Internal::DebuggerEngine *engine);
@@ -145,8 +122,6 @@ private:
 
 class DEBUGGER_EXPORT DebugServerPortsGatherer : public ProjectExplorer::ChannelProvider
 {
-    Q_OBJECT
-
 public:
     explicit DebugServerPortsGatherer(ProjectExplorer::RunControl *runControl);
     ~DebugServerPortsGatherer() override;
@@ -166,8 +141,6 @@ private:
 
 class DEBUGGER_EXPORT DebugServerRunner : public ProjectExplorer::SimpleTargetRunner
 {
-    Q_OBJECT
-
 public:
     explicit DebugServerRunner(ProjectExplorer::RunControl *runControl,
                                DebugServerPortsGatherer *portsGatherer);
@@ -182,7 +155,13 @@ private:
     bool m_useMulti = true;
 };
 
+class DebuggerRunWorkerFactory final : public ProjectExplorer::RunWorkerFactory
+{
+public:
+    DebuggerRunWorkerFactory();
+};
+
 extern DEBUGGER_EXPORT const char DebugServerRunnerWorkerId[];
 extern DEBUGGER_EXPORT const char GdbServerPortGathererWorkerId[];
 
-} // namespace Debugger
+} // Debugger

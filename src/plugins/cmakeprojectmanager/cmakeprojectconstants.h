@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -38,6 +16,14 @@ const char RUN_CMAKE_CONTEXT_MENU[] = "CMakeProject.RunCMakeContextMenu";
 const char BUILD_FILE_CONTEXT_MENU[] = "CMakeProject.BuildFileContextMenu";
 const char BUILD_FILE[] = "CMakeProject.BuildFile";
 const char CMAKE_HOME_DIR[] = "CMakeProject.HomeDirectory";
+const char QML_DEBUG_SETTING[] = "CMakeProject.EnableQmlDebugging";
+
+const char CMAKEFORMATTER_SETTINGS_GROUP[] = "CMakeFormatter";
+const char CMAKEFORMATTER_GENERAL_GROUP[] = "General";
+const char CMAKEFORMATTER_ACTION_ID[] = "CMakeFormatter.Action";
+const char CMAKEFORMATTER_MENU_ID[] = "CMakeFormatter.Menu";
+
+const char PACKAGE_MANAGER_DIR[] = ".qtc/package-manager";
 
 // Project
 const char CMAKE_PROJECT_ID[] = "CMakeProjectManager.CMakeProject";
@@ -47,14 +33,20 @@ const char CMAKE_BUILDCONFIGURATION_ID[] = "CMakeProjectManager.CMakeBuildConfig
 // Menu
 const char M_CONTEXT[] = "CMakeEditor.ContextMenu";
 
-// Settings page
-const char CMAKE_SETTINGS_PAGE_ID[] = "Z.CMake";
+namespace Settings {
+const char GENERAL_ID[] = "CMakeSpecifcSettings";
+const char TOOLS_ID[] = "K.CMake.Tools";
+const char FORMATTER_ID[] = "K.CMake.Formatter";
+const char CATEGORY[] = "K.CMake";
+} // namespace Settings
 
 // Snippets
 const char CMAKE_SNIPPETS_GROUP_ID[] = "CMake";
 
-// Icons
-const char FILE_OVERLAY_CMAKE[] = ":/cmakeproject/images/fileoverlay_cmake.png";
+namespace Icons {
+const char FILE_OVERLAY[] = ":/cmakeproject/images/fileoverlay_cmake.png";
+const char SETTINGS_CATEGORY[] = ":/cmakeproject/images/settingscategory_cmakeprojectmanager.png";
+} // namespace Icons
 
 // Actions
 const char BUILD_TARGET_CONTEXT_MENU[] = "CMake.BuildTargetContextMenu";
@@ -62,8 +54,18 @@ const char BUILD_TARGET_CONTEXT_MENU[] = "CMake.BuildTargetContextMenu";
 // Build Step
 const char CMAKE_BUILD_STEP_ID[] = "CMakeProjectManager.MakeStep";
 
+// Install Step
+const char CMAKE_INSTALL_STEP_ID[] = "CMakeProjectManager.InstallStep";
+
+
 // Features
 const char CMAKE_FEATURE_ID[] = "CMakeProjectManager.Wizard.FeatureCMake";
+
+// Tool
+const char TOOL_ID[] = "CMakeProjectManager.CMakeKitInformation";
+
+// Data
+const char BUILD_FOLDER_ROLE[] = "CMakeProjectManager.data.buildFolder";
 
 } // namespace Constants
 } // namespace CMakeProjectManager

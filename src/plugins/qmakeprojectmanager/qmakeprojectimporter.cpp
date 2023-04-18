@@ -1,35 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmakeprojectimporter.h"
 
+#include "makefileparse.h"
+#include "qmakebuildconfiguration.h"
 #include "qmakebuildinfo.h"
 #include "qmakekitinformation.h"
-#include "qmakebuildconfiguration.h"
 #include "qmakeproject.h"
-#include "makefileparse.h"
+#include "qmakeprojectmanagertr.h"
 #include "qmakestep.h"
 
 #include <projectexplorer/buildinfo.h>
@@ -55,17 +34,19 @@
 #include <memory>
 
 using namespace ProjectExplorer;
-using namespace QmakeProjectManager;
 using namespace QtSupport;
 using namespace Utils;
 
-namespace {
+namespace QmakeProjectManager::Internal {
+
+const Id QT_IS_TEMPORARY("Qmake.TempQt");
+const char IOSQT[] = "Qt4ProjectManager.QtVersion.Ios"; // ugly
 
 struct DirectoryData
 {
     QString makefile;
-    Utils::FilePath buildDirectory;
-    Utils::FilePath canonicalQmakeBinary;
+    FilePath buildDirectory;
+    FilePath canonicalQmakeBinary;
     QtProjectImporter::QtVersionData qtVersionData;
     QString parsedSpec;
     QtVersion::QmakeBuildConfigs buildConfig;
@@ -74,35 +55,25 @@ struct DirectoryData
     QMakeStepConfig::OsType osType;
 };
 
-} // namespace
-
-namespace QmakeProjectManager {
-namespace Internal {
-
-const Utils::Id QT_IS_TEMPORARY("Qmake.TempQt");
-const char IOSQT[] = "Qt4ProjectManager.QtVersion.Ios"; // ugly
-
 QmakeProjectImporter::QmakeProjectImporter(const FilePath &path) :
     QtProjectImporter(path)
 { }
 
-QStringList QmakeProjectImporter::importCandidates()
+FilePaths QmakeProjectImporter::importCandidates()
 {
-    QStringList candidates;
+    FilePaths candidates;
 
-    QFileInfo pfi = projectFilePath().toFileInfo();
-    const QString prefix = pfi.baseName();
-    candidates << pfi.absolutePath();
+    const FilePath pfp = projectFilePath();
+    const QString prefix = pfp.baseName();
+    candidates << pfp.absolutePath();
 
-    foreach (Kit *k, KitManager::kits()) {
+    for (Kit *k : KitManager::kits()) {
         const FilePath sbdir = QmakeBuildConfiguration::shadowBuildDirectory
                     (projectFilePath(), k, QString(), BuildConfiguration::Unknown);
 
-        const QString baseDir = sbdir.toFileInfo().absolutePath();
-
-        foreach (const QString &dir, QDir(baseDir).entryList()) {
-            const QString path = baseDir + QLatin1Char('/') + dir;
-            if (dir.startsWith(prefix) && !candidates.contains(path))
+        const FilePath baseDir = sbdir.absolutePath();
+        for (const FilePath &path : baseDir.dirEntries(QDir::Filters())) {
+            if (path.fileName().startsWith(prefix) && !candidates.contains(path))
                 candidates << path;
         }
     }
@@ -116,10 +87,10 @@ QList<void *> QmakeProjectImporter::examineDirectory(const FilePath &importPath,
     QList<void *> result;
     const QLoggingCategory &logs = MakeFileParse::logging();
 
-    QStringList makefiles = QDir(importPath.toString()).entryList(QStringList(QLatin1String("Makefile*")));
+    const QStringList makefiles = QDir(importPath.toString()).entryList(QStringList(("Makefile*")));
     qCDebug(logs) << "  Makefiles:" << makefiles;
 
-    foreach (const QString &file, makefiles) {
+    for (const QString &file : makefiles) {
         std::unique_ptr<DirectoryData> data(new DirectoryData);
         data->makefile = file;
         data->buildDirectory = importPath;
@@ -220,10 +191,10 @@ const QList<BuildInfo> QmakeProjectImporter::buildInfoList(void *directoryData) 
     BuildInfo info;
     if (data->buildConfig & QtVersion::DebugBuild) {
         info.buildType = BuildConfiguration::Debug;
-        info.displayName = QCoreApplication::translate("QmakeProjectManager::Internal::QmakeProjectImporter", "Debug");
+        info.displayName = Tr::tr("Debug");
     } else {
         info.buildType = BuildConfiguration::Release;
-        info.displayName = QCoreApplication::translate("QmakeProjectManager::Internal::QmakeProjectImporter", "Release");
+        info.displayName = Tr::tr("Release");
     }
     info.buildDirectory = data->buildDirectory;
 
@@ -277,5 +248,4 @@ Kit *QmakeProjectImporter::createTemporaryKit(const QtProjectImporter::QtVersion
     });
 }
 
-} // namespace Internal
-} // namespace QmakeProjectManager
+} // QmakeProjectManager::Internal

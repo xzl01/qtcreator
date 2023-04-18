@@ -1,53 +1,49 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
+#include <coreplugin/find/searchresultitem.h>
 #include <cppeditor/baseeditordocumentparser.h>
 #include <cppeditor/cppcodemodelsettings.h>
-#include <cppeditor/refactoringengineinterface.h>
+#include <cppeditor/cursorineditor.h>
 #include <languageclient/client.h>
 #include <utils/link.h>
-#include <utils/optional.h>
 
 #include <QVersionNumber>
 
-namespace Core { class SearchResultItem; }
+#include <optional>
+
+namespace Core { class SearchResult; }
 namespace CppEditor { class CppEditorWidget; }
 namespace LanguageServerProtocol { class Range; }
-namespace ProjectExplorer { class Project; }
-namespace TextEditor { class BaseTextEditor; }
+namespace ProjectExplorer {
+class Project;
+class Task;
+}
+namespace TextEditor {
+class BaseTextEditor;
+class IAssistProposal;
+}
 
 namespace ClangCodeModel {
 namespace Internal {
+class ClangdAstNode;
+
+Q_DECLARE_LOGGING_CATEGORY(clangdLog);
+Q_DECLARE_LOGGING_CATEGORY(clangdLogAst);
+
+void setupClangdConfigFile();
+
+enum class FollowTo { SymbolDef, SymbolType };
 
 class ClangdClient : public LanguageClient::Client
 {
     Q_OBJECT
 public:
-    ClangdClient(ProjectExplorer::Project *project, const Utils::FilePath &jsonDbDir);
+    ClangdClient(ProjectExplorer::Project *project,
+                 const Utils::FilePath &jsonDbDir,
+                 const Utils::Id &id = {});
     ~ClangdClient() override;
 
     bool isFullyIndexed() const;
@@ -58,25 +54,33 @@ public:
     void closeExtraFile(const Utils::FilePath &filePath);
 
     void findUsages(TextEditor::TextDocument *document, const QTextCursor &cursor,
-                    const Utils::optional<QString> &replacement);
+                    const std::optional<QString> &replacement,
+                    const std::function<void()> &renameCallback);
+    void checkUnused(const Utils::Link &link, Core::SearchResult *search,
+                     const Utils::LinkHandler &callback);
     void followSymbol(TextEditor::TextDocument *document,
             const QTextCursor &cursor,
             CppEditor::CppEditorWidget *editorWidget,
-            Utils::ProcessLinkCallback &&callback,
+            const Utils::LinkHandler &callback,
             bool resolveTarget,
+            FollowTo followTo,
             bool openInSplit);
 
     void switchDeclDef(TextEditor::TextDocument *document,
             const QTextCursor &cursor,
             CppEditor::CppEditorWidget *editorWidget,
-            Utils::ProcessLinkCallback &&callback);
+            const Utils::LinkHandler &callback);
+    void switchHeaderSource(const Utils::FilePath &filePath, bool inNextSplit);
 
     void findLocalUsages(TextEditor::TextDocument *document, const QTextCursor &cursor,
-                         CppEditor::RefactoringEngineInterface::RenameCallback &&callback);
+                         CppEditor::RenameCallback &&callback);
 
     void gatherHelpItemForTooltip(
             const LanguageServerProtocol::HoverRequest::Response &hoverResponse,
-            const LanguageServerProtocol::DocumentUri &uri);
+            const Utils::FilePath &filePath);
+    bool gatherMemberFunctionOverrideHelpItemForTooltip(const LanguageServerProtocol::MessageId &token,
+        const Utils::FilePath &uri,
+        const QList<ClangdAstNode> &path);
 
     void setVirtualRanges(const Utils::FilePath &filePath,
                           const QList<LanguageServerProtocol::Range> &ranges, int revision);
@@ -91,6 +95,27 @@ public:
 
     void updateParserConfig(const Utils::FilePath &filePath,
                             const CppEditor::BaseEditorDocumentParser::Configuration &config);
+    void switchIssuePaneEntries(const Utils::FilePath &filePath);
+    void addTask(const ProjectExplorer::Task &task);
+    void clearTasks(const Utils::FilePath &filePath);
+    std::optional<bool> hasVirtualFunctionAt(TextEditor::TextDocument *doc, int revision,
+                                               const LanguageServerProtocol::Range &range);
+
+    using TextDocOrFile = std::variant<const TextEditor::TextDocument *, Utils::FilePath>;
+    using AstHandler = std::function<void(const ClangdAstNode &ast,
+                                                const LanguageServerProtocol::MessageId &)>;
+    enum class AstCallbackMode { SyncIfPossible, AlwaysAsync };
+    LanguageServerProtocol::MessageId getAndHandleAst(const TextDocOrFile &doc,
+                                                     const AstHandler &astHandler,
+                                                      AstCallbackMode callbackMode,
+                                                      const LanguageServerProtocol::Range &range);
+
+    using SymbolInfoHandler = std::function<void(const QString &name, const QString &prefix,
+                                                 const LanguageServerProtocol::MessageId &)>;
+    LanguageServerProtocol::MessageId requestSymbolInfo(
+            const Utils::FilePath &filePath,
+            const LanguageServerProtocol::Position &position,
+            const SymbolInfoHandler &handler);
 
 signals:
     void indexingFinished();
@@ -101,6 +126,7 @@ signals:
                                   const Utils::FilePath &file);
     void proposalReady(TextEditor::IAssistProposal *proposal);
     void textMarkCreated(const Utils::FilePath &file);
+    void configChanged();
 
 private:
     void handleDiagnostics(const LanguageServerProtocol::PublishDiagnosticsParams &params) override;
@@ -109,14 +135,15 @@ private:
     QTextCursor adjustedCursorForHighlighting(const QTextCursor &cursor,
                                               TextEditor::TextDocument *doc) override;
     const CustomInspectorTabs createCustomInspectorTabs() override;
+    TextEditor::RefactoringChangesData *createRefactoringChangesBackend() const override;
+    LanguageClient::DiagnosticManager *createDiagnosticManager() override;
+    bool referencesShadowFile(const TextEditor::TextDocument *doc,
+                              const Utils::FilePath &candidate) override;
+    bool fileBelongsToProject(const Utils::FilePath &filePath) const override;
 
     class Private;
-    class FollowSymbolData;
     class VirtualFunctionAssistProcessor;
     class VirtualFunctionAssistProvider;
-    class ClangdFunctionHintProcessor;
-    class ClangdCompletionAssistProcessor;
-    class ClangdCompletionAssistProvider;
     Private * const d;
 };
 
@@ -124,7 +151,7 @@ class ClangdDiagnostic : public LanguageServerProtocol::Diagnostic
 {
 public:
     using Diagnostic::Diagnostic;
-    Utils::optional<QList<LanguageServerProtocol::CodeAction>> codeActions() const;
+    std::optional<QList<LanguageServerProtocol::CodeAction>> codeActions() const;
     QString category() const;
 };
 

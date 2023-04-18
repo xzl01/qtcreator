@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "googletest.h"
 #include "mocksqlitestatement.h"
@@ -52,6 +30,11 @@ using Sqlite::ReadStatement;
 using Sqlite::ReadWriteStatement;
 using Sqlite::Value;
 using Sqlite::WriteStatement;
+
+enum class BasicIdEnumeration { TestId };
+
+using TestLongLongId = Sqlite::BasicId<BasicIdEnumeration::TestId, long long>;
+using TestIntId = Sqlite::BasicId<BasicIdEnumeration::TestId, int>;
 
 template<typename Type>
 bool compareValue(SqliteTestStatement<2, 1> &statement, Type value, int column)
@@ -237,11 +220,77 @@ TEST_F(SqliteStatement, BindNull)
     database.execute("INSERT INTO  test VALUES (NULL, 323, 344)");
     SqliteTestStatement<2, 1> statement("SELECT name, number FROM test WHERE name IS ?", database);
 
+    statement.bindNull(1);
+    statement.next();
+
+    ASSERT_TRUE(statement.fetchValueView(0).isNull());
+    ASSERT_THAT(statement.fetchValue<int>(1), 323);
+}
+
+TEST_F(SqliteStatement, BindNullValue)
+{
+    database.execute("INSERT INTO  test VALUES (NULL, 323, 344)");
+    SqliteTestStatement<2, 1> statement("SELECT name, number FROM test WHERE name IS ?", database);
+
     statement.bind(1, Sqlite::NullValue{});
     statement.next();
 
     ASSERT_TRUE(statement.fetchValueView(0).isNull());
     ASSERT_THAT(statement.fetchValue<int>(1), 323);
+}
+
+TEST_F(SqliteStatement, BindInvalidIntIdToNull)
+{
+    TestIntId id;
+    SqliteTestStatement<0, 1> statement("INSERT INTO  test VALUES ('id', 323, ?)", database);
+
+    statement.bind(1, id);
+    statement.next();
+
+    SqliteTestStatement<1, 1> readStatement("SELECT value FROM test WHERE name='id'", database);
+    readStatement.next();
+    ASSERT_THAT(readStatement.fetchType(0), Sqlite::Type::Null);
+}
+
+TEST_F(SqliteStatement, BindIntId)
+{
+    TestIntId id{TestIntId::create(42)};
+    SqliteTestStatement<0, 1> statement("INSERT INTO test VALUES ('id', 323, ?)", database);
+
+    statement.bind(1, id);
+    statement.next();
+
+    SqliteTestStatement<1, 1> readStatement("SELECT value FROM test WHERE name='id'", database);
+    readStatement.next();
+    ASSERT_THAT(readStatement.fetchType(0), Sqlite::Type::Integer);
+    ASSERT_THAT(readStatement.fetchIntValue(0), 42);
+}
+
+TEST_F(SqliteStatement, BindInvalidLongLongIdToNull)
+{
+    TestLongLongId id;
+    SqliteTestStatement<0, 1> statement("INSERT INTO  test VALUES ('id', 323, ?)", database);
+
+    statement.bind(1, id);
+    statement.next();
+
+    SqliteTestStatement<1, 1> readStatement("SELECT value FROM test WHERE name='id'", database);
+    readStatement.next();
+    ASSERT_THAT(readStatement.fetchType(0), Sqlite::Type::Null);
+}
+
+TEST_F(SqliteStatement, BindLongLongId)
+{
+    TestLongLongId id{TestLongLongId::create(42)};
+    SqliteTestStatement<0, 1> statement("INSERT INTO test VALUES ('id', 323, ?)", database);
+
+    statement.bind(1, id);
+    statement.next();
+
+    SqliteTestStatement<1, 1> readStatement("SELECT value FROM test WHERE name='id'", database);
+    readStatement.next();
+    ASSERT_THAT(readStatement.fetchType(0), Sqlite::Type::Integer);
+    ASSERT_THAT(readStatement.fetchIntValue(0), 42);
 }
 
 TEST_F(SqliteStatement, BindString)
@@ -1158,10 +1207,59 @@ TEST_F(SqliteStatement, GetTupleValueAndMultipleQueryValue)
     ASSERT_THAT(value, Eq(Tuple{"bar", "blah", 1}));
 }
 
+TEST_F(SqliteStatement, GetSingleInvalidLongLongId)
+{
+    TestLongLongId id;
+    WriteStatement<1>("INSERT INTO  test VALUES ('id', 323, ?)", database).write(id);
+    ReadStatement<1, 0> statement("SELECT value FROM test WHERE name='id'", database);
+
+    auto value = statement.value<TestLongLongId>();
+
+    ASSERT_FALSE(value.isValid());
+}
+
+TEST_F(SqliteStatement, GetSingleLongLongId)
+{
+    TestLongLongId id{TestLongLongId::create(42)};
+    WriteStatement<1>("INSERT INTO  test VALUES ('id', 323, ?)", database).write(id);
+    ReadStatement<1, 0> statement("SELECT value FROM test WHERE name='id'", database);
+
+    auto value = statement.value<TestLongLongId>();
+
+    ASSERT_THAT(value.internalId(), Eq(42));
+}
+
+TEST_F(SqliteStatement, GetSingleInvalidIntId)
+{
+    TestIntId id;
+    WriteStatement<1>("INSERT INTO  test VALUES ('id', 323, ?)", database).write(id);
+    ReadStatement<1, 0> statement("SELECT value FROM test WHERE name='id'", database);
+
+    auto value = statement.value<TestIntId>();
+
+    ASSERT_FALSE(value.isValid());
+}
+
+TEST_F(SqliteStatement, GetSingleIntId)
+{
+    TestIntId id{TestIntId::create(42)};
+    WriteStatement<1>("INSERT INTO  test VALUES ('id', 323, ?)", database).write(id);
+    ReadStatement<1, 0> statement("SELECT value FROM test WHERE name='id'", database);
+
+    auto value = statement.value<TestIntId>();
+
+    ASSERT_THAT(value.internalId(), Eq(42));
+}
+
 TEST_F(SqliteStatement, GetValueCallsReset)
 {
     struct Value
     {
+        Value() = default;
+        Value(int x)
+            : x(x)
+        {}
+
         int x = 0;
     };
     MockSqliteStatement<1, 1> mockStatement{databaseMock};
@@ -1175,6 +1273,11 @@ TEST_F(SqliteStatement, GetValueCallsResetIfExceptionIsThrown)
 {
     struct Value
     {
+        Value() = default;
+        Value(int x)
+            : x(x)
+        {}
+
         int x = 0;
     };
     MockSqliteStatement<1, 1> mockStatement{databaseMock};

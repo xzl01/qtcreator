@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qglobal.h>
 
@@ -58,7 +36,7 @@
 // a test after a BREAK_HERE failed
 // Default: 0
 // Before using this, make sure that "Show a message box when receiving a signal"
-// is disabled in "Tools" -> "Options..." -> "Debugger" -> "GDB".
+// is disabled in "Edit" -> "Preferences..." -> "Debugger" -> "GDB".
 #ifndef USE_AUTORUN
 #define USE_AUTORUN 0
 #endif
@@ -198,7 +176,9 @@ void dummyStatement(...) {}
 #include <QWebPage>
 #endif
 
+#if QT_VERSION < 0x060000
 #include <QXmlAttributes>
+#endif
 
 #include <QHostAddress>
 #include <QNetworkRequest>
@@ -2192,7 +2172,7 @@ namespace plugin {
 
     void testPlugin()
     {
-        QString dir = QDir::currentPath();
+        QString dir = QApplication::applicationDirPath();
     #ifdef Q_OS_LINUX
         QLibrary lib(dir + "/libsimple_test_plugin.so");
     #endif
@@ -2515,6 +2495,7 @@ namespace qxml {
 
     void testQXmlAttributes()
     {
+#if QT_VERSION < 0x060000
         // only works with Python dumper
         QXmlAttributes atts;
         atts.append("name1", "uri1", "localPart1", "value1");
@@ -2543,6 +2524,7 @@ namespace qxml {
         // CheckType atts.d QXmlAttributesPrivate.
         // Continue.
         dummyStatement();
+#endif
     }
 
 } // namespace qxml

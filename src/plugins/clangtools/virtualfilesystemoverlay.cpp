@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "virtualfilesystemoverlay.h"
 
@@ -66,7 +44,7 @@ void VirtualFileSystemOverlay::update()
             QString error;
             saved.path = m_root.filePath(doc->filePath().fileName() + ".auto");
             while (saved.path.exists())
-                saved.path = saved.path + ".1";
+                saved.path = saved.path.stringAppended(".1");
             if (!doc->save(&error, saved.path, true)) {
                 qCDebug(LOG) << error;
                 continue;
@@ -75,7 +53,7 @@ void VirtualFileSystemOverlay::update()
         newSaved[doc] = saved;
     }
 
-    for (const AutoSavedPath &path : qAsConst(m_saved)) {
+    for (const AutoSavedPath &path : std::as_const(m_saved)) {
         QString error;
         if (!path.path.removeRecursively(&error))
             qCDebug(LOG) << error;
@@ -101,7 +79,7 @@ void VirtualFileSystemOverlay::update()
         jsonRoot["type"] = "directory";
         jsonRoot["name"] = root.toUserOutput();
         QJsonArray contents;
-        for (auto doc : qAsConst(documents))
+        for (auto doc : std::as_const(documents))
             contents << toContent(doc);
         jsonRoot["contents"] = contents;
         jsonRoots << jsonRoot;
@@ -114,17 +92,17 @@ void VirtualFileSystemOverlay::update()
     overlayFile.close();
 }
 
-Utils::FilePath VirtualFileSystemOverlay::overlayFilePath() { return m_overlayFilePath; }
+Utils::FilePath VirtualFileSystemOverlay::overlayFilePath() const { return m_overlayFilePath; }
 
-Utils::FilePath VirtualFileSystemOverlay::autoSavedFilePath(Core::IDocument *doc)
+Utils::FilePath VirtualFileSystemOverlay::autoSavedFilePath(Core::IDocument *doc) const
 {
-    auto it = m_saved.find(doc);
-    if (it != m_saved.end())
+    const auto it = m_saved.constFind(doc);
+    if (it != m_saved.constEnd())
         return it.value().path;
     return doc->filePath();
 }
 
-Utils::FilePath VirtualFileSystemOverlay::originalFilePath(const Utils::FilePath &file)
+Utils::FilePath VirtualFileSystemOverlay::originalFilePath(const Utils::FilePath &file) const
 {
     return m_mapping.value(file, file);
 }

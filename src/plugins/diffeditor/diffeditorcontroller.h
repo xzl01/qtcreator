@@ -1,38 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "diffeditor_global.h"
 #include "diffutils.h"
 
+#include <utils/tasktree.h>
+
 #include <QObject>
 
-QT_FORWARD_DECLARE_CLASS(QMenu)
+QT_BEGIN_NAMESPACE
+class QMenu;
+QT_END_NAMESPACE
 
 namespace Core { class IDocument; }
+namespace Utils { class FilePath; }
 
 namespace DiffEditor {
 
@@ -49,8 +32,8 @@ public:
     void requestReload();
     bool isReloading() const;
 
-    Utils::FilePath baseDirectory() const;
-    void setBaseDirectory(const Utils::FilePath &directory);
+    Utils::FilePath workingDirectory() const;
+    void setWorkingDirectory(const Utils::FilePath &directory);
     int contextLineCount() const;
     bool ignoreWhitespace() const;
 
@@ -72,30 +55,27 @@ public:
     bool chunkExists(int fileIndex, int chunkIndex) const;
     Core::IDocument *document() const;
 
-    // reloadFinished() should be called inside the reloader (for synchronous reload)
-    // or later (for asynchronous reload)
-    void setReloader(const std::function<void ()> &reloader);
-
 signals:
     void chunkActionsRequested(QMenu *menu, int fileIndex, int chunkIndex,
                                const ChunkSelection &selection);
 
 protected:
-    void reloadFinished(bool success);
-
-    void setDiffFiles(const QList<FileData> &diffFileList,
-                      const Utils::FilePath &baseDirectory = {},
-                      const QString &startupFile = QString());
+    // Core functions:
+    void setReloadRecipe(const Utils::Tasking::Group &recipe) { m_reloadRecipe = recipe; }
+    void setDiffFiles(const QList<FileData> &diffFileList);
+    // Optional:
+    void setDisplayName(const QString &name) { m_displayName = name; }
     void setDescription(const QString &description);
-    QString description() const;
+    void setStartupFile(const QString &startupFile);
     void forceContextLineCount(int lines);
 
 private:
-    Internal::DiffEditorDocument *const m_document;
-    bool m_isReloading = false;
-    std::function<void()> m_reloader;
+    void reloadFinished(bool success);
 
-    friend class Internal::DiffEditorDocument;
+    Internal::DiffEditorDocument *const m_document;
+    QString m_displayName;
+    std::unique_ptr<Utils::TaskTree> m_taskTree;
+    Utils::Tasking::Group m_reloadRecipe;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(DiffEditorController::PatchOptions)

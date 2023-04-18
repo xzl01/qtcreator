@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Petar Perisin.
-** Contact: petar.perisin@gmail.com
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Petar Perisin.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -32,16 +10,22 @@
 #include <QDate>
 #include <QSharedPointer>
 
-namespace Git {
-namespace Internal { class GitClient; }
-}
+QT_BEGIN_NAMESPACE
+class QCheckBox;
+class QComboBox;
+class QDialogButtonBox;
+class QLabel;
+class QLineEdit;
+QT_END_NAMESPACE
+
+namespace Git::Internal { class LogChangeWidget; }
 
 namespace Gerrit {
 namespace Internal {
 
+class BranchComboBox;
 class GerritParameters;
-
-namespace Ui { class GerritPushDialog; }
+class GerritRemoteChooser;
 
 class GerritPushDialog : public QDialog
 {
@@ -50,7 +34,6 @@ class GerritPushDialog : public QDialog
 public:
     GerritPushDialog(const Utils::FilePath &workingDir, const QString &reviewerList,
                      QSharedPointer<GerritParameters> parameters, QWidget *parent);
-    ~GerritPushDialog() override;
 
     QString selectedCommit() const;
     QString selectedRemoteName() const;
@@ -74,10 +57,21 @@ private:
     QString determineRemoteBranch(const QString &localBranch);
     void initRemoteBranches();
     QString calculateChangeRange(const QString &branch);
+
+    BranchComboBox *m_localBranchComboBox;
+    Gerrit::Internal::GerritRemoteChooser *m_remoteComboBox;
+    QComboBox *m_targetBranchComboBox;
+    Git::Internal::LogChangeWidget *m_commitView;
+    QLabel *m_infoLabel;
+    QLineEdit *m_topicLineEdit;
+    QCheckBox *m_draftCheckBox;
+    QCheckBox *m_wipCheckBox;
+    QLineEdit *m_reviewersLineEdit;
+    QDialogButtonBox *m_buttonBox;
+
     Utils::FilePath m_workingDir;
     QString m_suggestedRemoteBranch;
     QString m_initErrorMessage;
-    Ui::GerritPushDialog *m_ui;
     RemoteBranchesMap m_remoteBranches;
     bool m_hasLocalCommits = false;
     bool m_currentSupportsWip = false;

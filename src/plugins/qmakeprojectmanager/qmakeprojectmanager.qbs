@@ -20,9 +20,7 @@ Project {
             name: "General"
             files: [
                 "addlibrarywizard.cpp", "addlibrarywizard.h",
-                "externaleditors.cpp", "externaleditors.h",
                 "librarydetailscontroller.cpp", "librarydetailscontroller.h",
-                "librarydetailswidget.ui",
                 "makefileparse.cpp", "makefileparse.h",
                 "profilecompletionassist.cpp", "profilecompletionassist.h",
                 "profileeditor.cpp", "profileeditor.h",
@@ -41,7 +39,7 @@ Project {
                 "qmakenodetreebuilder.cpp", "qmakenodetreebuilder.h",
                 "qmakeproject.cpp", "qmakeproject.h",
                 "qmakeprojectmanager.qrc",
-                "qmakeprojectmanager_global.h",
+                "qmakeprojectmanager_global.h", "qmakeprojectmanagertr.h",
                 "qmakeprojectmanagerconstants.h",
                 "qmakeprojectmanagerplugin.cpp", "qmakeprojectmanagerplugin.h",
             ]
@@ -51,10 +49,10 @@ Project {
             name: "Custom Widget Wizard"
             prefix: "customwidgetwizard/"
             files: [
-                "classdefinition.cpp", "classdefinition.h", "classdefinition.ui",
+                "classdefinition.cpp", "classdefinition.h",
                 "classlist.cpp", "classlist.h",
-                "customwidgetpluginwizardpage.cpp", "customwidgetpluginwizardpage.h", "customwidgetpluginwizardpage.ui",
-                "customwidgetwidgetswizardpage.cpp", "customwidgetwidgetswizardpage.h", "customwidgetwidgetswizardpage.ui",
+                "customwidgetpluginwizardpage.cpp", "customwidgetpluginwizardpage.h",
+                "customwidgetwidgetswizardpage.cpp", "customwidgetwidgetswizardpage.h",
                 "customwidgetwizard.cpp", "customwidgetwizard.h",
                 "customwidgetwizarddialog.cpp", "customwidgetwizarddialog.h",
                 "filenamingparameters.h",

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 import QtQuick.Layouts 1.15
@@ -29,114 +7,147 @@ import HelperWidgets 2.0
 import StudioControls 1.0 as StudioControls
 
 StudioControls.ComboBox {
-    id: comboBox
+    id: root
 
     property variant backendValue
     property color textColor: colorLogic.textColor
     property string fontFilter: "*.ttf *.otf"
     property bool showExtendedFunctionButton: true
 
+    hasActiveDrag: activeDragSuffix !== "" && root.fontFilter.includes(activeDragSuffix)
     labelColor: colorLogic.textColor
     editable: true
 
-    onTextColorChanged: setColor()
+    onTextColorChanged: root.setColor()
 
     FileResourcesModel {
         id: fileModel
         modelNodeBackendProperty: modelNodeBackend
-        filter: comboBox.fontFilter
+        filter: root.fontFilter
+    }
+
+    DropArea {
+        id: dropArea
+
+        anchors.fill: parent
+
+        property string assetPath: ""
+
+        onEntered: function(drag) {
+            dropArea.assetPath = drag.getDataAsString(drag.keys[0]).split(",")[0]
+            drag.accepted = root.hasActiveDrag
+            root.hasActiveHoverDrag = drag.accepted
+        }
+
+        onExited: root.hasActiveHoverDrag = false
+
+        onDropped: function(drop) {
+            drop.accepted = root.hasActiveHoverDrag
+            var fontLoader = root.createFontLoader("file:" + dropArea.assetPath)
+            if (fontLoader.status === FontLoader.Ready) {
+                root.backendValue.value = fontLoader.name
+                root.currentIndex = root.find(root.backendValue.value)
+            }
+            root.hasActiveHoverDrag = false
+            root.backendValue.commitDrop(dropArea.assetPath)
+        }
     }
 
     function createFontLoader(fontUrl) {
         return Qt.createQmlObject('import QtQuick 2.0; FontLoader { source: "' + fontUrl + '"; }',
-                                  comboBox, "dynamicFontLoader")
+                                  root, "dynamicFontLoader")
     }
 
     function setupModel() {
-        var familyNames = ["Arial", "Times New Roman", "Courier", "Verdana", "Tahoma"] // default fonts
+        // default fonts
+        var familyNames = ["Arial", "Times New Roman", "Courier", "Verdana", "Tahoma"]
 
-        for (var i = 0; i < fileModel.fullPathModel.length; ++i) { // add custom fonts
-            var fontLoader = createFontLoader(fileModel.docPath + "/" + fileModel.fullPathModel[i])
+        for (var i = 0; i < fileModel.model.length; ++i) { // add custom fonts
+            var fontLoader = root.createFontLoader(fileModel.docPath + "/"
+                                                   + fileModel.model[i].relativeFilePath)
             familyNames.push(fontLoader.name)
         }
 
         // Remove duplicate family names
         familyNames = [...new Set(familyNames)]
         familyNames.sort()
-        comboBox.model = familyNames
+        root.model = familyNames
+        root.currentIndex = root.find(root.backendValue.value)
     }
 
-    onModelChanged: editText = comboBox.backendValue.valueToString
+    function setColor() {
+        // Hack to style the text input
+        for (var i = 0; i < root.children.length; i++) {
+            if (root.children[i].text !== undefined) {
+                root.children[i].color = root.textColor
+            }
+        }
+    }
+
+    onModelChanged: root.editText = root.backendValue.valueToString
 
     ExtendedFunctionLogic {
         id: extFuncLogic
-        backendValue: comboBox.backendValue
+        backendValue: root.backendValue
     }
 
     actionIndicator.icon.color: extFuncLogic.color
     actionIndicator.icon.text: extFuncLogic.glyph
     actionIndicator.onClicked: extFuncLogic.show()
     actionIndicator.forceVisible: extFuncLogic.menuVisible
-    actionIndicator.visible: comboBox.showExtendedFunctionButton
+    actionIndicator.visible: root.showExtendedFunctionButton
 
     ColorLogic {
         id: colorLogic
-        property string textValue: comboBox.backendValue.valueToString
-        backendValue: comboBox.backendValue
-        onTextValueChanged: comboBox.editText = colorLogic.textValue
+        property string textValue: root.backendValue.valueToString
+        backendValue: root.backendValue
+        onTextValueChanged: root.editText = colorLogic.textValue
     }
 
     onAccepted: {
-        if (backendValue === undefined)
+        if (root.backendValue === undefined)
             return
 
-        if (editText === "")
+        if (root.editText === "")
             return
 
-        if (backendValue.value !== editText)
-            backendValue.value = editText;
+        if (root.backendValue.value !== root.editText)
+            root.backendValue.value = root.editText
     }
 
-    onActivated: {
-        if (backendValue === undefined)
+    onCompressedActivated: function(index, reason) { root.handleActivate(index) }
+
+    function handleActivate(index)
+    {
+        if (root.backendValue === undefined)
             return
 
-        if (editText === "")
+        if (root.editText === "")
             return
 
-        var indexText = comboBox.textAt(index)
+        var indexText = root.textAt(index)
 
-        if (backendValue.value !== indexText)
-            backendValue.value = indexText
+        if (root.backendValue.value !== indexText)
+            root.backendValue.value = indexText
     }
 
     Connections {
         target: modelNodeBackend
         function onSelectionChanged() {
-            comboBox.editText = backendValue.value
-            setupModel()
+            root.editText = root.backendValue.value
+            root.setupModel()
         }
     }
 
     Component.onCompleted: {
-        setupModel()
+        root.setupModel()
         // Hack to style the text input
-        for (var i = 0; i < comboBox.children.length; i++) {
-            if (comboBox.children[i].text !== undefined) {
-                comboBox.children[i].color = comboBox.textColor
-                comboBox.children[i].anchors.rightMargin = 34
-                comboBox.children[i].anchors.leftMargin = 18
+        for (var i = 0; i < root.children.length; i++) {
+            if (root.children[i].text !== undefined) {
+                root.children[i].color = root.textColor
+                root.children[i].anchors.rightMargin = 34
+                root.children[i].anchors.leftMargin = 18
             }
         }
     }
-
-    function setColor() {
-        // Hack to style the text input
-        for (var i = 0; i < comboBox.children.length; i++) {
-            if (comboBox.children[i].text !== undefined) {
-                comboBox.children[i].color = comboBox.textColor
-            }
-        }
-    }
-
 }

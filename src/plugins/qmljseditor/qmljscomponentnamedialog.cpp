@@ -1,52 +1,57 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljscomponentnamedialog.h"
-#include "ui_qmljscomponentnamedialog.h"
+#include "qmljseditortr.h"
 
-#include <QFileInfo>
+#include <utils/classnamevalidatinglineedit.h>
+#include <utils/layoutbuilder.h>
+#include <utils/pathchooser.h>
+
+#include <QCheckBox>
+#include <QDialogButtonBox>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QLabel>
+#include <QListWidget>
+#include <QPlainTextEdit>
 #include <QPushButton>
 
 using namespace QmlJSEditor::Internal;
 
 ComponentNameDialog::ComponentNameDialog(QWidget *parent) :
-    QDialog(parent),
-    ui(new Ui::ComponentNameDialog)
+    QDialog(parent)
 {
-    ui->setupUi(this);
+    setWindowTitle(Tr::tr("Move Component into Separate File"));
+    m_componentNameEdit = new Utils::ClassNameValidatingLineEdit;
+    m_componentNameEdit->setObjectName("componentNameEdit");
+    m_componentNameEdit->setPlaceholderText(Tr::tr("Component Name"));
+    m_messageLabel = new QLabel;
+    m_pathEdit = new Utils::PathChooser;
+    m_label = new QLabel;
+    m_listWidget = new QListWidget;
+    m_plainTextEdit = new QPlainTextEdit;
+    m_checkBox = new QCheckBox(Tr::tr("ui.qml file"));
+    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
 
-    connect(ui->pathEdit, &Utils::PathChooser::rawPathChanged,
-            this, &ComponentNameDialog::validate);
-    connect(ui->componentNameEdit, &QLineEdit::textChanged,
-            this, &ComponentNameDialog::validate);
-}
+    using namespace Utils::Layouting;
+    Column {
+        Form {
+            Tr::tr("Component name:"), m_componentNameEdit, br,
+            empty, m_messageLabel, br,
+            Tr::tr("Path:"), m_pathEdit, br,
+        },
+        m_label,
+        Row { m_listWidget, m_plainTextEdit },
+        Row { m_checkBox, m_buttonBox },
+    }.attachTo(this);
 
-ComponentNameDialog::~ComponentNameDialog()
-{
-    delete ui;
+    connect(m_buttonBox, &QDialogButtonBox::accepted, this, &ComponentNameDialog::accept);
+    connect(m_buttonBox, &QDialogButtonBox::rejected, this, &ComponentNameDialog::reject);
+    connect(m_pathEdit, &Utils::PathChooser::rawPathChanged,
+            this, &ComponentNameDialog::validate);
+    connect(m_componentNameEdit, &QLineEdit::textChanged,
+            this, &ComponentNameDialog::validate);
 }
 
 bool ComponentNameDialog::go(QString *proposedName,
@@ -64,32 +69,32 @@ bool ComponentNameDialog::go(QString *proposedName,
     const bool isUiFile = QFileInfo(oldFileName).completeSuffix() == "ui.qml";
 
     ComponentNameDialog d(parent);
-    d.ui->componentNameEdit->setNamespacesEnabled(false);
-    d.ui->componentNameEdit->setLowerCaseFileName(false);
-    d.ui->componentNameEdit->setForceFirstCapitalLetter(true);
+    d.m_componentNameEdit->setNamespacesEnabled(false);
+    d.m_componentNameEdit->setLowerCaseFileName(false);
+    d.m_componentNameEdit->setForceFirstCapitalLetter(true);
     if (proposedName->isEmpty())
         *proposedName = QLatin1String("MyComponent");
-    d.ui->componentNameEdit->setText(*proposedName);
-    d.ui->pathEdit->setExpectedKind(Utils::PathChooser::ExistingDirectory);
-    d.ui->pathEdit->setHistoryCompleter(QLatin1String("QmlJs.Component.History"));
-    d.ui->pathEdit->setPath(*proposedPath);
-    d.ui->label->setText(tr("Property assignments for %1:").arg(oldFileName));
-    d.ui->checkBox->setChecked(isUiFile);
-    d.ui->checkBox->setVisible(isUiFile);
+    d.m_componentNameEdit->setText(*proposedName);
+    d.m_pathEdit->setExpectedKind(Utils::PathChooser::ExistingDirectory);
+    d.m_pathEdit->setHistoryCompleter(QLatin1String("QmlJs.Component.History"));
+    d.m_pathEdit->setPath(*proposedPath);
+    d.m_label->setText(Tr::tr("Property assignments for %1:").arg(oldFileName));
+    d.m_checkBox->setChecked(isUiFile);
+    d.m_checkBox->setVisible(isUiFile);
     d.m_sourcePreview = sourcePreview;
 
     d.setProperties(properties);
 
     d.generateCodePreview();
 
-    d.connect(d.ui->listWidget, &QListWidget::itemChanged, &d, &ComponentNameDialog::generateCodePreview);
-    d.connect(d.ui->componentNameEdit, &QLineEdit::textChanged, &d, &ComponentNameDialog::generateCodePreview);
+    d.connect(d.m_listWidget, &QListWidget::itemChanged, &d, &ComponentNameDialog::generateCodePreview);
+    d.connect(d.m_componentNameEdit, &QLineEdit::textChanged, &d, &ComponentNameDialog::generateCodePreview);
 
     if (QDialog::Accepted == d.exec()) {
-        *proposedName = d.ui->componentNameEdit->text();
-        *proposedPath = d.ui->pathEdit->filePath().toString();
+        *proposedName = d.m_componentNameEdit->text();
+        *proposedPath = d.m_pathEdit->filePath().toString();
 
-        if (d.ui->checkBox->isChecked())
+        if (d.m_checkBox->isChecked())
             *proposedSuffix = "ui.qml";
         else
             *proposedSuffix = "qml";
@@ -104,24 +109,24 @@ bool ComponentNameDialog::go(QString *proposedName,
 
 void ComponentNameDialog::setProperties(const QStringList &properties)
 {
-    ui->listWidget->addItems(properties);
+    m_listWidget->addItems(properties);
 
-    for (int i = 0; i < ui->listWidget->count(); ++i) {
-        QListWidgetItem *item = ui->listWidget->item(i);
+    for (int i = 0; i < m_listWidget->count(); ++i) {
+        QListWidgetItem *item = m_listWidget->item(i);
         item->setFlags(Qt::ItemIsUserCheckable | Qt:: ItemIsEnabled);
         if (item->text() == QLatin1String("x")
                 || item->text() == QLatin1String("y"))
-            ui->listWidget->item(i)->setCheckState(Qt::Checked);
+            m_listWidget->item(i)->setCheckState(Qt::Checked);
         else
-            ui->listWidget->item(i)->setCheckState(Qt::Unchecked);
+            m_listWidget->item(i)->setCheckState(Qt::Unchecked);
     }
 }
 
 QStringList ComponentNameDialog::propertiesToKeep() const
 {
     QStringList result;
-    for (int i = 0; i < ui->listWidget->count(); ++i) {
-        QListWidgetItem *item = ui->listWidget->item(i);
+    for (int i = 0; i < m_listWidget->count(); ++i) {
+        QListWidgetItem *item = m_listWidget->item(i);
 
         if (item->checkState() == Qt::Checked)
             result.append(item->text());
@@ -132,44 +137,44 @@ QStringList ComponentNameDialog::propertiesToKeep() const
 
 void ComponentNameDialog::generateCodePreview()
 {
-     const QString componentName = ui->componentNameEdit->text();
+     const QString componentName = m_componentNameEdit->text();
 
-     ui->plainTextEdit->clear();
-     ui->plainTextEdit->appendPlainText(componentName + QLatin1String(" {"));
+     m_plainTextEdit->clear();
+     m_plainTextEdit->appendPlainText(componentName + QLatin1String(" {"));
      if (!m_sourcePreview.first().isEmpty())
-        ui->plainTextEdit->appendPlainText(m_sourcePreview.first());
+        m_plainTextEdit->appendPlainText(m_sourcePreview.first());
 
-     for (int i = 0; i < ui->listWidget->count(); ++i) {
-         QListWidgetItem *item = ui->listWidget->item(i);
+     for (int i = 0; i < m_listWidget->count(); ++i) {
+         QListWidgetItem *item = m_listWidget->item(i);
 
          if (item->checkState() == Qt::Checked)
-             ui->plainTextEdit->appendPlainText(m_sourcePreview.at(i + 1));
+             m_plainTextEdit->appendPlainText(m_sourcePreview.at(i + 1));
      }
 
-     ui->plainTextEdit->appendPlainText(QLatin1String("}"));
+     m_plainTextEdit->appendPlainText(QLatin1String("}"));
 }
 
 void ComponentNameDialog::validate()
 {
     const QString message = isValid();
-    ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(message.isEmpty());
-    ui->messageLabel->setText(message);
+    m_buttonBox->button(QDialogButtonBox::Ok)->setEnabled(message.isEmpty());
+    m_messageLabel->setText(message);
 }
 
 QString ComponentNameDialog::isValid() const
 {
-    if (!ui->componentNameEdit->isValid())
-        return ui->componentNameEdit->errorMessage();
+    if (!m_componentNameEdit->isValid())
+        return m_componentNameEdit->errorMessage();
 
-    QString compName = ui->componentNameEdit->text();
+    QString compName = m_componentNameEdit->text();
     if (compName.isEmpty() || !compName[0].isUpper())
-        return tr("Invalid component name.");
+        return Tr::tr("Invalid component name.");
 
-    if (!ui->pathEdit->isValid())
-        return tr("Invalid path.");
+    if (!m_pathEdit->isValid())
+        return Tr::tr("Invalid path.");
 
-    if (ui->pathEdit->filePath().pathAppended(compName + ".qml").exists())
-        return tr("Component already exists.");
+    if (m_pathEdit->filePath().pathAppended(compName + ".qml").exists())
+        return Tr::tr("Component already exists.");
 
     return QString();
 }

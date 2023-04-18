@@ -1,33 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "codecselector.h"
-#include <coreplugin/textdocument.h>
+
+#include "../coreplugintr.h"
+#include "../textdocument.h"
 
 #include <utils/algorithm.h>
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 #include <utils/itemviews.h>
 
 #include <QDebug>
@@ -60,12 +40,12 @@ CodecSelector::CodecSelector(QWidget *parent, Core::BaseTextDocument *doc)
     if (m_hasDecodingError)
         buf = doc->decodingErrorSample();
 
-    setWindowTitle(tr("Text Encoding"));
+    setWindowTitle(Tr::tr("Text Encoding"));
     m_label = new QLabel(this);
     QString decodingErrorHint;
     if (m_hasDecodingError)
-        decodingErrorHint = QLatin1Char('\n') + tr("The following encodings are likely to fit:");
-    m_label->setText(tr("Select encoding for \"%1\".%2")
+        decodingErrorHint = '\n' + Tr::tr("The following encodings are likely to fit:");
+    m_label->setText(Tr::tr("Select encoding for \"%1\".%2")
                      .arg(doc->filePath().fileName())
                      .arg(decodingErrorHint));
 
@@ -74,18 +54,17 @@ CodecSelector::CodecSelector(QWidget *parent, Core::BaseTextDocument *doc)
 
     QStringList encodings;
 
-    QList<int> mibs = QTextCodec::availableMibs();
-    Utils::sort(mibs);
+    const QList<int> mibs = Utils::sorted(QTextCodec::availableMibs());
     QList<int> sortedMibs;
-    foreach (int mib, mibs)
+    for (const int mib : mibs)
         if (mib >= 0)
             sortedMibs += mib;
-    foreach (int mib, mibs)
+    for (const int mib : mibs)
         if (mib < 0)
             sortedMibs += mib;
 
     int currentIndex = -1;
-    foreach (int mib, sortedMibs) {
+    for (const int mib : std::as_const(sortedMibs)) {
         QTextCodec *c = QTextCodec::codecForMib(mib);
         if (!doc->supportsCodec(c))
             continue;
@@ -101,7 +80,8 @@ CodecSelector::CodecSelector(QWidget *parent, Core::BaseTextDocument *doc)
                 continue;
         }
         QString names = QString::fromLatin1(c->name());
-        foreach (const QByteArray &alias, c->aliases())
+        const QList<QByteArray> aliases = c->aliases();
+        for (const QByteArray &alias : aliases)
             names += QLatin1String(" / ") + QString::fromLatin1(alias);
         if (doc->codec() == c)
             currentIndex = encodings.count();
@@ -114,8 +94,8 @@ CodecSelector::CodecSelector(QWidget *parent, Core::BaseTextDocument *doc)
     connect(m_listWidget, &QListWidget::itemSelectionChanged, this, &CodecSelector::updateButtons);
 
     m_dialogButtonBox = new QDialogButtonBox(this);
-    m_reloadButton = m_dialogButtonBox->addButton(tr("Reload with Encoding"), QDialogButtonBox::DestructiveRole);
-    m_saveButton =  m_dialogButtonBox->addButton(tr("Save with Encoding"), QDialogButtonBox::DestructiveRole);
+    m_reloadButton = m_dialogButtonBox->addButton(Tr::tr("Reload with Encoding"), QDialogButtonBox::DestructiveRole);
+    m_saveButton =  m_dialogButtonBox->addButton(Tr::tr("Save with Encoding"), QDialogButtonBox::DestructiveRole);
     m_dialogButtonBox->addButton(QDialogButtonBox::Cancel);
     connect(m_dialogButtonBox, &QDialogButtonBox::clicked, this, &CodecSelector::buttonClicked);
     connect(m_listWidget, &QAbstractItemView::activated, m_reloadButton, &QAbstractButton::click);

@@ -1,32 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
+#include "builddirparameters.h"
 #include "cmakebuildtarget.h"
-#include "cmakeprocess.h"
 #include "cmakeprojectnodes.h"
 #include "fileapidataextractor.h"
 
@@ -34,21 +12,19 @@
 #include <projectexplorer/treescanner.h>
 
 #include <utils/filesystemwatcher.h>
-#include <utils/optional.h>
 
+#include <QDateTime>
 #include <QFuture>
 #include <QObject>
-#include <QDateTime>
 
 #include <memory>
+#include <optional>
 
-namespace ProjectExplorer {
-class ProjectNode;
-}
+namespace ProjectExplorer { class ProjectNode; }
 
-namespace CMakeProjectManager {
-namespace Internal {
+namespace CMakeProjectManager::Internal {
 
+class CMakeProcess;
 class FileApiQtcData;
 
 class FileApiReader final : public QObject
@@ -93,7 +69,7 @@ private:
     void startState();
     void endState(const Utils::FilePath &replyFilePath, bool restoredFromBackup);
     void startCMakeState(const QStringList &configurationArguments);
-    void cmakeFinishedState();
+    void cmakeFinishedState(int exitCode);
 
     void replyDirectoryHasChanged(const QString &directory) const;
     void makeBackupConfiguration(bool store);
@@ -113,7 +89,7 @@ private:
     bool m_usesAllCapsTargets = false;
     int m_lastCMakeExitCode = 0;
 
-    Utils::optional<QFuture<std::shared_ptr<FileApiQtcData>>> m_future;
+    std::optional<QFuture<std::shared_ptr<FileApiQtcData>>> m_future;
 
     // Update related:
     bool m_isParsing = false;
@@ -124,5 +100,4 @@ private:
     QDateTime m_lastReplyTimestamp;
 };
 
-} // namespace Internal
-} // namespace CMakeProjectManager
+} // CMakeProjectManager::Internal

@@ -26,8 +26,6 @@ Project {
                 defines.push("QTC_WEBENGINE_HELPVIEWER");
             if (qlitehtml.present)
                 defines.push("QTC_LITEHTML_HELPVIEWER")
-            if (Utilities.versionCompare(Qt.core.version, "5.15") >= 0)
-                defines.push("HELP_NEW_FILTER_ENGINE");
             return defines;
         }
 
@@ -37,9 +35,9 @@ Project {
         Group {
             name: "Sources"
             files: [
-                "docsettingspage.cpp", "docsettingspage.h", "docsettingspage.ui",
-                "filtersettingspage.cpp", "filtersettingspage.h", "filtersettingspage.ui",
-                "generalsettingspage.cpp", "generalsettingspage.h", "generalsettingspage.ui",
+                "docsettingspage.cpp", "docsettingspage.h",
+                "filtersettingspage.cpp", "filtersettingspage.h",
+                "generalsettingspage.cpp", "generalsettingspage.h",
                 "help.qrc",
                 "helpconstants.h",
                 "helpfindsupport.cpp", "helpfindsupport.h",
@@ -49,6 +47,7 @@ Project {
                 "helpplugin.cpp", "helpplugin.h",
                 "helpviewer.cpp", "helpviewer.h",
                 "helpwidget.cpp", "helpwidget.h",
+                "helptr.h",
                 "localhelpmanager.cpp", "localhelpmanager.h",
                 "openpagesmanager.cpp", "openpagesmanager.h",
                 "openpagesswitcher.cpp", "openpagesswitcher.h",
@@ -83,13 +82,11 @@ Project {
             name: "Shared Sources"
             prefix: project.sharedSourcesDir + "/help/"
             files: [
-                "bookmarkdialog.ui",
                 "bookmarkmanager.cpp", "bookmarkmanager.h",
                 "contentwindow.cpp", "contentwindow.h",
-                "filternamedialog.cpp", "filternamedialog.h", "filternamedialog.ui",
                 "helpicons.h",
                 "indexwindow.cpp", "indexwindow.h",
-                "topicchooser.cpp", "topicchooser.h", "topicchooser.ui",
+                "topicchooser.cpp", "topicchooser.h",
             ]
         }
     }

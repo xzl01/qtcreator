@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlprofilertraceclient.h"
 #include "qmltypedevent.h"
@@ -38,7 +16,7 @@ namespace QmlProfiler {
 
 inline auto qHash(const QmlEventType &type)
 {
-    return qHash(type.location())
+    return qHash(type.location()) ^ qHash(type.data())
             ^ (((type.message() << 12) & 0xf000)             // 4 bits of message
                | ((type.rangeType() << 24) & 0xf000000)      // 4 bits of rangeType
                | ((type.detailType() << 28) & 0xf0000000));  // 4 bits of detailType
@@ -47,7 +25,8 @@ inline auto qHash(const QmlEventType &type)
 inline bool operator==(const QmlEventType &type1, const QmlEventType &type2)
 {
     return type1.message() == type2.message() && type1.rangeType() == type2.rangeType()
-            && type1.detailType() == type2.detailType() && type1.location() == type2.location();
+            && type1.detailType() == type2.detailType() && type1.location() == type2.location()
+            && type1.data() == type2.data();
 }
 
 inline bool operator!=(const QmlEventType &type1, const QmlEventType &type2)
@@ -170,7 +149,7 @@ void QmlProfilerTraceClientPrivate::processCurrentEvent()
     // all ranges are perfectly nested. This is why we can defer the type resolution until either
     // the range ends or a child range starts. With only the information in RangeStart we wouldn't
     // be able to uniquely identify the event type.
-    Message rangeStage = currentEvent.type.rangeType() == MaximumRangeType ?
+    Message rangeStage = currentEvent.type.rangeType() == UndefinedRangeType ?
                 currentEvent.type.message() : currentEvent.event.rangeStage();
     switch (rangeStage) {
     case RangeStart:
@@ -333,7 +312,7 @@ void QmlProfilerTraceClient::setRequestedFeatures(quint64 features)
             d->currentEvent.event.setTimestamp(context.timestamp > 0 ? context.timestamp : 0);
             d->currentEvent.event.setTypeIndex(-1);
             d->currentEvent.event.setString(text);
-            d->currentEvent.type = QmlEventType(DebugMessage, MaximumRangeType, type,
+            d->currentEvent.type = QmlEventType(DebugMessage, UndefinedRangeType, type,
                                                 QmlEventLocation(context.file, context.line, 1));
             d->currentEvent.serverTypeId = 0;
             d->processCurrentEvent();
@@ -350,6 +329,8 @@ void QmlProfilerTraceClient::setFlushInterval(quint32 flushInterval)
 
 bool QmlProfilerTraceClientPrivate::updateFeatures(quint8 feature)
 {
+    if (feature == UndefinedProfileFeature)
+        return true;
     quint64 flag = 1ULL << feature;
     if (!(requestedFeatures & flag))
         return false;

@@ -1,37 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "giteditor.h"
 
 #include "annotationhighlighter.h"
-#include "branchadddialog.h"
 #include "gitclient.h"
-#include "gitsettings.h"
-#include "gitsubmiteditorwidget.h"
 #include "gitconstants.h"
 #include "githighlighters.h"
+#include "gitsettings.h"
+#include "gittr.h"
 
 #include <coreplugin/icore.h>
 #include <texteditor/textdocument.h>
@@ -44,7 +21,6 @@
 
 #include <QDir>
 #include <QFileInfo>
-#include <QHBoxLayout>
 #include <QMenu>
 #include <QRegularExpression>
 #include <QSet>
@@ -52,46 +28,43 @@
 #include <QTextCodec>
 #include <QTextCursor>
 
-#define CHANGE_PATTERN "[a-f0-9]{7,40}"
+#define CHANGE_PATTERN "\\b[a-f0-9]{7,40}\\b"
 
+using namespace Core;
 using namespace Utils;
 using namespace VcsBase;
 
-namespace Git {
-namespace Internal {
+namespace Git::Internal {
 
 class GitLogFilterWidget : public QToolBar
 {
-    Q_DECLARE_TR_FUNCTIONS(Git::Internal::GitLogFilterWidget);
-
 public:
     GitLogFilterWidget(GitEditorWidget *editor)
     {
-        auto addLineEdit = [this](const QString &placeholder,
-                const QString &tooltip,
-                GitEditorWidget *editor)
-        {
-            auto lineEdit = new Utils::FancyLineEdit;
+        auto addLineEdit = [](const QString &placeholder,
+                              const QString &tooltip,
+                              GitEditorWidget *editor) {
+            auto lineEdit = new FancyLineEdit;
             lineEdit->setFiltering(true);
             lineEdit->setToolTip(tooltip);
             lineEdit->setPlaceholderText(placeholder);
             lineEdit->setMaximumWidth(200);
             connect(lineEdit, &QLineEdit::returnPressed,
                     editor, &GitEditorWidget::refresh);
-            connect(lineEdit, &Utils::FancyLineEdit::rightButtonClicked,
+            connect(lineEdit, &FancyLineEdit::rightButtonClicked,
                     editor, &GitEditorWidget::refresh);
             return lineEdit;
         };
-        grepLineEdit = addLineEdit(tr("Filter by message"),
-                                   tr("Filter log entries by text in the commit message."),
+        grepLineEdit = addLineEdit(Tr::tr("Filter by message"),
+                                   Tr::tr("Filter log entries by text in the commit message."),
                                    editor);
-        pickaxeLineEdit = addLineEdit(tr("Filter by content"),
-                                      tr("Filter log entries by added or removed string."),
+        pickaxeLineEdit = addLineEdit(Tr::tr("Filter by content"),
+                                      Tr::tr("Filter log entries by added or removed string."),
                                       editor);
-        authorLineEdit = addLineEdit(tr("Filter by author"),
-                                     tr("Filter log entries by author."),
+        authorLineEdit = addLineEdit(Tr::tr("Filter by author"),
+                                     Tr::tr("Filter log entries by author."),
                                      editor);
-        addWidget(new QLabel(tr("Filter:")));
+        addWidget(new QLabel(Tr::tr("Filter:")));
         addSeparator();
         addWidget(grepLineEdit);
         addSeparator();
@@ -99,7 +72,7 @@ public:
         addSeparator();
         addWidget(authorLineEdit);
         addSeparator();
-        caseAction = new QAction(tr("Case Sensitive"), this);
+        caseAction = new QAction(Tr::tr("Case Sensitive"), this);
         caseAction->setCheckable(true);
         caseAction->setChecked(true);
         connect(caseAction, &QAction::toggled, editor, &GitEditorWidget::refresh);
@@ -108,9 +81,9 @@ public:
         connect(editor, &GitEditorWidget::toggleFilters, this, &QWidget::setVisible);
     }
 
-    Utils::FancyLineEdit *grepLineEdit;
-    Utils::FancyLineEdit *pickaxeLineEdit;
-    Utils::FancyLineEdit *authorLineEdit;
+    FancyLineEdit *grepLineEdit;
+    FancyLineEdit *pickaxeLineEdit;
+    FancyLineEdit *authorLineEdit;
     QAction *caseAction;
 };
 
@@ -126,8 +99,8 @@ GitEditorWidget::GitEditorWidget() :
     */
     setDiffFilePattern("^(?:diff --git a/|index |[+-]{3} (?:/dev/null|[ab]/(.+$)))");
     setLogEntryPattern("^commit ([0-9a-f]{8})[0-9a-f]{32}");
-    setAnnotateRevisionTextFormat(tr("&Blame %1"));
-    setAnnotatePreviousRevisionTextFormat(tr("Blame &Parent Revision %1"));
+    setAnnotateRevisionTextFormat(Tr::tr("&Blame %1"));
+    setAnnotatePreviousRevisionTextFormat(Tr::tr("Blame &Parent Revision %1"));
     setAnnotationEntryPattern("^(" CHANGE_PATTERN ") ");
 }
 
@@ -213,9 +186,8 @@ void GitEditorWidget::setPlainText(const QString &text)
     switch (contentType())
     {
     case LogOutput: {
-        Utils::AnsiEscapeCodeHandler handler;
-        const QList<Utils::FormattedText> formattedTextList
-                = handler.parseText(Utils::FormattedText(text));
+        AnsiEscapeCodeHandler handler;
+        const QList<FormattedText> formattedTextList = handler.parseText(FormattedText(text));
 
         clear();
         QTextCursor cursor = textCursor();
@@ -237,9 +209,9 @@ void GitEditorWidget::setPlainText(const QString &text)
     textDocument()->setPlainText(modText);
 }
 
-void GitEditorWidget::applyDiffChunk(const DiffChunk& chunk, bool revert)
+void GitEditorWidget::applyDiffChunk(const DiffChunk& chunk, PatchAction patchAction)
 {
-    Utils::TemporaryFile patchFile("git-apply-chunk");
+    TemporaryFile patchFile("git-apply-chunk");
     if (!patchFile.open())
         return;
 
@@ -249,18 +221,16 @@ void GitEditorWidget::applyDiffChunk(const DiffChunk& chunk, bool revert)
     patchFile.close();
 
     QStringList args = {"--cached"};
-    if (revert)
+    if (patchAction == PatchAction::Revert)
         args << "--reverse";
     QString errorMessage;
     if (GitClient::instance()->synchronousApplyPatch(baseDir, patchFile.fileName(), &errorMessage, args)) {
         if (errorMessage.isEmpty())
-            VcsOutputWindow::append(tr("Chunk successfully staged"));
+            VcsOutputWindow::append(Tr::tr("Chunk successfully staged"));
         else
             VcsOutputWindow::append(errorMessage);
-        if (revert)
-            emit diffChunkReverted(chunk);
-        else
-            emit diffChunkApplied(chunk);
+        if (patchAction == PatchAction::Revert)
+            emit diffChunkReverted();
     } else {
         VcsOutputWindow::appendError(errorMessage);
     }
@@ -269,39 +239,42 @@ void GitEditorWidget::applyDiffChunk(const DiffChunk& chunk, bool revert)
 void GitEditorWidget::init()
 {
     VcsBaseEditorWidget::init();
-    Utils::Id editorId = textDocument()->id();
-    if (editorId == Git::Constants::GIT_COMMIT_TEXT_EDITOR_ID)
-        textDocument()->setSyntaxHighlighter(new GitSubmitHighlighter);
-    else if (editorId == Git::Constants::GIT_REBASE_EDITOR_ID)
-        textDocument()->setSyntaxHighlighter(new GitRebaseHighlighter);
+    Id editorId = textDocument()->id();
+    const bool isCommitEditor = editorId == Git::Constants::GIT_COMMIT_TEXT_EDITOR_ID;
+    const bool isRebaseEditor = editorId == Git::Constants::GIT_REBASE_EDITOR_ID;
+    if (!isCommitEditor && !isRebaseEditor)
+        return;
+    const QChar commentChar = GitClient::instance()->commentChar(source());
+    if (isCommitEditor)
+        textDocument()->setSyntaxHighlighter(new GitSubmitHighlighter(commentChar));
+    else if (isRebaseEditor)
+        textDocument()->setSyntaxHighlighter(new GitRebaseHighlighter(commentChar));
 }
 
 void GitEditorWidget::addDiffActions(QMenu *menu, const DiffChunk &chunk)
 {
     menu->addSeparator();
 
-    QAction *stageAction = menu->addAction(tr("Stage Chunk..."));
+    QAction *stageAction = menu->addAction(Tr::tr("Stage Chunk..."));
     connect(stageAction, &QAction::triggered, this, [this, chunk] {
-        applyDiffChunk(chunk, false);
+        applyDiffChunk(chunk, PatchAction::Apply);
     });
 
-    QAction *unstageAction = menu->addAction(tr("Unstage Chunk..."));
+    QAction *unstageAction = menu->addAction(Tr::tr("Unstage Chunk..."));
     connect(unstageAction, &QAction::triggered, this, [this, chunk] {
-        applyDiffChunk(chunk, true);
+        applyDiffChunk(chunk, PatchAction::Revert);
     });
 }
 
-void GitEditorWidget::aboutToOpen(const Utils::FilePath &filePath,
-                                  const Utils::FilePath &realFilePath)
+void GitEditorWidget::aboutToOpen(const FilePath &filePath, const FilePath &realFilePath)
 {
     Q_UNUSED(realFilePath)
-    Utils::Id editorId = textDocument()->id();
+    Id editorId = textDocument()->id();
     if (editorId == Git::Constants::GIT_COMMIT_TEXT_EDITOR_ID
             || editorId == Git::Constants::GIT_REBASE_EDITOR_ID) {
         const FilePath gitPath = filePath.absolutePath();
-        setSource(gitPath.toString());
-        textDocument()->setCodec(
-                    GitClient::instance()->encoding(gitPath, "i18n.commitEncoding"));
+        setSource(gitPath);
+        textDocument()->setCodec(GitClient::instance()->encoding(GitClient::EncodingCommit, gitPath));
     }
 }
 
@@ -354,7 +327,7 @@ bool GitEditorWidget::supportChangeLinks() const
             || (textDocument()->id() == Git::Constants::GIT_REBASE_EDITOR_ID);
 }
 
-QString GitEditorWidget::fileNameForLine(int line) const
+FilePath GitEditorWidget::fileNameForLine(int line) const
 {
     // 7971b6e7 share/qtcreator/dumper/dumper.py   (hjk
     QTextBlock block = document()->findBlockByLineNumber(line - 1);
@@ -364,7 +337,7 @@ QString GitEditorWidget::fileNameForLine(int line) const
     if (match.hasMatch()) {
         const QString fileName = match.captured(1).trimmed();
         if (!fileName.isEmpty())
-            return fileName;
+            return FilePath::fromString(fileName);
     }
     return source();
 }
@@ -413,5 +386,4 @@ bool GitEditorWidget::caseSensitive() const
     return m_logFilterWidget && m_logFilterWidget->caseAction->isChecked();
 }
 
-} // namespace Internal
-} // namespace Git
+} // Git::Internal

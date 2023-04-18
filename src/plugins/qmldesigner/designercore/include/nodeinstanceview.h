@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -39,6 +17,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QImage>
+#include <QPixmap>
 #include <QPointer>
 #include <QRectF>
 #include <QTime>
@@ -75,6 +54,7 @@ class CompleteComponentCommand;
 class InformationContainer;
 class TokenCommand;
 class ConnectionManagerInterface;
+class ExternalDependenciesInterface;
 
 class QMLDESIGNERCORE_EXPORT NodeInstanceView : public AbstractView, public NodeInstanceClientInterface
 {
@@ -85,7 +65,8 @@ class QMLDESIGNERCORE_EXPORT NodeInstanceView : public AbstractView, public Node
 public:
     using Pointer = QWeakPointer<NodeInstanceView>;
 
-    explicit NodeInstanceView(ConnectionManagerInterface &connectionManager);
+    explicit NodeInstanceView(ConnectionManagerInterface &connectionManager,
+                              ExternalDependenciesInterface &externalDependencies);
     ~NodeInstanceView() override;
 
     void modelAttached(Model *model) override;
@@ -104,7 +85,9 @@ public:
     void nodeIdChanged(const ModelNode& node, const QString& newId, const QString& oldId) override;
     void nodeOrderChanged(const NodeListProperty &listProperty) override;
     void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports) override;
-    void auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &data) override;
+    void auxiliaryDataChanged(const ModelNode &node,
+                              AuxiliaryDataKeyView key,
+                              const QVariant &data) override;
     void customNotification(const AbstractView *view, const QString &identifier, const QList<ModelNode> &nodeList, const QList<QVariant> &data) override;
     void nodeSourceChanged(const ModelNode &modelNode, const QString &newNodeSource) override;
     void capturedData(const CapturedDataCommand &capturedData) override;
@@ -115,8 +98,8 @@ public:
     NodeInstance instanceForModelNode(const ModelNode &node) const ;
     bool hasInstanceForModelNode(const ModelNode &node) const;
 
-    NodeInstance instanceForId(qint32 id);
-    bool hasInstanceForId(qint32 id);
+    NodeInstance instanceForId(qint32 id) const;
+    bool hasInstanceForId(qint32 id) const;
 
     QRectF sceneRect() const;
 
@@ -147,14 +130,15 @@ public:
                               const QList<ModelNode> &lastSelectedNodeList) override;
 
     void sendInputEvent(QInputEvent *e) const;
-    void view3DAction(const View3DActionCommand &command);
-    void requestModelNodePreviewImage(const ModelNode &node, const ModelNode &renderNode);
+    void view3DAction(View3DActionType type, const QVariant &value) override;
+    void requestModelNodePreviewImage(const ModelNode &node, const ModelNode &renderNode) const;
     void edit3DViewResized(const QSize &size) const;
 
     void handlePuppetToCreatorCommand(const PuppetToCreatorCommand &command) override;
 
-    QVariant previewImageDataForGenericNode(const ModelNode &modelNode, const ModelNode &renderNode);
-    QVariant previewImageDataForImageNode(const ModelNode &modelNode);
+    QVariant previewImageDataForGenericNode(const ModelNode &modelNode,
+                                            const ModelNode &renderNode) const;
+    QVariant previewImageDataForImageNode(const ModelNode &modelNode) const;
 
     void setCrashCallback(std::function<void()> crashCallback)
     {
@@ -238,7 +222,7 @@ private: // functions
         QString id;
         QString info;
     };
-    QVariant modelNodePreviewImageDataToVariant(const ModelNodePreviewImageData &imageData);
+    QVariant modelNodePreviewImageDataToVariant(const ModelNodePreviewImageData &imageData) const;
     void updatePreviewImageForNode(const ModelNode &modelNode, const QImage &image);
 
     void updateWatcher(const QString &path);
@@ -267,7 +251,7 @@ private:
     QList<NodeInstance> loadInstancesFromCache(const QList<ModelNode> &nodeList,
                                                const NodeInstanceCacheData &cache);
 
-    QHash<QString, ModelNodePreviewImageData> m_imageDataMap;
+    mutable QHash<QString, ModelNodePreviewImageData> m_imageDataMap;
 
     NodeInstance m_rootNodeInstance;
     NodeInstance m_activeStateInstance;
@@ -275,10 +259,11 @@ private:
     ModelCache<NodeInstanceCacheData> m_nodeInstanceCache;
     QHash<ModelNode, QImage> m_statePreviewImage;
     ConnectionManagerInterface &m_connectionManager;
+    ExternalDependenciesInterface &m_externalDependencies;
     std::unique_ptr<NodeInstanceServerProxy> m_nodeInstanceServer;
     QImage m_baseStatePreviewImage;
     QElapsedTimer m_lastCrashTime;
-    ProjectExplorer::Target *m_currentTarget = nullptr;
+    QPointer<ProjectExplorer::Target> m_currentTarget;
     int m_restartProcessTimerId;
     RewriterTransaction m_puppetTransaction;
 

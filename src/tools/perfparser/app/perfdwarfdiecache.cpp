@@ -24,35 +24,11 @@
 
 #include <dwarf.h>
 
-#include <QLibrary>
-#include <QDebug>
+#include <vector>
+
+#include "demangler.h"
 
 namespace {
-bool rustc_demangle(const char *symbol, char *buffer, size_t bufferSize)
-{
-    using demangler_t = int (*) (const char*, char *, size_t);
-    static const auto demangler = []() -> demangler_t {
-        QLibrary lib(QStringLiteral("rustc_demangle"));
-        if (!lib.load()) {
-            qDebug() << "failed to load rustc_demangle library, rust demangling is support not available."
-                     << lib.errorString();
-            return nullptr;
-        }
-        const auto rawSymbol = lib.resolve("rustc_demangle");
-        if (!rawSymbol) {
-            qDebug() << "failed to resolve rustc_demangle function in library"
-                     << lib.fileName() << lib.errorString();
-            return nullptr;
-        }
-        return reinterpret_cast<demangler_t>(rawSymbol);
-    }();
-
-    if (demangler)
-        return demangler(symbol, buffer, bufferSize);
-    else
-        return false;
-}
-
 enum class WalkResult
 {
     Recurse,
@@ -165,12 +141,20 @@ void prependScopeNames(QByteArray &name, Dwarf_Die *die, QHash<Dwarf_Off, QByteA
     Dwarf_Die *scopes = nullptr;
     auto nscopes = dwarf_getscopes_die(die, &scopes);
 
+    // We essentially visit and build the scope name in reverse order.
+    // The cache ops encode offsets we can lookup directly that then map to fully
+    // qualified identifiers, which must obviously _not_ end on a double-colon separator.
+    // Note that while filling cacheOps below, we thus always have to prepend the double-colon
+    // first to the name, then store the cacheOps with the size of `name`. While that may sound
+    // confusing, that gives us the desired results: `ScopesToCache::trailing` will then be set
+    // to the size _following_ the current entry, which may get more identifiers appended to
+    // it when we continue to visit the other DIEs next.
     struct ScopesToCache
     {
         Dwarf_Off offset;
         int trailing;
     };
-    QVector<ScopesToCache> cacheOps;
+    std::vector<ScopesToCache> cacheOps;
 
     // skip scope for the die itself at the start and the compile unit DIE at end
     for (int i = 1; i < nscopes - 1; ++i) {
@@ -180,6 +164,10 @@ void prependScopeNames(QByteArray &name, Dwarf_Die *die, QHash<Dwarf_Off, QByteA
 
         auto it = cache.find(scopeOffset);
         if (it != cache.end()) {
+            // prepend the fully qualified cached identifier
+            // that won't end on `::`, so we have to add that manually here
+            if (!name.isEmpty())
+                name.prepend("::");
             name.prepend(*it);
             // we can stop, cached names are always fully qualified
             break;
@@ -188,7 +176,7 @@ void prependScopeNames(QByteArray &name, Dwarf_Die *die, QHash<Dwarf_Off, QByteA
         if (auto scopeLinkageName = linkageName(scope)) {
             // prepend the fully qualified linkage name
             name.prepend("::");
-            cacheOps.append({scopeOffset, int(name.size())});
+            cacheOps.push_back({scopeOffset, int(name.size())});
             // we have to demangle the scope linkage name, otherwise we get a
             // mish-mash of mangled and non-mangled names
             name.prepend(demangle(scopeLinkageName));
@@ -199,15 +187,15 @@ void prependScopeNames(QByteArray &name, Dwarf_Die *die, QHash<Dwarf_Off, QByteA
         if (auto scopeName = dwarf_diename(scope)) {
             // prepend this scope's name, e.g. the class or namespace name
             name.prepend("::");
-            cacheOps.append({scopeOffset, int(name.size())});
+            cacheOps.push_back({scopeOffset, int(name.size())});
             name.prepend(scopeName);
         }
 
         if (auto specification = specificationDie(scope, &dieMem)) {
             eu_compat_free(scopes);
             scopes = nullptr;
-            cacheOps.append({scopeOffset, int(name.size())});
-            cacheOps.append({dwarf_dieoffset(specification), int(name.size())});
+            cacheOps.push_back({scopeOffset, int(name.size())});
+            cacheOps.push_back({dwarf_dieoffset(specification), int(name.size())});
             // follow the scope's specification DIE instead
             prependScopeNames(name, specification, cache);
             break;
@@ -252,9 +240,11 @@ QByteArray demangle(const QByteArray &mangledName)
     } else {
         static size_t demangleBufferLength = 1024;
         static char *demangleBuffer = reinterpret_cast<char *>(eu_compat_malloc(demangleBufferLength));
+        static Demangler demangler;
 
-        if (rustc_demangle(mangledName.constData(), demangleBuffer, demangleBufferLength))
+        if (demangler.demangle(mangledName, demangleBuffer, demangleBufferLength)) {
             return demangleBuffer;
+        }
 
         // Require GNU v3 ABI by the "_Z" prefix.
         if (mangledName[0] == '_' && mangledName[1] == 'Z') {
@@ -281,6 +271,37 @@ QVector<Dwarf_Die> findInlineScopes(Dwarf_Die *subprogram, Dwarf_Addr offset)
         return WalkResult::Skip;
     }, subprogram);
     return scopes;
+}
+
+QByteArray absoluteSourcePath(const char *path, Dwarf_Die *cuDie)
+{
+    if (!path || !cuDie || path[0] == '/')
+        return path;
+
+    Dwarf_Attribute attr;
+    auto compDir = dwarf_formstring(dwarf_attr(cuDie, DW_AT_comp_dir, &attr));
+    if (!compDir)
+        return path;
+
+    QByteArray ret;
+    ret.reserve(strlen(compDir) + strlen(path) + 1);
+    ret.append(compDir);
+    ret.append('/');
+    ret.append(path);
+    return ret;
+}
+
+DwarfSourceLocation findSourceLocation(Dwarf_Die* cuDie, Dwarf_Addr offset)
+{
+    DwarfSourceLocation ret;
+    if (auto srcloc = dwarf_getsrc_die(cuDie, offset)) {
+        if (const char* srcfile = dwarf_linesrc(srcloc, nullptr, nullptr)) {
+            ret.file = absoluteSourcePath(srcfile, cuDie);
+            dwarf_lineno(srcloc, &ret.line);
+            dwarf_linecol(srcloc, &ret.column);
+        }
+    }
+    return ret;
 }
 
 SubProgramDie::SubProgramDie(Dwarf_Die die)

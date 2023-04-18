@@ -1,31 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "edit3dactions.h"
 #include "edit3dview.h"
-#include "edit3dwidget.h"
 
 #include <viewmanager.h>
 #include <nodeinstanceview.h>
@@ -40,30 +17,41 @@ namespace QmlDesigner {
 
 Edit3DActionTemplate::Edit3DActionTemplate(const QString &description,
                                            SelectionContextOperation action,
-                                           View3DActionCommand::Type type)
-    : DefaultAction(description),
-      m_action(action),
-      m_type(type)
-{ }
+                                           Edit3DView *view,
+                                           View3DActionType type)
+    : DefaultAction(description)
+    , m_action(action)
+    , m_view(view)
+    , m_type(type)
+{}
 
 void Edit3DActionTemplate::actionTriggered(bool b)
 {
-    if (m_type != View3DActionCommand::Empty) {
-        QmlDesignerPlugin::instance()->viewManager().nodeInstanceView()
-                ->view3DAction(View3DActionCommand(m_type, b));
+    if (m_type != View3DActionType::Empty && m_type != View3DActionType::SelectBackgroundColor
+        && m_type != View3DActionType::SelectGridColor) {
+        m_view->emitView3DAction(m_type, b);
     }
 
     if (m_action)
         m_action(m_selectionContext);
 }
 
-Edit3DAction::Edit3DAction(const QByteArray &menuId, View3DActionCommand::Type type,
-                           const QString &description, const QKeySequence &key, bool checkable,
-                           bool checked, const QIcon &iconOff, const QIcon &iconOn,
-                           SelectionContextOperation selectionAction, const QString &toolTip)
-    : AbstractAction(new Edit3DActionTemplate(description, selectionAction, type))
+Edit3DAction::Edit3DAction(const QByteArray &menuId,
+                           View3DActionType type,
+                           const QString &description,
+                           const QKeySequence &key,
+                           bool checkable,
+                           bool checked,
+                           const QIcon &iconOff,
+                           const QIcon &iconOn,
+                           Edit3DView *view,
+                           SelectionContextOperation selectionAction,
+                           const QString &toolTip)
+    : AbstractAction(new Edit3DActionTemplate(description, selectionAction, view, type))
     , m_menuId(menuId)
+    , m_actionTemplate(qobject_cast<Edit3DActionTemplate *>(defaultAction()))
 {
+    view->registerEdit3DAction(this);
     action()->setShortcut(key);
     action()->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     action()->setCheckable(checkable);
@@ -86,14 +74,23 @@ Edit3DAction::Edit3DAction(const QByteArray &menuId, View3DActionCommand::Type t
     }
 }
 
+Edit3DAction::~Edit3DAction()
+{
+    m_actionTemplate->m_view->unregisterEdit3DAction(this);
+}
+
 QByteArray Edit3DAction::category() const
 {
     return QByteArray();
 }
 
-bool Edit3DAction::isVisible(const SelectionContext &selectionContext) const
+View3DActionType Edit3DAction::actionType() const
 {
-    Q_UNUSED(selectionContext)
+    return m_actionTemplate->m_type;
+}
+
+bool Edit3DAction::isVisible([[maybe_unused]] const SelectionContext &selectionContext) const
+{
     return true;
 }
 
@@ -102,20 +99,24 @@ bool Edit3DAction::isEnabled(const SelectionContext &selectionContext) const
     return isVisible(selectionContext);
 }
 
-Edit3DCameraAction::Edit3DCameraAction(const QByteArray &menuId, View3DActionCommand::Type type,
-                                       const QString &description, const QKeySequence &key,
-                                       bool checkable, bool checked, const QIcon &iconOff,
+Edit3DCameraAction::Edit3DCameraAction(const QByteArray &menuId,
+                                       View3DActionType type,
+                                       const QString &description,
+                                       const QKeySequence &key,
+                                       bool checkable,
+                                       bool checked,
+                                       const QIcon &iconOff,
                                        const QIcon &iconOn,
+                                       Edit3DView *view,
                                        SelectionContextOperation selectionAction)
-    : Edit3DAction(menuId, type, description, key, checkable, checked, iconOff, iconOn, selectionAction)
+    : Edit3DAction(menuId, type, description, key, checkable, checked, iconOff, iconOn, view, selectionAction)
 {
 }
 
 bool Edit3DCameraAction::isEnabled(const SelectionContext &selectionContext) const
 {
-    return Utils::anyOf(selectionContext.selectedModelNodes(), [](const ModelNode &node) {
-        return node.isValid() && node.metaInfo().isSubclassOf("QQuick3D.Camera");
-    });
+    return Utils::anyOf(selectionContext.selectedModelNodes(),
+                        [](const ModelNode &node) { return node.metaInfo().isQtQuick3DCamera(); });
 }
 
 }

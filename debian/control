@@ -3,70 +3,62 @@ Section: devel
 Priority: optional
 Maintainer: Debian Qt/KDE Maintainers <debian-qt-kde@lists.debian.org>
 Uploaders: Adam Majer <adamm@zombino.com>,
-           Jeremy Lainé <jeremy.laine@m4x.org>,
            Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>,
-           Simon Quigley <tsimonq2@debian.org>
 Build-Depends: clang (>= 1:10~),
+               clangd (>= 1:13~),
                cmake (>= 3.16~),
                debhelper-compat (= 13),
                libclang-dev (>= 1:10~),
                libdw-dev,
-               libicu-dev,
-               libkf5syntaxhighlighting-dev,
-               liblitehtml-dev,
-               libqt5opengl5-dev (>= 5.15.2~),
-               libqt5serialport5-dev (>= 5.15.2~),
-               libqt5sql5-sqlite (>= 5.15.2~),
-               libqt5svg5-dev (>= 5.15.2~),
-               libqt5x11extras5-dev (>= 5.15.2~),
+               libqt6core5compat6-dev (>= 6.2~),
+               libqt6opengl6-dev (>= 6.2~),
+               libqt6quicktimeline6-dev (>= 6.2~),
+               libqt6serialport6-dev (>= 6.2~),
+               libqt6shadertools6-dev (>= 6.2.4-2~),
+               libqt6svg6-dev (>= 6.2~),
                libyaml-cpp-dev (>= 0.5~),
                libzstd-dev,
                llvm-dev (>= 1:10~),
                pkg-config,
-               qml-module-qtquick-controls (>= 5.15.2~),
-               qml-module-qtquick2 (>= 5.15.2~),
-               qtbase5-dev (>= 5.15.2~),
-               qtbase5-private-dev (>= 5.15.2~),
-               qtdeclarative5-dev (>= 5.15.2~),
-               qtdeclarative5-private-dev (>= 5.15.2~),
-               qtscript5-dev (>= 5.15.2~),
-               qttools5-dev (>= 5.15.2~),
-               qttools5-dev-tools (>= 5.15.2~),
-               qttools5-private-dev (>= 5.15.2~),
-               zlib1g-dev
-Standards-Version: 4.6.0
+               python3:any,
+               qt6-base-dev (>= 6.2.4+dfsg-3~),
+               qt6-base-private-dev (>= 6.2.4+dfsg-3~),
+               qt6-declarative-dev (>= 6.2~),
+               qt6-declarative-private-dev (>= 6.2~),
+               qt6-quick3d-dev (>= 6.2.4-2~),
+               qt6-tools-dev (>= 6.2.4-2~),
+               qt6-tools-private-dev (>= 6.2.4-2~),
+Standards-Version: 4.6.2
 Rules-Requires-Root: no
 Homepage: https://doc.qt.io/qt-5/topics-app-development.html
-Vcs-Git: https://salsa.debian.org/qt-kde-team/qt/qtcreator.git
-Vcs-Browser: https://salsa.debian.org/qt-kde-team/qt/qtcreator
+Vcs-Git: https://salsa.debian.org/qt-kde-team/qt/qtcreator.git -b experimental
+Vcs-Browser: https://salsa.debian.org/qt-kde-team/qt/qtcreator/-/tree/experimental
 
 Package: qtcreator
 Architecture: any
-Depends: libqt5sql5-sqlite,
-         qml-module-qtqml-models2,
-         qml-module-qtquick-controls (>= 5.5.0~),
-         qml-module-qtquick2 (>= 5.5.0~),
-         qtchooser,
+Depends: clangd (>= 1:13~),
+         libqt6sql6-sqlite,
+         qml6-module-qtqml-models,
+         qml6-module-qtqml-workerscript,
+         qml6-module-qtquick-controls,
+         qml6-module-qtquick-layouts,
+         qml6-module-qtquick,
          qtcreator-data (= ${source:Version}),
          ${misc:Depends},
-         ${qtcreator:clang},
          ${shlibs:Depends}
 Recommends: clang-tidy,
             gdb,
             make,
-            qmlscene,
-            qt5-doc,
-            qt5-qmltooling-plugins,
-            qtbase5-dev-tools,
+            qml-qt6,
+            qt6-qmltooling-plugins,
+            qt6-base-dev-tools,
             qtcreator-doc,
-            qtdeclarative5-dev-tools,
-            qttools5-dev-tools,
-            qttranslations5-l10n,
+            qt6-declarative-dev-tools,
+            qt6-tools-dev-tools,
+            qt6-translations-l10n,
             xterm | x-terminal-emulator
 Suggests: clazy (>= 1.5), cmake, g++, git, meson, subversion, valgrind,
           python3-pylsp,
-Breaks: qtcreator-data (<< 4.5.2-2~)
-Replaces: qtcreator-data (<< 4.5.2-2~)
 Description: integrated development environment (IDE) for Qt
  Qt Creator is a cross-platform integrated development environment (IDE)
  designed to make development with the Qt application framework faster
@@ -93,8 +85,8 @@ Package: qtcreator-doc
 Architecture: all
 Multi-Arch: foreign
 Section: doc
-Depends: ${misc:Depends}
-Suggests: qt5-doc
+Depends: qt6-image-formats-plugins,
+         ${misc:Depends},
 Description: documentation for Qt Creator IDE
  Qt Creator is a cross-platform integrated development environment (IDE)
  designed to make development with the Qt application framework faster

@@ -1,30 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "toolchainsettingsaccessor.h"
 
+#include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "toolchain.h"
 
 #include <coreplugin/icore.h>
@@ -33,10 +13,15 @@
 
 #include <utils/algorithm.h>
 
+#include <QElapsedTimer>
+#include <QLoggingCategory>
+
 using namespace Utils;
 
 namespace ProjectExplorer {
 namespace Internal {
+
+static Q_LOGGING_CATEGORY(Log, "qtc.projectexplorer.toolchain.autodetection", QtWarningMsg)
 
 // --------------------------------------------------------------------
 // ToolChainSettingsUpgraders:
@@ -56,9 +41,9 @@ public:
 // Helpers:
 // --------------------------------------------------------------------
 
-static const char TOOLCHAIN_DATA_KEY[] = "ToolChain.";
-static const char TOOLCHAIN_COUNT_KEY[] = "ToolChain.Count";
-static const char TOOLCHAIN_FILENAME[] = "toolchains.xml";
+const char TOOLCHAIN_DATA_KEY[] = "ToolChain.";
+const char TOOLCHAIN_COUNT_KEY[] = "ToolChain.Count";
+const char TOOLCHAIN_FILENAME[] = "toolchains.xml";
 
 struct ToolChainOperations
 {
@@ -70,8 +55,12 @@ struct ToolChainOperations
 static Toolchains autoDetectToolChains(const ToolchainDetector &detector)
 {
     Toolchains result;
-    for (ToolChainFactory *f : ToolChainFactory::allToolChainFactories())
+    for (ToolChainFactory *f : ToolChainFactory::allToolChainFactories()) {
+        QElapsedTimer et;
+        et.start();
         result.append(f->autoDetect(detector));
+        qCDebug(Log) << f->displayName() << "auto detection took: " << et.elapsed() << "ms";
+    }
 
     // Remove invalid toolchains that might have sneaked in.
     return Utils::filtered(result, [](const ToolChain *tc) { return tc->isValid(); });
@@ -80,7 +69,7 @@ static Toolchains autoDetectToolChains(const ToolchainDetector &detector)
 static Toolchains makeUniqueByEqual(const Toolchains &a)
 {
     Toolchains result;
-    foreach (ToolChain *tc, a) {
+    for (ToolChain *tc : a) {
         if (!Utils::contains(result, [tc](ToolChain *rtc) { return *tc == *rtc; }))
             result.append(tc);
     }
@@ -181,7 +170,7 @@ static ToolChainOperations mergeToolChainLists(const Toolchains &systemFileTcs,
 
 ToolChainSettingsAccessor::ToolChainSettingsAccessor() :
     UpgradingSettingsAccessor("QtCreatorToolChains",
-                              QCoreApplication::translate("ProjectExplorer::ToolChainManager", "Tool Chains"),
+                              Tr::tr("Tool Chains"),
                               Core::Constants::IDE_DISPLAY_NAME)
 {
     setBaseFilePath(Core::ICore::userResourcePath(TOOLCHAIN_FILENAME));
@@ -211,8 +200,11 @@ Toolchains ToolChainSettingsAccessor::restoreToolChains(QWidget *parent) const
     const ToolChainOperations ops = mergeToolChainLists(systemFileTcs, userFileTcs, autodetectedTcs);
 
     // Process ops:
-    for (ToolChain *tc : ops.toDemote)
-        tc->setDetection(ToolChain::ManualDetection);
+    for (ToolChain *tc : ops.toDemote) {
+        // FIXME: We currently only demote local toolchains, as they are not redetected.
+        if (tc->detectionSource().isEmpty())
+            tc->setDetection(ToolChain::ManualDetection);
+    }
 
     qDeleteAll(ops.toDelete);
 
@@ -280,8 +272,6 @@ Toolchains ToolChainSettingsAccessor::toolChains(const QVariantMap &data) const
 
 #ifdef WITH_TESTS
 #include "projectexplorer.h"
-
-#include "headerpath.h"
 
 #include "abi.h"
 #include "toolchainconfigwidget.h"

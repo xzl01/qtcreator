@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "stickynotespasteprotocol.h"
-#ifdef CPASTER_PLUGIN_GUI
-#endif
+
+#include "cpastertr.h"
 
 #include <coreplugin/icore.h>
 #include <utils/qtcassert.h>
@@ -43,7 +21,9 @@
 
 enum { debug = 0 };
 
-static inline QByteArray expiryParameter(int daysRequested)
+namespace CodePaster {
+
+static QByteArray expiryParameter(int daysRequested)
 {
     // Obtained by 'pastebin.kde.org/api/json/parameter/expire' on 26.03.2014
     static const int expiryTimesSec[] = {1800, 21600, 86400, 604800, 2592000, 31536000};
@@ -52,8 +32,6 @@ static inline QByteArray expiryParameter(int daysRequested)
     const int *match = std::lower_bound(expiryTimesSec, end - 1, 24 * 60 * 60 * daysRequested);
     return QByteArray("expire=") + QByteArray::number(*match);
 }
-
-namespace CodePaster {
 
 void StickyNotesPasteProtocol::setHostUrl(const QString &hostUrl)
 {
@@ -245,8 +223,8 @@ static inline QStringList parseList(QIODevice *device)
             if (obj.contains(pastesKey)) {
                 value = obj.value(pastesKey);
                 if (value.isArray()) {
-                    QJsonArray array = value.toArray();
-                    foreach (const QJsonValue &val, array)
+                    const QJsonArray array = value.toArray();
+                    for (const QJsonValue &val : array)
                         result.append(val.toString());
                 }
             }
@@ -268,5 +246,4 @@ void StickyNotesPasteProtocol::listFinished()
     m_listReply = nullptr;
 }
 
-
-} // namespace CodePaster
+} // CodePaster

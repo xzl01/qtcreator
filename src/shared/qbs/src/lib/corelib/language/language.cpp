@@ -68,8 +68,6 @@
 #include <QtCore/qdiriterator.h>
 #include <QtCore/qmap.h>
 
-#include <QtScript/qscriptvalue.h>
-
 #include <algorithm>
 #include <memory>
 #include <mutex>
@@ -592,7 +590,7 @@ TopLevelProject::~TopLevelProject()
 QString TopLevelProject::deriveId(const QVariantMap &config)
 {
     const QVariantMap qbsProperties = config.value(StringConstants::qbsModule()).toMap();
-    const QString configurationName = qbsProperties.value(
+    QString configurationName = qbsProperties.value(
                 StringConstants::configurationNameProperty()).toString();
     return configurationName;
 }
@@ -976,6 +974,22 @@ bool operator==(const ExportedModule &m1, const ExportedModule &m2)
             && m1.productDependencies.size() == m2.productDependencies.size()
             && m1.productDependencies == m2.productDependencies
             && depMapsEqual(m1.dependencyParameters, m2.dependencyParameters);
+}
+
+JSValue PrivateScriptFunction::getFunction(ScriptEngine *engine, const QString &errorMessage) const
+{
+    if (JS_IsUndefined(scriptFunction)) {
+        ScopedJsValue val(engine->context(),
+                          engine->evaluate(JsValueOwner::Caller, sourceCode(),
+                                           location().filePath(), location().line()));
+        if (Q_UNLIKELY(!JS_IsFunction(engine->context(), val)))
+            throw ErrorInfo(errorMessage, location());
+        scriptFunction = val.release();
+        engine->addExternallyCachedValue(&scriptFunction);
+    } else {
+        QBS_CHECK(JS_IsFunction(engine->context(), scriptFunction));
+    }
+    return scriptFunction;
 }
 
 } // namespace Internal

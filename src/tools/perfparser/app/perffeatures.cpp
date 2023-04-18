@@ -36,7 +36,7 @@ static void removeTrailingZeros(QByteArray *string)
 }
 
 void PerfFeatures::createFeature(QIODevice *device, QDataStream::ByteOrder byteOrder,
-                                 const PerfFileSection &section, PerfHeader::Feature featureId)
+                                 PerfFileSection section, PerfHeader::Feature featureId)
 {
     device->seek(section.offset);
     QDataStream stream(device);
@@ -106,7 +106,8 @@ void PerfFeatures::createFeature(QIODevice *device, QDataStream::ByteOrder byteO
         stream >> m_compressed;
         break;
     default:
-        break;
+        qDebug() << "unhandled feature" << featureId << section.size;
+        return;
     }
 
     qint64 readSize = device->pos() - section.offset;
@@ -209,7 +210,7 @@ QDataStream &operator>>(QDataStream &stream, PerfNrCpus &nrCpus)
     return stream >> nrCpus.online >> nrCpus.available;
 }
 
-QDataStream &operator<<(QDataStream &stream, const PerfNrCpus &nrCpus)
+QDataStream &operator<<(QDataStream &stream, PerfNrCpus nrCpus)
 {
     return stream << nrCpus.online << nrCpus.available;
 }

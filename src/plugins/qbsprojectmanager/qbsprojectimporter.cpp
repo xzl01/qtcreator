@@ -1,32 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qbsprojectimporter.h"
 
-#include "qbsbuildconfiguration.h"
 #include "qbspmlogging.h"
+#include "qbsprojectmanagerconstants.h"
 #include "qbssession.h"
 
 #include <coreplugin/documentmanager.h>
@@ -39,7 +17,7 @@
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/toolchain.h>
 #include <qtsupport/qtkitinformation.h>
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 #include <utils/hostosinfo.h>
 
 #include <QFileInfo>
@@ -47,8 +25,10 @@
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace QbsProjectManager {
-namespace Internal {
+namespace PEConstants = ProjectExplorer::Constants;
+namespace QbsConstants = QbsProjectManager::Constants;
+
+namespace QbsProjectManager::Internal {
 
 struct BuildGraphData
 {
@@ -90,38 +70,36 @@ static FilePath buildDir(const FilePath &projectFilePath, const Kit *k)
     const QString projectName = projectFilePath.completeBaseName();
     return BuildConfiguration::buildDirectoryFromTemplate(
                 Project::projectDirectory(projectFilePath),
-                projectFilePath, projectName, k, QString(), BuildConfiguration::Unknown);
+                projectFilePath, projectName, k, QString(), BuildConfiguration::Unknown, "qbs");
 }
 
-static bool hasBuildGraph(const QString &dir)
+static bool hasBuildGraph(const FilePath &dir)
 {
-    const QString &dirName = QFileInfo(dir).fileName();
-    return QFileInfo::exists(dir + QLatin1Char('/') + dirName + QLatin1String(".bg"));
+    return dir.pathAppended(dir.fileName() + ".bg").exists();
 }
 
-static QStringList candidatesForDirectory(const QString &dir)
+static FilePaths candidatesForDirectory(const FilePath &dir)
 {
-    QStringList candidates;
-    const QStringList &subDirs = QDir(dir).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QString &subDir : subDirs) {
-        const QString absSubDir = dir + QLatin1Char('/') + subDir;
-        if (hasBuildGraph(absSubDir))
-            candidates << absSubDir;
+    FilePaths candidates;
+    const FilePaths subDirs = dir.dirEntries(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const FilePath &subDir : subDirs) {
+        if (hasBuildGraph(subDir))
+            candidates << subDir;
     }
     return candidates;
 }
 
-QStringList QbsProjectImporter::importCandidates()
+FilePaths QbsProjectImporter::importCandidates()
 {
-    const QString projectDir = projectFilePath().toFileInfo().absolutePath();
-    QStringList candidates = candidatesForDirectory(projectDir);
+    const FilePath projectDir = projectFilePath().absolutePath();
+    FilePaths candidates = candidatesForDirectory(projectDir);
 
-    QSet<QString> seenCandidates;
+    QSet<FilePath> seenCandidates;
     seenCandidates.insert(projectDir);
     const auto &kits = KitManager::kits();
     for (Kit * const k : kits) {
-        QFileInfo fi = buildDir(projectFilePath(), k).toFileInfo();
-        const QString candidate = fi.absolutePath();
+        FilePath bdir = buildDir(projectFilePath(), k);
+        const FilePath candidate = bdir.absolutePath();
         if (!seenCandidates.contains(candidate)) {
             seenCandidates.insert(candidate);
             candidates << candidatesForDirectory(candidate);
@@ -204,10 +182,10 @@ Kit *QbsProjectImporter::createKit(void *directoryData) const
     return createTemporaryKit(qtVersionData,[this, bgData](Kit *k) -> void {
         QList<ToolChainData> tcData;
         if (!bgData->cxxCompilerPath.isEmpty())
-            tcData << findOrCreateToolChains({bgData->cxxCompilerPath, Constants::CXX_LANGUAGE_ID});
+            tcData << findOrCreateToolChains({bgData->cxxCompilerPath, PEConstants::CXX_LANGUAGE_ID});
         if (!bgData->cCompilerPath.isEmpty())
-            tcData << findOrCreateToolChains({bgData->cCompilerPath, Constants::C_LANGUAGE_ID});
-        foreach (const ToolChainData &tc, tcData) {
+            tcData << findOrCreateToolChains({bgData->cCompilerPath, PEConstants::C_LANGUAGE_ID});
+        for (const ToolChainData &tc : std::as_const(tcData)) {
             if (!tc.tcs.isEmpty())
                 ToolChainKitAspect::setToolChain(k, tc.tcs.first());
         }
@@ -220,8 +198,9 @@ const QList<BuildInfo> QbsProjectImporter::buildInfoList(void *directoryData) co
     const auto * const bgData = static_cast<BuildGraphData *>(directoryData);
     BuildInfo info;
     info.displayName = bgData->bgFilePath.completeBaseName();
-    info.buildType = bgData->buildVariant == "debug"
-            ? BuildConfiguration::Debug : BuildConfiguration::Release;
+    info.buildType = bgData->buildVariant == QbsConstants::QBS_VARIANT_PROFILING
+            ? BuildConfiguration::Profile : bgData->buildVariant == QbsConstants::QBS_VARIANT_RELEASE
+            ? BuildConfiguration::Release : BuildConfiguration::Debug;
     info.buildDirectory = bgData->bgFilePath.parentDir().parentDir();
     QVariantMap config = bgData->overriddenProperties;
     config.insert("configName", info.displayName);
@@ -235,5 +214,4 @@ void QbsProjectImporter::deleteDirectoryData(void *directoryData) const
     delete static_cast<BuildGraphData *>(directoryData);
 }
 
-} // namespace Internal
-} // namespace QbsProjectManager
+} // QbsProjectManager::Internal

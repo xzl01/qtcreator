@@ -1,47 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include <utils/optional.h>
 #include <utils/smallstringview.h>
 
+#include <optional>
 #include <type_traits>
 
 namespace Sqlite {
 
 constexpr int compare(Utils::SmallStringView first, Utils::SmallStringView second) noexcept
 {
-    auto difference = std::char_traits<char>::compare(first.data(),
-                                                      second.data(),
-                                                      std::min(first.size(), second.size()));
-
-    if (difference == 0)
-        return int(first.size() - second.size());
-
-    return difference;
+    return first.compare(second);
 }
 
 enum class UpdateChange { No, Update };
@@ -63,7 +34,7 @@ void insertUpdateDelete(SqliteRange &&sqliteRange,
     auto endSqliteIterator = sqliteRange.end();
     auto currentValueIterator = values.begin();
     auto endValueIterator = values.end();
-    Utils::optional<std::decay_t<decltype(*currentValueIterator)>> lastValue;
+    std::optional<std::decay_t<decltype(*currentValueIterator)>> lastValue;
 
     while (true) {
         bool hasMoreValues = currentValueIterator != endValueIterator;

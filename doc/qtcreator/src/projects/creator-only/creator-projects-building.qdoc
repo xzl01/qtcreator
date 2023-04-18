@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -46,8 +24,7 @@
 
     To check that the application code can be compiled and linked for a device,
     you can build the project. The build errors and warnings are displayed in
-    the \uicontrol {Issues} output pane. More detailed information is displayed
-    in the \uicontrol {Compile Output} pane.
+    the \l Issues. More detailed information is displayed in \l {Compile Output}.
 
     To build an application:
 
@@ -80,7 +57,7 @@
 
     \section1 Additional Build Commands
 
-    The \uicontrol Build menu contains additional commands for building,
+    The \uicontrol Build menu has additional commands for building,
     rebuilding, and cleaning projects.
 
     To build the current project in all its configurations, that
@@ -121,10 +98,12 @@
     \section1 Building with CMake
 
     \QC automatically runs CMake when you make changes to \c {CMakeLists.txt}
-    files. To disable this feature, select \uicontrol Tools >
-    \uicontrol Options > \uicontrol Kits > \uicontrol CMake. Select the CMake
-    executable to edit, and then deselect the \uicontrol {Autorun CMake} check
-    box.
+    files. To disable this feature, select \uicontrol Edit >
+    \uicontrol Preferences > \uicontrol CMake > \uicontrol General. Select the
+    CMake executable to edit, and then deselect the \uicontrol {Autorun CMake}
+    check box.
+
+    \image qtcreator-preferences-cmake-tools.webp "Tools tab in CMake Preferences"
 
     For more information, see \l {Setting Up CMake}.
 
@@ -132,7 +111,11 @@
 
     To prevent failures on incremental builds, it might make sense
     to always run qmake before building, even though it means that
-    building will take more time. To enable this option, select \uicontrol Tools
-    > \uicontrol Options > \uicontrol {Build & Run} > \uicontrol qmake >
+    building will take more time. To enable this option, select \uicontrol Edit
+    > \uicontrol Preferences > \uicontrol {Build & Run} > \uicontrol Qmake >
     \uicontrol {Run qmake on every build}.
+
+    \image qtcreator-preferences-build-run-qmake.png "qmake tab in Build & Run Preferences"
+
+    For more information, see \l {qmake Build Configuration}.
 */

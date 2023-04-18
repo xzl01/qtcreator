@@ -1,39 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "deployconfiguration.h"
 
 #include "buildsteplist.h"
-#include "buildconfiguration.h"
 #include "deploymentdataview.h"
 #include "kitinformation.h"
 #include "project.h"
-#include "projectexplorer.h"
+#include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "target.h"
 
 #include <utils/algorithm.h>
+#include <utils/qtcassert.h>
+
+#include <QDebug>
 
 using namespace Utils;
 
@@ -44,13 +25,13 @@ const char BUILD_STEP_LIST_PREFIX[] = "ProjectExplorer.BuildConfiguration.BuildS
 const char USES_DEPLOYMENT_DATA[] = "ProjectExplorer.DeployConfiguration.CustomDataEnabled";
 const char DEPLOYMENT_DATA[] = "ProjectExplorer.DeployConfiguration.CustomData";
 
-DeployConfiguration::DeployConfiguration(Target *target, Utils::Id id)
+DeployConfiguration::DeployConfiguration(Target *target, Id id)
     : ProjectConfiguration(target, id),
       m_stepList(this, Constants::BUILDSTEPS_DEPLOY)
 {
     QTC_CHECK(target && target == this->target());
     //: Default DeployConfiguration display name
-    setDefaultDisplayName(tr("Deploy locally"));
+    setDefaultDisplayName(Tr::tr("Deploy locally"));
 }
 
 BuildStepList *DeployConfiguration::stepList()
@@ -135,7 +116,7 @@ DeployConfigurationFactory::~DeployConfigurationFactory()
     g_deployConfigurationFactories.removeOne(this);
 }
 
-Utils::Id DeployConfigurationFactory::creationId() const
+Id DeployConfigurationFactory::creationId() const
 {
     return m_deployConfigBaseId;
 }
@@ -176,7 +157,7 @@ void DeployConfigurationFactory::setUseDeploymentDataView()
     };
 }
 
-void DeployConfigurationFactory::setConfigBaseId(Utils::Id deployConfigBaseId)
+void DeployConfigurationFactory::setConfigBaseId(Id deployConfigBaseId)
 {
     m_deployConfigBaseId = deployConfigBaseId;
 }
@@ -195,7 +176,7 @@ DeployConfiguration *DeployConfigurationFactory::create(Target *parent)
     DeployConfiguration *dc = createDeployConfiguration(parent);
     QTC_ASSERT(dc, return nullptr);
     BuildStepList *stepList = dc->stepList();
-    for (const BuildStepList::StepCreationInfo &info : qAsConst(m_initialSteps)) {
+    for (const BuildStepList::StepCreationInfo &info : std::as_const(m_initialSteps)) {
         if (!info.condition || info.condition(parent))
             stepList->appendStep(info.stepId);
     }
@@ -210,7 +191,7 @@ DeployConfiguration *DeployConfigurationFactory::clone(Target *parent,
 
 DeployConfiguration *DeployConfigurationFactory::restore(Target *parent, const QVariantMap &map)
 {
-    const Utils::Id id = idFromMap(map);
+    const Id id = idFromMap(map);
     DeployConfigurationFactory *factory = Utils::findOrDefault(g_deployConfigurationFactories,
         [parent, id](DeployConfigurationFactory *f) {
             if (!f->canHandle(parent))
@@ -268,7 +249,7 @@ DefaultDeployConfigurationFactory::DefaultDeployConfigurationFactory()
     setConfigBaseId("ProjectExplorer.DefaultDeployConfiguration");
     addSupportedTargetDeviceType(Constants::DESKTOP_DEVICE_TYPE);
     //: Display name of the default deploy configuration
-    setDefaultDisplayName(DeployConfiguration::tr("Deploy Configuration"));
+    setDefaultDisplayName(Tr::tr("Deploy Configuration"));
 }
 
 } // namespace ProjectExplorer

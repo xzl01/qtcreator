@@ -1,42 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "openeditorsview.h"
+
+#include "documentmodel.h"
 #include "editormanager.h"
 #include "ieditor.h"
-#include "documentmodel.h"
+#include "../actionmanager/command.h"
+#include "../coreplugintr.h"
 
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/actionmanager/command.h>
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/qtcassert.h>
 
 #include <QApplication>
 #include <QMenu>
 
-using namespace Core;
-using namespace Core::Internal;
+namespace Core::Internal {
 
 ////
 // OpenEditorsWidget
@@ -44,7 +23,7 @@ using namespace Core::Internal;
 
 OpenEditorsWidget::OpenEditorsWidget()
 {
-    setWindowTitle(tr("Open Documents"));
+    setWindowTitle(Tr::tr("Open Documents"));
     setDragEnabled(true);
     setDragDropMode(QAbstractItemView::DragOnly);
 
@@ -74,7 +53,7 @@ void OpenEditorsWidget::updateCurrentItem(IEditor *editor)
         clearSelection();
         return;
     }
-    const Utils::optional<int> index = DocumentModel::indexOfDocument(editor->document());
+    const std::optional<int> index = DocumentModel::indexOfDocument(editor->document());
     if (QTC_GUARD(index))
         setCurrentIndex(m_model->index(index.value(), 0));
     selectionModel()->select(currentIndex(),
@@ -132,9 +111,8 @@ void OpenEditorsWidget::contextMenuRequested(QPoint pos)
 OpenEditorsViewFactory::OpenEditorsViewFactory()
 {
     setId("Open Documents");
-    setDisplayName(OpenEditorsWidget::tr("Open Documents"));
-    setActivationSequence(QKeySequence(useMacShortcuts ? OpenEditorsWidget::tr("Meta+O")
-                                                       : OpenEditorsWidget::tr("Alt+O")));
+    setDisplayName(Tr::tr("Open Documents"));
+    setActivationSequence(QKeySequence(useMacShortcuts ? Tr::tr("Meta+O") : Tr::tr("Alt+O")));
     setPriority(200);
 }
 
@@ -223,6 +201,19 @@ void ProxyModel::setSourceModel(QAbstractItemModel *sm)
     }
 }
 
+QVariant ProxyModel::data(const QModelIndex &index, int role) const
+{
+    if (role == Qt::DecorationRole && index.column() == 0) {
+        const QVariant sourceDecoration = QAbstractProxyModel::data(index, role);
+        if (sourceDecoration.isValid())
+            return sourceDecoration;
+        const QString fileName = QAbstractProxyModel::data(index, Qt::DisplayRole).toString();
+        return Utils::FileIconProvider::icon(Utils::FilePath::fromString(fileName));
+    }
+
+    return QAbstractProxyModel::data(index, role);
+}
+
 QModelIndex ProxyModel::sibling(int row, int column, const QModelIndex &idx) const
 {
     return QAbstractItemModel::sibling(row, column, idx);
@@ -273,3 +264,5 @@ void ProxyModel::sourceRowsAboutToBeInserted(const QModelIndex &parent, int star
     int realEnd = parent.isValid() || end == 0 ? end : end - 1;
     beginInsertRows(parent, realStart, realEnd);
 }
+
+} // Core::Internal

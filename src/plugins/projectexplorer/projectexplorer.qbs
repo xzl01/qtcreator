@@ -6,7 +6,6 @@ Project {
     QtcPlugin {
         Depends { name: "Qt"; submodules: ["widgets", "xml", "network", "qml"] }
         Depends { name: "Aggregation" }
-        Depends { name: "QtcSsh" }
         Depends { name: "Utils" }
 
         Depends { name: "Core" }
@@ -27,7 +26,6 @@ Project {
                 "addrunconfigdialog.cpp", "addrunconfigdialog.h",
                 "allprojectsfilter.cpp", "allprojectsfilter.h",
                 "allprojectsfind.cpp", "allprojectsfind.h",
-                "applicationlauncher.cpp", "applicationlauncher.h",
                 "appoutputpane.cpp", "appoutputpane.h",
                 "baseprojectwizarddialog.cpp", "baseprojectwizarddialog.h",
                 "buildaspects.cpp", "buildaspects.h",
@@ -44,7 +42,7 @@ Project {
                 "buildtargetinfo.h",
                 "buildtargettype.h",
                 "clangparser.cpp", "clangparser.h",
-                "codestylesettingspropertiespage.cpp", "codestylesettingspropertiespage.h", "codestylesettingspropertiespage.ui",
+                "codestylesettingspropertiespage.cpp", "codestylesettingspropertiespage.h",
                 "compileoutputwindow.cpp", "compileoutputwindow.h",
                 "configtaskhandler.cpp", "configtaskhandler.h",
                 "copytaskhandler.cpp", "copytaskhandler.h",
@@ -52,7 +50,7 @@ Project {
                 "currentprojectfind.cpp", "currentprojectfind.h",
                 "customexecutablerunconfiguration.cpp", "customexecutablerunconfiguration.h",
                 "customparser.cpp", "customparser.h",
-                "customparserconfigdialog.cpp", "customparserconfigdialog.h", "customparserconfigdialog.ui",
+                "customparserconfigdialog.cpp", "customparserconfigdialog.h",
                 "customparserssettingspage.cpp", "customparserssettingspage.h",
                 "customtoolchain.cpp", "customtoolchain.h",
                 "dependenciespanel.cpp", "dependenciespanel.h",
@@ -64,7 +62,7 @@ Project {
                 "deploymentdataview.h",
                 "desktoprunconfiguration.cpp", "desktoprunconfiguration.h",
                 "editorconfiguration.cpp", "editorconfiguration.h",
-                "editorsettingspropertiespage.cpp", "editorsettingspropertiespage.h", "editorsettingspropertiespage.ui",
+                "editorsettingspropertiespage.cpp", "editorsettingspropertiespage.h",
                 "environmentaspect.cpp", "environmentaspect.h",
                 "environmentaspectwidget.cpp", "environmentaspectwidget.h",
                 "environmentwidget.cpp", "environmentwidget.h",
@@ -113,7 +111,8 @@ Project {
                 "projectexplorerconstants.h",
                 "projectexplorericons.h", "projectexplorericons.cpp",
                 "projectexplorersettings.h",
-                "projectexplorersettingspage.cpp", "projectexplorersettingspage.h", "projectexplorersettingspage.ui",
+                "projectexplorersettingspage.cpp", "projectexplorersettingspage.h",
+                "projectexplorertr.h",
                 "projectfilewizardextension.cpp", "projectfilewizardextension.h",
                 "projectimporter.cpp", "projectimporter.h",
                 "projectmacro.cpp", "projectmacro.h",
@@ -121,22 +120,24 @@ Project {
                 "projectmodels.cpp", "projectmodels.h",
                 "projectnodes.cpp", "projectnodes.h",
                 "projectpanelfactory.cpp", "projectpanelfactory.h",
+                "projectsettingswidget.cpp", "projectsettingswidget.h",
                 "projecttree.cpp",
                 "projecttree.h",
                 "projecttreewidget.cpp", "projecttreewidget.h",
                 "projectwindow.cpp", "projectwindow.h",
-                "projectwizardpage.cpp", "projectwizardpage.h", "projectwizardpage.ui",
+                "projectwizardpage.cpp", "projectwizardpage.h",
                 "rawprojectpart.cpp", "rawprojectpart.h",
                 "removetaskhandler.cpp", "removetaskhandler.h",
                 "runconfiguration.cpp", "runconfiguration.h",
                 "runcontrol.cpp", "runcontrol.h",
                 "runconfigurationaspects.cpp", "runconfigurationaspects.h",
                 "runsettingspropertiespage.cpp", "runsettingspropertiespage.h",
+                "sanitizerparser.cpp", "sanitizerparser.h",
                 "selectablefilesmodel.cpp", "selectablefilesmodel.h",
                 "session.cpp", "session.h",
                 "sessionmodel.cpp", "sessionmodel.h",
                 "sessionview.cpp", "sessionview.h",
-                "sessiondialog.cpp", "sessiondialog.h", "sessiondialog.ui",
+                "sessiondialog.cpp", "sessiondialog.h",
                 "showineditortaskhandler.cpp", "showineditortaskhandler.h",
                 "showoutputtaskhandler.cpp", "showoutputtaskhandler.h",
                 "simpleprojectwizard.cpp", "simpleprojectwizard.h",
@@ -145,6 +146,7 @@ Project {
                 "targetsetuppage.cpp", "targetsetuppage.h",
                 "targetsetupwidget.cpp", "targetsetupwidget.h",
                 "task.cpp", "task.h",
+                "taskfile.cpp", "taskfile.h",
                 "taskhub.cpp", "taskhub.h",
                 "taskmodel.cpp", "taskmodel.h",
                 "taskwindow.cpp", "taskwindow.h",
@@ -158,6 +160,7 @@ Project {
                 "userfileaccessor.cpp", "userfileaccessor.h",
                 "vcsannotatetaskhandler.cpp", "vcsannotatetaskhandler.h",
                 "waitforstopdialog.cpp", "waitforstopdialog.h",
+                "windebuginterface.cpp", "windebuginterface.h",
                 "xcodebuildparser.cpp", "xcodebuildparser.h"
             ]
         }
@@ -208,23 +211,25 @@ Project {
                 "desktopdevice.cpp", "desktopdevice.h",
                 "desktopdevicefactory.cpp", "desktopdevicefactory.h",
                 "devicecheckbuildstep.cpp", "devicecheckbuildstep.h",
-                "devicefactoryselectiondialog.cpp", "devicefactoryselectiondialog.h", "devicefactoryselectiondialog.ui",
+                "devicefactoryselectiondialog.cpp", "devicefactoryselectiondialog.h",
                 "devicemanager.cpp", "devicemanager.h",
                 "devicemanagermodel.cpp", "devicemanagermodel.h",
-                "deviceprocess.cpp", "deviceprocess.h",
                 "deviceprocessesdialog.cpp", "deviceprocessesdialog.h",
                 "deviceprocesslist.cpp", "deviceprocesslist.h",
                 "devicesettingspage.cpp", "devicesettingspage.h",
-                "devicesettingswidget.cpp", "devicesettingswidget.h", "devicesettingswidget.ui",
-                "devicetestdialog.cpp", "devicetestdialog.h", "devicetestdialog.ui",
+                "devicesettingswidget.cpp", "devicesettingswidget.h",
+                "devicetestdialog.cpp", "devicetestdialog.h",
                 "deviceusedportsgatherer.cpp", "deviceusedportsgatherer.h",
+                "filetransfer.cpp", "filetransfer.h",
+                "filetransferinterface.h",
                 "idevice.cpp", "idevice.h",
                 "idevicefactory.cpp", "idevicefactory.h",
+                "idevicefwd.h",
                 "idevicewidget.h",
-                "desktopdeviceprocess.cpp", "desktopdeviceprocess.h",
                 "localprocesslist.cpp", "localprocesslist.h",
-                "sshdeviceprocess.cpp", "sshdeviceprocess.h",
                 "sshdeviceprocesslist.cpp", "sshdeviceprocesslist.h",
+                "sshparameters.cpp", "sshparameters.h",
+                "sshsettings.cpp", "sshsettings.h",
                 "sshsettingspage.cpp", "sshsettingspage.h",
                 "desktopprocesssignaloperation.cpp", "desktopprocesssignaloperation.h"
             ]
@@ -242,8 +247,6 @@ Project {
             files: [
                 "msvctoolchain.cpp",
                 "msvctoolchain.h",
-                "windebuginterface.cpp",
-                "windebuginterface.h",
             ]
         }
 

@@ -1,29 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "projectconfigurationmodel.h"
 #include "target.h"
 
 #include "buildconfiguration.h"
@@ -34,17 +11,17 @@
 #include "deployconfiguration.h"
 #include "deploymentdata.h"
 #include "devicesupport/devicemanager.h"
-#include "environmentaspect.h"
 #include "kit.h"
 #include "kitinformation.h"
 #include "kitmanager.h"
 #include "miniprojecttargetselector.h"
 #include "project.h"
+#include "projectconfigurationmodel.h"
 #include "projectexplorer.h"
 #include "projectexplorericons.h"
 #include "projectexplorersettings.h"
+#include "projectexplorertr.h"
 #include "runconfiguration.h"
-#include "runconfigurationaspects.h"
 #include "session.h"
 
 #include <coreplugin/coreconstants.h>
@@ -154,59 +131,22 @@ Target::Target(Project *project, Kit *k, _constructor_tag) :
     connect(km, &KitManager::kitUpdated, this, &Target::handleKitUpdates);
     connect(km, &KitManager::kitRemoved, this, &Target::handleKitRemoval);
 
-    d->m_macroExpander.setDisplayName(tr("Target Settings"));
+    d->m_macroExpander.setDisplayName(Tr::tr("Target Settings"));
     d->m_macroExpander.setAccumulating(true);
 
     d->m_macroExpander.registerSubProvider([this] { return kit()->macroExpander(); });
 
-    d->m_macroExpander.registerVariable("sourceDir", tr("Source directory"),
+    d->m_macroExpander.registerVariable("sourceDir", Tr::tr("Source directory"),
             [project] { return project->projectDirectory().toUserOutput(); });
-    d->m_macroExpander.registerVariable("BuildSystem:Name", tr("Build system"), [this] {
+    d->m_macroExpander.registerVariable("BuildSystem:Name", Tr::tr("Build system"), [this] {
         if (const BuildSystem * const bs = buildSystem())
             return bs->name();
         return QString();
     });
 
-    // TODO: Remove in ~4.16.
-    d->m_macroExpander.registerVariable(Constants::VAR_CURRENTPROJECT_NAME,
-            QCoreApplication::translate("ProjectExplorer", "Name of current project"),
-            [project] { return project->displayName(); },
-            false);
     d->m_macroExpander.registerVariable("Project:Name",
-            QCoreApplication::translate("ProjectExplorer", "Name of current project"),
+            Tr::tr("Name of current project"),
             [project] { return project->displayName(); });
-
-    d->m_macroExpander.registerVariable("CurrentRun:Name",
-        tr("The currently active run configuration's name."),
-        [this]() -> QString {
-            if (RunConfiguration * const rc = activeRunConfiguration())
-                return rc->displayName();
-            return QString();
-        }, false);
-    d->m_macroExpander.registerFileVariables("CurrentRun:Executable",
-        tr("The currently active run configuration's executable (if applicable)."),
-        [this]() -> FilePath {
-            if (RunConfiguration * const rc = activeRunConfiguration())
-                return rc->commandLine().executable();
-            return FilePath();
-        }, false);
-    d->m_macroExpander.registerPrefix("CurrentRun:Env", tr("Variables in the current run environment."),
-                             [this](const QString &var) {
-        if (RunConfiguration * const rc = activeRunConfiguration()) {
-            if (const auto envAspect = rc->aspect<EnvironmentAspect>())
-                return envAspect->environment().expandedValueForKey(var);
-        }
-        return QString();
-    }, false);
-    d->m_macroExpander.registerVariable("CurrentRun:WorkingDir",
-                               tr("The currently active run configuration's working directory."),
-                               [this] {
-        if (RunConfiguration * const rc = activeRunConfiguration()) {
-            if (const auto wdAspect = rc->aspect<WorkingDirectoryAspect>())
-                return wdAspect->workingDirectory().toString();
-        }
-        return QString();
-    }, false);
 }
 
 Target::~Target()
@@ -621,28 +561,28 @@ void Target::updateDefaultBuildConfigurations()
 
 void Target::updateDefaultDeployConfigurations()
 {
-    QList<DeployConfigurationFactory *> dcFactories = DeployConfigurationFactory::find(this);
+    const QList<DeployConfigurationFactory *> dcFactories = DeployConfigurationFactory::find(this);
     if (dcFactories.isEmpty()) {
         qWarning("No deployment configuration factory found for target id '%s'.", qPrintable(id().toString()));
         return;
     }
 
     QList<Utils::Id> dcIds;
-    foreach (DeployConfigurationFactory *dcFactory, dcFactories)
+    for (const DeployConfigurationFactory *dcFactory : dcFactories)
         dcIds.append(dcFactory->creationId());
 
-    QList<DeployConfiguration *> dcList = deployConfigurations();
+    const QList<DeployConfiguration *> dcList = deployConfigurations();
     QList<Utils::Id> toCreate = dcIds;
 
-    foreach (DeployConfiguration *dc, dcList) {
+    for (DeployConfiguration *dc : dcList) {
         if (dcIds.contains(dc->id()))
             toCreate.removeOne(dc->id());
         else
             removeDeployConfiguration(dc);
     }
 
-    foreach (Utils::Id id, toCreate) {
-        foreach (DeployConfigurationFactory *dcFactory, dcFactories) {
+    for (Utils::Id id : std::as_const(toCreate)) {
+        for (DeployConfigurationFactory *dcFactory : dcFactories) {
             if (dcFactory->creationId() == id) {
                 DeployConfiguration *dc = dcFactory->create(this);
                 if (dc) {
@@ -680,7 +620,7 @@ void Target::updateDefaultRunConfigurations()
     // that produce already existing RCs
     QList<RunConfiguration *> toRemove;
     QList<RunConfigurationCreationInfo> existing;
-    foreach (RunConfiguration *rc, existingConfigured) {
+    for (RunConfiguration *rc : std::as_const(existingConfigured)) {
         bool present = false;
         for (const RunConfigurationCreationInfo &item : creators) {
             QString buildKey = rc->buildKey();
@@ -697,7 +637,7 @@ void Target::updateDefaultRunConfigurations()
     bool removeExistingUnconfigured = false;
     if (ProjectExplorerPlugin::projectExplorerSettings().automaticallyCreateRunConfigurations) {
         // Create new "automatic" RCs and put them into newConfigured/newUnconfigured
-        foreach (const RunConfigurationCreationInfo &item, creators) {
+        for (const RunConfigurationCreationInfo &item : creators) {
             if (item.creationMode == RunConfigurationCreationInfo::ManualCreationOnly)
                 continue;
             bool exists = false;
@@ -735,14 +675,14 @@ void Target::updateDefaultRunConfigurations()
     }
 
     // Do actual changes:
-    foreach (RunConfiguration *rc, newConfigured)
+    for (RunConfiguration *rc : std::as_const(newConfigured))
         addRunConfiguration(rc);
-    foreach (RunConfiguration *rc, newUnconfigured)
+    for (RunConfiguration *rc : std::as_const(newUnconfigured))
         addRunConfiguration(rc);
 
     // Generate complete list of RCs to remove later:
     QList<RunConfiguration *> removalList;
-    foreach (RunConfiguration *rc, toRemove) {
+    for (RunConfiguration *rc : std::as_const(toRemove)) {
         removalList << rc;
         existingConfigured.removeOne(rc); // make sure to also remove them from existingConfigured!
     }
@@ -778,7 +718,7 @@ void Target::updateDefaultRunConfigurations()
     }
 
     // Remove the RCs that are no longer needed:
-    foreach (RunConfiguration *rc, removalList)
+    for (RunConfiguration *rc : std::as_const(removalList))
         removeRunConfiguration(rc);
 }
 
@@ -801,11 +741,6 @@ QVariant Target::additionalData(Utils::Id id) const
         return bs->additionalData(id);
 
     return {};
-}
-
-MakeInstallCommand Target::makeInstallCommand(const QString &installRoot) const
-{
-    return project()->makeInstallCommand(this, installRoot);
 }
 
 MacroExpander *Target::macroExpander() const

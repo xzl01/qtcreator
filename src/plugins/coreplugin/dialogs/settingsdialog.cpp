@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "settingsdialog.h"
 
-#include <coreplugin/icore.h>
-#include <coreplugin/dialogs/ioptionspage.h>
-#include <coreplugin/iwizardfactory.h>
+#include "ioptionspage.h"
+#include "../coreplugintr.h"
+#include "../icore.h"
+#include "../iwizardfactory.h"
 
 #include <utils/algorithm.h>
 #include <utils/hostosinfo.h>
@@ -170,7 +149,7 @@ void CategoryModel::setPages(const QList<IOptionsPage*> &pages,
     m_pageIds.clear();
 
     // Put the pages in categories
-    foreach (IOptionsPage *page, pages) {
+    for (IOptionsPage *page : pages) {
         QTC_ASSERT(!m_pageIds.contains(page->id()),
                    qWarning("duplicate options page id '%s'", qPrintable(page->id().toString())));
         m_pageIds.insert(page->id());
@@ -190,7 +169,7 @@ void CategoryModel::setPages(const QList<IOptionsPage*> &pages,
         category->pages.append(page);
     }
 
-    foreach (IOptionsPageProvider *provider, providers) {
+    for (IOptionsPageProvider *provider : providers) {
         const Id categoryId = provider->category();
         Category *category = findCategoryById(categoryId);
         if (!category) {
@@ -217,11 +196,11 @@ void CategoryModel::ensurePages(Category *category)
 {
     if (!category->providerPagesCreated) {
         QList<IOptionsPage *> createdPages;
-        foreach (const IOptionsPageProvider *provider, category->providers)
+        for (const IOptionsPageProvider *provider : std::as_const(category->providers))
             createdPages += provider->pages();
 
         // check for duplicate ids
-        foreach (IOptionsPage *page, createdPages) {
+        for (const IOptionsPage *page : std::as_const(createdPages)) {
             QTC_ASSERT(!m_pageIds.contains(page->id()),
                        qWarning("duplicate options page id '%s'", qPrintable(page->id().toString())));
         }
@@ -451,10 +430,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) :
     m_filterLineEdit->setFiltering(true);
 
     createGui();
-    if (Utils::HostOsInfo::isMacHost())
-        setWindowTitle(QCoreApplication::translate("Core::Internal::SettingsDialog", "Preferences"));
-    else
-        setWindowTitle(QCoreApplication::translate("Core::Internal::SettingsDialog", "Options"));
+    setWindowTitle(Tr::tr("Preferences"));
 
     m_model.setPages(m_pages, IOptionsPageProvider::allOptionsPagesProviders());
 
@@ -610,7 +586,7 @@ void SettingsDialog::ensureCategoryWidget(Category *category)
     m_model.ensurePages(category);
     auto tabWidget = new QTabWidget;
     tabWidget->tabBar()->setObjectName("qc_settings_main_tabbar"); // easier lookup in Squish
-    for (IOptionsPage *page : qAsConst(category->pages)) {
+    for (IOptionsPage *page : std::as_const(category->pages)) {
         QWidget *widget = page->widget();
         ICore::setupScreenShooter(page->displayName(), widget);
         auto ssa = new SmartScrollArea(this);
@@ -702,9 +678,9 @@ void SettingsDialog::accept()
     m_finished = true;
     disconnectTabWidgets();
     m_applied = true;
-    foreach (IOptionsPage *page, m_visitedPages)
+    for (IOptionsPage *page : std::as_const(m_visitedPages))
         page->apply();
-    foreach (IOptionsPage *page, m_pages)
+    for (IOptionsPage *page : std::as_const(m_pages))
         page->finish();
     done(QDialog::Accepted);
 }
@@ -715,14 +691,14 @@ void SettingsDialog::reject()
         return;
     m_finished = true;
     disconnectTabWidgets();
-    foreach (IOptionsPage *page, m_pages)
+    for (IOptionsPage *page : std::as_const(m_pages))
         page->finish();
     done(QDialog::Rejected);
 }
 
 void SettingsDialog::apply()
 {
-    foreach (IOptionsPage *page, m_visitedPages)
+    for (IOptionsPage *page : std::as_const(m_visitedPages))
         page->apply();
     m_applied = true;
 }

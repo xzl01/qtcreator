@@ -1,52 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "shortcutsettings.h"
-#include <coreplugin/coreconstants.h>
-#include <coreplugin/documentmanager.h>
-#include <coreplugin/icore.h>
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/actionmanager/command.h>
-#include <coreplugin/actionmanager/command_p.h>
-#include <coreplugin/actionmanager/commandsfile.h>
+
+#include "../coreconstants.h"
+#include "../coreplugintr.h"
+#include "../documentmanager.h"
+#include "../icore.h"
+#include "../actionmanager/actionmanager.h"
+#include "../actionmanager/command.h"
+#include "../actionmanager/commandsfile.h"
 
 #include <utils/algorithm.h>
 #include <utils/fancylineedit.h>
+#include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 #include <utils/theme/theme.h>
 
-#include <QKeyEvent>
+#include <QAction>
+#include <QApplication>
+#include <QDebug>
 #include <QFileDialog>
 #include <QGroupBox>
-#include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QTreeWidgetItem>
-#include <QApplication>
-#include <QDebug>
 
 using namespace Utils;
 
@@ -120,18 +100,12 @@ static QKeySequence keySequenceFromEditString(const QString &editString)
     return QKeySequence::fromString(text, QKeySequence::PortableText);
 }
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-using KeyCombination = int;
-#else
-using KeyCombination = QKeyCombination;
-#endif
-
 static bool keySequenceIsValid(const QKeySequence &sequence)
 {
     if (sequence.isEmpty())
         return false;
     for (int i = 0; i < sequence.count(); ++i) {
-        if (sequence[i] == KeyCombination(Qt::Key_unknown))
+        if (sequence[i] == QKeyCombination(Qt::Key_unknown))
             return false;
     }
     return true;
@@ -157,11 +131,10 @@ ShortcutButton::ShortcutButton(QWidget *parent)
     : QPushButton(parent)
     , m_key({{0, 0, 0, 0}})
 {
-    // Using ShortcutButton::tr() as workaround for QTBUG-34128
-    setToolTip(ShortcutButton::tr("Click and type the new key sequence."));
+    setToolTip(::Core::Tr::tr("Click and type the new key sequence."));
     setCheckable(true);
-    m_checkedText = ShortcutButton::tr("Stop Recording");
-    m_uncheckedText = ShortcutButton::tr("Record");
+    m_checkedText = ::Core::Tr::tr("Stop Recording");
+    m_uncheckedText = ::Core::Tr::tr("Record");
     updateText();
     connect(this, &ShortcutButton::toggled, this, &ShortcutButton::handleToggleChange);
 }
@@ -255,8 +228,6 @@ void ShortcutButton::handleToggleChange(bool toogleState)
 
 class ShortcutSettingsWidget final : public CommandMappings
 {
-    Q_DECLARE_TR_FUNCTIONS(Core::Internal::ShortcutSettings)
-
 public:
     ShortcutSettingsWidget();
     ~ShortcutSettingsWidget() final;
@@ -289,8 +260,8 @@ private:
 
 ShortcutSettingsWidget::ShortcutSettingsWidget()
 {
-    setPageTitle(tr("Keyboard Shortcuts"));
-    setTargetHeader(tr("Shortcut"));
+    setPageTitle(Tr::tr("Keyboard Shortcuts"));
+    setTargetHeader(Tr::tr("Shortcut"));
     setResetVisible(true);
 
     connect(ActionManager::instance(), &ActionManager::commandListChanged,
@@ -302,7 +273,7 @@ ShortcutSettingsWidget::ShortcutSettingsWidget()
             this,
             &ShortcutSettingsWidget::resetToDefault);
 
-    m_shortcutBox = new QGroupBox(tr("Shortcut"), this);
+    m_shortcutBox = new QGroupBox(Tr::tr("Shortcut"), this);
     m_shortcutBox->setEnabled(false);
     m_shortcutLayout = new QGridLayout(m_shortcutBox);
     m_shortcutBox->setLayout(m_shortcutLayout);
@@ -319,7 +290,7 @@ ShortcutSettingsWidget::~ShortcutSettingsWidget()
 ShortcutSettings::ShortcutSettings()
 {
     setId(Constants::SETTINGS_ID_SHORTCUTS);
-    setDisplayName(ShortcutSettingsWidget::tr("Keyboard"));
+    setDisplayName(Tr::tr("Keyboard"));
     setCategory(Constants::SETTINGS_CATEGORY_CORE);
 }
 
@@ -332,7 +303,7 @@ QWidget *ShortcutSettings::widget()
 
 void ShortcutSettingsWidget::apply()
 {
-    foreach (ShortcutItem *item, m_scitems)
+    for (const ShortcutItem *item : std::as_const(m_scitems))
         item->m_cmd->setKeySequences(item->m_keys);
 }
 
@@ -398,7 +369,7 @@ void ShortcutSettingsWidget::setupShortcutBox(ShortcutItem *scitem)
     };
     m_shortcutInputs.clear();
     delete m_addButton;
-    m_addButton = new QPushButton(tr("Add"), this);
+    m_addButton = new QPushButton(Tr::tr("Add"), this);
     for (int i = 0; i < qMax(1, scitem->m_keys.size()); ++i)
         addShortcutInput(i, scitem->m_keys.value(i));
     connect(m_addButton, &QPushButton::clicked, this, [this, addShortcutInput, addButtonToLayout] {
@@ -415,11 +386,11 @@ static bool checkValidity(const QKeySequence &key, QString *warningMessage)
         return true;
     QTC_ASSERT(warningMessage, return true);
     if (!keySequenceIsValid(key)) {
-        *warningMessage = ShortcutSettingsWidget::tr("Invalid key sequence.");
+        *warningMessage = Tr::tr("Invalid key sequence.");
         return false;
     }
     if (isTextKeySequence(key))
-        *warningMessage = ShortcutSettingsWidget::tr("Key sequence will not work in editor.");
+        *warningMessage = Tr::tr("Key sequence will not work in editor.");
     return true;
 }
 
@@ -493,14 +464,14 @@ void ShortcutSettingsWidget::resetToDefault()
 void ShortcutSettingsWidget::importAction()
 {
     FilePath fileName = FileUtils::getOpenFilePath(nullptr,
-                                                   tr("Import Keyboard Mapping Scheme"),
+                                                   Tr::tr("Import Keyboard Mapping Scheme"),
                                                    schemesPath(),
-                                                   tr("Keyboard Mapping Scheme (*.kms)"));
+                                                   Tr::tr("Keyboard Mapping Scheme (*.kms)"));
     if (!fileName.isEmpty()) {
 
         CommandsFile cf(fileName);
         QMap<QString, QList<QKeySequence>> mapping = cf.importCommands();
-        for (ShortcutItem *item : qAsConst(m_scitems)) {
+        for (ShortcutItem *item : std::as_const(m_scitems)) {
             QString sid = item->m_cmd->id().toString();
             if (mapping.contains(sid)) {
                 item->m_keys = mapping.value(sid);
@@ -520,7 +491,7 @@ void ShortcutSettingsWidget::importAction()
 
 void ShortcutSettingsWidget::defaultAction()
 {
-    foreach (ShortcutItem *item, m_scitems) {
+    for (ShortcutItem *item : std::as_const(m_scitems)) {
         item->m_keys = item->m_cmd->defaultKeySequences();
         item->m_item->setText(2, keySequencesToNativeString(item->m_keys));
         setModified(item->m_item, false);
@@ -533,9 +504,9 @@ void ShortcutSettingsWidget::defaultAction()
 void ShortcutSettingsWidget::exportAction()
 {
     const FilePath filePath
-        = DocumentManager::getSaveFileNameWithExtension(tr("Export Keyboard Mapping Scheme"),
+        = DocumentManager::getSaveFileNameWithExtension(Tr::tr("Export Keyboard Mapping Scheme"),
                                                         schemesPath(),
-                                                        tr("Keyboard Mapping Scheme (*.kms)"));
+                                                        Tr::tr("Keyboard Mapping Scheme (*.kms)"));
     if (!filePath.isEmpty()) {
         CommandsFile cf(filePath);
         cf.exportCommands(m_scitems);
@@ -557,7 +528,8 @@ void ShortcutSettingsWidget::initialize()
     clear();
     QMap<QString, QTreeWidgetItem *> sections;
 
-    foreach (Command *c, ActionManager::commands()) {
+    const QList<Command *> commands = ActionManager::commands();
+    for (Command *c : commands) {
         if (c->hasAttribute(Command::CA_NonConfigurable))
             continue;
         if (c->action() && c->action()->isSeparator())
@@ -605,7 +577,7 @@ bool ShortcutSettingsWidget::markCollisions(ShortcutItem *item, int index)
         Id globalId(Constants::C_GLOBAL);
         const Context itemContext = item->m_cmd->context();
         const bool itemHasGlobalContext = itemContext.contains(globalId);
-        for (ShortcutItem *currentItem : qAsConst(m_scitems)) {
+        for (ShortcutItem *currentItem : std::as_const(m_scitems)) {
             if (item == currentItem)
                 continue;
             if (!Utils::anyOf(currentItem->m_keys, Utils::equalTo(key)))
@@ -638,40 +610,40 @@ bool ShortcutSettingsWidget::markCollisions(ShortcutItem *item, int index)
 
 void ShortcutSettingsWidget::markAllCollisions()
 {
-    for (ShortcutItem *item : qAsConst(m_scitems))
+    for (ShortcutItem *item : std::as_const(m_scitems))
         for (int i = 0; i < item->m_keys.size(); ++i)
             markCollisions(item, i);
 }
 
 ShortcutInput::ShortcutInput()
 {
-    m_shortcutLabel = new QLabel(tr("Key sequence:"));
+    m_shortcutLabel = new QLabel(Tr::tr("Key sequence:"));
     m_shortcutLabel->setToolTip(
         Utils::HostOsInfo::isMacHost()
             ? QLatin1String("<html><body>")
-                  + tr("Use \"Cmd\", \"Opt\", \"Ctrl\", and \"Shift\" for modifier keys. "
-                       "Use \"Escape\", \"Backspace\", \"Delete\", \"Insert\", \"Home\", and so "
-                       "on, for special keys. "
-                       "Combine individual keys with \"+\", "
-                       "and combine multiple shortcuts to a shortcut sequence with \",\". "
-                       "For example, if the user must hold the Ctrl and Shift modifier keys "
-                       "while pressing Escape, and then release and press A, "
-                       "enter \"Ctrl+Shift+Escape,A\".")
+                  + Tr::tr("Use \"Cmd\", \"Opt\", \"Ctrl\", and \"Shift\" for modifier keys. "
+                           "Use \"Escape\", \"Backspace\", \"Delete\", \"Insert\", \"Home\", and so "
+                           "on, for special keys. "
+                           "Combine individual keys with \"+\", "
+                           "and combine multiple shortcuts to a shortcut sequence with \",\". "
+                           "For example, if the user must hold the Ctrl and Shift modifier keys "
+                           "while pressing Escape, and then release and press A, "
+                           "enter \"Ctrl+Shift+Escape,A\".")
                   + QLatin1String("</body></html>")
             : QLatin1String("<html><body>")
-                  + tr("Use \"Ctrl\", \"Alt\", \"Meta\", and \"Shift\" for modifier keys. "
-                       "Use \"Escape\", \"Backspace\", \"Delete\", \"Insert\", \"Home\", and so "
-                       "on, for special keys. "
-                       "Combine individual keys with \"+\", "
-                       "and combine multiple shortcuts to a shortcut sequence with \",\". "
-                       "For example, if the user must hold the Ctrl and Shift modifier keys "
-                       "while pressing Escape, and then release and press A, "
-                       "enter \"Ctrl+Shift+Escape,A\".")
+                  + Tr::tr("Use \"Ctrl\", \"Alt\", \"Meta\", and \"Shift\" for modifier keys. "
+                           "Use \"Escape\", \"Backspace\", \"Delete\", \"Insert\", \"Home\", and so "
+                           "on, for special keys. "
+                           "Combine individual keys with \"+\", "
+                           "and combine multiple shortcuts to a shortcut sequence with \",\". "
+                           "For example, if the user must hold the Ctrl and Shift modifier keys "
+                           "while pressing Escape, and then release and press A, "
+                           "enter \"Ctrl+Shift+Escape,A\".")
                   + QLatin1String("</body></html>"));
 
     m_shortcutEdit = new Utils::FancyLineEdit;
     m_shortcutEdit->setFiltering(true);
-    m_shortcutEdit->setPlaceholderText(tr("Enter key sequence as text"));
+    m_shortcutEdit->setPlaceholderText(Tr::tr("Enter key sequence as text"));
     connect(m_shortcutEdit, &Utils::FancyLineEdit::textChanged, this, &ShortcutInput::changed);
 
     m_shortcutButton = new ShortcutButton;
@@ -695,7 +667,7 @@ ShortcutInput::ShortcutInput()
         const bool isValid = checkValidity(key, &warningMessage);
         m_warningLabel->setText(warningMessage);
         if (isValid && m_conflictChecker && m_conflictChecker(key)) {
-            m_warningLabel->setText(ShortcutSettingsWidget::tr(
+            m_warningLabel->setText(Tr::tr(
                 "Key sequence has potential conflicts. <a href=\"#conflicts\">Show.</a>"));
         }
         return isValid;

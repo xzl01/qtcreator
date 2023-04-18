@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2022 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 source("../../shared/qtcreator.py")
 source("../../shared/suites_qtta.py")
@@ -63,7 +41,7 @@ def main():
     if not startedWithoutPluginError():
         return
     qchs = []
-    for p in Qt5Path.getPaths(Qt5Path.DOCS):
+    for p in QtPath.getPaths(QtPath.DOCS):
         qchs.extend([os.path.join(p, "qtopengl.qch"), os.path.join(p, "qtwidgets.qch")])
     addHelpDocumentation(qchs)
     setFixedHelpViewer(HelpViewer.HELPMODE)
@@ -94,7 +72,7 @@ def main():
     test.verify(example is None, "Verifying: No example is shown.")
 
     proFiles = [os.path.join(p, "opengl", "2dpainting", "2dpainting.pro")
-                for p in Qt5Path.getPaths(Qt5Path.EXAMPLES)]
+                for p in QtPath.getPaths(QtPath.EXAMPLES)]
     cleanUpUserFiles(proFiles)
     for p in proFiles:
         removePackagingDirectory(os.path.dirname(p))
@@ -116,7 +94,7 @@ def main():
     # go to "Welcome" page and choose another example
     switchViewTo(ViewConstants.WELCOME)
     proFiles = [os.path.join(p, "widgets", "itemviews", "addressbook", "addressbook.pro")
-                for p in Qt5Path.getPaths(Qt5Path.EXAMPLES)]
+                for p in QtPath.getPaths(QtPath.EXAMPLES)]
     cleanUpUserFiles(proFiles)
     for p in proFiles:
         removePackagingDirectory(os.path.dirname(p))

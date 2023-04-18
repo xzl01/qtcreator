@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \previouspage creator-editor-finding.html
@@ -30,7 +8,12 @@
 
     \title Searching with the Locator
 
-    You can find the locator in the bottom left of the \QC window.
+    The locator is the fastest way to find a particular project, file, class, or
+    function, or almost anything else in your project.
+
+    By default, you can find the locator in the bottom left of the \QC window.
+    To open it as a centered popup, click \inlineimage icons/magnifier.png
+    (\uicontrol Options) in it and select \uicontrol {Open as Centered Popup}.
 
     \image qtcreator-locator.png "List of locator filters"
 
@@ -79,8 +62,8 @@
 
     It is also possible to enter only a part of a search string. As you type,
     the locator shows the occurrences of that string regardless of where in the
-    name of an component it appears. Some locator filters, such as colon and
-    \c m, support \e fuzzy matching, which means that you can enter the
+    name of an component it appears. Some locator filters, such as colon, \c m,
+    and \c t, support \e fuzzy matching, which means that you can enter the
     uppercase letters to locate a symbol when using camel case or the letters
     after the underscore when using snake case.
 
@@ -104,7 +87,10 @@
 
         \li Locating any open document (\c {o})
 
-        \li Locating files anywhere on your file system (\c {f})
+        \li Locating files anywhere on your file system (\c {f}). You can use
+            environment variables in the \c {f} filter. For example, use
+            \c {f $ENVVAR} to expand the environment variable \c ENVVAR on Unix
+            systems and \c {f %ENVVAR%} to expand it on Windows systems.
 
         \li Locating files belonging to your project (\c {p}), such as source,
             header, resource, and \c {.ui} files, or to any project (\c {a})
@@ -147,7 +133,7 @@
             (\c {git}). For more information, see \l{Using Git}.
             \endif
 
-        \li Triggering menu items from the main menu (\c {t})
+        \li Triggering actions (\c {t})
 
         \li Searching for issues from the \l{https://bugreports.qt.io/}
             {Qt Project Bug Tracker} (\c bug).
@@ -171,6 +157,8 @@
         \li Opening the CMakeLists.txt file for the current run configuration in
             the editor (\c {cmo}). This is the same build target as when you
             select \uicontrol Build > \uicontrol {Build for Run Configuration}.
+        \li Running a particular run configuration (\c {rr} \e {<name>})
+        \li Switching to a particular run configuration (\c {sr} \e {<name>})
         \endif
 
     \endlist
@@ -230,9 +218,10 @@
 
     \endlist
 
-    If locator does not find some files, you can add them to the \c DISTFILES
-    variable in the \c .pro file to include them into the distribution tarball
-    of your project and thus make them known to \QC as well.
+    \if defined(qtcreator)
+    If locator does not find some files, see \l{Specifying Project Contents}
+    for how to make them known to the locator.
+    \endif
 
     \section1 Configuring Locator Filters
 
@@ -246,7 +235,7 @@
 
         \li In the locator, click \inlineimage icons/magnifier.png
             (\uicontrol Options) and select \uicontrol Configure to open the
-            \uicontrol Locator options.
+            \uicontrol Locator preferences.
 
         \li Select a filter, and then select \uicontrol Edit.
 
@@ -255,7 +244,7 @@
         \li To implicitly include the filter even when not typing a prefix as a
             part of the search string, select \uicontrol {Include by default}.
 
-        \li Specify other available options. For more information, see
+        \li Set other available preferences. For more information, see
             \l{Adding Web Search Engines}.
 
     \endlist
@@ -275,7 +264,7 @@
 
     \list 1
 
-        \li Select \uicontrol Tools > \uicontrol Options >
+        \li Select \uicontrol Edit > \uicontrol Preferences >
             \uicontrol Environment > \uicontrol Locator >
             \uicontrol {Web Search (prefix: r)} > \uicontrol Edit.
 
@@ -304,9 +293,9 @@
     \list 1
 
         \li In the locator, select \uicontrol Options >
-            \uicontrol Configure to open the \uicontrol Locator options.
+            \uicontrol Configure to open the \uicontrol Locator preferences.
 
-            \image qtcreator-locator-customize.png "Locator options tab"
+            \image qtcreator-locator-customize.png "Locator preferences"
 
         \li Select \uicontrol Add > \uicontrol {Files in Directories} to add
             a directory filter or \uicontrol {URL Template} to add a URL
@@ -351,7 +340,7 @@
 
     \list 1
 
-        \li Select \uicontrol Tools > \uicontrol Options >
+        \li Select \uicontrol Edit > \uicontrol Preferences >
             \uicontrol Environment > \uicontrol Locator.
 
         \li In \uicontrol {Refresh interval}, define new time in minutes.
@@ -360,7 +349,7 @@
 
     \section1 Executing JavaScript
 
-    The locator provides access to a JavaScript interpreter, that can be used to
+    The locator has a JavaScript interpreter that you can use to
     perform calculations.
 
     Beside simple mathematical operations, like ((1 + 2) * 3), the following

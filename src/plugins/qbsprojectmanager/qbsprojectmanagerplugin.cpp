@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qbsprojectmanagerplugin.h"
 
@@ -35,6 +13,7 @@
 #include "qbsprofilessettingspage.h"
 #include "qbsproject.h"
 #include "qbsprojectmanagerconstants.h"
+#include "qbsprojectmanagertr.h"
 #include "qbssettings.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
@@ -46,7 +25,6 @@
 #include <coreplugin/helpmanager.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/idocument.h>
-#include <coreplugin/fileiconprovider.h>
 
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/project.h>
@@ -55,7 +33,6 @@
 #include <projectexplorer/projectexplorericons.h>
 #include <projectexplorer/projectmanager.h>
 #include <projectexplorer/projecttree.h>
-#include <projectexplorer/runcontrol.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
 
@@ -63,6 +40,7 @@
 #include <qmljstools/qmljstoolsconstants.h>
 
 #include <utils/fileutils.h>
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/qtcassert.h>
 #include <utils/utilsicons.h>
 
@@ -103,16 +81,13 @@ QbsProjectManagerPlugin::~QbsProjectManagerPlugin()
     delete d;
 }
 
-bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *errorMessage)
+void QbsProjectManagerPlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorMessage)
-
     d = new QbsProjectManagerPluginPrivate;
 
     const Core::Context projectContext(::QbsProjectManager::Constants::PROJECT_ID);
 
-    Core::FileIconProvider::registerIconOverlayForSuffix(ProjectExplorer::Constants::FILEOVERLAY_QT, "qbs");
+    Utils::FileIconProvider::registerIconOverlayForSuffix(ProjectExplorer::Constants::FILEOVERLAY_QT, "qbs");
     Core::HelpManager::registerDocumentation({Core::HelpManager::documentationPath() + "/qbs.qch"});
 
     ProjectManager::registerProjectType<QbsProject>(QmlJSTools::Constants::QBS_MIMETYPE);
@@ -133,55 +108,55 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
     //register actions
     Core::Command *command;
 
-    m_reparseQbs = new QAction(tr("Reparse Qbs"), this);
+    m_reparseQbs = new QAction(Tr::tr("Reparse Qbs"), this);
     command = Core::ActionManager::registerAction(m_reparseQbs, Constants::ACTION_REPARSE_QBS, projectContext);
     command->setAttribute(Core::Command::CA_Hide);
     mbuild->addAction(command, ProjectExplorer::Constants::G_BUILD_BUILD);
     connect(m_reparseQbs, &QAction::triggered,
             this, &QbsProjectManagerPlugin::reparseCurrentProject);
 
-    m_reparseQbsCtx = new QAction(tr("Reparse Qbs"), this);
+    m_reparseQbsCtx = new QAction(Tr::tr("Reparse Qbs"), this);
     command = Core::ActionManager::registerAction(m_reparseQbsCtx, Constants::ACTION_REPARSE_QBS_CONTEXT, projectContext);
     command->setAttribute(Core::Command::CA_Hide);
     mproject->addAction(command, ProjectExplorer::Constants::G_PROJECT_BUILD);
     connect(m_reparseQbsCtx, &QAction::triggered,
             this, &QbsProjectManagerPlugin::reparseSelectedProject);
 
-    m_buildFileCtx = new QAction(tr("Build"), this);
+    m_buildFileCtx = new QAction(Tr::tr("Build File"), this);
     command = Core::ActionManager::registerAction(m_buildFileCtx, Constants::ACTION_BUILD_FILE_CONTEXT, projectContext);
     command->setAttribute(Core::Command::CA_Hide);
     mfile->addAction(command, ProjectExplorer::Constants::G_FILE_OTHER);
     connect(m_buildFileCtx, &QAction::triggered,
             this, &QbsProjectManagerPlugin::buildFileContextMenu);
 
-    m_buildFile = new Utils::ParameterAction(tr("Build File"), tr("Build File \"%1\""),
+    m_buildFile = new Utils::ParameterAction(Tr::tr("Build File"), Tr::tr("Build File \"%1\""),
                                                    Utils::ParameterAction::AlwaysEnabled, this);
     command = Core::ActionManager::registerAction(m_buildFile, Constants::ACTION_BUILD_FILE);
     command->setAttribute(Core::Command::CA_Hide);
     command->setAttribute(Core::Command::CA_UpdateText);
     command->setDescription(m_buildFile->text());
-    command->setDefaultKeySequence(QKeySequence(tr("Ctrl+Alt+B")));
+    command->setDefaultKeySequence(QKeySequence(Tr::tr("Ctrl+Alt+B")));
     mbuild->addAction(command, ProjectExplorer::Constants::G_BUILD_FILE);
     connect(m_buildFile, &QAction::triggered, this, &QbsProjectManagerPlugin::buildFile);
 
-    m_buildProductCtx = new QAction(tr("Build"), this);
+    m_buildProductCtx = new QAction(Tr::tr("Build"), this);
     command = Core::ActionManager::registerAction(m_buildProductCtx, Constants::ACTION_BUILD_PRODUCT_CONTEXT, projectContext);
     command->setAttribute(Core::Command::CA_Hide);
     msubproject->addAction(command, ProjectExplorer::Constants::G_PROJECT_BUILD);
     connect(m_buildProductCtx, &QAction::triggered,
             this, &QbsProjectManagerPlugin::buildProductContextMenu);
 
-    m_buildProduct = new Utils::ParameterAction(tr("Build Product"), tr("Build Product \"%1\""),
+    m_buildProduct = new Utils::ParameterAction(Tr::tr("Build Product"), Tr::tr("Build Product \"%1\""),
                                                 Utils::ParameterAction::AlwaysEnabled, this);
     command = Core::ActionManager::registerAction(m_buildProduct, Constants::ACTION_BUILD_PRODUCT);
     command->setAttribute(Core::Command::CA_Hide);
     command->setAttribute(Core::Command::CA_UpdateText);
     command->setDescription(m_buildFile->text());
-    command->setDefaultKeySequence(QKeySequence(tr("Ctrl+Alt+Shift+B")));
+    command->setDefaultKeySequence(QKeySequence(Tr::tr("Ctrl+Alt+Shift+B")));
     mbuild->addAction(command, ProjectExplorer::Constants::G_BUILD_PRODUCT);
     connect(m_buildProduct, &QAction::triggered, this, &QbsProjectManagerPlugin::buildProduct);
 
-    m_cleanProductCtx = new QAction(tr("Clean"), this);
+    m_cleanProductCtx = new QAction(Tr::tr("Clean"), this);
     command = Core::ActionManager::registerAction(
                 m_cleanProductCtx, Constants::ACTION_CLEAN_PRODUCT_CONTEXT, projectContext);
     command->setAttribute(Core::Command::CA_Hide);
@@ -189,8 +164,8 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
     connect(m_cleanProductCtx, &QAction::triggered,
             this, &QbsProjectManagerPlugin::cleanProductContextMenu);
 
-    m_cleanProduct = new QAction(Utils::Icons::CLEAN.icon(), tr("Clean"), this);
-    m_cleanProduct->setWhatsThis(tr("Clean Product"));
+    m_cleanProduct = new QAction(Utils::Icons::CLEAN.icon(), Tr::tr("Clean"), this);
+    m_cleanProduct->setWhatsThis(Tr::tr("Clean Product"));
     command = Core::ActionManager::registerAction(m_cleanProduct, Constants::ACTION_CLEAN_PRODUCT);
     command->setAttribute(Core::Command::CA_Hide);
     command->setAttribute(Core::Command::CA_UpdateText);
@@ -198,7 +173,7 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
     mbuild->addAction(command, ProjectExplorer::Constants::G_BUILD_PRODUCT);
     connect(m_cleanProduct, &QAction::triggered, this, &QbsProjectManagerPlugin::cleanProduct);
 
-    m_rebuildProductCtx = new QAction(tr("Rebuild"), this);
+    m_rebuildProductCtx = new QAction(Tr::tr("Rebuild"), this);
     command = Core::ActionManager::registerAction(
                 m_rebuildProductCtx, Constants::ACTION_REBUILD_PRODUCT_CONTEXT, projectContext);
     command->setAttribute(Core::Command::CA_Hide);
@@ -206,8 +181,8 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
     connect(m_rebuildProductCtx, &QAction::triggered,
             this, &QbsProjectManagerPlugin::rebuildProductContextMenu);
 
-    m_rebuildProduct = new QAction(ProjectExplorer::Icons::REBUILD.icon(), tr("Rebuild"), this);
-    m_rebuildProduct->setWhatsThis(tr("Rebuild Product"));
+    m_rebuildProduct = new QAction(ProjectExplorer::Icons::REBUILD.icon(), Tr::tr("Rebuild"), this);
+    m_rebuildProduct->setWhatsThis(Tr::tr("Rebuild Product"));
     command = Core::ActionManager::registerAction(m_rebuildProduct,
                                                   Constants::ACTION_REBUILD_PRODUCT);
     command->setAttribute(Core::Command::CA_Hide);
@@ -216,14 +191,14 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
     mbuild->addAction(command, ProjectExplorer::Constants::G_BUILD_PRODUCT);
     connect(m_rebuildProduct, &QAction::triggered, this, &QbsProjectManagerPlugin::rebuildProduct);
 
-    m_buildSubprojectCtx = new QAction(tr("Build"), this);
+    m_buildSubprojectCtx = new QAction(Tr::tr("Build"), this);
     command = Core::ActionManager::registerAction(m_buildSubprojectCtx, Constants::ACTION_BUILD_SUBPROJECT_CONTEXT, projectContext);
     command->setAttribute(Core::Command::CA_Hide);
     msubproject->addAction(command, ProjectExplorer::Constants::G_PROJECT_BUILD);
     connect(m_buildSubprojectCtx, &QAction::triggered,
             this, &QbsProjectManagerPlugin::buildSubprojectContextMenu);
 
-    m_cleanSubprojectCtx = new QAction(tr("Clean"), this);
+    m_cleanSubprojectCtx = new QAction(Tr::tr("Clean"), this);
     command = Core::ActionManager::registerAction(
                 m_cleanSubprojectCtx, Constants::ACTION_CLEAN_SUBPROJECT_CONTEXT, projectContext);
     command->setAttribute(Core::Command::CA_Hide);
@@ -231,7 +206,7 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
     connect(m_cleanSubprojectCtx, &QAction::triggered,
             this, &QbsProjectManagerPlugin::cleanSubprojectContextMenu);
 
-    m_rebuildSubprojectCtx = new QAction(tr("Rebuild"), this);
+    m_rebuildSubprojectCtx = new QAction(Tr::tr("Rebuild"), this);
     command = Core::ActionManager::registerAction(
                 m_rebuildSubprojectCtx, Constants::ACTION_REBUILD_SUBPROJECT_CONTEXT,
                 projectContext);
@@ -246,7 +221,7 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
             this, &QbsProjectManagerPlugin::updateContextActions);
 
     connect(BuildManager::instance(), &BuildManager::buildStateChanged,
-            this, &QbsProjectManagerPlugin::projectChanged);
+            this, std::bind(&QbsProjectManagerPlugin::projectChanged, this, nullptr));
 
     connect(Core::EditorManager::instance(), &Core::EditorManager::currentEditorChanged,
             this, &QbsProjectManagerPlugin::updateBuildActions);
@@ -259,18 +234,17 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
             this, &QbsProjectManagerPlugin::updateReparseQbsAction);
     connect(SessionManager::instance(), &SessionManager::projectAdded,
             this, [this](Project *project) {
+        auto qbsProject = qobject_cast<QbsProject *>(project);
         connect(project, &Project::anyParsingStarted,
-                this, &QbsProjectManagerPlugin::projectChanged);
+                this, std::bind(&QbsProjectManagerPlugin::projectChanged, this, qbsProject));
         connect(project, &Project::anyParsingFinished,
-                this, &QbsProjectManagerPlugin::projectChanged);
+                this, std::bind(&QbsProjectManagerPlugin::projectChanged, this, qbsProject));
     });
 
     // Run initial setup routines
     updateContextActions(ProjectTree::currentNode());
     updateReparseQbsAction();
     updateBuildActions();
-
-    return true;
 }
 
 void QbsProjectManagerPlugin::targetWasAdded(Target *target)
@@ -279,9 +253,9 @@ void QbsProjectManagerPlugin::targetWasAdded(Target *target)
         return;
 
     connect(target, &Target::parsingStarted,
-            this, &QbsProjectManagerPlugin::projectChanged);
+            this, std::bind(&QbsProjectManagerPlugin::projectChanged, this, nullptr));
     connect(target, &Target::parsingFinished,
-            this, &QbsProjectManagerPlugin::projectChanged);
+            this, std::bind(&QbsProjectManagerPlugin::projectChanged, this, nullptr));
 }
 
 void QbsProjectManagerPlugin::updateContextActions(Node *node)
@@ -364,17 +338,17 @@ void QbsProjectManagerPlugin::updateBuildActions()
     m_rebuildProduct->setVisible(productVisible);
 }
 
-void QbsProjectManagerPlugin::projectChanged()
+void QbsProjectManagerPlugin::projectChanged(QbsProject *project)
 {
-    auto project = qobject_cast<QbsProject *>(sender());
+    auto qbsProject = qobject_cast<QbsProject *>(project);
 
-    if (!project || project == SessionManager::startupProject())
+    if (!qbsProject || qbsProject == SessionManager::startupProject())
         updateReparseQbsAction();
 
-    if (!project || project == ProjectTree::currentProject())
+    if (!qbsProject || qbsProject == ProjectTree::currentProject())
         updateContextActions(ProjectTree::currentNode());
 
-    if (!project || project == currentEditorProject())
+    if (!qbsProject || qbsProject == currentEditorProject())
         updateBuildActions();
 }
 

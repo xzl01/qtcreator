@@ -1,61 +1,98 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "desktopdevice.h"
-#include "desktopdeviceprocess.h"
+
+#include "desktopprocesssignaloperation.h"
 #include "deviceprocesslist.h"
 #include "localprocesslist.h"
-#include "desktopprocesssignaloperation.h"
+#include "../projectexplorerconstants.h"
+#include "../projectexplorertr.h"
 
 #include <coreplugin/fileutils.h>
 
-#include <projectexplorer/projectexplorerconstants.h>
-#include <projectexplorer/runcontrol.h>
-
-#include <ssh/sshconnection.h>
-
+#include <utils/devicefileaccess.h>
 #include <utils/environment.h>
 #include <utils/hostosinfo.h>
 #include <utils/portlist.h>
-#include <utils/stringutils.h>
+#include <utils/qtcassert.h>
+#include <utils/qtcprocess.h>
+#include <utils/terminalcommand.h>
 #include <utils/url.h>
 
 #include <QCoreApplication>
 #include <QDateTime>
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <stdlib.h>
+#include <cstring>
+#endif
 
 using namespace ProjectExplorer::Constants;
 using namespace Utils;
 
 namespace ProjectExplorer {
 
+static void startTerminalEmulator(const QString &workingDir, const Environment &env)
+{
+#ifdef Q_OS_WIN
+    STARTUPINFO si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+
+    PROCESS_INFORMATION pinfo;
+    ZeroMemory(&pinfo, sizeof(pinfo));
+
+    static const auto quoteWinCommand = [](const QString &program) {
+        const QChar doubleQuote = QLatin1Char('"');
+
+        // add the program as the first arg ... it works better
+        QString programName = program;
+        programName.replace(QLatin1Char('/'), QLatin1Char('\\'));
+        if (!programName.startsWith(doubleQuote) && !programName.endsWith(doubleQuote)
+                && programName.contains(QLatin1Char(' '))) {
+            programName.prepend(doubleQuote);
+            programName.append(doubleQuote);
+        }
+        return programName;
+    };
+    const QString cmdLine = quoteWinCommand(qtcEnvironmentVariable("COMSPEC"));
+    // cmdLine is assumed to be detached -
+    // https://blogs.msdn.microsoft.com/oldnewthing/20090601-00/?p=18083
+
+    const QString totalEnvironment = env.toStringList().join(QChar(QChar::Null)) + QChar(QChar::Null);
+    LPVOID envPtr = (env != Environment::systemEnvironment())
+            ? (WCHAR *)(totalEnvironment.utf16()) : nullptr;
+
+    const bool success = CreateProcessW(0, (WCHAR *)cmdLine.utf16(),
+                                  0, 0, FALSE, CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
+                                  envPtr, workingDir.isEmpty() ? 0 : (WCHAR *)workingDir.utf16(),
+                                  &si, &pinfo);
+
+    if (success) {
+        CloseHandle(pinfo.hThread);
+        CloseHandle(pinfo.hProcess);
+    }
+#else
+    const TerminalCommand term = TerminalCommand::terminalEmulator();
+    QProcess process;
+    process.setProgram(term.command.nativePath());
+    process.setArguments(ProcessArgs::splitArgs(term.openArgs));
+    process.setProcessEnvironment(env.toProcessEnvironment());
+    process.setWorkingDirectory(workingDir);
+    process.startDetached();
+#endif
+}
+
 DesktopDevice::DesktopDevice()
 {
+    setFileAccess(DesktopDeviceFileAccess::instance());
+
     setupId(IDevice::AutoDetected, DESKTOP_DEVICE_ID);
     setType(DESKTOP_DEVICE_TYPE);
-    setDefaultDisplayName(tr("Local PC"));
-    setDisplayType(QCoreApplication::translate("ProjectExplorer::DesktopDevice", "Desktop"));
+    setDefaultDisplayName(Tr::tr("Local PC"));
+    setDisplayType(Tr::tr("Desktop"));
 
     setDeviceState(IDevice::DeviceStateUnknown);
     setMachineType(IDevice::Hardware);
@@ -64,8 +101,14 @@ DesktopDevice::DesktopDevice()
     const QString portRange =
             QString::fromLatin1("%1-%2").arg(DESKTOP_PORT_START).arg(DESKTOP_PORT_END);
     setFreePorts(Utils::PortList::fromString(portRange));
-    setOpenTerminal([](const Environment &env, const FilePath &workingDir) {
-        Core::FileUtils::openTerminal(workingDir, env);
+
+    setOpenTerminal([](const Environment &env, const FilePath &path) {
+        const QFileInfo fileInfo = path.toFileInfo();
+        const QString workingDir = QDir::toNativeSeparators(fileInfo.isDir() ?
+                                                            fileInfo.absoluteFilePath() :
+                                                            fileInfo.absolutePath());
+        const Environment realEnv = env.hasChanges() ? env : Environment::systemEnvironment();
+        startTerminalEmulator(workingDir, realEnv);
     });
 }
 
@@ -97,69 +140,34 @@ DeviceProcessList *DesktopDevice::createProcessListModel(QObject *parent) const
     return new Internal::LocalProcessList(sharedFromThis(), parent);
 }
 
-DeviceProcess *DesktopDevice::createProcess(QObject *parent) const
-{
-    return new Internal::DesktopDeviceProcess(sharedFromThis(), parent);
-}
-
 DeviceProcessSignalOperation::Ptr DesktopDevice::signalOperation() const
 {
     return DeviceProcessSignalOperation::Ptr(new DesktopProcessSignalOperation());
 }
 
-class DesktopDeviceEnvironmentFetcher : public DeviceEnvironmentFetcher
+PortsGatheringMethod DesktopDevice::portsGatheringMethod() const
 {
-public:
-    DesktopDeviceEnvironmentFetcher() = default;
+    return {
+        [this](QAbstractSocket::NetworkLayerProtocol protocol) -> CommandLine {
+            // We might encounter the situation that protocol is given IPv6
+            // but the consumer of the free port information decides to open
+            // an IPv4(only) port. As a result the next IPv6 scan will
+            // report the port again as open (in IPv6 namespace), while the
+            // same port in IPv4 namespace might still be blocked, and
+            // re-use of this port fails.
+            // GDBserver behaves exactly like this.
 
-    void start() override
-    {
-        emit finished(Utils::Environment::systemEnvironment(), true);
-    }
-};
+            Q_UNUSED(protocol)
 
-DeviceEnvironmentFetcher::Ptr DesktopDevice::environmentFetcher() const
-{
-    return DeviceEnvironmentFetcher::Ptr(new DesktopDeviceEnvironmentFetcher());
-}
+            if (HostOsInfo::isWindowsHost() || HostOsInfo::isMacHost())
+                return {filePath("netstat"), {"-a", "-n"}};
+            if (HostOsInfo::isLinuxHost())
+                return {filePath("/bin/sh"), {"-c", "cat /proc/net/tcp*"}};
+            return {};
+        },
 
-class DesktopPortsGatheringMethod : public PortsGatheringMethod
-{
-    CommandLine commandLine(QAbstractSocket::NetworkLayerProtocol protocol) const override
-    {
-        // We might encounter the situation that protocol is given IPv6
-        // but the consumer of the free port information decides to open
-        // an IPv4(only) port. As a result the next IPv6 scan will
-        // report the port again as open (in IPv6 namespace), while the
-        // same port in IPv4 namespace might still be blocked, and
-        // re-use of this port fails.
-        // GDBserver behaves exactly like this.
-
-        Q_UNUSED(protocol)
-
-        if (HostOsInfo::isWindowsHost() || HostOsInfo::isMacHost())
-            return {"netstat", {"-a", "-n"}};
-        if (HostOsInfo::isLinuxHost())
-            return {"/bin/sh", {"-c", "cat /proc/net/tcp*"}};
-        return {};
-    }
-
-    QList<Utils::Port> usedPorts(const QByteArray &output) const override
-    {
-        QList<Utils::Port> ports;
-        const QList<QByteArray> lines = output.split('\n');
-        for (const QByteArray &line : lines) {
-            const Port port(Utils::parseUsedPortFromNetstatOutput(line));
-            if (port.isValid() && !ports.contains(port))
-                ports.append(port);
-        }
-        return ports;
-    }
-};
-
-PortsGatheringMethod::Ptr DesktopDevice::portsGatheringMethod() const
-{
-    return DesktopPortsGatheringMethod::Ptr(new DesktopPortsGatheringMethod);
+        &Port::parseFromNetstatOutput
+    };
 }
 
 QUrl DesktopDevice::toolControlChannel(const ControlChannelHint &) const
@@ -170,35 +178,19 @@ QUrl DesktopDevice::toolControlChannel(const ControlChannelHint &) const
     return url;
 }
 
+bool DesktopDevice::usableAsBuildDevice() const
+{
+    return true;
+}
+
 bool DesktopDevice::handlesFile(const FilePath &filePath) const
 {
     return !filePath.needsDevice();
 }
 
-void DesktopDevice::iterateDirectory(const FilePath &filePath,
-                                     const std::function<bool(const FilePath &)> &callBack,
-                                     const FileFilter &filter) const
+FilePath DesktopDevice::filePath(const QString &pathOnDevice) const
 {
-    QTC_CHECK(!filePath.needsDevice());
-    filePath.iterateDirectory(callBack, filter);
-}
-
-qint64 DesktopDevice::fileSize(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return -1);
-    return filePath.fileSize();
-}
-
-QFile::Permissions DesktopDevice::permissions(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return {});
-    return filePath.permissions();
-}
-
-bool DesktopDevice::setPermissions(const FilePath &filePath, QFile::Permissions permissions) const
-{
-    QTC_ASSERT(handlesFile(filePath), return {});
-    return filePath.setPermissions(permissions);
+    return FilePath::fromParts({}, {}, pathOnDevice);
 }
 
 Environment DesktopDevice::systemEnvironment() const
@@ -206,113 +198,11 @@ Environment DesktopDevice::systemEnvironment() const
     return Environment::systemEnvironment();
 }
 
-bool DesktopDevice::isExecutableFile(const FilePath &filePath) const
+FilePath DesktopDevice::rootPath() const
 {
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.isExecutableFile();
-}
-
-bool DesktopDevice::isReadableFile(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.isReadableFile();
-}
-
-bool DesktopDevice::isWritableFile(const Utils::FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.isWritableFile();
-}
-
-bool DesktopDevice::isReadableDirectory(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.isReadableDir();
-}
-
-bool DesktopDevice::isWritableDirectory(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.isWritableDir();
-}
-
-bool DesktopDevice::isFile(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.isFile();
-}
-
-bool DesktopDevice::isDirectory(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.isDir();
-}
-
-bool DesktopDevice::createDirectory(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.createDir();
-}
-
-bool DesktopDevice::exists(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.exists();
-}
-
-bool DesktopDevice::ensureExistingFile(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.ensureExistingFile();
-}
-
-bool DesktopDevice::removeFile(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.removeFile();
-}
-
-bool DesktopDevice::removeRecursively(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.removeRecursively();
-}
-
-bool DesktopDevice::copyFile(const FilePath &filePath, const FilePath &target) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    return filePath.copyFile(target);
-}
-
-bool DesktopDevice::renameFile(const FilePath &filePath, const FilePath &target) const
-{
-    QTC_ASSERT(handlesFile(filePath), return false);
-    QTC_ASSERT(handlesFile(target), return false);
-    return filePath.renameFile(target);
-}
-
-QDateTime DesktopDevice::lastModified(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return {});
-    return filePath.lastModified();
-}
-
-FilePath DesktopDevice::symLinkTarget(const FilePath &filePath) const
-{
-    QTC_ASSERT(handlesFile(filePath), return {});
-    return filePath.symLinkTarget();
-}
-
-QByteArray DesktopDevice::fileContents(const FilePath &filePath, qint64 limit, qint64 offset) const
-{
-    QTC_ASSERT(handlesFile(filePath), return {});
-    return filePath.fileContents(limit, offset);
-}
-
-bool DesktopDevice::writeFileContents(const Utils::FilePath &filePath, const QByteArray &data) const
-{
-    QTC_ASSERT(handlesFile(filePath), return {});
-    return filePath.writeFileContents(data);
+    if (id() == DESKTOP_DEVICE_ID)
+        return FilePath::fromParts({}, {}, QDir::rootPath());
+    return IDevice::rootPath();
 }
 
 } // namespace ProjectExplorer

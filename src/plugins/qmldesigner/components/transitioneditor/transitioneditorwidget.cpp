@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "transitioneditorwidget.h"
 
@@ -35,6 +13,7 @@
 #include <timelineeditor/timelineconstants.h>
 #include <timelineeditor/timelineicons.h>
 
+#include <auxiliarydataproperties.h>
 #include <bindingproperty.h>
 #include <nodeabstractproperty.h>
 #include <nodemetainfo.h>
@@ -333,8 +312,8 @@ void TransitionEditorWidget::selectionChanged()
 
 void TransitionEditorWidget::contextHelp(const Core::IContext::HelpCallback &callback) const
 {
-    if (transitionEditorView())
-        transitionEditorView()->contextHelp(callback);
+    if (auto view = transitionEditorView())
+        QmlDesignerPlugin::contextHelp(callback, view->contextHelpId());
     else
         callback({});
 }
@@ -344,13 +323,10 @@ void TransitionEditorWidget::init(int zoom)
     ModelNode root = transitionEditorView()->rootModelNode();
     ModelNode transition;
 
-    if (root.isValid() && root.hasProperty("transitions")) {
-        NodeAbstractProperty transitions = root.nodeAbstractProperty("transitions");
-        if (transitions.isValid()) {
-            const QList<ModelNode> directSubNodes = transitions.directSubNodes();
-            if (!directSubNodes.isEmpty())
-                transition = directSubNodes.constFirst();
-        }
+    if (NodeAbstractProperty transitions = root.nodeAbstractProperty("transitions")) {
+        const QList<ModelNode> directSubNodes = transitions.directSubNodes();
+        if (!directSubNodes.isEmpty())
+            transition = directSubNodes.constFirst();
     }
 
     m_graphicsScene->setTransition(transition);
@@ -363,8 +339,8 @@ void TransitionEditorWidget::init(int zoom)
     m_toolbar->setCurrentTransition(transition);
 
     qreal duration = 2000;
-    if (transition.isValid() && transition.hasAuxiliaryData("transitionDuration"))
-        duration = transition.auxiliaryData("transitionDuration").toDouble();
+    if (auto data = transition.auxiliaryData(transitionDurationProperty))
+        duration = data->toDouble();
 
     m_toolbar->setDuration(duration);
 
@@ -378,8 +354,7 @@ void TransitionEditorWidget::updateData(const ModelNode &transition)
         return;
     }
 
-    if (transition.metaInfo().isValid()
-        && transition.metaInfo().isSubclassOf("QtQuick.Transition")) {
+    if (transition.metaInfo().isQtQuickTransition()) {
         if (transition.id() == m_toolbar->currentTransitionId()) {
             m_graphicsScene->setTransition(transition);
         } else {
@@ -415,10 +390,8 @@ void TransitionEditorWidget::setupScrollbar(int min, int max, int current)
     m_scrollbar->blockSignals(b);
 }
 
-void TransitionEditorWidget::showEvent(QShowEvent *event)
+void TransitionEditorWidget::showEvent([[maybe_unused]] QShowEvent *event)
 {
-    Q_UNUSED(event)
-
     m_transitionEditorView->setEnabled(true);
 
     if (m_transitionEditorView->model())

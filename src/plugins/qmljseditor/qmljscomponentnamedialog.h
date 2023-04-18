@@ -1,36 +1,25 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <QDialog>
 
+QT_BEGIN_NAMESPACE
+class QCheckBox;
+class QDialogButtonBox;
+class QLabel;
+class QListWidget;
+class QPlainTextEdit;
+QT_END_NAMESPACE
+
+namespace Utils {
+class ClassNameValidatingLineEdit;
+class PathChooser;
+}
+
 namespace QmlJSEditor {
 namespace Internal {
-
-namespace Ui { class ComponentNameDialog; }
 
 class ComponentNameDialog : public QDialog
 {
@@ -38,7 +27,6 @@ class ComponentNameDialog : public QDialog
 
 public:
     explicit ComponentNameDialog(QWidget *parent = nullptr);
-    ~ComponentNameDialog() override;
 
     static bool go(QString *proposedName, QString *proposedPath, QString *proposedSuffix,
                    const QStringList &properties, const QStringList &sourcePreview, const QString &oldFileName,
@@ -57,8 +45,16 @@ protected:
     QString isValid() const;
 
 private:
-    Ui::ComponentNameDialog *ui;
     QStringList m_sourcePreview;
+
+    Utils::ClassNameValidatingLineEdit *m_componentNameEdit;
+    QLabel *m_messageLabel;
+    Utils::PathChooser *m_pathEdit;
+    QLabel *m_label;
+    QListWidget *m_listWidget;
+    QPlainTextEdit *m_plainTextEdit;
+    QCheckBox *m_checkBox;
+    QDialogButtonBox *m_buttonBox;
 };
 
 } // namespace Internal

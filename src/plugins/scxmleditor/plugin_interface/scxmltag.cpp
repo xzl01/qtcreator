@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "scxmltag.h"
 #include "scxmldocument.h"
 #include "scxmleditorconstants.h"
+#include "scxmleditortr.h"
+#include "scxmltag.h"
 #include "scxmltagutils.h"
 
 #include <QCoreApplication>
@@ -272,7 +251,7 @@ bool ScxmlTag::hasData() const
     if (!m_attributeNames.isEmpty() || !m_content.isEmpty())
         return true;
 
-    foreach (ScxmlTag *tag, m_childTags) {
+    for (ScxmlTag *tag : std::as_const(m_childTags)) {
         if (tag->hasData())
             return true;
     }
@@ -282,7 +261,7 @@ bool ScxmlTag::hasData() const
 
 bool ScxmlTag::hasChild(TagType type) const
 {
-    foreach (ScxmlTag *tag, m_childTags) {
+    for (ScxmlTag *tag : std::as_const(m_childTags)) {
         if (tag->tagType() == type)
             return true;
     }
@@ -292,7 +271,7 @@ bool ScxmlTag::hasChild(TagType type) const
 
 bool ScxmlTag::hasChild(const QString &name) const
 {
-    foreach (ScxmlTag *tag, m_childTags) {
+    for (ScxmlTag *tag : std::as_const(m_childTags)) {
         if (tag->tagName() == name)
             return true;
     }
@@ -370,8 +349,7 @@ void ScxmlTag::setAttributeName(int ind, const QString &name)
         m_attributeNames[ind] = name;
     } else {
         m_attributeNames << name;
-        m_attributeValues << QCoreApplication::translate(
-            "SXCMLTag::UnknownAttributeValue", "Unknown");
+        m_attributeValues << Tr::tr("Unknown");
     }
 }
 
@@ -380,8 +358,7 @@ void ScxmlTag::setAttribute(int ind, const QString &value)
     if (ind >= 0 && ind < m_attributeNames.count())
         setAttribute(m_attributeNames[ind], value);
     else {
-        m_attributeNames << QCoreApplication::translate(
-            "SXCMLTag::UnknownAttributeName", "Unknown");
+        m_attributeNames << Tr::tr("Unknown");
         m_attributeValues << value;
     }
 }
@@ -507,7 +484,7 @@ QVector<ScxmlTag*> ScxmlTag::allChildren() const
 QVector<ScxmlTag*> ScxmlTag::children(const QString &name) const
 {
     QVector<ScxmlTag*> children;
-    foreach (ScxmlTag *tag, m_childTags) {
+    for (ScxmlTag *tag : std::as_const(m_childTags)) {
         if (tag->tagName() == name)
             children << tag;
     }
@@ -517,7 +494,7 @@ QVector<ScxmlTag*> ScxmlTag::children(const QString &name) const
 
 ScxmlTag *ScxmlTag::child(const QString &name) const
 {
-    foreach (ScxmlTag *tag, m_childTags) {
+    for (ScxmlTag *tag : std::as_const(m_childTags)) {
         if (tag->tagName() == name)
             return tag;
     }
@@ -639,8 +616,8 @@ void ScxmlTag::readXml(QXmlStreamReader &xml, bool checkCopyId)
         else if (token == QXmlStreamReader::StartElement) {
             if (m_tagType != Metadata && m_tagType != MetadataItem && xml.qualifiedName().toString() == "qt:editorinfo") {
                 // Read editorinfos
-                QXmlStreamAttributes attributes = xml.attributes();
-                foreach (QXmlStreamAttribute attr, attributes) {
+                const QXmlStreamAttributes attributes = xml.attributes();
+                for (QXmlStreamAttribute attr : attributes) {
                     m_editorInfo[attr.name().toString()] = attr.value().toString();
                 }
 
@@ -663,7 +640,7 @@ void ScxmlTag::readXml(QXmlStreamReader &xml, bool checkCopyId)
                 childTag->readXml(xml, checkCopyId);
             }
         } else if (token == QXmlStreamReader::Invalid) {
-            qDebug() << ScxmlTag::tr("Error in reading XML ") << xml.error() << ":"
+            qDebug() << Tr::tr("Error in reading XML ") << xml.error() << ":"
                      << xml.errorString();
             break;
         }

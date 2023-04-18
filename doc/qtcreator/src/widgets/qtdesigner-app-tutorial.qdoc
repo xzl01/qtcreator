@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -38,8 +16,8 @@
 
     This tutorial describes how to use \QC to create a small Qt application,
     Text Finder. It is a simplified version of the Qt UI Tools \l{Text Finder
-    Example}. The application user interface is constructed from Qt widgets by
-    using \QD. The application logic is written in C++ by using the code editor.
+    Example}. We use \QD to construct the application user interface from
+    Qt widgets and the code editor to write the application logic in C++.
 
     \image qtcreator-textfinder-screenshot.png
 
@@ -68,9 +46,8 @@
 
             \image qtcreator-new-project-build-system-qt-gui.png "Define Build System dialog"
 
-        \li In the \uicontrol {Build system} field, select the build system to
-            use for building and running the project: \l qmake,
-            \l {Setting Up CMake}{CMake}, or \l {Setting Up Qbs}{Qbs}.
+        \li In the \uicontrol {Build system} field, select \l {Setting Up CMake}
+            {CMake} as the build system to use for building the project.
 
         \li Select \uicontrol Next or \uicontrol Continue to open the
             \uicontrol{Class Information} dialog.
@@ -114,11 +91,10 @@
 
     \endlist
 
-    \note The project opens in the \uicontrol Edit mode, and these instructions are
-    hidden. To return to these instructions, open the \uicontrol Help mode.
+    \note The project opens in the \uicontrol Edit mode, which hides these
+    instructions. To return to these instructions, open the \uicontrol Help mode.
 
-    If you selected qmake as the build system, the TextFinder project now
-    contains the following files:
+    The TextFinder project now has the following files:
 
     \list
 
@@ -126,14 +102,13 @@
         \li textfinder.h
         \li textfinder.cpp
         \li textfinder.ui
-        \li textfinder.pro
+        \li CMakeLists.txt
 
     \endlist
 
     \image qtcreator-textfinder-contents.png "TextFinder project contents"
 
     The .h and .cpp files come with the necessary boiler plate code.
-    The .pro file is complete.
 
     If you selected CMake as the build system, \QC created a CMakeLists.txt
     project file for you.
@@ -212,9 +187,9 @@
                 \li Select \uicontrol {Go to Slot} > \uicontrol {clicked()}, and
                     then select \uicontrol OK.
 
-                    A private slot, \c{on_findButton_clicked()}, is added to the
+                    This adds a private slot, \c{on_findButton_clicked()}, to the
                     header file, textfinder.h and a private function,
-                    \c{TextFinder::on_findButton_clicked()}, is added to the
+                    \c{TextFinder::on_findButton_clicked()}, to the
                     source file, textfinder.cpp.
 
             \endlist
@@ -239,8 +214,7 @@
             \c{textfinder.h} file to open it for editing.
 
         \li Add a private function to the \c{private} section, after the
-            \c{Ui::TextFinder} pointer, as illustrated by the following code
-            snippet:
+            \c{Ui::TextFinder} pointer:
 
             \snippet textfinder/textfinder.h 0
 
@@ -258,8 +232,7 @@
 
         \li Add code to load a text file using QFile, read it with QTextStream,
             and then display it on \c{textEdit} with
-            \l{QTextEdit::setPlainText()}.
-            This is illustrated by the following code snippet:
+            \l{QTextEdit::setPlainText()}:
 
             \snippet textfinder/textfinder.cpp 0
 
@@ -270,21 +243,18 @@
 
         \li For the \c{on_findButton_clicked()} slot, add code to extract the
             search string and use the \l{QTextEdit::find()} function
-            to look for the search string within the text file. This is
-            illustrated by the following code snippet:
+            to look for the search string within the text file:
 
             \snippet textfinder/textfinder.cpp 2
 
-        \li Once both of these functions are complete, add a line to call
-            \c{loadTextFile()} in the constructor, as illustrated by the
-            following code snippet:
+        \li Add a line to call \c{loadTextFile()} in the constructor:
 
             \snippet textfinder/textfinder.cpp 3
 
     \endlist
 
-    The \c{on_findButton_clicked()} slot is called automatically in
-    the uic generated ui_textfinder.h file by this line of code:
+    The following line of code automatically calls the \c{on_findButton_clicked()}
+    slot in the uic generated ui_textfinder.h file:
 
     \code
     QMetaObject::connectSlotsByName(TextFinder);
@@ -312,7 +282,7 @@
 
         \li In the \uicontrol{Name} field, enter \b{textfinder}.
 
-        \li In the \uicontrol{Path} field, enter \c{C:\Qt\examples\TextFinder},
+        \li In the \uicontrol{Path} field, enter the path to the project,
             and select \uicontrol Next or \uicontrol Continue.
 
             The \uicontrol{Project Management} dialog opens.
@@ -320,9 +290,15 @@
             \image qtcreator-add-resource-wizard3.png "Project Management dialog"
 
 
-        \li In the \uicontrol{Add to project} field, select \b{TextFinder.pro}
+        \li In the \uicontrol{Add to project} field, select \b{TextFinder}
             and select \uicontrol{Finish} or \uicontrol Done to open the file
             in the code editor.
+
+        \li In the \uicontrol Copy to Clipboard dialog, select \uicontrol Yes to
+            copy the path to the resource file to the clipboard for adding it
+            to the CMakeLists.txt file.
+
+            \image qtcreator-add-resource-wizard4.png "Copy to Clipboard dialog"
 
         \li Select \uicontrol Add > \uicontrol {Add Prefix}.
 
@@ -336,10 +312,20 @@
 
     \endlist
 
-    \section1 Compiling and Running Your Program
+    \section1 Adding Resources to Project File
+
+    For the text file to appear when you run the application, you must specify
+    the resource file as a source file in the \e CMakeLists.txt file that the
+    wizard created for you:
+
+    \quotefromfile textfinder/CMakeLists.txt
+    \skipto set(PROJECT_SOURCES
+    \printuntil )
+
+    \section1 Compiling and Running Your Application
 
     Now that you have all the necessary files, select the
     \inlineimage icons/run_small.png
-    button to compile and run your program.
+    button to compile and run your Application.
 
 */

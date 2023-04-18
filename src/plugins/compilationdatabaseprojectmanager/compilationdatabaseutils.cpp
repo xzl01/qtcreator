@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "compilationdatabaseutils.h"
 
@@ -30,14 +8,16 @@
 
 #include <utils/algorithm.h>
 #include <utils/hostosinfo.h>
-#include <utils/optional.h>
 #include <utils/stringutils.h>
 
 #include <QDir>
 #include <QRegularExpression>
 #include <QSet>
 
+#include <optional>
+
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace CompilationDatabaseProjectManager {
 namespace Internal {
@@ -83,14 +63,24 @@ static CppEditor::ProjectFile::Kind fileKindFromString(QString flag)
     return ProjectFile::Unclassified;
 }
 
-QStringList filterFromFileName(const QStringList &flags, QString baseName)
+QStringList filterFromFileName(const QStringList &flags, QString fileName)
 {
-    baseName.append('.'); // to match name.c, name.o, etc.
     QStringList result;
     result.reserve(flags.size());
-    for (const QString &flag : flags) {
-        if (!flag.contains(baseName))
-            result.push_back(flag);
+    bool skipNext = false;
+    for (int i = 0; i < flags.size(); ++i) {
+        const QString &flag = flags.at(i);
+        if (skipNext) {
+            skipNext = false;
+            continue;
+        }
+        if (FilePath::fromUserInput(flag).fileName() == fileName)
+            continue;
+        if (flag == "-o" || flag.startsWith("/Fo")) {
+            skipNext = true;
+            continue;
+        }
+        result.push_back(flag);
     }
 
     return result;
@@ -102,7 +92,7 @@ void filteredFlags(const QString &fileName,
                    HeaderPaths &headerPaths,
                    Macros &macros,
                    CppEditor::ProjectFile::Kind &fileKind,
-                   QString &sysRoot)
+                   Utils::FilePath &sysRoot)
 {
     if (flags.empty())
         return;
@@ -111,8 +101,8 @@ void filteredFlags(const QString &fileName,
     bool skipNext = Utils::HostOsInfo::isWindowsHost()
                 ? (!flags.front().startsWith('/') && !flags.front().startsWith('-'))
                 : (!flags.front().startsWith('-'));
-    Utils::optional<HeaderPathType> includePathType;
-    Utils::optional<MacroType> macroType;
+    std::optional<HeaderPathType> includePathType;
+    std::optional<MacroType> macroType;
     bool fileKindIsNext = false;
 
     QStringList filtered;
@@ -192,7 +182,7 @@ void filteredFlags(const QString &fileName,
 
         if (flag.startsWith("--sysroot=")) {
             if (sysRoot.isEmpty())
-                sysRoot = updatedPathFlag(flag.mid(10), workingDir);
+                sysRoot = FilePath::fromUserInput(updatedPathFlag(flag.mid(10), workingDir));
             continue;
         }
 
@@ -206,7 +196,7 @@ void filteredFlags(const QString &fileName,
         }
 
         // Skip all remaining Windows flags except feature flags.
-        if (flag.startsWith("/") && !flag.startsWith("/Z"))
+        if (Utils::HostOsInfo::isWindowsHost() && flag.startsWith("/") && !flag.startsWith("/Z"))
             continue;
 
         filtered.push_back(flag);

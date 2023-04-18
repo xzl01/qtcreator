@@ -1,40 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "workspacemodel.h"
 
+#include "advanceddockingsystemtr.h"
 #include "dockmanager.h"
 #include "workspacedialog.h"
 
@@ -42,7 +11,6 @@
 #include <utils/fileutils.h>
 #include <utils/stringutils.h>
 
-#include <QDir>
 #include <QFileInfo>
 
 namespace ADS {
@@ -75,10 +43,10 @@ QVariant WorkspaceModel::headerData(int section, Qt::Orientation orientation, in
         case Qt::DisplayRole:
             switch (section) {
             case 0:
-                result = tr("Workspace");
+                result = Tr::tr("Workspace");
                 break;
             case 1:
-                result = tr("Last Modified");
+                result = Tr::tr("Last Modified");
                 break;
             } // switch (section)
             break;
@@ -161,13 +129,9 @@ QHash<int, QByteArray> WorkspaceModel::roleNames() const
                                              {LastWorkspaceRole, "activeWorkspace"},
                                              {ActiveWorkspaceRole, "lastWorkspace"}};
 
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
     auto defaultRoles = QAbstractTableModel::roleNames();
     defaultRoles.insert(extraRoles);
     return defaultRoles;
-#else
-    return QAbstractTableModel::roleNames().unite(extraRoles);
-#endif
 }
 
 void WorkspaceModel::sort(int column, Qt::SortOrder order)
@@ -199,8 +163,8 @@ void WorkspaceModel::resetWorkspaces()
 void WorkspaceModel::newWorkspace(QWidget *parent)
 {
     WorkspaceNameInputDialog workspaceInputDialog(m_manager, parent);
-    workspaceInputDialog.setWindowTitle(tr("New Workspace Name"));
-    workspaceInputDialog.setActionText(tr("&Create"), tr("Create and &Open"));
+    workspaceInputDialog.setWindowTitle(Tr::tr("New Workspace Name"));
+    workspaceInputDialog.setActionText(Tr::tr("&Create"), Tr::tr("Create and &Open"));
 
     runWorkspaceNameInputDialog(&workspaceInputDialog, [this](const QString &newName) {
         m_manager->createWorkspace(newName);
@@ -210,8 +174,8 @@ void WorkspaceModel::newWorkspace(QWidget *parent)
 void WorkspaceModel::cloneWorkspace(QWidget *parent, const QString &workspace)
 {
     WorkspaceNameInputDialog workspaceInputDialog(m_manager, parent);
-    workspaceInputDialog.setWindowTitle(tr("New Workspace Name"));
-    workspaceInputDialog.setActionText(tr("&Clone"), tr("Clone and &Open"));
+    workspaceInputDialog.setWindowTitle(Tr::tr("New Workspace Name"));
+    workspaceInputDialog.setActionText(Tr::tr("&Clone"), Tr::tr("Clone and &Open"));
     workspaceInputDialog.setValue(workspace + " (2)");
 
     runWorkspaceNameInputDialog(&workspaceInputDialog, [this, workspace](const QString &newName) {
@@ -232,8 +196,8 @@ void WorkspaceModel::deleteWorkspaces(const QStringList &workspaces)
 void WorkspaceModel::renameWorkspace(QWidget *parent, const QString &workspace)
 {
     WorkspaceNameInputDialog workspaceInputDialog(m_manager, parent);
-    workspaceInputDialog.setWindowTitle(tr("Rename Workspace"));
-    workspaceInputDialog.setActionText(tr("&Rename"), tr("Rename and &Open"));
+    workspaceInputDialog.setWindowTitle(Tr::tr("Rename Workspace"));
+    workspaceInputDialog.setActionText(Tr::tr("&Rename"), Tr::tr("Rename and &Open"));
     workspaceInputDialog.setValue(workspace);
 
     runWorkspaceNameInputDialog(&workspaceInputDialog, [this, workspace](const QString &newName) {

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "formeditorplugin.h"
 
@@ -49,6 +27,7 @@ using namespace CppEditor;
 using namespace CPlusPlus;
 using namespace Designer;
 using namespace Designer::Internal;
+using namespace Utils;
 
 namespace {
 
@@ -106,7 +85,7 @@ protected:
 
     void postVisit(Symbol *symbol)
     {
-        if (symbol->isClass())
+        if (symbol->asClass())
             m_currentClass.clear();
     }
 
@@ -147,22 +126,22 @@ bool documentContainsMemberFunctionDeclaration(const Document::Ptr &document,
 class GoToSlotTestCase : public CppEditor::Tests::TestCase
 {
 public:
-    GoToSlotTestCase(const QStringList &files)
+    GoToSlotTestCase(const FilePaths &files)
     {
         QVERIFY(succeededSoFar());
         QCOMPARE(files.size(), 3);
 
         QList<TextEditor::BaseTextEditor *> editors;
-        for (const QString &file : files) {
-            IEditor *editor = EditorManager::openEditor(Utils::FilePath::fromString(file));
+        for (const FilePath &file : files) {
+            IEditor *editor = EditorManager::openEditor(file);
             TextEditor::BaseTextEditor *e = qobject_cast<TextEditor::BaseTextEditor *>(editor);
             QVERIFY(e);
             closeEditorAtEndOfTestCase(editor);
             editors << e;
         }
 
-        const QString cppFile = files.at(0);
-        const QString hFile = files.at(1);
+        const FilePath cppFile = files.at(0);
+        const FilePath hFile = files.at(1);
 
         QCOMPARE(DocumentModel::openedDocuments().size(), files.size());
         waitForFilesInGlobalSnapshot({cppFile, hFile});
@@ -172,14 +151,14 @@ public:
         QVERIFY(integration);
         integration->emitNavigateToSlot("pushButton", "clicked()", QStringList());
 
-        QCOMPARE(EditorManager::currentDocument()->filePath().toString(), cppFile);
+        QCOMPARE(EditorManager::currentDocument()->filePath(), cppFile);
         QVERIFY(EditorManager::currentDocument()->isModified());
 
         // Wait for updated documents
-        for (TextEditor::BaseTextEditor *editor : qAsConst(editors)) {
+        for (TextEditor::BaseTextEditor *editor : std::as_const(editors)) {
             QElapsedTimer t;
             t.start();
-            const QString filePath = editor->document()->filePath().toString();
+            const FilePath filePath = editor->document()->filePath();
             if (auto parser = BuiltinEditorDocumentParser::get(filePath)) {
                 while (t.elapsed() < 2000) {
                     if (Document::Ptr document = parser->document()) {
@@ -237,7 +216,7 @@ namespace Internal {
 void FormEditorPlugin::test_gotoslot()
 {
     QFETCH(QStringList, files);
-    (GoToSlotTestCase(files));
+    (GoToSlotTestCase(Utils::transform(files, FilePath::fromString)));
 }
 
 void FormEditorPlugin::test_gotoslot_data()

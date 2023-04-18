@@ -1,39 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "environmentaspect.h"
 
 #include "environmentaspectwidget.h"
-#include "target.h"
+#include "projectexplorertr.h"
 
+#include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
 using namespace Utils;
-
-static const char BASE_KEY[] = "PE.EnvironmentAspect.Base";
-static const char CHANGES_KEY[] = "PE.EnvironmentAspect.Changes";
 
 namespace ProjectExplorer {
 
@@ -43,9 +19,10 @@ namespace ProjectExplorer {
 
 EnvironmentAspect::EnvironmentAspect()
 {
-    setDisplayName(tr("Environment"));
+    setDisplayName(Tr::tr("Environment"));
     setId("EnvironmentAspect");
     setConfigWidgetCreator([this] { return new EnvironmentAspectWidget(this); });
+    addDataExtractor(this, &EnvironmentAspect::environment, &Data::environment);
 }
 
 int EnvironmentAspect::baseEnvironmentBase() const
@@ -97,25 +74,31 @@ void EnvironmentAspect::addModifier(const EnvironmentAspect::EnvironmentModifier
     m_modifiers.append(modifier);
 }
 
-void EnvironmentAspect::addSupportedBaseEnvironment(const QString &displayName,
-                                                    const std::function<Environment()> &getter)
+int EnvironmentAspect::addSupportedBaseEnvironment(const QString &displayName,
+                                                   const std::function<Environment()> &getter)
 {
     BaseEnvironment baseEnv;
     baseEnv.displayName = displayName;
     baseEnv.getter = getter;
     m_baseEnvironments.append(baseEnv);
+    const int index = m_baseEnvironments.size() - 1;
     if (m_base == -1)
-        setBaseEnvironmentBase(m_baseEnvironments.size() - 1);
+        setBaseEnvironmentBase(index);
+
+    return index;
 }
 
-void EnvironmentAspect::addPreferredBaseEnvironment(const QString &displayName,
-                                                    const std::function<Environment()> &getter)
+int EnvironmentAspect::addPreferredBaseEnvironment(const QString &displayName,
+                                                   const std::function<Environment()> &getter)
 {
     BaseEnvironment baseEnv;
     baseEnv.displayName = displayName;
     baseEnv.getter = getter;
     m_baseEnvironments.append(baseEnv);
-    setBaseEnvironmentBase(m_baseEnvironments.size() - 1);
+    const int index = m_baseEnvironments.size() - 1;
+    setBaseEnvironmentBase(index);
+
+    return index;
 }
 
 void EnvironmentAspect::fromMap(const QVariantMap &map)

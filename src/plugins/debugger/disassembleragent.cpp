@@ -1,35 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "disassembleragent.h"
 
 #include "breakhandler.h"
 #include "debuggeractions.h"
-#include "debuggercore.h"
 #include "debuggerengine.h"
 #include "debuggerinternalconstants.h"
+#include "debuggertr.h"
 #include "disassemblerlines.h"
 #include "sourceutils.h"
 
@@ -43,7 +21,7 @@
 #include <texteditor/texteditor.h>
 
 #include <utils/aspects.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
 
 #include <QTextBlock>
@@ -52,8 +30,7 @@
 using namespace Core;
 using namespace TextEditor;
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 ///////////////////////////////////////////////////////////////////////
 //
@@ -66,7 +43,10 @@ class DisassemblerBreakpointMarker : public TextMark
 {
 public:
     DisassemblerBreakpointMarker(const Breakpoint &bp, int lineNumber)
-        : TextMark(Utils::FilePath(), lineNumber, Constants::TEXT_MARK_CATEGORY_BREAKPOINT), m_bp(bp)
+        : TextMark(Utils::FilePath(),
+                   lineNumber,
+                   {Tr::tr("Breakpoint"), Constants::TEXT_MARK_CATEGORY_BREAKPOINT})
+        , m_bp(bp)
     {
         setIcon(bp->icon());
         setPriority(TextMark::NormalPriority);
@@ -265,7 +245,8 @@ void DisassemblerAgentPrivate::configureMimeType()
 
     Utils::MimeType mtype = Utils::mimeTypeForName(mimeType);
     if (mtype.isValid()) {
-        foreach (IEditor *editor, DocumentModel::editorsForDocument(document))
+        const QList<IEditor *> editors = DocumentModel::editorsForDocument(document);
+        for (IEditor *editor : editors)
             if (auto widget = TextEditorWidget::fromEditor(editor))
                 widget->configureGenericHighlighter();
     } else {
@@ -368,7 +349,7 @@ void DisassemblerAgent::removeBreakpointMarker(const Breakpoint &bp)
     if (!d->document)
         return;
 
-    for (DisassemblerBreakpointMarker *marker : qAsConst(d->breakpointMarks)) {
+    for (DisassemblerBreakpointMarker *marker : std::as_const(d->breakpointMarks)) {
         if (marker->m_bp == bp) {
             d->breakpointMarks.removeOne(marker);
             d->document->removeMark(marker);
@@ -409,5 +390,4 @@ quint64 DisassemblerAgent::address() const
     return d->location.address();
 }
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal

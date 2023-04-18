@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Andre Hartmann <aha_1980@gmx.de>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 Andre Hartmann <aha_1980@gmx.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "branchview.h"
 
@@ -31,20 +9,22 @@
 #include "gitclient.h"
 #include "gitconstants.h"
 #include "gitplugin.h"
+#include "gittr.h"
 #include "gitutils.h"
 
 #include <coreplugin/actionmanager/command.h>
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/inavigationwidgetfactory.h>
+
 #include <utils/elidinglabel.h>
 #include <utils/fancylineedit.h>
 #include <utils/navigationtreeview.h>
 #include <utils/qtcassert.h>
 #include <utils/utilsicons.h>
+
 #include <vcsbase/vcscommand.h>
 #include <vcsbase/vcsoutputwindow.h>
 
-#include <QDir>
 #include <QLabel>
 #include <QKeySequence>
 #include <QMenu>
@@ -57,14 +37,15 @@
 
 using namespace Core;
 using namespace Utils;
+using namespace VcsBase;
 
-namespace Git {
-namespace Internal {
+namespace Git::Internal {
 
 class BranchFilterModel : public QSortFilterProxyModel
 {
 public:
     BranchFilterModel(QObject *parent) : QSortFilterProxyModel(parent) {}
+
 protected:
     bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override
     {
@@ -89,12 +70,12 @@ struct SetInContext
 };
 
 BranchView::BranchView()
-    : m_includeOldEntriesAction(new QAction(tr("Include Old Entries"), this))
-    , m_includeTagsAction(new QAction(tr("Include Tags"), this))
+    : m_includeOldEntriesAction(new QAction(Tr::tr("Include Old Entries"), this))
+    , m_includeTagsAction(new QAction(Tr::tr("Include Tags"), this))
     , m_addAction(new QAction(this))
     , m_refreshAction(new QAction(this))
-    , m_repositoryLabel(new Utils::ElidingLabel(this))
-    , m_branchView(new Utils::NavigationTreeView(this))
+    , m_repositoryLabel(new ElidingLabel(this))
+    , m_branchView(new NavigationTreeView(this))
     , m_model(new BranchModel(GitClient::instance(), this))
     , m_filterModel(new BranchFilterModel(this))
 {
@@ -102,7 +83,7 @@ BranchView::BranchView()
     connect(m_addAction, &QAction::triggered, this, &BranchView::add);
 
     m_refreshAction->setIcon(Utils::Icons::RELOAD_TOOLBAR.icon());
-    m_refreshAction->setToolTip(tr("Refresh"));
+    m_refreshAction->setToolTip(Tr::tr("Refresh"));
     connect(m_refreshAction, &QAction::triggered, this, &BranchView::refreshCurrentRepository);
 
     m_branchView->setHeaderHidden(true);
@@ -114,9 +95,9 @@ BranchView::BranchView()
     m_filterModel->setFilterRole(Qt::EditRole);
     m_filterModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
     m_branchView->setModel(m_filterModel);
-    auto filterEdit = new Utils::FancyLineEdit(this);
+    auto filterEdit = new FancyLineEdit(this);
     filterEdit->setFiltering(true);
-    connect(filterEdit, &Utils::FancyLineEdit::textChanged,
+    connect(filterEdit, &FancyLineEdit::textChanged,
             m_filterModel, QOverload<const QString &>::of(&BranchFilterModel::setFilterRegularExpression));
     auto layout = new QVBoxLayout(this);
     layout->addWidget(filterEdit);
@@ -127,7 +108,7 @@ BranchView::BranchView()
 
     m_includeOldEntriesAction->setCheckable(true);
     m_includeOldEntriesAction->setToolTip(
-                tr("Include branches and tags that have not been active for %n days.", nullptr,
+                Tr::tr("Include branches and tags that have not been active for %n days.", nullptr,
                    Constants::OBSOLETE_COMMIT_AGE_IN_DAYS));
     connect(m_includeOldEntriesAction, &QAction::toggled,
             this, &BranchView::setIncludeOldEntries);
@@ -165,13 +146,13 @@ void BranchView::refresh(const FilePath &repository, bool force)
 
     m_repository = repository;
     if (m_repository.isEmpty()) {
-        m_repositoryLabel->setText(tr("<No repository>"));
-        m_addAction->setToolTip(tr("Create Git Repository..."));
+        m_repositoryLabel->setText(Tr::tr("<No repository>"));
+        m_addAction->setToolTip(Tr::tr("Create Git Repository..."));
         m_branchView->setEnabled(false);
     } else {
         m_repositoryLabel->setText(m_repository.toUserOutput());
         m_repositoryLabel->setToolTip(GitPlugin::msgRepositoryLabel(m_repository));
-        m_addAction->setToolTip(tr("Add Branch..."));
+        m_addAction->setToolTip(Tr::tr("Add Branch..."));
         m_branchView->setEnabled(true);
     }
 
@@ -198,7 +179,7 @@ QList<QToolButton *> BranchView::createToolButtons()
 {
     auto filter = new QToolButton;
     filter->setIcon(Utils::Icons::FILTER.icon());
-    filter->setToolTip(tr("Filter"));
+    filter->setToolTip(Tr::tr("Filter"));
     filter->setPopupMode(QToolButton::InstantPopup);
     filter->setProperty("noArrow", true);
 
@@ -246,75 +227,75 @@ void BranchView::slotCustomContextMenu(const QPoint &point)
     const bool currentLocal = m_model->isLocal(currentBranch);
 
     QMenu contextMenu;
-    contextMenu.addAction(tr("&Add..."), this, &BranchView::add);
-    const Utils::optional<QString> remote = m_model->remoteName(index);
+    contextMenu.addAction(Tr::tr("&Add..."), this, &BranchView::add);
+    const std::optional<QString> remote = m_model->remoteName(index);
     if (remote.has_value()) {
-        contextMenu.addAction(tr("&Fetch"), this, [this, &remote]() {
+        contextMenu.addAction(Tr::tr("&Fetch"), this, [this, &remote] {
             GitClient::instance()->fetch(m_repository, *remote);
         });
         contextMenu.addSeparator();
         if (!remote->isEmpty()) {
-            contextMenu.addAction(tr("Remove &Stale Branches"), this, [this, &remote]() {
+            contextMenu.addAction(Tr::tr("Remove &Stale Branches"), this, [this, &remote] {
                 GitClient::instance()->removeStaleRemoteBranches(m_repository, *remote);
             });
             contextMenu.addSeparator();
         }
-        contextMenu.addAction(tr("Manage &Remotes..."), this, [] {
+        contextMenu.addAction(Tr::tr("Manage &Remotes..."), this, [] {
             GitPlugin::manageRemotes();
         });
     }
     if (hasActions) {
         if (!currentSelected && (isLocal || isTag))
-            contextMenu.addAction(tr("Rem&ove..."), this, &BranchView::remove);
+            contextMenu.addAction(Tr::tr("Rem&ove..."), this, &BranchView::remove);
         if (isLocal || isTag)
-            contextMenu.addAction(tr("Re&name..."), this, &BranchView::rename);
+            contextMenu.addAction(Tr::tr("Re&name..."), this, &BranchView::rename);
         if (!currentSelected)
-            contextMenu.addAction(tr("&Checkout"), this, &BranchView::checkout);
+            contextMenu.addAction(Tr::tr("&Checkout"), this, &BranchView::checkout);
         contextMenu.addSeparator();
-        contextMenu.addAction(tr("&Diff"), this, [this] {
+        contextMenu.addAction(Tr::tr("&Diff"), this, [this] {
             const QString fullName = m_model->fullName(selectedIndex(), true);
             if (!fullName.isEmpty()) {
                 SetInContext block(m_blockRefresh);
                 GitClient::instance()->diffBranch(m_repository, fullName);
             }
         });
-        contextMenu.addAction(tr("&Log"), this, [this] { log(selectedIndex()); });
-        contextMenu.addAction(tr("Reflo&g"), this, [this] { reflog(selectedIndex()); });
+        contextMenu.addAction(Tr::tr("&Log"), this, [this] { log(selectedIndex()); });
+        contextMenu.addAction(Tr::tr("Reflo&g"), this, [this] { reflog(selectedIndex()); });
         contextMenu.addSeparator();
         if (!currentSelected) {
-            auto resetMenu = new QMenu(tr("Re&set"), &contextMenu);
-            resetMenu->addAction(tr("&Hard"), this, [this] { reset("hard"); });
-            resetMenu->addAction(tr("&Mixed"), this, [this] { reset("mixed"); });
-            resetMenu->addAction(tr("&Soft"), this, [this] { reset("soft"); });
+            auto resetMenu = new QMenu(Tr::tr("Re&set"), &contextMenu);
+            resetMenu->addAction(Tr::tr("&Hard"), this, [this] { reset("hard"); });
+            resetMenu->addAction(Tr::tr("&Mixed"), this, [this] { reset("mixed"); });
+            resetMenu->addAction(Tr::tr("&Soft"), this, [this] { reset("soft"); });
             contextMenu.addMenu(resetMenu);
             QString mergeTitle;
             if (isFastForwardMerge()) {
-                contextMenu.addAction(tr("&Merge \"%1\" into \"%2\" (Fast-Forward)")
+                contextMenu.addAction(Tr::tr("&Merge \"%1\" into \"%2\" (Fast-Forward)")
                                       .arg(indexName, currentName),
                                       this, [this] { merge(true); });
-                mergeTitle = tr("Merge \"%1\" into \"%2\" (No &Fast-Forward)")
+                mergeTitle = Tr::tr("Merge \"%1\" into \"%2\" (No &Fast-Forward)")
                         .arg(indexName, currentName);
             } else {
-                mergeTitle = tr("&Merge \"%1\" into \"%2\"")
+                mergeTitle = Tr::tr("&Merge \"%1\" into \"%2\"")
                         .arg(indexName, currentName);
             }
 
             contextMenu.addAction(mergeTitle, this, [this] { merge(false); });
-            contextMenu.addAction(tr("&Rebase \"%1\" on \"%2\"")
+            contextMenu.addAction(Tr::tr("&Rebase \"%1\" on \"%2\"")
                                   .arg(currentName, indexName),
                                   this, &BranchView::rebase);
             contextMenu.addSeparator();
-            contextMenu.addAction(tr("Cherry &Pick"), this, &BranchView::cherryPick);
+            contextMenu.addAction(Tr::tr("Cherry &Pick"), this, &BranchView::cherryPick);
         }
         if (!currentSelected && !isTag) {
             if (currentLocal) {
-                contextMenu.addAction(tr("&Track"), this, [this] {
+                contextMenu.addAction(Tr::tr("&Track"), this, [this] {
                     m_model->setRemoteTracking(selectedIndex());
                 });
             }
             if (!isLocal) {
                 contextMenu.addSeparator();
-                contextMenu.addAction(tr("&Push"), this, &BranchView::push);
+                contextMenu.addAction(Tr::tr("&Push"), this, &BranchView::push);
             }
         }
     }
@@ -411,7 +392,7 @@ bool BranchView::checkout()
 
     QList<Stash> stashes;
     client->synchronousStashList(m_repository, &stashes);
-    for (const Stash &stash : qAsConst(stashes)) {
+    for (const Stash &stash : std::as_const(stashes)) {
         if (stash.message.startsWith(popMessageStart)) {
             branchCheckoutDialog.foundStashForNextBranch();
             break;
@@ -435,28 +416,25 @@ bool BranchView::checkout()
                 return false;
         }
 
-        VcsBase::VcsCommand *command = m_model->checkoutBranch(selected);
         const bool moveChanges = branchCheckoutDialog.moveLocalChangesToNextBranch();
         const bool popStash = branchCheckoutDialog.popStashOfNextBranch();
-        if (command && (moveChanges || popStash)) {
-            connect(command, &VcsBase::VcsCommand::finished,
-                    this, [this, client, popMessageStart, moveChanges, popStash] {
-                if (moveChanges) {
-                    client->endStashScope(m_repository);
-                } else if (popStash) {
-                    QList<Stash> stashes;
-                    QString stashName;
-                    client->synchronousStashList(m_repository, &stashes);
-                    for (const Stash &stash : qAsConst(stashes)) {
-                        if (stash.message.startsWith(popMessageStart)) {
-                            stashName = stash.name;
-                            break;
-                        }
+        const auto commandHandler = [=](const CommandResult &) {
+            if (moveChanges) {
+                client->endStashScope(m_repository);
+            } else if (popStash) {
+                QList<Stash> stashes;
+                QString stashName;
+                client->synchronousStashList(m_repository, &stashes);
+                for (const Stash &stash : std::as_const(stashes)) {
+                    if (stash.message.startsWith(popMessageStart)) {
+                        stashName = stash.name;
+                        break;
                     }
-                    client->synchronousStashRestore(m_repository, stashName, true);
                 }
-            });
-        }
+                client->synchronousStashRestore(m_repository, stashName, true);
+            }
+        };
+        m_model->checkoutBranch(selected, this, commandHandler);
     }
 
     if (QTC_GUARD(m_branchView))
@@ -470,7 +448,7 @@ bool BranchView::remove()
     const QModelIndex selected = selectedIndex();
     QTC_CHECK(selected != m_model->currentBranch());
 
-    QString branchName = m_model->fullName(selected);
+    const QString branchName = m_model->fullName(selected);
     if (branchName.isEmpty())
         return false;
 
@@ -478,13 +456,13 @@ bool BranchView::remove()
     const bool wasMerged = isTag ? true : m_model->branchIsMerged(selected);
     QString message;
     if (isTag)
-        message = tr("Would you like to delete the tag \"%1\"?").arg(branchName);
+        message = Tr::tr("Would you like to delete the tag \"%1\"?").arg(branchName);
     else if (wasMerged)
-        message = tr("Would you like to delete the branch \"%1\"?").arg(branchName);
+        message = Tr::tr("Would you like to delete the branch \"%1\"?").arg(branchName);
     else
-        message = tr("Would you like to delete the <b>unmerged</b> branch \"%1\"?").arg(branchName);
+        message = Tr::tr("Would you like to delete the <b>unmerged</b> branch \"%1\"?").arg(branchName);
 
-    if (QMessageBox::question(this, isTag ? tr("Delete Tag") : tr("Delete Branch"),
+    if (QMessageBox::question(this, isTag ? Tr::tr("Delete Tag") : Tr::tr("Delete Branch"),
                               message, QMessageBox::Yes | QMessageBox::No,
                               wasMerged ? QMessageBox::Yes : QMessageBox::No) == QMessageBox::Yes) {
         if (isTag)
@@ -502,7 +480,7 @@ bool BranchView::rename()
     const bool isTag = m_model->isTag(selected);
     QTC_CHECK(m_model->isLocal(selected) || isTag);
 
-    QString oldName = m_model->fullName(selected);
+    const QString oldName = m_model->fullName(selected);
     QStringList localNames;
     if (!isTag)
         localNames = m_model->localBranchNames();
@@ -536,7 +514,7 @@ bool BranchView::reset(const QByteArray &resetType)
     if (currentName.isEmpty() || branchName.isEmpty())
         return false;
 
-    if (QMessageBox::question(this, tr("Git Reset"), tr("Reset branch \"%1\" to \"%2\"?")
+    if (QMessageBox::question(this, Tr::tr("Git Reset"), Tr::tr("Reset branch \"%1\" to \"%2\"?")
                               .arg(currentName, branchName),
                               QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes) {
         GitClient::instance()->reset(m_repository, QLatin1String("--" + resetType), branchName);
@@ -629,7 +607,7 @@ void BranchView::push()
 
 BranchViewFactory::BranchViewFactory()
 {
-    setDisplayName(tr("Git Branches"));
+    setDisplayName(Tr::tr("Git Branches"));
     setPriority(500);
     setId(Constants::GIT_BRANCH_VIEW_ID);
 }
@@ -645,5 +623,4 @@ BranchView *BranchViewFactory::view() const
     return m_view;
 }
 
-} // namespace Internal
-} // namespace Git
+} // Git::Internal

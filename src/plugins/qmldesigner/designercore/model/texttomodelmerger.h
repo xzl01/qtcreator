@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -30,7 +8,6 @@
 #include "nodelistproperty.h"
 #include "modelnode.h"
 
-#include <qmljs/qmljsscopechain.h>
 #include <qmljs/qmljsscopechain.h>
 
 #include <QStringList>
@@ -107,6 +84,9 @@ public:
                            const QList<QmlJS::AST::UiObjectMember *> &arrayMembers,
                            ReadingContext *context,
                            DifferenceHandler &differenceHandler);
+    void syncSignalDeclarationProperty(AbstractProperty &modelProperty,
+                            const QString &signature,
+                            DifferenceHandler &differenceHandler);
     void syncVariantProperty(AbstractProperty &modelProperty,
                              const QVariant &astValue,
                              const TypeName &astType,
@@ -137,6 +117,8 @@ public:
     QSet<QPair<QString, QString>> qrcMapping() const;
 
     QList<QmlTypeData> getQMLSingletons() const;
+
+    void clearPossibleImportKeys();
 
 private:
     void setupCustomParserNode(const ModelNode &node);
@@ -169,6 +151,7 @@ private:
     QmlJS::ViewerContext m_vContext;
     QSet<QPair<QString, QString> > m_qrcMapping;
     QSet<QmlJS::ImportKey> m_possibleImportKeys;
+    int m_previousPossibleImportsSize = -1;
     bool m_hasVersionlessImport = false;
 };
 
@@ -187,11 +170,15 @@ public:
                                           const TypeName &astType) = 0;
     virtual void signalHandlerSourceDiffer(SignalHandlerProperty &modelProperty,
                                           const QString &javascript) = 0;
+    virtual void signalDeclarationSignatureDiffer(SignalDeclarationProperty &modelProperty,
+                                                       const QString &signature) = 0;
     virtual void shouldBeBindingProperty(AbstractProperty &modelProperty,
                                          const QString &javascript,
                                          const TypeName &astType) = 0;
     virtual void shouldBeSignalHandlerProperty(AbstractProperty &modelProperty,
                                          const QString &javascript) = 0;
+    virtual void shouldBeSignalDeclarationProperty(AbstractProperty &modelProperty,
+                                               const QString &signature) = 0;
     virtual void shouldBeNodeListProperty(AbstractProperty &modelProperty,
                                           const QList<QmlJS::AST::UiObjectMember *> arrayMembers,
                                           ReadingContext *context) = 0;
@@ -241,6 +228,10 @@ public:
                                  const TypeName &astType) override;
     void signalHandlerSourceDiffer(SignalHandlerProperty &modelProperty,
                                    const QString &javascript) override;
+    void signalDeclarationSignatureDiffer(SignalDeclarationProperty &modelProperty,
+                                          const QString &signature) override;
+    void shouldBeSignalDeclarationProperty(AbstractProperty &modelProperty,
+                                           const QString &signature) override;
     void shouldBeSignalHandlerProperty(AbstractProperty &modelProperty,
                                        const QString &javascript) override;
     void shouldBeNodeListProperty(AbstractProperty &modelProperty,
@@ -290,6 +281,10 @@ public:
                                  const TypeName &astType) override;
     void signalHandlerSourceDiffer(SignalHandlerProperty &modelProperty,
                                    const QString &javascript) override;
+    void signalDeclarationSignatureDiffer(SignalDeclarationProperty &modelProperty,
+                                          const QString &signature) override;
+    void shouldBeSignalDeclarationProperty(AbstractProperty &modelProperty,
+                                           const QString &signature) override;
     void shouldBeSignalHandlerProperty(AbstractProperty &modelProperty,
                                        const QString &javascript) override;
     void shouldBeNodeListProperty(AbstractProperty &modelProperty,

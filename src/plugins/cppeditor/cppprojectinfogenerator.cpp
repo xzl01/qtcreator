@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppprojectinfogenerator.h"
 
+#include "cppeditortr.h"
 #include "cppprojectfilecategorizer.h"
 
 #include <projectexplorer/headerpath.h>
@@ -69,12 +48,12 @@ ProjectInfo::ConstPtr ProjectInfoGenerator::generate()
         });
     };
     if (m_cToolchainMissing) {
-        showWarning(QCoreApplication::translate("CppEditor",
+        showWarning(Tr::tr(
                 "The project contains C source files, but the currently active kit "
                 "has no C compiler. The code model will not be fully functional."));
     }
     if (m_cxxToolchainMissing) {
-        showWarning(QCoreApplication::translate("CppEditor",
+        showWarning(Tr::tr(
                 "The project contains C++ source files, but the currently active kit "
                 "has no C++ compiler. The code model will not be fully functional."));
     }
@@ -87,7 +66,8 @@ const QVector<ProjectPart::ConstPtr> ProjectInfoGenerator::createProjectParts(
     QVector<ProjectPart::ConstPtr> result;
     ProjectFileCategorizer cat(rawProjectPart.displayName,
                                rawProjectPart.files,
-                               rawProjectPart.fileIsActive);
+                               rawProjectPart.fileIsActive,
+                               rawProjectPart.getMimeType);
 
     if (!cat.hasParts())
         return result;
@@ -156,6 +136,27 @@ ProjectPart::ConstPtr ProjectInfoGenerator::createProjectPart(
     if (!tcInfo.isValid()) {
         flags = rawProjectPart.flagsForCxx;
         tcInfo = m_projectUpdateInfo.cxxToolChainInfo;
+    }
+
+    QString explicitTarget;
+    if (!tcInfo.targetTripleIsAuthoritative) {
+        for (int i = 0; i < flags.commandLineFlags.size(); ++i) {
+            const QString &flag = flags.commandLineFlags.at(i);
+            if (flag == "-target") {
+                if (i + 1 < flags.commandLineFlags.size())
+                    explicitTarget = flags.commandLineFlags.at(i + 1);
+                break;
+            } else if (flag.startsWith("--target=")) {
+                explicitTarget = flag.mid(9);
+                break;
+            }
+        }
+    }
+    if (!explicitTarget.isEmpty()) {
+        tcInfo.targetTriple = explicitTarget;
+        tcInfo.targetTripleIsAuthoritative = true;
+        if (const Abi abi = Abi::fromString(tcInfo.targetTriple); abi.isValid())
+            tcInfo.abi = abi;
     }
 
     return ProjectPart::create(projectFilePath, rawProjectPart, partName, projectFiles,

@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 source("../../shared/qtcreator.py")
 
@@ -84,20 +62,19 @@ def testModifyFile(fileName, editor, line, expectWarning):
     return checkOpenDocumentsContains("%s*" % simpleFName)
 
 def testSaveChangesAndMakeWritable(modifiedFiles, readOnlyFiles):
-    saveDlgStr = ("{name='Core__Internal__SaveItemsDialog' type='Core::Internal::SaveItemsDialog' "
-                  "visible='1' windowTitle='Save Changes'}")
+    saveDlgStr = ":Save Changes_Core::Internal::SaveItemsDialog"
     try:
         waitForObject(saveDlgStr)
     except:
         test.fail("Save Changes dialog did not come up, but was expected to appear.")
         return
-    treeWidget = waitForObject("{name='treeWidget' type='QTreeWidget' visible='1' window=%s}"
+    treeWidget = waitForObject("{type='QTreeWidget' unnamed='1' visible='1' window='%s'}"
                                % saveDlgStr)
     checkUnsavedChangesContains(treeWidget.model(), modifiedFiles)
     clickButton(waitForObject("{text='Save All' type='QPushButton' unnamed='1' visible='1' "
-                              "window=%s}" % saveDlgStr))
+                              "window='%s'}" % saveDlgStr))
     try:
-        filesTree = waitForObject("{name='treeWidget' type='QTreeWidget' visible='1' "
+        filesTree = waitForObject("{type='QTreeWidget' unnamed='1' visible='1' "
                                   "window=':WritePermissions_Core::Internal::ReadOnlyFilesDialog'}")
         items = map(os.path.expanduser, map(os.path.join, dumpItems(filesTree.model(), column=4),
                                             dumpItems(filesTree.model(), column=3)))
@@ -108,6 +85,13 @@ def testSaveChangesAndMakeWritable(modifiedFiles, readOnlyFiles):
     except:
         test.fatal("Missing dialog regarding missing permission on read only files.")
     exitCanceled = False
+
+    # workaround crashing test
+    # (AUT stopped responding / AUT '' did not respond to network communication)
+    __shutdownDone__ = lambda : not currentApplicationContext().isRunning
+    if test.verify(waitFor(__shutdownDone__, 1000), "Clean exit of Qt Creator."):
+        return
+
     try:
         mBoxStr = "{type='QMessageBox' unnamed='1' visible='1' text?='*Could not save the files.'}"
         msgBox = waitForObject(mBoxStr, 3000)
@@ -124,7 +108,7 @@ def testSaveChangesAndMakeWritable(modifiedFiles, readOnlyFiles):
         test.log("Exiting without saving.")
         waitForObject(saveDlgStr)
         clickButton(waitForObject("{text='Do not Save' type='QPushButton' unnamed='1' "
-                                  "visible='1' window=%s}" % saveDlgStr))
+                                  "visible='1' window='%s'}" % saveDlgStr))
 
 def checkOpenDocumentsContains(itemName):
     selectFromCombo(":Qt Creator_Core::Internal::NavComboBox", "Open Documents")

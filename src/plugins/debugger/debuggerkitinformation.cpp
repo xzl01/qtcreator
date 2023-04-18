@@ -1,39 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debuggerkitinformation.h"
 
 #include "debuggeritemmanager.h"
 #include "debuggeritem.h"
+#include "debuggertr.h"
 
-#include <projectexplorer/toolchain.h>
+#include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/runcontrol.h>
+#include <projectexplorer/toolchain.h>
 
 #include <utils/environment.h>
-#include <utils/fileutils.h>
+#include <utils/guard.h>
+#include <utils/filepath.h>
 #include <utils/layoutbuilder.h>
 #include <utils/macroexpander.h>
 #include <utils/qtcassert.h>
@@ -56,8 +37,6 @@ namespace Internal {
 
 class DebuggerKitAspectWidget final : public KitAspectWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::DebuggerKitAspect)
-
 public:
     DebuggerKitAspectWidget(Kit *workingCopy, const KitAspect *ki)
         : KitAspectWidget(workingCopy, ki)
@@ -68,7 +47,7 @@ public:
 
         refresh();
         m_comboBox->setToolTip(ki->description());
-        connect(m_comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        connect(m_comboBox, &QComboBox::currentIndexChanged,
                 this, &DebuggerKitAspectWidget::currentDebuggerChanged);
 
         m_manageButton = createManageButton(ProjectExplorer::Constants::DEBUGGER_SETTINGS_PAGE_ID);
@@ -81,7 +60,7 @@ public:
     }
 
 private:
-    void addToLayout(Utils::LayoutBuilder &builder) override
+    void addToLayout(Utils::Layouting::LayoutBuilder &builder) override
     {
         addMutableAction(m_comboBox);
         builder.addItem(m_comboBox);
@@ -96,21 +75,20 @@ private:
 
     void refresh() override
     {
-        m_ignoreChanges = true;
+        const GuardLocker locker(m_ignoreChanges);
         m_comboBox->clear();
-        m_comboBox->addItem(tr("None"), QString());
+        m_comboBox->addItem(Tr::tr("None"), QString());
         for (const DebuggerItem &item : DebuggerItemManager::debuggers())
             m_comboBox->addItem(item.displayName(), item.id());
 
         const DebuggerItem *item = DebuggerKitAspect::debugger(m_kit);
         updateComboBox(item ? item->id() : QVariant());
-        m_ignoreChanges = false;
     }
 
     void currentDebuggerChanged(int idx)
     {
         Q_UNUSED(idx)
-        if (m_ignoreChanges)
+        if (m_ignoreChanges.isLocked())
             return;
 
         int currentIndex = m_comboBox->currentIndex();
@@ -131,7 +109,7 @@ private:
         m_comboBox->setCurrentIndex(0);
     }
 
-    bool m_ignoreChanges = false;
+    Guard m_ignoreChanges;
     QComboBox *m_comboBox;
     QWidget *m_manageButton;
 };
@@ -141,8 +119,8 @@ DebuggerKitAspect::DebuggerKitAspect()
 {
     setObjectName("DebuggerKitAspect");
     setId(DebuggerKitAspect::id());
-    setDisplayName(tr("Debugger"));
-    setDescription(tr("The debugger to use for this kit."));
+    setDisplayName(Tr::tr("Debugger"));
+    setDescription(Tr::tr("The debugger to use for this kit."));
     setPriority(28000);
 }
 
@@ -259,15 +237,33 @@ void DebuggerKitAspect::fix(Kit *k)
     // This can be Id, binary path, but not "auto" anymore.
     const QVariant rawId = k->value(DebuggerKitAspect::id());
 
-    if (rawId.isNull()) // No debugger set, that is fine.
+    if (rawId.toString().isEmpty()) // No debugger set, that is fine.
         return;
 
     if (rawId.type() == QVariant::String) {
-        if (!DebuggerItemManager::findById(rawId)) {
+        const DebuggerItem * const item = DebuggerItemManager::findById(rawId);
+        if (!item) {
             qWarning("Unknown debugger id %s in kit %s",
                      qPrintable(rawId.toString()), qPrintable(k->displayName()));
             k->setValue(DebuggerKitAspect::id(), QVariant());
+            setup(k);
+            return;
         }
+
+        Abi kitAbi;
+        if (ToolChainKitAspect::toolChains(k).isEmpty()) {
+            if (DeviceTypeKitAspect::deviceTypeId(k)
+                    != ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE) {
+                return;
+            }
+            kitAbi = Abi(Abi::UnknownArchitecture, Abi::hostAbi().os());
+        } else {
+            kitAbi = ToolChainKitAspect::targetAbi(k);
+        }
+        if (item->matchTarget(kitAbi) != DebuggerItem::DoesNotMatch)
+            return;
+        k->setValue(DebuggerKitAspect::id(), QVariant());
+        setup(k);
         return; // All fine (now).
     }
 
@@ -367,23 +363,23 @@ Tasks DebuggerKitAspect::validateDebugger(const Kit *k)
         path = item->command().toUserOutput();
 
     if (errors & NoDebugger)
-        result << BuildSystemTask(Task::Warning, tr("No debugger set up."));
+        result << BuildSystemTask(Task::Warning, Tr::tr("No debugger set up."));
 
     if (errors & DebuggerNotFound)
-        result << BuildSystemTask(Task::Error, tr("Debugger \"%1\" not found.").arg(path));
+        result << BuildSystemTask(Task::Error, Tr::tr("Debugger \"%1\" not found.").arg(path));
 
     if (errors & DebuggerNotExecutable)
-        result << BuildSystemTask(Task::Error, tr("Debugger \"%1\" not executable.").arg(path));
+        result << BuildSystemTask(Task::Error, Tr::tr("Debugger \"%1\" not executable.").arg(path));
 
     if (errors & DebuggerNeedsAbsolutePath) {
         const QString message =
-                tr("The debugger location must be given as an "
+                Tr::tr("The debugger location must be given as an "
                    "absolute path (%1).").arg(path);
         result << BuildSystemTask(Task::Error, message);
     }
 
     if (errors & DebuggerDoesNotMatch) {
-        const QString message = tr("The ABI of the selected debugger does not "
+        const QString message = Tr::tr("The ABI of the selected debugger does not "
                                    "match the toolchain ABI.");
         result << BuildSystemTask(Task::Warning, message);
     }
@@ -398,37 +394,37 @@ KitAspectWidget *DebuggerKitAspect::createConfigWidget(Kit *k) const
 void DebuggerKitAspect::addToMacroExpander(Kit *kit, MacroExpander *expander) const
 {
     QTC_ASSERT(kit, return);
-    expander->registerVariable("Debugger:Name", tr("Name of Debugger"),
+    expander->registerVariable("Debugger:Name", Tr::tr("Name of Debugger"),
                                [kit]() -> QString {
                                    const DebuggerItem *item = debugger(kit);
-                                   return item ? item->displayName() : tr("Unknown debugger");
+                                   return item ? item->displayName() : Tr::tr("Unknown debugger");
                                });
 
-    expander->registerVariable("Debugger:Type", tr("Type of Debugger Backend"),
+    expander->registerVariable("Debugger:Type", Tr::tr("Type of Debugger Backend"),
                                [kit]() -> QString {
                                    const DebuggerItem *item = debugger(kit);
-                                   return item ? item->engineTypeName() : tr("Unknown debugger type");
+                                   return item ? item->engineTypeName() : Tr::tr("Unknown debugger type");
                                });
 
-    expander->registerVariable("Debugger:Version", tr("Debugger"),
+    expander->registerVariable("Debugger:Version", Tr::tr("Debugger"),
                                [kit]() -> QString {
                                    const DebuggerItem *item = debugger(kit);
                                    return item && !item->version().isEmpty()
-                                        ? item->version() : tr("Unknown debugger version");
+                                        ? item->version() : Tr::tr("Unknown debugger version");
                                });
 
-    expander->registerVariable("Debugger:Abi", tr("Debugger"),
+    expander->registerVariable("Debugger:Abi", Tr::tr("Debugger"),
                                [kit]() -> QString {
                                    const DebuggerItem *item = debugger(kit);
                                    return item && !item->abis().isEmpty()
                                            ? item->abiNames().join(' ')
-                                           : tr("Unknown debugger ABI");
+                                           : Tr::tr("Unknown debugger ABI");
                                });
 }
 
 KitAspect::ItemList DebuggerKitAspect::toUserOutput(const Kit *k) const
 {
-    return {{tr("Debugger"), displayString(k)}};
+    return {{Tr::tr("Debugger"), displayString(k)}};
 }
 
 DebuggerEngineType DebuggerKitAspect::engineType(const Kit *k)
@@ -442,10 +438,10 @@ QString DebuggerKitAspect::displayString(const Kit *k)
 {
     const DebuggerItem *item = debugger(k);
     if (!item)
-        return tr("No Debugger");
+        return Tr::tr("No Debugger");
     QString binary = item->command().toUserOutput();
-    QString name = tr("%1 Engine").arg(item->engineTypeName());
-    return binary.isEmpty() ? tr("%1 <None>").arg(name) : tr("%1 using \"%2\"").arg(name, binary);
+    QString name = Tr::tr("%1 Engine").arg(item->engineTypeName());
+    return binary.isEmpty() ? Tr::tr("%1 <None>").arg(name) : Tr::tr("%1 using \"%2\"").arg(name, binary);
 }
 
 void DebuggerKitAspect::setDebugger(Kit *k, const QVariant &id)

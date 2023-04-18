@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "signallist.h"
 
@@ -38,6 +16,8 @@
 #include <qmldesignerconstants.h>
 #include <qmlitemnode.h>
 #include <nodeabstractproperty.h>
+
+#include <utils/set_algorithm.h>
 
 #include <QStandardItemModel>
 #include <QSortFilterProxyModel>
@@ -137,6 +117,20 @@ void SignalList::setModelNode(const ModelNode &modelNode)
         m_modelNode = modelNode;
 }
 
+namespace {
+template<typename Callback>
+void callOnlyMouseSignalNames(const PropertyNameList &signalNames,
+                              const PropertyNameList &mouseSignalNames,
+                              const Callback &callback)
+{
+    std::set_union(signalNames.begin(),
+                   signalNames.end(),
+                   mouseSignalNames.begin(),
+                   mouseSignalNames.end(),
+                   Utils::make_iterator(callback));
+}
+} // namespace
+
 void SignalList::prepareSignals()
 {
     if (!m_modelNode.isValid())
@@ -145,27 +139,21 @@ void SignalList::prepareSignals()
     QList<QmlConnections> connections = QmlFlowViewNode::getAssociatedConnections(m_modelNode);
 
     for (ModelNode &node : m_modelNode.view()->allModelNodes()) {
-        // Collect all items which contain at least one of the specified signals
-        const PropertyNameList signalNames = node.metaInfo().signalNames();
-        // Put the signals into a QSet to avoid duplicates
-        auto signalNamesSet = QSet<PropertyName>(signalNames.begin(), signalNames.end());
-        for (const PropertyName &signal : signalNamesSet) {
-            if (QmlFlowViewNode::st_mouseSignals.contains(signal))
-                appendSignalToModel(connections, node, signal);
-        }
+        callOnlyMouseSignalNames(node.metaInfo().signalNames(),
+                                 QmlFlowViewNode::mouseSignals(),
+                                 [&](const PropertyName &signal) {
+                                     appendSignalToModel(connections, node, signal);
+                                 });
 
         // Gather valid properties and aliases from components
-        for (const PropertyName &property : node.metaInfo().propertyNames()) {
-            const TypeName propertyType = node.metaInfo().propertyTypeName(property);
-            const NodeMetaInfo info = m_modelNode.model()->metaInfo(propertyType);
-            // Collect all items which contain at least one of the specified signals
-            const PropertyNameList signalNames = info.signalNames();
-            // Put the signals into a QSet to avoid duplicates
-            auto signalNamesSet = QSet<PropertyName>(signalNames.begin(), signalNames.end());
-            for (const PropertyName &signal : signalNamesSet) {
-                if (QmlFlowViewNode::st_mouseSignals.contains(signal))
-                    appendSignalToModel(connections, node, signal, property);
-            }
+        for (const auto &property : node.metaInfo().properties()) {
+            const NodeMetaInfo info = property.propertyType();
+
+            callOnlyMouseSignalNames(info.signalNames(),
+                                     QmlFlowViewNode::mouseSignals(),
+                                     [&](const PropertyName &signal) {
+                                         appendSignalToModel(connections, node, signal);
+                                     });
         }
     }
 }
@@ -235,7 +223,7 @@ void SignalList::addConnection(const QModelIndex &modelIndex)
     const ModelNode rootModelNode = view->rootModelNode();
 
     if (rootModelNode.isValid() && rootModelNode.metaInfo().isValid()) {
-        NodeMetaInfo nodeMetaInfo = view->model()->metaInfo("QtQuick.Connections");
+        NodeMetaInfo nodeMetaInfo = view->model()->qtQuickConnectionsMetaInfo();
         if (nodeMetaInfo.isValid()) {
             view->executeInTransaction("ConnectionModel::addConnection", [=, &rootModelNode](){
                 ModelNode newNode = view->createModelNode("QtQuick.Connections",

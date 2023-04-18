@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppchecksymbols.h"
 
 #include "cpplocalsymbols.h"
 
+#include "cppeditortr.h"
+
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
-#include <QCoreApplication>
 #include <QDebug>
 
 // This is for experimeting highlighting ctors/dtors as functions (instead of types).
@@ -97,7 +76,8 @@ protected:
         if (!processed->contains(doc->globalNamespace())) {
             processed->insert(doc->globalNamespace());
 
-            foreach (const Document::Include &i, doc->resolvedIncludes())
+            const QList<Document::Include> includes = doc->resolvedIncludes();
+            for (const Document::Include &i : includes)
                 process(_snapshot.document(i.resolvedFileName()), processed);
 
             _mainDocument = (doc == _doc); // ### improve
@@ -120,7 +100,7 @@ protected:
             addType(q->base());
             addType(q->name());
 
-        } else if (name->isNameId() || name->isTemplateNameId()) {
+        } else if (name->asNameId() || name->asTemplateNameId()) {
             addType(name->identifier());
 
         }
@@ -131,7 +111,7 @@ protected:
         if (!name) {
             return;
 
-        } else if (name->isNameId()) {
+        } else if (name->asNameId()) {
             const Identifier *id = name->identifier();
             _fields.insert(QByteArray::fromRawData(id->chars(), id->size()));
 
@@ -143,7 +123,7 @@ protected:
         if (!name) {
             return;
 
-        } else if (name->isNameId()) {
+        } else if (name->asNameId()) {
             const Identifier *id = name->identifier();
             _functions.insert(QByteArray::fromRawData(id->chars(), id->size()));
         }
@@ -154,7 +134,7 @@ protected:
         if (!name) {
             return;
 
-        } else if (name->isNameId() || name->isTemplateNameId()) {
+        } else if (name->asNameId() || name->asTemplateNameId()) {
             const Identifier *id = name->identifier();
             _statics.insert(QByteArray::fromRawData(id->chars(), id->size()));
 
@@ -189,12 +169,12 @@ protected:
         if (symbol->enclosingEnum() != nullptr)
             addStatic(symbol->name());
 
-        if (symbol->type()->isFunctionType())
+        if (symbol->type()->asFunctionType())
             addFunction(symbol->name());
 
         if (symbol->isTypedef())
             addType(symbol->name());
-        else if (!symbol->type()->isFunctionType() && symbol->enclosingScope()->isClass())
+        else if (!symbol->type()->asFunctionType() && symbol->enclosingScope()->asClass())
             addField(symbol->name());
 
         return true;
@@ -333,7 +313,7 @@ void CheckSymbols::run()
 {
     CollectSymbols collectTypes(_doc, _context.snapshot());
 
-    _fileName = _doc->fileName();
+    _filePath = _doc->filePath();
     _potentialTypes = collectTypes.types();
     _potentialFields = collectTypes.fields();
     _potentialFunctions = collectTypes.functions();
@@ -355,7 +335,7 @@ void CheckSymbols::run()
 
 bool CheckSymbols::warning(unsigned line, unsigned column, const QString &text, unsigned length)
 {
-    Document::DiagnosticMessage m(Document::DiagnosticMessage::Warning, _fileName, line, column, text, length);
+    Document::DiagnosticMessage m(Document::DiagnosticMessage::Warning, _filePath, line, column, text, length);
     _diagMsgs.append(m);
     return false;
 }
@@ -524,11 +504,9 @@ bool CheckSymbols::visit(SimpleDeclarationAST *ast)
                         // Add a diagnostic message if non-virtual function has override/final marker
                         if ((_usages.back().kind != SemanticHighlighter::VirtualFunctionDeclarationUse)) {
                             if (funTy->isOverride())
-                                warning(declrIdNameAST, QCoreApplication::translate(
-                                            "CPlusplus::CheckSymbols", "Only virtual functions can be marked 'override'"));
+                                warning(declrIdNameAST, Tr::tr("Only virtual functions can be marked 'override'"));
                             else if (funTy->isFinal())
-                                warning(declrIdNameAST, QCoreApplication::translate(
-                                            "CPlusPlus::CheckSymbols", "Only virtual functions can be marked 'final'"));
+                                warning(declrIdNameAST, Tr::tr("Only virtual functions can be marked 'final'"));
                         }
                     }
                 }
@@ -752,7 +730,8 @@ bool CheckSymbols::visit(NewExpressionAST *ast)
             }
 
             Scope *scope = enclosingScope();
-            foreach (Symbol *s, binding->symbols()) {
+            const QList<Symbol *> symbols = binding->symbols();
+            for (Symbol *s : symbols) {
                 if (Class *klass = s->asClass()) {
                     scope = klass;
                     break;
@@ -787,16 +766,16 @@ void CheckSymbols::checkNamespace(NameAST *name)
     getTokenStartPosition(name->firstToken(), &line, &column);
 
     if (ClassOrNamespace *b = _context.lookupType(name->name, enclosingScope())) {
-        foreach (Symbol *s, b->symbols()) {
-            if (s->isNamespace())
+        const QList<Symbol *> symbols = b->symbols();
+        for (const Symbol *s : symbols) {
+            if (s->asNamespace())
                 return;
         }
     }
 
     const unsigned length = tokenAt(name->lastToken() - 1).utf16charsEnd()
             - tokenAt(name->firstToken()).utf16charsBegin();
-    warning(line, column, QCoreApplication::translate("CPlusPlus::CheckSymbols",
-                                                      "Expected a namespace-name"), length);
+    warning(line, column, Tr::tr( "Expected a namespace-name"), length);
 }
 
 bool CheckSymbols::hasVirtualDestructor(Class *klass) const
@@ -809,7 +788,7 @@ bool CheckSymbols::hasVirtualDestructor(Class *klass) const
     for (Symbol *s = klass->find(id); s; s = s->next()) {
         if (!s->name())
             continue;
-        if (s->name()->isDestructorNameId()) {
+        if (s->name()->asDestructorNameId()) {
             if (Function *funTy = s->type()->asFunctionType()) {
                 if (funTy->isVirtual() && id->match(s->identifier()))
                     return true;
@@ -829,7 +808,8 @@ bool CheckSymbols::hasVirtualDestructor(ClassOrNamespace *binding) const
         ClassOrNamespace *b = todo.takeFirst();
         if (b && !processed.contains(b)) {
             processed.insert(b);
-            foreach (Symbol *s, b->symbols()) {
+            const QList<Symbol *> symbols = b->symbols();
+            for (Symbol *s : symbols) {
                 if (Class *k = s->asClass()) {
                     if (hasVirtualDestructor(k))
                         return true;
@@ -1006,7 +986,8 @@ bool CheckSymbols::visit(MemInitializerAST *ast)
     if (FunctionDefinitionAST *enclosingFunction = enclosingFunctionDefinition()) {
         if (ast->name && enclosingFunction->symbol) {
             if (ClassOrNamespace *binding = _context.lookupType(enclosingFunction->symbol)) {
-                foreach (Symbol *s, binding->symbols()) {
+                const QList<Symbol *> symbols = binding->symbols();
+                for (Symbol *s : symbols) {
                     if (Class *klass = s->asClass()) {
                         NameAST *nameAST = ast->name;
                         if (QualifiedNameAST *q = nameAST->asQualifiedName()) {
@@ -1137,8 +1118,8 @@ bool CheckSymbols::visit(FunctionDefinitionAST *ast)
     accept(ast->function_body);
 
     const Internal::LocalSymbols locals(_doc, ast);
-    foreach (const QList<Result> &uses, locals.uses) {
-        foreach (const Result &u, uses)
+    for (const QList<Result> &uses : std::as_const(locals.uses)) {
+        for (const Result &u : uses)
             addUse(u);
     }
 
@@ -1224,7 +1205,7 @@ void CheckSymbols::addType(ClassOrNamespace *b, NameAST *ast)
     Kind kind = SemanticHighlighter::TypeUse;
     const QList<Symbol *> &symbols = b->symbols();
     for (const Symbol * const s : symbols) {
-        if (s->isNamespace()) {
+        if (s->asNamespace()) {
             kind = SemanticHighlighter::NamespaceUse;
             break;
         }
@@ -1238,8 +1219,8 @@ bool CheckSymbols::isTemplateClass(Symbol *symbol) const
     if (symbol) {
         if (Template *templ = symbol->asTemplate()) {
             if (Symbol *declaration = templ->declaration()) {
-                return declaration->isClass()
-                        || declaration->isForwardClassDeclaration()
+                return declaration->asClass()
+                        || declaration->asForwardClassDeclaration()
                         || declaration->isTypedef();
             }
         }
@@ -1257,16 +1238,16 @@ bool CheckSymbols::maybeAddTypeOrStatic(const QList<LookupItem> &candidates, Nam
     if (tok.generated())
         return false;
 
-    foreach (const LookupItem &r, candidates) {
+    for (const LookupItem &r : candidates) {
         Symbol *c = r.declaration();
-        if (c->isUsingDeclaration()) // skip using declarations...
+        if (c->asUsingDeclaration()) // skip using declarations...
             continue;
-        if (c->isUsingNamespaceDirective()) // ... and using namespace directives.
+        if (c->asUsingNamespaceDirective()) // ... and using namespace directives.
             continue;
-        if (c->isTypedef() || c->isNamespace() ||
+        if (c->isTypedef() || c->asNamespace() ||
                 c->isStatic() || //consider also static variable
-                c->isClass() || c->isEnum() || isTemplateClass(c) ||
-                c->isForwardClassDeclaration() || c->isTypenameArgument() || c->enclosingEnum()) {
+                c->asClass() || c->asEnum() || isTemplateClass(c) ||
+                c->asForwardClassDeclaration() || c->asTypenameArgument() || c->enclosingEnum()) {
             int line, column;
             getTokenStartPosition(startToken, &line, &column);
             const unsigned length = tok.utf16chars();
@@ -1274,7 +1255,7 @@ bool CheckSymbols::maybeAddTypeOrStatic(const QList<LookupItem> &candidates, Nam
             Kind kind = SemanticHighlighter::TypeUse;
             if (c->enclosingEnum() != nullptr)
                 kind = SemanticHighlighter::EnumerationUse;
-            else if (c->isNamespace())
+            else if (c->asNamespace())
                 kind = SemanticHighlighter::NamespaceUse;
             else if (c->isStatic())
                 // treat static variable as a field(highlighting)
@@ -1300,15 +1281,15 @@ bool CheckSymbols::maybeAddField(const QList<LookupItem> &candidates, NameAST *a
     if (tok.generated())
         return false;
 
-    foreach (const LookupItem &r, candidates) {
+    for (const LookupItem &r : candidates) {
         Symbol *c = r.declaration();
         if (!c)
             continue;
-        if (!c->isDeclaration())
+        if (!c->asDeclaration())
             return false;
-        if (!(c->enclosingScope() && c->enclosingScope()->isClass()))
+        if (!(c->enclosingScope() && c->enclosingScope()->asClass()))
             return false; // shadowed
-        if (c->isTypedef() || (c->type() && c->type()->isFunctionType()))
+        if (c->isTypedef() || (c->type() && c->type()->asFunctionType()))
             return false; // shadowed
 
         int line, column;
@@ -1345,7 +1326,7 @@ bool CheckSymbols::maybeAddFunction(const QList<LookupItem> &candidates, NameAST
 
     Kind kind = functionKind == FunctionDeclaration ? SemanticHighlighter::FunctionDeclarationUse
                                                     : SemanticHighlighter::FunctionUse;
-    foreach (const LookupItem &r, candidates) {
+    for (const LookupItem &r : candidates) {
         Symbol *c = r.declaration();
 
         // Skip current if there's no declaration or name.
@@ -1354,7 +1335,7 @@ bool CheckSymbols::maybeAddFunction(const QList<LookupItem> &candidates, NameAST
 
         // In addition check for destructors, since the leading ~ is not taken into consideration.
         // We don't want to compare destructors with something else or the other way around.
-        if (isDestructor != c->name()->isDestructorNameId())
+        if (isDestructor != (c->name()->asDestructorNameId() != nullptr))
             continue;
 
         isConstructor = isConstructorDeclaration(c);
@@ -1415,9 +1396,9 @@ bool CheckSymbols::maybeAddFunction(const QList<LookupItem> &candidates, NameAST
 
         // Add a diagnostic message if argument count does not match
         if (matchType == Match_TooFewArgs)
-            warning(line, column, QCoreApplication::translate("CplusPlus::CheckSymbols", "Too few arguments"), length);
+            warning(line, column, Tr::tr("Too few arguments"), length);
         else if (matchType == Match_TooManyArgs)
-            warning(line, column, QCoreApplication::translate("CPlusPlus::CheckSymbols", "Too many arguments"), length);
+            warning(line, column, Tr::tr("Too many arguments"), length);
 
         const Result use(line, column, length, kind);
         addUse(use);

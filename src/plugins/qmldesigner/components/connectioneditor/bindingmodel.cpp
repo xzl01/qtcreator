@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bindingmodel.h"
 
@@ -99,9 +77,8 @@ void BindingModel::bindingRemoved(const BindingProperty &bindingProperty)
     m_handleDataChanged = true;
 }
 
-void BindingModel::selectionChanged(const QList<ModelNode> &selectedNodes)
+void BindingModel::selectionChanged([[maybe_unused]] const QList<ModelNode> &selectedNodes)
 {
-    Q_UNUSED(selectedNodes)
     m_handleDataChanged = false;
     resetModel();
     m_handleDataChanged = true;
@@ -138,13 +115,15 @@ QStringList BindingModel::possibleTargetProperties(const BindingProperty &bindin
     NodeMetaInfo metaInfo = modelNode.metaInfo();
 
     if (metaInfo.isValid()) {
-        QStringList possibleProperties;
-        foreach (const PropertyName &propertyName, metaInfo.propertyNames()) {
-            if (metaInfo.propertyIsWritable(propertyName))
-                possibleProperties << QString::fromUtf8(propertyName);
+        const auto properties = metaInfo.properties();
+        QStringList writableProperties;
+        writableProperties.reserve(static_cast<int>(properties.size()));
+        for (const auto &property : properties) {
+            if (property.isWritable())
+                writableProperties.push_back(QString::fromUtf8(property.name()));
         }
 
-        return possibleProperties;
+        return writableProperties;
     }
 
     return QStringList();
@@ -156,13 +135,12 @@ QStringList BindingModel::possibleSourceProperties(const BindingProperty &bindin
     const QStringList stringlist = expression.split(QLatin1String("."));
     QStringList possibleProperties;
 
-    TypeName typeName;
+    NodeMetaInfo type;
 
-    if (bindingProperty.parentModelNode().metaInfo().isValid()) {
-        typeName = bindingProperty.parentModelNode().metaInfo().propertyTypeName(bindingProperty.name());
-    } else {
+    if (auto metaInfo = bindingProperty.parentModelNode().metaInfo(); metaInfo.isValid())
+        type = metaInfo.property(bindingProperty.name()).propertyType();
+    else
         qWarning() << " BindingModel::possibleSourcePropertiesForRow no meta info for target node";
-    }
 
     const QString &id = stringlist.constFirst();
 
@@ -172,18 +150,16 @@ QStringList BindingModel::possibleSourceProperties(const BindingProperty &bindin
         //if it's not a valid model node, maybe it's a singleton
         if (RewriterView* rv = connectionView()->rewriterView()) {
             for (const QmlTypeData &data : rv->getQMLTypes()) {
-                if (!data.typeName.isEmpty()) {
-                    if (data.typeName == id) {
-                        NodeMetaInfo metaInfo = connectionView()->model()->metaInfo(data.typeName.toUtf8());
+                if (!data.typeName.isEmpty() && data.typeName == id) {
+                    NodeMetaInfo metaInfo = connectionView()->model()->metaInfo(data.typeName.toUtf8());
 
-                        if (metaInfo.isValid()) {
-                            for (const PropertyName &propertyName : metaInfo.propertyNames()) {
-                                //without check for now
-                                possibleProperties << QString::fromUtf8(propertyName);
-                            }
-
-                            return possibleProperties;
+                    if (metaInfo.isValid()) {
+                        for (const auto &property : metaInfo.properties()) {
+                            //without check for now
+                            possibleProperties.push_back(QString::fromUtf8(property.name()));
                         }
+
+                        return possibleProperties;
                     }
                 }
             }
@@ -206,9 +182,9 @@ QStringList BindingModel::possibleSourceProperties(const BindingProperty &bindin
     }
 
     if (metaInfo.isValid())  {
-        for (const PropertyName &propertyName : metaInfo.propertyNames()) {
-            if (metaInfo.propertyTypeName(propertyName) == typeName) //### todo proper check
-                possibleProperties << QString::fromUtf8(propertyName);
+        for (const auto &property : metaInfo.properties()) {
+            if (property.propertyType() == type) //### todo proper check
+                possibleProperties.push_back(QString::fromUtf8(property.name()));
         }
     } else {
         qWarning() << " BindingModel::possibleSourcePropertiesForRow no meta info for source node";
@@ -232,9 +208,9 @@ static PropertyName unusedProperty(const ModelNode &modelNode)
 {
     PropertyName propertyName = "none";
     if (modelNode.metaInfo().isValid()) {
-        foreach (const PropertyName &propertyName, modelNode.metaInfo().propertyNames()) {
-            if (modelNode.metaInfo().propertyIsWritable(propertyName) && !modelNode.hasProperty(propertyName))
-                return propertyName;
+        for (const auto &property : modelNode.metaInfo().properties()) {
+            if (property.isWritable() && !modelNode.hasProperty(propertyName))
+                return property.name();
         }
     }
 
@@ -305,7 +281,8 @@ void BindingModel::updateBindingProperty(int rowNumber)
 
 void BindingModel::addModelNode(const ModelNode &modelNode)
 {
-    foreach (const BindingProperty &bindingProperty, modelNode.bindingProperties()) {
+    const QList<BindingProperty> bindingProperties = modelNode.bindingProperties();
+    for (const BindingProperty &bindingProperty : bindingProperties) {
         addBindingProperty(bindingProperty);
     }
 }

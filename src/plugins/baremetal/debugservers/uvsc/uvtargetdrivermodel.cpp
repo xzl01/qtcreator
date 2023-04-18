@@ -1,38 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "uvtargetdrivermodel.h"
+
+#include <baremetal/baremetaltr.h>
 
 #include <QFile>
 #include <QTextStream>
 
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
-namespace Uv {
+namespace BareMetal::Internal::Uv {
 
 constexpr char cpuDllKey[] = "CPUDLL";
 constexpr char driverKey[] = "TDRV";
@@ -128,7 +106,7 @@ public:
 DriverSelectionModel::DriverSelectionModel(QObject *parent)
     : TreeModel<DriverSelectionItem>(parent)
 {
-    setHeader({tr("Path")});
+    setHeader({Tr::tr("Path")});
 }
 
 void DriverSelectionModel::fillDrivers(const FilePath &toolsIniFile,
@@ -145,13 +123,13 @@ void DriverSelectionModel::fillDrivers(const FilePath &toolsIniFile,
     if (!collectCpuDllsAndDrivers(&f, allCpuDlls, allDrivers))
         return;
 
-    for (const Dll &dll : qAsConst(allDrivers)) {
+    for (const Dll &dll : std::as_const(allDrivers)) {
         if (!supportedDrivers.contains(dll.path))
             continue;
         const auto item = new DriverSelectionItem(dll.index);
         item->m_dll = dll.path;
         item->m_name = dll.content;
-        for (const Dll &cpu : qAsConst(allCpuDlls)) {
+        for (const Dll &cpu : std::as_const(allCpuDlls)) {
             const QStringList mnemonics = cpu.content.split(',');
             if (mnemonics.contains(dll.mnemonic))
                 item->m_cpuDlls.push_back(cpu.path);
@@ -203,6 +181,4 @@ void DriverSelectionView::currentChanged(const QModelIndex &current, const QMode
         emit driverSelected(selection);
 }
 
-} // namespace Uv
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal::Uv

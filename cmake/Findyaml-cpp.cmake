@@ -22,9 +22,7 @@ else()
   endif()
   set(YAML_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../src/libs/3rdparty/yaml-cpp)
   add_qtc_library(yaml-cpp
-    DEFINES YAML_CPP_DLL yaml_cpp_EXPORTS
     INCLUDES ${YAML_SOURCE_DIR}/include
-    PUBLIC_DEFINES YAML_CPP_DLL
     PUBLIC_INCLUDES ${YAML_SOURCE_DIR}/include
     PROPERTIES AUTOMOC OFF AUTOUIC OFF
     SOURCES
@@ -116,11 +114,17 @@ else()
       ${YAML_SOURCE_DIR}/src/tag.h
       ${YAML_SOURCE_DIR}/src/token.h
     )
+    if (NOT QTC_STATIC_BUILD)
+      extend_qtc_target(yaml-cpp
+        DEFINES yaml_cpp_EXPORTS
+        PUBLIC_DEFINES YAML_CPP_DLL)
+    endif()
+
     if(TARGET yaml-cpp)
       set(yaml-cpp_FOUND 1)
       set_package_properties(yaml-cpp PROPERTIES DESCRIPTION "using internal src/libs/3rdparty/yaml-cpp")
       if(MSVC)
-        target_compile_options(yaml-cpp PUBLIC /wd4251 /wd4275)
+        target_compile_options(yaml-cpp PUBLIC /wd4251 /wd4275 /EHsc)
       endif()
     endif()
     unset(YAML_SOURCE_DIR)

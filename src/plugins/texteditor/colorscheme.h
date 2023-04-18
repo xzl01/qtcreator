@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -36,6 +14,8 @@
 QT_BEGIN_NAMESPACE
 class QWidget;
 QT_END_NAMESPACE
+
+namespace Utils { class FilePath; }
 
 namespace TextEditor {
 
@@ -103,14 +83,10 @@ private:
 class TEXTEDITOR_EXPORT ColorScheme
 {
 public:
-    void setDisplayName(const QString &name)
-    { m_displayName = name; }
+    void setDisplayName(const QString &name) { m_displayName = name; }
+    QString displayName() const { return m_displayName; }
 
-    QString displayName() const
-    { return m_displayName; }
-
-    inline bool isEmpty() const
-    { return m_formats.isEmpty(); }
+    bool isEmpty() const { return m_formats.isEmpty(); }
 
     bool contains(TextStyle category) const;
 
@@ -121,15 +97,15 @@ public:
 
     void clear();
 
-    bool save(const QString &fileName, QWidget *parent) const;
-    bool load(const QString &fileName);
+    bool save(const Utils::FilePath &filePath, QWidget *parent) const;
+    bool load(const Utils::FilePath &filePath);
 
     bool equals(const ColorScheme &cs) const
     {
         return m_formats == cs.m_formats && m_displayName == cs.m_displayName;
     }
 
-    static QString readNameOfScheme(const QString &fileName);
+    static QString readNameOfScheme(const Utils::FilePath &filePath);
 
     friend bool operator==(const ColorScheme &cs1, const ColorScheme &cs2) { return cs1.equals(cs2); }
     friend bool operator!=(const ColorScheme &cs1, const ColorScheme &cs2) { return !cs1.equals(cs2); }

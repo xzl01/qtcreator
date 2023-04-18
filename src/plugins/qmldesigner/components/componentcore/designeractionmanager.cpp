@@ -1,32 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "designeractionmanager.h"
 
+#include "anchoraction.h"
 #include "changestyleaction.h"
 #include "designeractionmanagerview.h"
+#include "designericons.h"
 #include "designermcumanager.h"
 #include "formatoperation.h"
 #include "modelnodecontextmenu_helper.h"
@@ -44,6 +24,7 @@
 #include <documentmanager.h>
 #include <qmldesignerplugin.h>
 #include <viewmanager.h>
+#include <actioneditor.h>
 
 #include <listmodeleditor/listmodeleditordialog.h>
 #include <listmodeleditor/listmodeleditormodel.h>
@@ -61,6 +42,7 @@
 #include <QImageReader>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QScopeGuard>
 
 #include <exception>
 
@@ -93,21 +75,21 @@ DesignerActionToolBar *DesignerActionManager::createToolBar(QWidget *parent) con
     });
 
     Utils::sort(categories, [](ActionInterface *l, ActionInterface *r) {
-        return l->priority() > r->priority();
+        return l->priority() < r->priority();
     });
 
-    for (auto *categoryAction : qAsConst(categories)) {
+    for (auto *categoryAction : std::as_const(categories)) {
         QList<ActionInterface* > actions = Utils::filtered(designerActions(), [categoryAction](ActionInterface *action) {
                 return action->category() == categoryAction->menuId();
         });
 
         Utils::sort(actions, [](ActionInterface *l, ActionInterface *r) {
-            return l->priority() > r->priority();
+            return l->priority() < r->priority();
         });
 
         bool addSeparator = false;
 
-        for (auto *action : qAsConst(actions)) {
+        for (auto *action : std::as_const(actions)) {
             if ((action->type() == ActionInterface::Action || action->type() == ActionInterface::ToolBarAction)
                     && action->action()) {
                 toolBar->registerAction(action);
@@ -129,11 +111,13 @@ void DesignerActionManager::polishActions() const
     Core::Context qmlDesignerFormEditorContext(Constants::C_QMLFORMEDITOR);
     Core::Context qmlDesignerEditor3DContext(Constants::C_QMLEDITOR3D);
     Core::Context qmlDesignerNavigatorContext(Constants::C_QMLNAVIGATOR);
+    Core::Context qmlDesignerMaterialBrowserContext(Constants::C_QMLMATERIALBROWSER);
 
     Core::Context qmlDesignerUIContext;
     qmlDesignerUIContext.add(qmlDesignerFormEditorContext);
     qmlDesignerUIContext.add(qmlDesignerEditor3DContext);
     qmlDesignerUIContext.add(qmlDesignerNavigatorContext);
+    qmlDesignerUIContext.add(qmlDesignerMaterialBrowserContext);
 
     for (auto *action : actions) {
         if (!action->menuId().isEmpty()) {
@@ -160,7 +144,7 @@ QGraphicsWidget *DesignerActionManager::createFormEditorToolBar(QGraphicsItem *p
     });
 
     Utils::sort(actions, [](ActionInterface *l, ActionInterface *r) {
-        return l->priority() > r->priority();
+        return l->priority() < r->priority();
     });
 
     QGraphicsWidget *toolbar = new QGraphicsWidget(parent);
@@ -170,7 +154,7 @@ QGraphicsWidget *DesignerActionManager::createFormEditorToolBar(QGraphicsItem *p
     layout->setSpacing(0);
     toolbar->setLayout(layout);
 
-    for (ActionInterface *action : qAsConst(actions)) {
+    for (ActionInterface *action : std::as_const(actions)) {
         auto button = new FormEditorToolButton(action->action(), toolbar);
         layout->addItem(button);
     }
@@ -222,9 +206,11 @@ void DesignerActionManager::registerModelNodePreviewHandler(const ModelNodePrevi
 bool DesignerActionManager::hasModelNodePreviewHandler(const ModelNode &node) const
 {
     const bool isComponent = node.isComponent();
-    for (const auto &handler : qAsConst(m_modelNodePreviewImageHandlers)) {
-        if ((isComponent || !handler.componentOnly) && node.isSubclassOf(handler.type))
-            return true;
+    for (const auto &handler : std::as_const(m_modelNodePreviewImageHandlers)) {
+        if ((isComponent || !handler.componentOnly)) {
+            if (auto base = node.model()->metaInfo(handler.type); node.metaInfo().isBasedOn(base))
+                return true;
+        }
     }
     return false;
 }
@@ -234,11 +220,12 @@ ModelNodePreviewImageOperation DesignerActionManager::modelNodePreviewOperation(
     ModelNodePreviewImageOperation op = nullptr;
     int prio = -1;
     const bool isComponent = node.isComponent();
-    for (const auto &handler : qAsConst(m_modelNodePreviewImageHandlers)) {
-        if ((isComponent || !handler.componentOnly) && handler.priority > prio
-                && node.isSubclassOf(handler.type)) {
-            op = handler.operation;
-            prio = handler.priority;
+    for (const auto &handler : std::as_const(m_modelNodePreviewImageHandlers)) {
+        if ((isComponent || !handler.componentOnly) && handler.priority > prio) {
+            if (auto base = node.model()->metaInfo(handler.type); node.metaInfo().isBasedOn(base)) {
+                op = handler.operation;
+                prio = handler.priority;
+            }
         }
     }
     return op;
@@ -292,22 +279,27 @@ QHash<QString, QStringList> DesignerActionManager::handleExternalAssetsDrop(cons
     for (const QString &category : categories) {
         AddResourceOperation operation = categoryOperation.value(category);
         QStringList files = categoryFiles.value(category);
-        AddFilesResult result = operation(files, {});
-        if (result == AddFilesResult::Succeeded)
+        AddFilesResult result = operation(files, {}, true);
+        if (result.status() == AddFilesResult::Succeeded)
             addedCategoryFiles.insert(category, files);
     }
 
     return addedCategoryFiles;
 }
 
+QIcon DesignerActionManager::contextIcon(int contextId) const
+{
+    return m_designerIcons->icon(DesignerIcons::IconId(contextId), DesignerIcons::ContextMenuArea);
+}
+
 class VisiblityModelNodeAction : public ModelNodeContextMenuAction
 {
 public:
-    VisiblityModelNodeAction(const QByteArray &id, const QString &description, const QByteArray &category, const QKeySequence &key, int priority,
+    VisiblityModelNodeAction(const QByteArray &id, const QString &description, const QIcon &icon, const QByteArray &category, const QKeySequence &key, int priority,
                              SelectionContextOperation action,
                              SelectionContextPredicate enabled = &SelectionContextFunctors::always,
                              SelectionContextPredicate visibility = &SelectionContextFunctors::always) :
-        ModelNodeContextMenuAction(id, description, {}, category, key, priority, action, enabled, visibility)
+        ModelNodeContextMenuAction(id, description, icon, category, key, priority, action, enabled, visibility)
     {}
 
     void updateContext() override
@@ -390,9 +382,9 @@ public:
 class SelectionModelNodeAction : public ActionGroup
 {
 public:
-    SelectionModelNodeAction(const QString &displayName, const QByteArray &menuId, int priority) :
-        ActionGroup(displayName, menuId, priority,
-                           &SelectionContextFunctors::always, &SelectionContextFunctors::selectionEnabled)
+    SelectionModelNodeAction(const QString &displayName, const QByteArray &menuId, const QIcon &icon, int priority) :
+        ActionGroup(displayName, menuId, icon, priority,
+                    &SelectionContextFunctors::always, &SelectionContextFunctors::selectionEnabled)
 
     {}
 
@@ -416,8 +408,7 @@ public:
                 if (!ModelNode::isThisOrAncestorLocked(parentNode)) {
                     ActionTemplate *selectionAction = new ActionTemplate("SELECTION", {}, &ModelNodeOperations::select);
                     selectionAction->setParent(menu());
-                    selectionAction->setText(QString(QT_TRANSLATE_NOOP("QmlDesignerContextMenu", "Select parent: %1")).arg(
-                                                 captionForModelNode(parentNode)));
+                    selectionAction->setText(QString(QT_TRANSLATE_NOOP("QmlDesignerContextMenu", "Parent")));
 
                     SelectionContext nodeSelectionContext = selectionContext();
                     nodeSelectionContext.setTargetNode(parentNode);
@@ -450,6 +441,395 @@ public:
     }
 };
 
+QString prependSignal(QString signalHandlerName)
+{
+    if (signalHandlerName.isNull() || signalHandlerName.isEmpty())
+        return {};
+
+    QChar firstChar = signalHandlerName.at(0).toUpper();
+    signalHandlerName[0] = firstChar;
+    signalHandlerName.prepend(QLatin1String("on"));
+
+    return signalHandlerName;
+}
+
+QStringList getSignalsList(const ModelNode &node)
+{
+    if (!node.isValid())
+        return {};
+
+    if (!node.hasMetaInfo())
+        return {};
+
+    QStringList signalsList;
+    NodeMetaInfo nodeMetaInfo = node.metaInfo();
+
+    for (const auto &signalName : nodeMetaInfo.signalNames()) {
+        signalsList << QString::fromUtf8(signalName);
+    }
+
+    //on...Changed are the most regular signals, we assign them the lowest priority,
+    //we don't need them right now
+//    QStringList signalsWithChanged = signalsList.filter("Changed");
+
+    //these are item specific, like MouseArea.clicked, they have higher priority
+    QStringList signalsWithoutChanged = signalsList;
+    signalsWithoutChanged.removeIf([](QString str) {
+        if (str.endsWith("Changed"))
+            return true;
+        return false;
+    });
+
+    QStringList finalResult;
+    finalResult.append(signalsWithoutChanged);
+
+
+    if (finalResult.isEmpty())
+        finalResult = signalsList;
+
+    finalResult.removeDuplicates();
+
+    return finalResult;
+}
+
+struct SlotEntry
+{
+    QString name;
+    std::function<void(SignalHandlerProperty)> action;
+};
+
+struct SlotList
+{
+    QString categoryName;
+    QList<SlotEntry> slotEntries;
+};
+
+QList<ModelNode> stateGroups(const ModelNode &node)
+{
+    if (!node.view()->isAttached())
+        return {};
+
+    const auto groupMetaInfo = node.view()->model()->qtQuickStateGroupMetaInfo();
+
+    return node.view()->allModelNodesOfType(groupMetaInfo);
+}
+
+QList<SlotList> getSlotsLists(const ModelNode &node)
+{
+    if (!node.isValid())
+        return {};
+
+    if (!node.view()->rootModelNode().isValid())
+        return {};
+
+    QList<SlotList> resultList;
+
+    ModelNode rootNode = node.view()->rootModelNode();
+    QmlObjectNode rootObjectNode(rootNode);
+
+    const QString changeStateStr = QT_TRANSLATE_NOOP("QmlDesignerContextMenu", "Change State");
+    const QString changeStateGroupStr = QT_TRANSLATE_NOOP("QmlDesignerContextMenu",
+                                                          "Change State Group");
+    const QString defaultStateStr = QT_TRANSLATE_NOOP("QmlDesignerContextMenu", "Default State");
+    auto createStateChangeSlot = [](ModelNode node,
+                                    const QString &stateName,
+                                    const QString &displayName) {
+        return SlotEntry(
+            {displayName, [node, stateName](SignalHandlerProperty signalHandler) mutable {
+                 signalHandler.setSource(QString("%1.state = \"%2\"").arg(node.validId(), stateName));
+             }});
+    };
+
+    {
+        SlotList states = {changeStateStr, {}};
+
+        const SlotEntry defaultState = createStateChangeSlot(rootNode, "", defaultStateStr);
+        states.slotEntries.push_back(defaultState);
+
+        for (const auto &stateName : rootObjectNode.states().names()) {
+            const SlotEntry entry = createStateChangeSlot(rootNode, stateName, stateName);
+
+            states.slotEntries.push_back(entry);
+        }
+
+        resultList.push_back(states);
+    }
+
+    const QList<ModelNode> groups = stateGroups(node);
+    for (const auto &stateGroup : groups) {
+        QmlObjectNode stateGroupObjectNode(stateGroup);
+        SlotList stateGroupCategory = {changeStateGroupStr + " " + stateGroup.displayName(), {}};
+
+        const SlotEntry defaultGroupState = createStateChangeSlot(stateGroup, "", defaultStateStr);
+        stateGroupCategory.slotEntries.push_back(defaultGroupState);
+
+        for (const auto &stateName : stateGroupObjectNode.states().names()) {
+            const SlotEntry entry = createStateChangeSlot(stateGroup, stateName, stateName);
+            stateGroupCategory.slotEntries.push_back(entry);
+        }
+
+        resultList.push_back(stateGroupCategory);
+    }
+
+    return resultList;
+}
+
+//creates connection without signalHandlerProperty
+ModelNode createNewConnection(ModelNode targetNode)
+{
+    NodeMetaInfo connectionsMetaInfo = targetNode.view()->model()->qtQuickConnectionsMetaInfo();
+    ModelNode newConnectionNode = targetNode.view()->createModelNode(
+        "QtQuick.Connections", connectionsMetaInfo.majorVersion(), connectionsMetaInfo.minorVersion());
+    if (QmlItemNode::isValidQmlItemNode(targetNode))
+        targetNode.nodeAbstractProperty("data").reparentHere(newConnectionNode);
+
+    newConnectionNode.bindingProperty("target").setExpression(targetNode.id());
+
+    return newConnectionNode;
+}
+
+void removeSignal(SignalHandlerProperty signalHandler)
+{
+    if (!signalHandler.isValid())
+        return;
+    auto connectionNode = signalHandler.parentModelNode();
+    auto connectionSignals = connectionNode.signalProperties();
+    if (connectionSignals.size() > 1) {
+        if (connectionSignals.contains(signalHandler))
+            connectionNode.removeProperty(signalHandler.name());
+    } else {
+        connectionNode.destroy();
+    }
+}
+
+class ConnectionsModelNodeActionGroup : public ActionGroup
+{
+public:
+    ConnectionsModelNodeActionGroup(const QString &displayName, const QByteArray &menuId, const QIcon &icon, int priority)
+        : ActionGroup(displayName,
+                      menuId,
+                      icon,
+                      priority,
+                      &SelectionContextFunctors::always,
+                      &SelectionContextFunctors::selectionEnabled)
+    {}
+
+    void updateContext() override
+    {
+        menu()->clear();
+
+        const auto selection = selectionContext();
+
+        bool showMenu = false;
+        auto cleanup = qScopeGuard([&]{ menu()->setEnabled(showMenu); });
+
+        if (!selection.isValid())
+            return;
+        if (!selection.singleNodeIsSelected())
+            return;
+
+        ModelNode currentNode = selection.currentSingleSelectedNode();
+
+        if (!currentNode.isValid())
+            return;
+        if (!currentNode.hasId())
+            return;
+        showMenu = true;
+
+        QmlObjectNode currentObjectNode(currentNode);
+
+        QStringList signalsList = getSignalsList(currentNode);
+        QList<SlotList> slotsLists = getSlotsLists(currentNode);
+
+        for (const ModelNode &connectionNode : currentObjectNode.getAllConnections()) {
+            for (const AbstractProperty &property : connectionNode.properties()) {
+                if (property.isSignalHandlerProperty() && property.name() != "target") {
+                    const auto signalHandler = property.toSignalHandlerProperty();
+
+                    const QString propertyName = QString::fromUtf8(signalHandler.name());
+
+                    QMenu *activeSignalHandlerGroup = new QMenu(propertyName, menu());
+
+                    QMenu *editSignalGroup = new QMenu(QT_TRANSLATE_NOOP("QmlDesignerContextMenu",
+                                                                         "Change Signal"),
+                                                       menu());
+
+                    for (const auto &signalStr : signalsList) {
+                        if (prependSignal(signalStr).toUtf8() == signalHandler.name())
+                            continue;
+
+                        ActionTemplate *newSignalAction = new ActionTemplate(
+                            (signalStr + "Id").toLatin1(),
+                            signalStr,
+                            [signalStr, signalHandler](const SelectionContext &) {
+                                signalHandler.parentModelNode().view()->executeInTransaction(
+                                    "ConnectionsModelNodeActionGroup::"
+                                    "changeSignal",
+                                    [signalStr, signalHandler]() {
+                                        auto connectionNode = signalHandler.parentModelNode();
+                                        auto newHandler = connectionNode.signalHandlerProperty(
+                                            prependSignal(signalStr).toLatin1());
+                                        newHandler.setSource(signalHandler.source());
+                                        connectionNode.removeProperty(signalHandler.name());
+                                    });
+                            });
+                        editSignalGroup->addAction(newSignalAction);
+                    }
+
+                    activeSignalHandlerGroup->addMenu(editSignalGroup);
+
+                    if (!slotsLists.isEmpty()) {
+                        QMenu *editSlotGroup = new QMenu(QT_TRANSLATE_NOOP("QmlDesignerContextMenu",
+                                                                           "Change Slot"),
+                                                         menu());
+
+                        if (slotsLists.size() == 1) {
+                            for (const auto &slot : slotsLists.at(0).slotEntries) {
+                                ActionTemplate *newSlotAction = new ActionTemplate(
+                                    (slot.name + "Id").toLatin1(),
+                                    (slotsLists.at(0).categoryName
+                                     + (QT_TRANSLATE_NOOP("QmlDesignerContextMenu",
+                                                          " to ")) //context: Change State _to_ state1
+                                     + slot.name),
+                                    [slot, signalHandler](const SelectionContext &) {
+                                        signalHandler.parentModelNode().view()->executeInTransaction(
+                                            "ConnectionsModelNodeActionGroup::"
+                                            "changeSlot",
+                                            [slot, signalHandler]() { slot.action(signalHandler); });
+                                    });
+                                editSlotGroup->addAction(newSlotAction);
+                            }
+                        } else {
+                            for (const auto &slotCategory : slotsLists) {
+                                QMenu *slotCategoryMenu = new QMenu(slotCategory.categoryName, menu());
+                                for (const auto &slot : slotCategory.slotEntries) {
+                                    ActionTemplate *newSlotAction = new ActionTemplate(
+                                        (slot.name + "Id").toLatin1(),
+                                        slot.name,
+                                        [slot, signalHandler](const SelectionContext &) {
+                                            signalHandler.parentModelNode().view()->executeInTransaction(
+                                                "ConnectionsModelNodeActionGroup::"
+                                                "changeSlot",
+                                                [slot, signalHandler]() {
+                                                    slot.action(signalHandler);
+                                                });
+                                        });
+                                    slotCategoryMenu->addAction(newSlotAction);
+                                }
+                                editSlotGroup->addMenu(slotCategoryMenu);
+                            }
+                        }
+                        activeSignalHandlerGroup->addMenu(editSlotGroup);
+                    }
+
+                    ActionTemplate *openEditorAction = new ActionTemplate(
+                        (propertyName + "OpenEditorId").toLatin1(),
+                        QString(QT_TRANSLATE_NOOP("QmlDesignerContextMenu", "Open Connections Editor")),
+                        [=](const SelectionContext &) {
+                            signalHandler.parentModelNode().view()->executeInTransaction(
+                                "ConnectionsModelNodeActionGroup::"
+                                "openConnectionsEditor",
+                                [signalHandler]() {
+                                    ActionEditor::invokeEditor(signalHandler, removeSignal);
+                                });
+                        });
+
+                    activeSignalHandlerGroup->addAction(openEditorAction);
+
+                    ActionTemplate *removeSignalHandlerAction = new ActionTemplate(
+                        (propertyName + "RemoveSignalHandlerId").toLatin1(),
+                        QString(QT_TRANSLATE_NOOP("QmlDesignerContextMenu", "Remove This Handler")),
+                        [signalHandler](const SelectionContext &) {
+                            signalHandler.parentModelNode().view()->executeInTransaction(
+                                "ConnectionsModelNodeActionGroup::"
+                                "removeSignalHandler",
+                                [signalHandler]() { removeSignal(signalHandler); });
+                        });
+
+                    activeSignalHandlerGroup->addAction(removeSignalHandlerAction);
+
+                    menu()->addMenu(activeSignalHandlerGroup);
+                }
+            }
+        }
+
+        //singular add connection:
+        QMenu *addConnection = new QMenu(QString(QT_TRANSLATE_NOOP("QmlDesignerContextMenu",
+                                                                   "Add Signal Handler")),
+                                         menu());
+
+        for (const auto &signalStr : signalsList) {
+            QMenu *newSignal = new QMenu(signalStr, addConnection);
+
+            if (!slotsLists.isEmpty()) {
+                if (slotsLists.size() == 1) {
+                    for (const auto &slot : slotsLists.at(0).slotEntries) {
+                        ActionTemplate *newSlot = new ActionTemplate(
+                            QString(signalStr + slot.name + "Id").toLatin1(),
+                            (slotsLists.at(0).categoryName
+                             + (QT_TRANSLATE_NOOP("QmlDesignerContextMenu",
+                                                  " to ")) //context: Change State _to_ state1
+                             + slot.name),
+                            [=](const SelectionContext &) {
+                                currentNode.view()->executeInTransaction(
+                                    "ConnectionsModelNodeActionGroup::addConnection", [=]() {
+                                        ModelNode newConnectionNode = createNewConnection(currentNode);
+                                        slot.action(newConnectionNode.signalHandlerProperty(
+                                            prependSignal(signalStr).toLatin1()));
+                                    });
+                            });
+                        newSignal->addAction(newSlot);
+                    }
+                } else {
+                    for (const auto &slotCategory : slotsLists) {
+                        QMenu *slotCategoryMenu = new QMenu(slotCategory.categoryName, menu());
+                        for (const auto &slot : slotCategory.slotEntries) {
+                            ActionTemplate *newSlot = new ActionTemplate(
+                                QString(signalStr + slot.name + "Id").toLatin1(),
+                                slot.name,
+                                [=](const SelectionContext &) {
+                                    currentNode.view()->executeInTransaction(
+                                        "ConnectionsModelNodeActionGroup::addConnection", [=]() {
+                                            ModelNode newConnectionNode = createNewConnection(
+                                                currentNode);
+                                            slot.action(newConnectionNode.signalHandlerProperty(
+                                                prependSignal(signalStr).toLatin1()));
+                                        });
+                                });
+                            slotCategoryMenu->addAction(newSlot);
+                        }
+                        newSignal->addMenu(slotCategoryMenu);
+                    }
+                }
+            }
+
+            ActionTemplate *openEditorAction = new ActionTemplate(
+                (signalStr + "OpenEditorId").toLatin1(),
+                QString(QT_TRANSLATE_NOOP("QmlDesignerContextMenu", "Open Connections Editor")),
+                [=](const SelectionContext &) {
+                    currentNode.view()->executeInTransaction(
+                        "ConnectionsModelNodeActionGroup::"
+                        "openConnectionsEditor",
+                        [=]() {
+                            ModelNode newConnectionNode = createNewConnection(currentNode);
+
+                            SignalHandlerProperty newHandler = newConnectionNode.signalHandlerProperty(
+                                prependSignal(signalStr).toLatin1());
+
+                            newHandler.setSource(
+                                QString("console.log(\"%1.%2\")").arg(currentNode.id(), signalStr));
+                            ActionEditor::invokeEditor(newHandler, removeSignal, true);
+                        });
+                });
+            newSignal->addAction(openEditorAction);
+
+            addConnection->addMenu(newSignal);
+        }
+
+        menu()->addMenu(addConnection);
+    }
+};
+
 class DocumentError : public std::exception
 {
 public:
@@ -474,10 +854,7 @@ public:
     static bool isListViewInBaseState(const SelectionContext &selectionState)
     {
         return selectionState.isInBaseState() && selectionState.singleNodeIsSelected()
-               && (selectionState.currentSingleSelectedNode().metaInfo().isSubclassOf(
-                       "QtQuick.ListView")
-                   || selectionState.currentSingleSelectedNode().metaInfo().isSubclassOf(
-                       "QtQuick.GridView"));
+               && selectionState.currentSingleSelectedNode().metaInfo().isListOrGridView();
     }
 
     bool isEnabled(const SelectionContext &) const override { return true; }
@@ -513,7 +890,7 @@ public:
                                                                  ->currentModel();
 
                                        if (currentModel->rewriterView()
-                                           && currentModel->rewriterView()->inErrorState()) {
+                                           && !currentModel->rewriterView()->errors().isEmpty()) {
                                            throw DocumentError{};
                                        }
 
@@ -525,21 +902,21 @@ public:
 
         model.setListView(targetNode);
 
-        ListModelEditorDialog dialog{Core::ICore::mainWindow()};
+        ListModelEditorDialog dialog{Core::ICore::dialogParent()};
         dialog.setModel(&model);
 
         try {
             dialog.exec();
         } catch (const DocumentError &) {
             QMessageBox::warning(
-                Core::ICore::mainWindow(),
+                Core::ICore::dialogParent(),
                 QCoreApplication::translate("DesignerActionManager", "Document Has Errors"),
                 QCoreApplication::translate("DesignerActionManager",
                                             "The document which contains the list model "
                                             "contains errors. So we cannot edit it."));
         } catch (const RewritingException &) {
             QMessageBox::warning(
-                Core::ICore::mainWindow(),
+                Core::ICore::dialogParent(),
                 QCoreApplication::translate("DesignerActionManager", "Document Cannot Be Written"),
                 QCoreApplication::translate("DesignerActionManager",
                                             "An error occurred during a write attemp."));
@@ -598,8 +975,8 @@ bool isFlowTargetOrTransition(const SelectionContext &context)
 class FlowActionConnectAction : public ActionGroup
 {
 public:
-    FlowActionConnectAction(const QString &displayName, const QByteArray &menuId, int priority) :
-        ActionGroup(displayName, menuId, priority,
+    FlowActionConnectAction(const QString &displayName, const QByteArray &menuId, const QIcon &icon, int priority) :
+        ActionGroup(displayName, menuId, icon, priority,
                     &isFlowActionItemItem, &flowOptionVisible)
 
     {}
@@ -629,13 +1006,14 @@ public:
         }
     }
 };
-
+namespace {
 const char xProperty[] = "x";
 const char yProperty[] = "y";
 const char zProperty[] = "z";
 const char widthProperty[] = "width";
 const char heightProperty[] = "height";
 const char triggerSlot[] = "trigger";
+} // namespace
 
 using namespace SelectionContextFunctors;
 
@@ -673,7 +1051,7 @@ bool isNotInLayout(const SelectionContext &context)
         if (selectedModelNode.hasParentProperty())
             parentModelNode = selectedModelNode.parentProperty().parentModelNode();
 
-        if (parentModelNode.isValid() && parentModelNode.metaInfo().isValid())
+        if (parentModelNode.metaInfo().isValid())
             return !parentModelNode.metaInfo().isLayoutable();
     }
 
@@ -745,10 +1123,7 @@ bool singleSelectionAndInQtQuickLayout(const SelectionContext &context)
 
     NodeMetaInfo metaInfo = parentModelNode.metaInfo();
 
-    if (!metaInfo.isValid())
-        return false;
-
-    return metaInfo.isSubclassOf("QtQuick.Layouts.Layout");
+    return metaInfo.isQtQuickLayoutsLayout();
 }
 
 bool isStackedContainer(const SelectionContext &context)
@@ -832,17 +1207,9 @@ bool isGroup(const SelectionContext &context)
     if (!singleSelection(context))
         return false;
 
-    ModelNode currentSelectedNode = context.currentSingleSelectedNode();
+    NodeMetaInfo metaInfo = context.currentSingleSelectedNode().metaInfo();
 
-    if (!currentSelectedNode.isValid())
-        return false;
-
-    NodeMetaInfo metaInfo = currentSelectedNode.metaInfo();
-
-    if (!metaInfo.isValid())
-        return false;
-
-    return metaInfo.isSubclassOf("QtQuick.Studio.Components.GroupItem");
+    return metaInfo.isQtQuickStudioComponentsGroupItem();
 }
 
 bool isLayout(const SelectionContext &context)
@@ -853,12 +1220,7 @@ bool isLayout(const SelectionContext &context)
     if (!singleSelection(context))
         return false;
 
-    ModelNode currentSelectedNode = context.currentSingleSelectedNode();
-
-    if (!currentSelectedNode.isValid())
-        return false;
-
-    NodeMetaInfo metaInfo = currentSelectedNode.metaInfo();
+    NodeMetaInfo metaInfo = context.currentSingleSelectedNode().metaInfo();
 
     if (!metaInfo.isValid())
         return false;
@@ -867,7 +1229,7 @@ bool isLayout(const SelectionContext &context)
     if (isStackedContainer(context))
             return false;
 
-    return metaInfo.isSubclassOf("QtQuick.Layouts.Layout");
+    return metaInfo.isQtQuickLayoutsLayout();
 }
 
 bool isPositioner(const SelectionContext &context)
@@ -878,18 +1240,9 @@ bool isPositioner(const SelectionContext &context)
     if (!singleSelection(context))
         return false;
 
-    ModelNode currentSelectedNode = context.currentSingleSelectedNode();
+    const NodeMetaInfo metaInfo = context.currentSingleSelectedNode().metaInfo();
 
-    if (!currentSelectedNode.isValid())
-        return false;
-
-    NodeMetaInfo metaInfo = currentSelectedNode.metaInfo();
-
-    if (!metaInfo.isValid())
-        return false;
-
-    return metaInfo.isSubclassOf("<cpp>.QDeclarativeBasePositioner")
-            || metaInfo.isSubclassOf("QtQuick.Positioner");
+    return metaInfo.isQtQuickPositioner();
 }
 
 bool layoutOptionVisible(const SelectionContext &context)
@@ -995,13 +1348,23 @@ void DesignerActionManager::createDefaultDesignerActions()
     addDesignerAction(new SelectionModelNodeAction(
                           selectionCategoryDisplayName,
                           selectionCategory,
-                          prioritySelectionCategory));
+                          contextIcon(DesignerIcons::SelecionIcon),
+                          Priorities::SelectionCategory));
+
+    addDesignerAction(new ConnectionsModelNodeActionGroup(
+                          connectionsCategoryDisplayName,
+                          connectionsCategory,
+                          contextIcon(DesignerIcons::ConnectionsIcon),
+                          Priorities::ConnectionsCategory));
 
     addDesignerAction(new ActionGroup(
                           arrangeCategoryDisplayName,
                           arrangeCategory,
-                          priorityStackCategory,
+                          contextIcon(DesignerIcons::ArrangeIcon),
+                          Priorities::ArrangeCategory,
                           &selectionNotEmpty));
+
+    addDesignerAction(new SeperatorDesignerAction(arrangeCategory, 10));
 
     addDesignerAction(new ModelNodeContextMenuAction(
                           toFrontCommandId,
@@ -1009,7 +1372,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           {},
                           arrangeCategory,
                           QKeySequence(),
-                          200,
+                          1,
                           &toFront,
                           &raiseAvailable));
 
@@ -1019,7 +1382,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           Utils::Icon({{":/qmldesigner/icon/designeractions/images/raise.png", Utils::Theme::IconsBaseColor}}).icon(),
                           arrangeCategory,
                           QKeySequence(),
-                          180,
+                          11,
                           &raise,
                           &raiseAvailable));
 
@@ -1029,7 +1392,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           Utils::Icon({{":/qmldesigner/icon/designeractions/images/lower.png", Utils::Theme::IconsBaseColor}}).icon(),
                           arrangeCategory,
                           QKeySequence(),
-                          160,
+                          12,
                           &lower,
                           &lowerAvailable));
 
@@ -1039,9 +1402,11 @@ void DesignerActionManager::createDefaultDesignerActions()
                           {},
                           arrangeCategory,
                           QKeySequence(),
-                          140,
+                          2,
                           &toBack,
                           &lowerAvailable));
+
+    addDesignerAction(new SeperatorDesignerAction(arrangeCategory, 20));
 
     addDesignerAction(new ModelNodeContextMenuAction(
                           reverseCommandId,
@@ -1049,13 +1414,17 @@ void DesignerActionManager::createDefaultDesignerActions()
                           {},
                           arrangeCategory,
                           QKeySequence(),
-                          100,
+                          21,
                           &reverse,
                           &multiSelectionAndHasSameParent));
 
-    addDesignerAction(new ActionGroup(editCategoryDisplayName, editCategory, priorityEditCategory, &selectionNotEmpty));
+    addDesignerAction(new ActionGroup(editCategoryDisplayName,
+                                      editCategory,
+                                      contextIcon(DesignerIcons::EditIcon),
+                                      Priorities::EditCategory,
+                                      &selectionNotEmpty));
 
-    addDesignerAction(new SeperatorDesignerAction(editCategory, 220));
+    addDesignerAction(new SeperatorDesignerAction(editCategory, 30));
 
     addDesignerAction(
         new ModelNodeAction(resetPositionCommandId,
@@ -1067,7 +1436,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                             resetPositionTooltip,
                             editCategory,
                             QKeySequence("Ctrl+d"),
-                            200,
+                            32,
                             &resetPosition,
                             &selectionNotEmptyAndHasXorYProperty));
 
@@ -1105,7 +1474,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                                           copyFormatTooltip,
                                           editCategory,
                                           QKeySequence(),
-                                          120,
+                                          41,
                                           &copyFormat,
                                           &propertiesCopyable));
 
@@ -1115,7 +1484,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                                           applyFormatTooltip,
                                           editCategory,
                                           QKeySequence(),
-                                          120,
+                                          42,
                                           &applyFormat,
                                           &propertiesApplyable));
 
@@ -1127,24 +1496,26 @@ void DesignerActionManager::createDefaultDesignerActions()
                           resetSizeToolTip,
                           editCategory,
                           QKeySequence("shift+s"),
-                          180,
+                          31,
                           &resetSize,
                           &selectionNotEmptyAndHasWidthOrHeightProperty));
 
-    addDesignerAction(new SeperatorDesignerAction(editCategory, 170));
+    addDesignerAction(new SeperatorDesignerAction(editCategory, 40));
 
     addDesignerAction(new VisiblityModelNodeAction(
                           visiblityCommandId,
                           visibilityDisplayName,
-                          editCategory,
+                          contextIcon(DesignerIcons::VisibilityIcon),
+                          rootCategory,
                           QKeySequence("Ctrl+g"),
-                          160,
+                          Priorities::Visibility,
                           &setVisible,
                           &singleSelectedItem));
 
     addDesignerAction(new ActionGroup(anchorsCategoryDisplayName,
                                       anchorsCategory,
-                                      priorityAnchorsCategory,
+                                      contextIcon(DesignerIcons::AnchorsIcon),
+                                      Priorities::AnchorsCategory,
                                       &anchorsMenuEnabled));
 
     addDesignerAction(new ModelNodeAction(
@@ -1154,7 +1525,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           anchorsFillToolTip,
                           anchorsCategory,
                           QKeySequence(QKeySequence("shift+f")),
-                          200,
+                          2,
                           &anchorsFill,
                           &singleSelectionItemIsNotAnchoredAndSingleSelectionNotRoot));
 
@@ -1166,41 +1537,121 @@ void DesignerActionManager::createDefaultDesignerActions()
                           anchorsResetToolTip,
                           anchorsCategory,
                           QKeySequence(QKeySequence("Ctrl+Shift+r")),
-                          180,
+                          1,
                           &anchorsReset,
                           &singleSelectionItemIsAnchored));
 
-    addDesignerAction(new SeperatorDesignerAction(anchorsCategory, 170));
+    addDesignerAction(new SeperatorDesignerAction(anchorsCategory, 10));
+
+    addDesignerAction(new ParentAnchorAction(
+                          anchorParentTopAndBottomCommandId,
+                          anchorParentTopAndBottomDisplayName,
+                          {},
+                          {},
+                          anchorsCategory,
+                          QKeySequence(),
+                          11,
+                          AnchorLineType(AnchorLineTop | AnchorLineBottom)));
+
+    addDesignerAction(new ParentAnchorAction(
+                          anchorParentLeftAndRightCommandId,
+                          anchorParentLeftAndRightDisplayName,
+                          {},
+                          {},
+                          anchorsCategory,
+                          QKeySequence(),
+                          12,
+                          AnchorLineType(AnchorLineLeft | AnchorLineRight)));
+
+    addDesignerAction(new SeperatorDesignerAction(anchorsCategory, 20));
+
+    addDesignerAction(new ParentAnchorAction(
+                          anchorParentTopCommandId,
+                          anchorParentTopDisplayName,
+                          Utils::Icon({{":/qmldesigner/images/anchor_top.png", Utils::Theme::IconsBaseColor},
+                                       {":/utils/images/iconoverlay_reset.png", Utils::Theme::IconsStopToolBarColor}}).icon(),
+                          {},
+                          anchorsCategory,
+                          QKeySequence(),
+                          21,
+                          AnchorLineTop));
+
+    addDesignerAction(new ParentAnchorAction(
+                          anchorParentBottomCommandId,
+                          anchorParentBottomDisplayName,
+                          Utils::Icon({{":/qmldesigner/images/anchor_bottom.png", Utils::Theme::IconsBaseColor},
+                                       {":/utils/images/iconoverlay_reset.png", Utils::Theme::IconsStopToolBarColor}}).icon(),
+                          {},
+                          anchorsCategory,
+                          QKeySequence(),
+                          22,
+                          AnchorLineBottom));
+
+    addDesignerAction(new ParentAnchorAction(
+                          anchorParentLeftCommandId,
+                          anchorParentLeftDisplayName,
+                          Utils::Icon({{":/qmldesigner/images/anchor_left.png", Utils::Theme::IconsBaseColor},
+                                       {":/utils/images/iconoverlay_reset.png", Utils::Theme::IconsStopToolBarColor}}).icon(),
+                          {},
+                          anchorsCategory,
+                          QKeySequence(),
+                          23,
+                          AnchorLineLeft));
+
+    addDesignerAction(new ParentAnchorAction(
+                          anchorParentRightCommandId,
+                          anchorParentRightDisplayName,
+                          Utils::Icon({{":/qmldesigner/images/anchor_right.png", Utils::Theme::IconsBaseColor},
+                                       {":/utils/images/iconoverlay_reset.png", Utils::Theme::IconsStopToolBarColor}}).icon(),
+                          {},
+                          anchorsCategory,
+                          QKeySequence(),
+                          24,
+                          AnchorLineRight));
 
     addDesignerAction(new ActionGroup(
-                          positionCategoryDisplayName,
-                          positionCategory,
-                          priorityPositionCategory,
+                          positionerCategoryDisplayName,
+                          positionerCategory,
+                          contextIcon(DesignerIcons::PositionsersIcon),
+                          Priorities::PositionCategory,
                           &positionOptionVisible));
 
     addDesignerAction(new ActionGroup(
                           layoutCategoryDisplayName,
                           layoutCategory,
-                          priorityLayoutCategory,
+                          contextIcon(DesignerIcons::LayoutsIcon),
+                          Priorities::LayoutCategory,
                           &layoutOptionVisible));
 
-    addDesignerAction(new ActionGroup(groupCategoryDisplayName,
-                                      groupCategory,
-                                      priorityGroupCategory,
-                                      &studioComponentsAvailableAndSelectionCanBeLayouted));
+    addDesignerAction(new ActionGroup(
+                          snappingCategoryDisplayName,
+                          snappingCategory,
+                          contextIcon(DesignerIcons::SnappingIcon),
+                          Priorities::SnappingCategory,
+                          &selectionEnabled,
+                          &selectionEnabled));
 
     addDesignerAction(new ActionGroup(
-        flowCategoryDisplayName,
-        flowCategory,
-        priorityFlowCategory,
-        &isFlowTargetOrTransition,
-        &flowOptionVisible));
+                          groupCategoryDisplayName,
+                          groupCategory,
+                          contextIcon(DesignerIcons::GroupSelectionIcon),
+                          Priorities::Group,
+                          &studioComponentsAvailableAndSelectionCanBeLayouted));
+
+    addDesignerAction(new ActionGroup(
+                          flowCategoryDisplayName,
+                          flowCategory,
+                          {},
+                          Priorities::FlowCategory,
+                          &isFlowTargetOrTransition,
+                          &flowOptionVisible));
 
 
     auto effectMenu = new ActionGroup(
                 flowEffectCategoryDisplayName,
                 flowEffectCategory,
-                priorityFlowCategory,
+                {},
+                Priorities::FlowCategory,
                 &isFlowTransitionItem,
                 &flowOptionVisible);
 
@@ -1214,7 +1665,7 @@ void DesignerActionManager::createDefaultDesignerActions()
         addFlowActionToolTip,
         flowCategory,
         {},
-        priorityFirst,
+        1,
         &createFlowActionArea,
         &isFlowItem,
         &flowOptionVisible));
@@ -1224,16 +1675,17 @@ void DesignerActionManager::createDefaultDesignerActions()
                           setFlowStartDisplayName,
                           {},
                           flowCategory,
-                          priorityFirst,
+                          2,
                           {},
                           &setFlowStartItem,
                           &isFlowItem,
                           &flowOptionVisible));
 
     addDesignerAction(new FlowActionConnectAction(
-        flowConnectionCategoryDisplayName,
-        flowConnectionCategory,
-        priorityFlowCategory));
+                          flowConnectionCategoryDisplayName,
+                          flowConnectionCategory,
+                          {},
+                          Priorities::FlowCategory));
 
 
     const QList<TypeName> transitionTypes = {"FlowFadeEffect",
@@ -1252,23 +1704,24 @@ void DesignerActionManager::createDefaultDesignerActions()
         {},
         flowCategory,
         {},
-        priorityFlowCategory,
+        2,
         &selectFlowEffect,
         &isFlowTransitionItemWithEffect));
 
     addDesignerAction(new ActionGroup(
                           stackedContainerCategoryDisplayName,
                           stackedContainerCategory,
-                          priorityStackedContainerCategory,
+                          {},
+                          Priorities::StackedContainerCategory,
                           &isStackedContainer));
 
     addDesignerAction(new ModelNodeContextMenuAction(
                           removePositionerCommandId,
                           removePositionerDisplayName,
                           {},
-                          positionCategory,
+                          positionerCategory,
                           QKeySequence("Ctrl+Shift+p"),
-                          210,
+                          1,
                           &removePositioner,
                           &isPositioner,
                           &isPositioner));
@@ -1277,9 +1730,9 @@ void DesignerActionManager::createDefaultDesignerActions()
                           layoutRowPositionerCommandId,
                           layoutRowPositionerDisplayName,
                           {},
-                          positionCategory,
+                          positionerCategory,
                           QKeySequence(),
-                          200,
+                          2,
                           &layoutRowPositioner,
                           &selectionCanBeLayouted,
                           &selectionCanBeLayouted));
@@ -1288,9 +1741,9 @@ void DesignerActionManager::createDefaultDesignerActions()
                           layoutColumnPositionerCommandId,
                           layoutColumnPositionerDisplayName,
                           {},
-                          positionCategory,
+                          positionerCategory,
                           QKeySequence(),
-                          180,
+                          3,
                           &layoutColumnPositioner,
                           &selectionCanBeLayouted,
                           &selectionCanBeLayouted));
@@ -1299,9 +1752,9 @@ void DesignerActionManager::createDefaultDesignerActions()
                           layoutGridPositionerCommandId,
                           layoutGridPositionerDisplayName,
                           {},
-                          positionCategory,
+                          positionerCategory,
                           QKeySequence(),
-                          160,
+                          4,
                           &layoutGridPositioner,
                           &selectionCanBeLayouted,
                           &selectionCanBeLayouted));
@@ -1310,14 +1763,14 @@ void DesignerActionManager::createDefaultDesignerActions()
                           layoutFlowPositionerCommandId,
                           layoutFlowPositionerDisplayName,
                           {},
-                          positionCategory,
+                          positionerCategory,
                           QKeySequence("Ctrl+m"),
-                          140,
+                          5,
                           &layoutFlowPositioner,
                           &selectionCanBeLayouted,
                           &selectionCanBeLayouted));
 
-    addDesignerAction(new SeperatorDesignerAction(layoutCategory, 120));
+    addDesignerAction(new SeperatorDesignerAction(layoutCategory, 0));
 
     addDesignerAction(new ModelNodeContextMenuAction(
                           removeLayoutCommandId,
@@ -1325,7 +1778,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           {},
                           layoutCategory,
                           QKeySequence(),
-                          110,
+                          1,
                           &removeLayout,
                           &isLayout,
                           &isLayout));
@@ -1335,7 +1788,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                                                      {},
                                                      groupCategory,
                                                      QKeySequence("Ctrl+Shift+g"),
-                                                     110,
+                                                     1,
                                                      &addToGroupItem,
                                                      &selectionCanBeLayouted));
 
@@ -1344,7 +1797,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                                                      {},
                                                      groupCategory,
                                                      QKeySequence(),
-                                                     110,
+                                                     2,
                                                      &removeGroup,
                                                      &isGroup));
 
@@ -1354,7 +1807,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                                                     addItemToStackedContainerToolTip,
                                                     stackedContainerCategory,
                                                     QKeySequence("Ctrl+Shift+a"),
-                                                    110,
+                                                    1,
                                                     &addItemToStackedContainer,
                                                     &isStackedContainer,
                                                     &isStackedContainer));
@@ -1365,7 +1818,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           {},
                           stackedContainerCategory,
                           QKeySequence("Ctrl+Shift+t"),
-                          100,
+                          2,
                           &addTabBarToStackedContainer,
                           &isStackedContainerWithoutTabBar,
                           &isStackedContainer));
@@ -1377,7 +1830,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           decreaseIndexOfStackedContainerToolTip,
                           stackedContainerCategory,
                           QKeySequence("Ctrl+Shift+Left"),
-                          80,
+                          3,
                           &decreaseIndexOfStackedContainer,
                           &isStackedContainerAndIndexCanBeDecreased,
                           &isStackedContainer));
@@ -1389,7 +1842,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           increaseIndexOfStackedContainerToolTip,
                           stackedContainerCategory,
                           QKeySequence("Ctrl+Shift+Right"),
-                          80,
+                          4,
                           &increaseIndexOfStackedContainer,
                           &isStackedContainerAndIndexCanBeIncreased,
                           &isStackedContainer));
@@ -1401,7 +1854,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           layoutRowLayoutToolTip,
                           layoutCategory,
                           QKeySequence("Ctrl+u"),
-                          100,
+                          2,
                           &layoutRowLayout,
                           &selectionCanBeLayoutedAndQtQuickLayoutPossible));
 
@@ -1412,7 +1865,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           layoutColumnLayoutToolTip,
                           layoutCategory,
                           QKeySequence("Ctrl+l"),
-                          80,
+                          3,
                           &layoutColumnLayout,
                           &selectionCanBeLayoutedAndQtQuickLayoutPossible));
 
@@ -1423,18 +1876,18 @@ void DesignerActionManager::createDefaultDesignerActions()
                           layoutGridLayoutToolTip,
                           layoutCategory,
                           QKeySequence("shift+g"),
-                          60,
+                          4,
                           &layoutGridLayout,
                           &selectionCanBeLayoutedAndQtQuickLayoutPossibleAndNotMCU));
 
-    addDesignerAction(new SeperatorDesignerAction(layoutCategory, 50));
+    addDesignerAction(new SeperatorDesignerAction(layoutCategory, 10));
 
     addDesignerAction(new FillWidthModelNodeAction(
                           layoutFillWidthCommandId,
                           layoutFillWidthDisplayName,
                           layoutCategory,
                           QKeySequence(),
-                          40,
+                          11,
                           &setFillWidth,
                           &singleSelectionAndInQtQuickLayout,
                           &singleSelectionAndInQtQuickLayout));
@@ -1444,32 +1897,48 @@ void DesignerActionManager::createDefaultDesignerActions()
                           layoutFillHeightDisplayName,
                           layoutCategory,
                           QKeySequence(),
-                          20,
+                          12,
                           &setFillHeight,
                           &singleSelectionAndInQtQuickLayout,
                           &singleSelectionAndInQtQuickLayout));
 
-    addDesignerAction(new SeperatorDesignerAction(rootCategory, priorityTopLevelSeperator));
+    addDesignerAction(new SeperatorDesignerAction(rootCategory, Priorities::ModifySection));
+    addDesignerAction(new SeperatorDesignerAction(rootCategory, Priorities::PositionSection));
+    addDesignerAction(new SeperatorDesignerAction(rootCategory, Priorities::EventSection));
+    addDesignerAction(new SeperatorDesignerAction(rootCategory, Priorities::AdditionsSection));
+    addDesignerAction(new SeperatorDesignerAction(rootCategory, Priorities::ViewOprionsSection));
+    addDesignerAction(new SeperatorDesignerAction(rootCategory, Priorities::CustomActionsSection));
 
     addDesignerAction(new ModelNodeContextMenuAction(
                           goIntoComponentCommandId,
-                          goIntoComponentDisplayName,
-                          {},
+                          enterComponentDisplayName,
+                          contextIcon(DesignerIcons::EnterComponentIcon),
                           rootCategory,
                           QKeySequence(Qt::Key_F2),
-                          priorityGoIntoComponent,
+                          Priorities::ComponentActions + 2,
                           &goIntoComponentOperation,
                           &selectionIsComponent));
 
     addDesignerAction(new ModelNodeContextMenuAction(
-                          editAnnotationCommandId,
-                          editAnnotationDisplayName,
-                          {},
+                          editAnnotationsCommandId,
+                          editAnnotationsDisplayName,
+                          contextIcon(DesignerIcons::AnnotationIcon),
                           rootCategory,
                           QKeySequence(),
-                          (priorityLast+6),
+                          Priorities::EditAnnotations,
                           &editAnnotation,
                           &singleSelection,
+                          &singleSelection));
+
+    addDesignerAction(new ModelNodeContextMenuAction(
+                          addMouseAreaFillCommandId,
+                          addMouseAreaFillDisplayName,
+                          contextIcon(DesignerIcons::AddMouseAreaIcon),
+                          rootCategory,
+                          QKeySequence(),
+                          Priorities::AddMouseArea,
+                          &addMouseAreaFill,
+                          &addMouseAreaFillCheck,
                           &singleSelection));
 
     const bool standaloneMode = QmlProjectManager::QmlProject::isQtDesignStudio();
@@ -1496,29 +1965,41 @@ void DesignerActionManager::createDefaultDesignerActions()
                           &singleSelectedAndUiFile));
 
     addDesignerAction(new ModelNodeContextMenuAction(
-                          moveToComponentCommandId,
-                          moveToComponentDisplayName,
-                          {},
+                          makeComponentCommandId,
+                          makeComponentDisplayName,
+                          contextIcon(DesignerIcons::MakeComponentIcon),
                           rootCategory,
                           QKeySequence(),
-                          44,
+                          Priorities::ComponentActions + 1,
                           &moveToComponent,
                           &singleSelection,
                           &singleSelection));
+
+    addDesignerAction(new ModelNodeContextMenuAction(
+                          editMaterialCommandId,
+                          editMaterialDisplayName,
+                          contextIcon(DesignerIcons::EditIcon),
+                          rootCategory,
+                          QKeySequence(),
+                          44,
+                          &editMaterial,
+                          &modelHasMaterial,
+                          &isModel));
 
     addDesignerAction(new ModelNodeContextMenuAction(mergeTemplateCommandId,
                                                      mergeTemplateDisplayName,
                                                      {},
                                                      rootCategory,
                                                      {},
-                                                     50,
-                                                     &mergeWithTemplate,
+                                                     Priorities::MergeWithTemplate,
+                                                     [&] (const SelectionContext& context) { mergeWithTemplate(context, m_externalDependencies); },
                                                      &SelectionContextFunctors::always));
 
     addDesignerAction(new ActionGroup(
                           "",
                           genericToolBarCategory,
-                          priorityGenericToolBar));
+                          {},
+                          Priorities::GenericToolBar));
 
     addDesignerAction(new ChangeStyleAction());
 
@@ -1530,7 +2011,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           {},
                           rootCategory,
                           QKeySequence(),
-                          66,
+                          Priorities::SignalsDialog,
                           &openSignalDialog,
                           &singleSelectionAndHasSlotTrigger));
 
@@ -1540,7 +2021,7 @@ void DesignerActionManager::createDefaultDesignerActions()
                           {},
                           rootCategory,
                           QKeySequence(),
-                          priorityGenericToolBar,
+                          Priorities::GenericToolBar,
                           &updateImported3DAsset,
                           &selectionIsImported3DAsset,
                           &selectionIsImported3DAsset));
@@ -1632,7 +2113,7 @@ void DesignerActionManager::addCreatorCommand(Core::Command *command, const QByt
 QList<QSharedPointer<ActionInterface> > DesignerActionManager::actionsForTargetView(const ActionInterface::TargetView &target)
 {
     QList<QSharedPointer<ActionInterface> > out;
-    for (auto interface : qAsConst(m_designerActions))
+    for (auto interface : std::as_const(m_designerActions))
         if (interface->targetView() == target)
             out << interface;
 
@@ -1654,9 +2135,11 @@ ActionInterface *DesignerActionManager::actionByMenuId(const QByteArray &id)
     return nullptr;
 }
 
-DesignerActionManager::DesignerActionManager(DesignerActionManagerView *designerActionManagerView)
+DesignerActionManager::DesignerActionManager(DesignerActionManagerView *designerActionManagerView, ExternalDependenciesInterface &externalDependencies)
     : m_designerActionManagerView(designerActionManagerView)
+    , m_externalDependencies(externalDependencies)
 {
+    setupIcons();
 }
 
 DesignerActionManager::~DesignerActionManager() = default;
@@ -1669,7 +2152,7 @@ void DesignerActionManager::addTransitionEffectAction(const TypeName &typeName)
         {},
         ComponentCoreConstants::flowEffectCategory,
         {},
-        typeName == "None" ? 100 : 140,
+        typeName == "None" ? 11 : 1,
         [typeName](const SelectionContext &context)
         { ModelNodeOperations::addFlowEffect(context, typeName); },
     &isFlowTransitionItem));
@@ -1683,9 +2166,23 @@ void DesignerActionManager::addCustomTransitionEffectAction()
         {},
         ComponentCoreConstants::flowEffectCategory,
         {},
-        80,
+        21,
         &ModelNodeOperations::addCustomFlowEffect,
     &isFlowTransitionItem));
+}
+
+void DesignerActionManager::setupIcons()
+{
+    m_designerIcons.reset(new DesignerIcons("qtds_propertyIconFont.ttf", designerIconResourcesPath()));
+}
+
+QString DesignerActionManager::designerIconResourcesPath() const
+{
+#ifdef SHARE_QML_PATH
+    if (Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
+        return QLatin1String(SHARE_QML_PATH) + "/designericons.json";
+#endif
+    return Core::ICore::resourcePath("qmldesigner/designericons.json").toString();
 }
 
 DesignerActionToolBar::DesignerActionToolBar(QWidget *parentWidget) : Utils::StyledBar(parentWidget),

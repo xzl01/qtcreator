@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
-
-#include "javalanguageserver.h"
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "androidconfigurations.h"
 #include "androidconstants.h"
 #include "androidmanager.h"
+#include "androidtr.h"
+#include "javalanguageserver.h"
 
 #include <languageclient/client.h>
 #include <languageclient/languageclientinterface.h>
@@ -44,6 +22,7 @@
 
 #include <QGridLayout>
 #include <QLineEdit>
+#include <QXmlStreamWriter>
 
 using namespace ProjectExplorer;
 using namespace Utils;
@@ -55,7 +34,6 @@ namespace Internal {
 
 class JLSSettingsWidget : public QWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(JLSSettingsWidget)
 public:
     JLSSettingsWidget(const JLSSettings *settings, QWidget *parent);
 
@@ -77,19 +55,19 @@ JLSSettingsWidget::JLSSettingsWidget(const JLSSettings *settings, QWidget *paren
 {
     int row = 0;
     auto *mainLayout = new QGridLayout;
-    mainLayout->addWidget(new QLabel(tr("Name:")), row, 0);
+    mainLayout->addWidget(new QLabel(Tr::tr("Name:")), row, 0);
     mainLayout->addWidget(m_name, row, 1);
     auto chooser = new VariableChooser(this);
     chooser->addSupportedWidget(m_name);
 
-    mainLayout->addWidget(new QLabel(tr("Java:")), ++row, 0);
+    mainLayout->addWidget(new QLabel(Tr::tr("Java:")), ++row, 0);
     m_java->setExpectedKind(PathChooser::ExistingCommand);
     m_java->setFilePath(settings->m_executable);
     mainLayout->addWidget(m_java, row, 1);
 
-    mainLayout->addWidget(new QLabel(tr("Java Language Server:")), ++row, 0);
+    mainLayout->addWidget(new QLabel(Tr::tr("Java Language Server:")), ++row, 0);
     m_ls->setExpectedKind(PathChooser::File);
-    m_ls->lineEdit()->setPlaceholderText(tr("Path to equinox launcher jar"));
+    m_ls->lineEdit()->setPlaceholderText(Tr::tr("Path to equinox launcher jar"));
     m_ls->setPromptDialogFilter("org.eclipse.equinox.launcher_*.jar");
     m_ls->setFilePath(settings->m_languageServer);
     mainLayout->addWidget(m_ls, row, 1);
@@ -161,14 +139,14 @@ bool JLSSettings::isValid() const
 QVariantMap JLSSettings::toMap() const
 {
     QVariantMap map = StdIOSettings::toMap();
-    map.insert(languageServerKey, m_languageServer.toVariant());
+    map.insert(languageServerKey, m_languageServer.toSettings());
     return map;
 }
 
 void JLSSettings::fromMap(const QVariantMap &map)
 {
     StdIOSettings::fromMap(map);
-    m_languageServer = FilePath::fromVariant(map[languageServerKey]);
+    m_languageServer = FilePath::fromSettings(map[languageServerKey]);
 }
 
 LanguageClient::BaseSettings *JLSSettings::copy() const
@@ -187,7 +165,7 @@ private:
     TemporaryDirectory m_workspaceDir = TemporaryDirectory("QtCreator-jls-XXXXXX");
 };
 
-LanguageClient::BaseClientInterface *JLSSettings::createInterface() const
+LanguageClient::BaseClientInterface *JLSSettings::createInterface(ProjectExplorer::Project *) const
 {
     auto interface = new JLSInterface();
     CommandLine cmd{m_executable, arguments(), CommandLine::Raw};

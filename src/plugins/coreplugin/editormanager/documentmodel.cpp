@@ -1,34 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "documentmodel.h"
 #include "documentmodel_p.h"
 
 #include "ieditor.h"
-#include <coreplugin/documentmanager.h>
-#include <coreplugin/idocument.h>
+#include "../coreplugintr.h"
+#include "../documentmanager.h"
+#include "../idocument.h"
 
 #include <utils/algorithm.h>
 #include <utils/dropsupport.h>
@@ -58,7 +37,7 @@ bool compare(const DocumentModel::Entry *e1, const DocumentModel::Entry *e2)
         return e1->pinned;
 
     const int cmp = e1->plainDisplayName().localeAwareCompare(e2->plainDisplayName());
-    return (cmp < 0) || (cmp == 0 && e1->fileName() < e2->fileName());
+    return (cmp < 0) || (cmp == 0 && e1->filePath() < e2->filePath());
 }
 
 // Return a pair of indices. The first is the index that needs to be removed or -1 if no removal
@@ -77,8 +56,8 @@ std::pair<int, int> positionEntry(const QList<DocumentModel::Entry *> &list,
     const auto to_insert
             = static_cast<int>(std::distance(begin, std::lower_bound(begin, end, entry, &compare)));
     if (to_remove == to_insert)
-        return std::make_pair(-1, -1);
-    return std::make_pair(to_remove, to_insert);
+        return {-1, -1};
+    return {to_remove, to_insert};
 }
 } // namespace
 
@@ -101,9 +80,9 @@ int DocumentModelPrivate::rowCount(const QModelIndex &parent) const
     return 0;
 }
 
-void DocumentModelPrivate::addEntry(DocumentModel::Entry *entry)
+DocumentModel::Entry *DocumentModelPrivate::addEntry(DocumentModel::Entry *entry)
 {
-    const Utils::FilePath filePath = entry->fileName();
+    const Utils::FilePath filePath = entry->filePath();
 
     // replace a non-loaded entry (aka 'suspended') if possible
     DocumentModel::Entry *previousEntry = DocumentModel::entryForFilePath(filePath);
@@ -117,9 +96,8 @@ void DocumentModelPrivate::addEntry(DocumentModel::Entry *entry)
                     this, [this, document = previousEntry->document] { itemChanged(document); });
         }
         delete entry;
-        entry = nullptr;
         disambiguateDisplayNames(previousEntry);
-        return;
+        return nullptr;
     }
 
     auto positions = positionEntry(m_entries, entry);
@@ -129,7 +107,6 @@ void DocumentModelPrivate::addEntry(DocumentModel::Entry *entry)
     int row = positions.second + 1/*<no document>*/;
     beginInsertRows(QModelIndex(), row, row);
     m_entries.insert(positions.second, entry);
-    disambiguateDisplayNames(entry);
     FilePath fixedPath = DocumentManager::filePathKey(filePath, DocumentManager::ResolveLinks);
     if (!fixedPath.isEmpty())
         m_entryByFixedPath[fixedPath] = entry;
@@ -137,6 +114,8 @@ void DocumentModelPrivate::addEntry(DocumentModel::Entry *entry)
         itemChanged(document);
     });
     endInsertRows();
+    disambiguateDisplayNames(entry);
+    return entry;
 }
 
 bool DocumentModelPrivate::disambiguateDisplayNames(DocumentModel::Entry *entry)
@@ -225,14 +204,14 @@ QIcon DocumentModelPrivate::pinnedIcon()
     return icon;
 }
 
-Utils::optional<int> DocumentModelPrivate::indexOfFilePath(const Utils::FilePath &filePath) const
+std::optional<int> DocumentModelPrivate::indexOfFilePath(const Utils::FilePath &filePath) const
 {
     if (filePath.isEmpty())
-        return Utils::nullopt;
+        return std::nullopt;
     const FilePath fixedPath = DocumentManager::filePathKey(filePath, DocumentManager::ResolveLinks);
     const int index = m_entries.indexOf(m_entryByFixedPath.value(fixedPath));
     if (index < 0)
-        return Utils::nullopt;
+        return std::nullopt;
     return index;
 }
 
@@ -246,7 +225,7 @@ void DocumentModelPrivate::removeDocument(int idx)
     DocumentModel::Entry *entry = m_entries.takeAt(idx);
     endRemoveRows();
 
-    const FilePath fixedPath = DocumentManager::filePathKey(entry->fileName(),
+    const FilePath fixedPath = DocumentManager::filePathKey(entry->filePath(),
                                                             DocumentManager::ResolveLinks);
     if (!fixedPath.isEmpty())
         m_entryByFixedPath.remove(fixedPath);
@@ -255,20 +234,20 @@ void DocumentModelPrivate::removeDocument(int idx)
     delete entry;
 }
 
-Utils::optional<int> DocumentModelPrivate::indexOfDocument(IDocument *document) const
+std::optional<int> DocumentModelPrivate::indexOfDocument(IDocument *document) const
 {
     const int index = Utils::indexOf(m_entries, [&document](DocumentModel::Entry *entry) {
         return entry->document == document;
     });
     if (index < 0)
-        return Utils::nullopt;
+        return std::nullopt;
     return index;
 }
 
 Qt::ItemFlags DocumentModelPrivate::flags(const QModelIndex &index) const
 {
     const DocumentModel::Entry *e = DocumentModel::entryAtRow(index.row());
-    if (!e || e->fileName().isEmpty())
+    if (!e || e->filePath().isEmpty())
         return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     return Qt::ItemIsDragEnabled | Qt::ItemIsEnabled | Qt::ItemIsSelectable;
 }
@@ -276,11 +255,11 @@ Qt::ItemFlags DocumentModelPrivate::flags(const QModelIndex &index) const
 QMimeData *DocumentModelPrivate::mimeData(const QModelIndexList &indexes) const
 {
     auto data = new Utils::DropMimeData;
-    foreach (const QModelIndex &index, indexes) {
+    for (const QModelIndex &index : indexes) {
         const DocumentModel::Entry *e = DocumentModel::entryAtRow(index.row());
-        if (!e || e->fileName().isEmpty())
+        if (!e || e->filePath().isEmpty())
             continue;
-        data->addFile(e->fileName());
+        data->addFile(e->filePath());
     }
     return data;
 }
@@ -312,9 +291,9 @@ QVariant DocumentModelPrivate::data(const QModelIndex &index, int role) const
         // <no document> entry
         switch (role) {
         case Qt::DisplayRole:
-            return tr("<no document>");
+            return Tr::tr("<no document>");
         case Qt::ToolTipRole:
-            return tr("No document is selected.");
+            return Tr::tr("No document is selected.");
         default:
             return QVariant();
         }
@@ -333,7 +312,7 @@ QVariant DocumentModelPrivate::data(const QModelIndex &index, int role) const
             return pinnedIcon();
         return QVariant();
     case Qt::ToolTipRole:
-        return entry->fileName().isEmpty() ? entry->displayName() : entry->fileName().toUserOutput();
+        return entry->filePath().isEmpty() ? entry->displayName() : entry->filePath().toUserOutput();
     default:
         break;
     }
@@ -342,7 +321,7 @@ QVariant DocumentModelPrivate::data(const QModelIndex &index, int role) const
 
 void DocumentModelPrivate::itemChanged(IDocument *document)
 {
-    const Utils::optional<int> idx = indexOfDocument(document);
+    const std::optional<int> idx = indexOfDocument(document);
     if (!idx)
         return;
     const FilePath fixedPath = DocumentManager::filePathKey(document->filePath(),
@@ -433,8 +412,7 @@ DocumentModel::Entry *DocumentModelPrivate::addSuspendedDocument(const FilePath 
         entry->document->setPreferredDisplayName(displayName);
     entry->document->setId(id);
     entry->isSuspended = true;
-    d->addEntry(entry);
-    return entry;
+    return d->addEntry(entry);
 }
 
 DocumentModel::Entry *DocumentModelPrivate::firstSuspendedEntry()
@@ -485,13 +463,18 @@ void DocumentModelPrivate::removeAllSuspendedEntries(PinnedFileRemovalPolicy pin
         if (pinnedFileRemovalPolicy == DoNotRemovePinnedFiles && entry->pinned)
             continue;
 
+        const FilePath fixedPath = DocumentManager::filePathKey(entry->filePath(),
+                                                                DocumentManager::ResolveLinks);
         int row = i + 1/*<no document>*/;
         d->beginRemoveRows(QModelIndex(), row, row);
         delete d->m_entries.takeAt(i);
         d->endRemoveRows();
+
+        if (!fixedPath.isEmpty())
+            d->m_entryByFixedPath.remove(fixedPath);
     }
     QSet<QString> displayNames;
-    foreach (DocumentModel::Entry *entry, d->m_entries) {
+    for (DocumentModel::Entry *entry : std::as_const(d->m_entries)) {
         const QString displayName = entry->plainDisplayName();
         if (displayNames.contains(displayName))
             continue;
@@ -513,7 +496,7 @@ DocumentModel::Entry *DocumentModelPrivate::DynamicEntry::operator->() const
 
 void DocumentModelPrivate::DynamicEntry::disambiguate()
 {
-    const QString display = entry->fileName().fileNameWithPathComponents(++pathComponents);
+    const QString display = entry->filePath().fileNameWithPathComponents(++pathComponents);
     entry->document->setUniqueDisplayName(display);
 }
 
@@ -561,7 +544,7 @@ QAbstractItemModel *DocumentModel::model()
     return d;
 }
 
-Utils::FilePath DocumentModel::Entry::fileName() const
+Utils::FilePath DocumentModel::Entry::filePath() const
 {
     return document->filePath();
 }
@@ -594,17 +577,17 @@ QList<IEditor *> DocumentModel::editorsForOpenedDocuments()
 QList<IEditor *> DocumentModel::editorsForDocuments(const QList<IDocument *> &documents)
 {
     QList<IEditor *> result;
-    foreach (IDocument *document, documents)
+    for (IDocument *document : documents)
         result += d->m_editors.value(document);
     return result;
 }
 
-Utils::optional<int> DocumentModel::indexOfDocument(IDocument *document)
+std::optional<int> DocumentModel::indexOfDocument(IDocument *document)
 {
     return d->indexOfDocument(document);
 }
 
-Utils::optional<int> DocumentModel::indexOfFilePath(const Utils::FilePath &filePath)
+std::optional<int> DocumentModel::indexOfFilePath(const Utils::FilePath &filePath)
 {
     return d->indexOfFilePath(filePath);
 }
@@ -617,10 +600,10 @@ DocumentModel::Entry *DocumentModel::entryForDocument(IDocument *document)
 
 DocumentModel::Entry *DocumentModel::entryForFilePath(const Utils::FilePath &filePath)
 {
-    const Utils::optional<int> index = d->indexOfFilePath(filePath);
-    if (!index)
+    if (filePath.isEmpty())
         return nullptr;
-    return d->m_entries.at(*index);
+    const FilePath fixedPath = DocumentManager::filePathKey(filePath, DocumentManager::ResolveLinks);
+    return d->m_entryByFixedPath.value(fixedPath);
 }
 
 QList<IDocument *> DocumentModel::openedDocuments()
@@ -630,10 +613,8 @@ QList<IDocument *> DocumentModel::openedDocuments()
 
 IDocument *DocumentModel::documentForFilePath(const Utils::FilePath &filePath)
 {
-    const Utils::optional<int> index = d->indexOfFilePath(filePath);
-    if (!index)
-        return nullptr;
-    return d->m_entries.at(*index)->document;
+    const Entry *entry = entryForFilePath(filePath);
+    return entry ? entry->document : nullptr;
 }
 
 QList<IEditor *> DocumentModel::editorsForFilePath(const Utils::FilePath &filePath)
@@ -657,14 +638,14 @@ int DocumentModel::entryCount()
     return d->m_entries.count();
 }
 
-Utils::optional<int> DocumentModel::rowOfDocument(IDocument *document)
+std::optional<int> DocumentModel::rowOfDocument(IDocument *document)
 {
     if (!document)
         return 0 /*<no document>*/;
-    const Utils::optional<int> index = indexOfDocument(document);
+    const std::optional<int> index = indexOfDocument(document);
     if (index)
         return *index + 1/*correction for <no document>*/;
-    return Utils::nullopt;
+    return std::nullopt;
 }
 
 QList<DocumentModel::Entry *> DocumentModel::entries()

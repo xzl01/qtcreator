@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelineanimationform.h"
 #include "ui_timelineanimationform.h"
@@ -56,11 +34,11 @@ TimelineAnimationForm::TimelineAnimationForm(QWidget *parent)
     connectSpinBox(ui->startFrame, "from");
     connectSpinBox(ui->endFrame, "to");
 
-    connect(ui->loops, QOverload<int>::of(&QSpinBox::valueChanged), [this]() {
+    connect(ui->loops, &QSpinBox::valueChanged, this, [this] {
         ui->continuous->setChecked(ui->loops->value() == -1);
     });
 
-    connect(ui->continuous, &QCheckBox::toggled, [this](bool checked) {
+    connect(ui->continuous, &QCheckBox::toggled, this, [this](bool checked) {
         if (checked) {
             setProperty("loops", -1);
             ui->loops->setValue(-1);
@@ -70,7 +48,7 @@ TimelineAnimationForm::TimelineAnimationForm(QWidget *parent)
         }
     });
 
-    connect(ui->idLineEdit, &QLineEdit::editingFinished, [this]() {
+    connect(ui->idLineEdit, &QLineEdit::editingFinished, this, [this] {
         QTC_ASSERT(m_timeline.isValid(), return );
 
         static QString lastString;
@@ -105,7 +83,7 @@ TimelineAnimationForm::TimelineAnimationForm(QWidget *parent)
         }
     });
 
-    connect(ui->running, &QCheckBox::clicked, [this](bool checked) {
+    connect(ui->running, &QCheckBox::clicked, this, [this](bool checked) {
         if (checked) {
             setProperty("running", true);
         } else {
@@ -113,7 +91,7 @@ TimelineAnimationForm::TimelineAnimationForm(QWidget *parent)
         }
     });
 
-    connect(ui->pingPong, &QCheckBox::clicked, [this](bool checked) {
+    connect(ui->pingPong, &QCheckBox::clicked, this, [this](bool checked) {
         if (checked) {
             setProperty("pingPong", true);
         } else {
@@ -121,9 +99,7 @@ TimelineAnimationForm::TimelineAnimationForm(QWidget *parent)
         }
     });
 
-    connect(ui->transitionToState,
-            QOverload<int>::of(&QComboBox::activated),
-            [this](int index) {
+    connect(ui->transitionToState, &QComboBox::activated, this, [this](int index) {
                 if (!m_animation.isValid())
                     return;
                 if (!m_animation.view()->rootModelNode().hasId())

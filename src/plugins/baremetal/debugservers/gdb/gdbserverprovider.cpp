@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gdbserverprovider.h"
 
 #include <baremetal/baremetaldebugsupport.h>
 #include <baremetal/baremetaldevice.h>
+#include <baremetal/baremetaltr.h>
 #include <baremetal/debugserverprovidermanager.h>
 
 #include <projectexplorer/runconfigurationaspects.h>
@@ -34,8 +13,6 @@
 #include <utils/environment.h>
 #include <utils/qtcassert.h>
 #include <utils/pathchooser.h>
-
-#include <ssh/sshconnection.h>
 
 #include <QComboBox>
 #include <QFormLayout>
@@ -46,8 +23,7 @@ using namespace Debugger;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
+namespace BareMetal::Internal {
 
 const char startupModeKeyC[] = "Mode";
 const char peripheralDescriptionFileKeyC[] = "PeripheralDescriptionFile";
@@ -79,7 +55,7 @@ GdbServerProvider::StartupMode GdbServerProvider::startupMode() const
     return m_startupMode;
 }
 
-Utils::FilePath GdbServerProvider::peripheralDescriptionFile() const
+FilePath GdbServerProvider::peripheralDescriptionFile() const
 {
     return m_peripheralDescriptionFile;
 }
@@ -146,7 +122,7 @@ QVariantMap GdbServerProvider::toMap() const
 {
     QVariantMap data = IDebugServerProvider::toMap();
     data.insert(startupModeKeyC, m_startupMode);
-    data.insert(peripheralDescriptionFileKeyC, m_peripheralDescriptionFile.toVariant());
+    data.insert(peripheralDescriptionFileKeyC, m_peripheralDescriptionFile.toSettings());
     data.insert(initCommandsKeyC, m_initCommands);
     data.insert(resetCommandsKeyC, m_resetCommands);
     data.insert(useExtendedRemoteKeyC, m_useExtendedRemote);
@@ -166,25 +142,21 @@ bool GdbServerProvider::aboutToRun(DebuggerRunTool *runTool,
     const auto exeAspect = runControl->aspect<ExecutableAspect>();
     QTC_ASSERT(exeAspect, return false);
 
-    const FilePath bin = exeAspect->executable();
+    const FilePath bin = FilePath::fromString(exeAspect->executable.path());
     if (bin.isEmpty()) {
-        errorMessage = BareMetalDebugSupport::tr(
-                    "Cannot debug: Local executable is not set.");
+        errorMessage = Tr::tr("Cannot debug: Local executable is not set.");
         return false;
     }
     if (!bin.exists()) {
-        errorMessage = BareMetalDebugSupport::tr(
-                    "Cannot debug: Could not find executable for \"%1\".")
+        errorMessage = Tr::tr("Cannot debug: Could not find executable for \"%1\".")
                 .arg(bin.toString());
         return false;
     }
 
     Runnable inferior;
     inferior.command.setExecutable(bin);
-    inferior.extraData.insert(Debugger::Constants::kPeripheralDescriptionFile,
-                              m_peripheralDescriptionFile.toVariant());
     if (const auto argAspect = runControl->aspect<ArgumentsAspect>())
-        inferior.command.setArguments(argAspect->arguments(runControl->macroExpander()));
+        inferior.command.setArguments(argAspect->arguments);
     runTool->setInferior(inferior);
     runTool->setSymbolFile(bin);
     runTool->setStartMode(AttachToRemoteServer);
@@ -193,6 +165,7 @@ bool GdbServerProvider::aboutToRun(DebuggerRunTool *runTool,
     runTool->setRemoteChannel(channelString());
     runTool->setUseContinueInsteadOfRun(true);
     runTool->setUseExtendedRemote(useExtendedRemote());
+    runTool->runParameters().peripheralDescriptionFile = m_peripheralDescriptionFile;
     return true;
 }
 
@@ -201,11 +174,9 @@ RunWorker *GdbServerProvider::targetRunner(RunControl *runControl) const
     if (m_startupMode != GdbServerProvider::StartupOnNetwork)
         return nullptr;
 
-    Runnable r;
-    r.command = command();
     // Command arguments are in host OS style as the bare metal's GDB servers are launched
     // on the host, not on that target.
-    return new GdbServerProviderRunner(runControl, r);
+    return new GdbServerProviderRunner(runControl, command());
 }
 
 bool GdbServerProvider::fromMap(const QVariantMap &data)
@@ -214,7 +185,7 @@ bool GdbServerProvider::fromMap(const QVariantMap &data)
         return false;
 
     m_startupMode = static_cast<StartupMode>(data.value(startupModeKeyC).toInt());
-    m_peripheralDescriptionFile = FilePath::fromVariant(data.value(peripheralDescriptionFileKeyC));
+    m_peripheralDescriptionFile = FilePath::fromSettings(data.value(peripheralDescriptionFileKeyC));
     m_initCommands = data.value(initCommandsKeyC).toString();
     m_resetCommands = data.value(resetCommandsKeyC).toString();
     m_useExtendedRemote = data.value(useExtendedRemoteKeyC).toBool();
@@ -228,27 +199,25 @@ GdbServerProviderConfigWidget::GdbServerProviderConfigWidget(
     : IDebugServerProviderConfigWidget(provider)
 {
     m_startupModeComboBox = new QComboBox(this);
-    m_startupModeComboBox->setToolTip(tr("Choose the desired startup mode "
-                                         "of the GDB server provider."));
-    m_mainLayout->addRow(tr("Startup mode:"), m_startupModeComboBox);
+    m_startupModeComboBox->setToolTip(Tr::tr("Choose the desired startup mode "
+                                             "of the GDB server provider."));
+    m_mainLayout->addRow(Tr::tr("Startup mode:"), m_startupModeComboBox);
 
-    m_peripheralDescriptionFileChooser = new Utils::PathChooser(this);
-    m_peripheralDescriptionFileChooser->setExpectedKind(Utils::PathChooser::File);
+    m_peripheralDescriptionFileChooser = new PathChooser(this);
+    m_peripheralDescriptionFileChooser->setExpectedKind(PathChooser::File);
     m_peripheralDescriptionFileChooser->setPromptDialogFilter(
-                tr("Peripheral description files (*.svd)"));
+                Tr::tr("Peripheral description files (*.svd)"));
     m_peripheralDescriptionFileChooser->setPromptDialogTitle(
-                tr("Select Peripheral Description File"));
-    m_mainLayout->addRow(tr("Peripheral description file:"),
+                Tr::tr("Select Peripheral Description File"));
+    m_mainLayout->addRow(Tr::tr("Peripheral description file:"),
                          m_peripheralDescriptionFileChooser);
 
     populateStartupModes();
     setFromProvider();
 
-    connect(m_startupModeComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_startupModeComboBox, &QComboBox::currentIndexChanged,
             this, &GdbServerProviderConfigWidget::dirty);
-
-    connect(m_peripheralDescriptionFileChooser, &Utils::PathChooser::pathChanged,
+    connect(m_peripheralDescriptionFileChooser, &PathChooser::textChanged,
             this, &GdbServerProviderConfigWidget::dirty);
 }
 
@@ -293,9 +262,9 @@ static QString startupModeName(GdbServerProvider::StartupMode m)
 {
     switch (m) {
     case GdbServerProvider::StartupOnNetwork:
-        return GdbServerProviderConfigWidget::tr("Startup in TCP/IP Mode");
+        return Tr::tr("Startup in TCP/IP Mode");
     case GdbServerProvider::StartupOnPipe:
-        return GdbServerProviderConfigWidget::tr("Startup in Pipe Mode");
+        return Tr::tr("Startup in Pipe Mode");
     default:
         return {};
     }
@@ -309,12 +278,12 @@ void GdbServerProviderConfigWidget::populateStartupModes()
         m_startupModeComboBox->addItem(startupModeName(mode), mode);
 }
 
-Utils::FilePath GdbServerProviderConfigWidget::peripheralDescriptionFile() const
+FilePath GdbServerProviderConfigWidget::peripheralDescriptionFile() const
 {
     return m_peripheralDescriptionFileChooser->filePath();
 }
 
-void GdbServerProviderConfigWidget::setPeripheralDescriptionFile(const Utils::FilePath &file)
+void GdbServerProviderConfigWidget::setPeripheralDescriptionFile(const FilePath &file)
 {
     m_peripheralDescriptionFileChooser->setFilePath(file);
 }
@@ -328,28 +297,28 @@ void GdbServerProviderConfigWidget::setFromProvider()
 
 QString GdbServerProviderConfigWidget::defaultInitCommandsTooltip()
 {
-    return QCoreApplication::translate("BareMetal",
-                                       "Enter GDB commands to reset the board "
-                                       "and to write the nonvolatile memory.");
+    return Tr::tr("Enter GDB commands to reset the board "
+                  "and to write the nonvolatile memory.");
 }
 
 QString GdbServerProviderConfigWidget::defaultResetCommandsTooltip()
 {
-    return QCoreApplication::translate("BareMetal",
-                                       "Enter GDB commands to reset the hardware. "
-                                       "The MCU should be halted after these commands.");
+    return Tr::tr("Enter GDB commands to reset the hardware. "
+                  "The MCU should be halted after these commands.");
 }
 
 // GdbServerProviderRunner
 
 GdbServerProviderRunner::GdbServerProviderRunner(ProjectExplorer::RunControl *runControl,
-                                                 const ProjectExplorer::Runnable &runnable)
+                                                 const CommandLine &commandLine)
     : SimpleTargetRunner(runControl)
 {
     setId("BareMetalGdbServer");
     // Baremetal's GDB servers are launched on the host, not on the target.
-    setStarter([this, runnable] { doStart(runnable, {}); });
+    setStartModifier([this, commandLine] {
+        setCommandLine(commandLine);
+        forceRunOnHost();
+    });
 }
 
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal

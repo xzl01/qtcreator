@@ -1,46 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppbuiltinmodelmanagersupport.h"
 
 #include "builtineditordocumentprocessor.h"
+#include "cppcanonicalsymbol.h"
 #include "cppcompletionassist.h"
+#include "cppeditortr.h"
+#include "cppeditorwidget.h"
 #include "cppelementevaluator.h"
 #include "cppfollowsymbolundercursor.h"
-#include "cppoverviewmodel.h"
-#include "cpprefactoringengine.h"
 #include "cpptoolsreuse.h"
+#include "symbolfinder.h"
 
 #include <app/app_version.h>
+#include <coreplugin/messagemanager.h>
 #include <texteditor/basehoverhandler.h>
 #include <utils/executeondestruction.h>
+#include <utils/qtcassert.h>
+#include <utils/textutils.h>
 
 #include <QCoreApplication>
+#include <QFile>
+#include <QTextDocument>
 
 using namespace Core;
 using namespace TextEditor;
+using namespace Utils;
 
 namespace CppEditor::Internal {
 namespace {
@@ -51,6 +37,11 @@ private:
                        int pos,
                        ReportPriority report) override
     {
+        if (CppModelManager::usesClangd(editorWidget->textDocument())) {
+            report(Priority_None);
+            return;
+        }
+
         Utils::ExecuteOnDestruction reportPriority([this, report](){ report(priority()); });
 
         QTextCursor tc(editorWidget->document());
@@ -64,42 +55,29 @@ private:
             tip += evaluator.diagnosis();
             setPriority(Priority_Diagnostic);
         }
+        const FilePath filePath = editorWidget->textDocument()->filePath();
         const QStringList fallback = identifierWordsUnderCursor(tc);
         if (evaluator.identifiedCppElement()) {
             const QSharedPointer<CppElement> &cppElement = evaluator.cppElement();
             const QStringList candidates = cppElement->helpIdCandidates;
-            const HelpItem helpItem(candidates + fallback, cppElement->helpMark, cppElement->helpCategory);
+            const HelpItem helpItem(candidates + fallback,
+                                    filePath,
+                                    cppElement->helpMark,
+                                    cppElement->helpCategory);
             setLastHelpItemIdentified(helpItem);
             if (!helpItem.isValid())
                 tip += cppElement->tooltip;
         } else {
-            setLastHelpItemIdentified({fallback, {}, HelpItem::Unknown});
+            setLastHelpItemIdentified({fallback, filePath, {}, HelpItem::Unknown});
         }
         setToolTip(tip);
     }
 };
 } // anonymous namespace
 
-QString BuiltinModelManagerSupportProvider::id() const
-{
-    return QLatin1String("CppEditor.BuiltinCodeModel");
-}
-
-QString BuiltinModelManagerSupportProvider::displayName() const
-{
-    return QCoreApplication::translate("ModelManagerSupportInternal::displayName",
-                                       "%1 Built-in").arg(Core::Constants::IDE_DISPLAY_NAME);
-}
-
-ModelManagerSupport::Ptr BuiltinModelManagerSupportProvider::createModelManagerSupport()
-{
-    return ModelManagerSupport::Ptr(new BuiltinModelManagerSupport);
-}
-
 BuiltinModelManagerSupport::BuiltinModelManagerSupport()
     : m_completionAssistProvider(new InternalCompletionAssistProvider),
-      m_followSymbol(new FollowSymbolUnderCursor),
-      m_refactoringEngine(new CppRefactoringEngine)
+      m_followSymbol(new FollowSymbolUnderCursor)
 {
 }
 
@@ -117,29 +95,129 @@ CppCompletionAssistProvider *BuiltinModelManagerSupport::completionAssistProvide
 }
 
 
-CppCompletionAssistProvider *BuiltinModelManagerSupport::functionHintAssistProvider()
-{
-    return nullptr;
-}
-
 TextEditor::BaseHoverHandler *BuiltinModelManagerSupport::createHoverHandler()
 {
     return new CppHoverHandler;
 }
 
-FollowSymbolInterface &BuiltinModelManagerSupport::followSymbolInterface()
+void BuiltinModelManagerSupport::followSymbol(const CursorInEditor &data,
+                                              const Utils::LinkHandler &processLinkCallback,
+                                              bool resolveTarget, bool inNextSplit)
 {
-    return *m_followSymbol;
+    SymbolFinder finder;
+    m_followSymbol->findLink(data, processLinkCallback,
+            resolveTarget, CppModelManager::instance()->snapshot(),
+            data.editorWidget()->semanticInfo().doc, &finder, inNextSplit);
 }
 
-RefactoringEngineInterface &BuiltinModelManagerSupport::refactoringEngineInterface()
+void BuiltinModelManagerSupport::followSymbolToType(const CursorInEditor &data,
+                                                    const Utils::LinkHandler &processLinkCallback,
+                                                    bool inNextSplit)
 {
-    return *m_refactoringEngine;
+    Q_UNUSED(data)
+    Q_UNUSED(processLinkCallback)
+    Q_UNUSED(inNextSplit)
+    MessageManager::writeDisrupting(
+                Tr::tr("Follow Symbol to Type is only available when using clangd"));
 }
 
-std::unique_ptr<AbstractOverviewModel> BuiltinModelManagerSupport::createOverviewModel()
+void BuiltinModelManagerSupport::switchDeclDef(const CursorInEditor &data,
+                                               const Utils::LinkHandler &processLinkCallback)
 {
-    return std::make_unique<OverviewModel>();
+    SymbolFinder finder;
+    m_followSymbol->switchDeclDef(data, processLinkCallback,
+            CppModelManager::instance()->snapshot(), data.editorWidget()->semanticInfo().doc,
+            &finder);
+}
+
+void BuiltinModelManagerSupport::startLocalRenaming(const CursorInEditor &data,
+                                                    const ProjectPart *,
+                                                    RenameCallback &&renameSymbolsCallback)
+{
+    CppEditorWidget *editorWidget = data.editorWidget();
+    QTC_ASSERT(editorWidget, renameSymbolsCallback(QString(), {}, 0); return;);
+    editorWidget->updateSemanticInfo();
+    // Call empty callback
+    renameSymbolsCallback(QString(), {}, data.cursor().document()->revision());
+}
+
+void BuiltinModelManagerSupport::globalRename(const CursorInEditor &data,
+                                              const QString &replacement,
+                                              const std::function<void()> &callback)
+{
+    CppModelManager *modelManager = CppModelManager::instance();
+    if (!modelManager)
+        return;
+
+    CppEditorWidget *editorWidget = data.editorWidget();
+    QTC_ASSERT(editorWidget, return;);
+
+    SemanticInfo info = editorWidget->semanticInfo();
+    info.snapshot = modelManager->snapshot();
+    info.snapshot.insert(info.doc);
+    const QTextCursor &cursor = data.cursor();
+    if (const CPlusPlus::Macro *macro = findCanonicalMacro(cursor, info.doc)) {
+        modelManager->renameMacroUsages(*macro, replacement);
+    } else {
+        Internal::CanonicalSymbol cs(info.doc, info.snapshot);
+        CPlusPlus::Symbol *canonicalSymbol = cs(cursor);
+        if (canonicalSymbol)
+            modelManager->renameUsages(canonicalSymbol, cs.context(), replacement, callback);
+    }
+}
+
+void BuiltinModelManagerSupport::findUsages(const CursorInEditor &data) const
+{
+    CppModelManager *modelManager = CppModelManager::instance();
+    if (!modelManager)
+        return;
+
+    CppEditorWidget *editorWidget = data.editorWidget();
+    QTC_ASSERT(editorWidget, return;);
+
+    SemanticInfo info = editorWidget->semanticInfo();
+    info.snapshot = modelManager->snapshot();
+    info.snapshot.insert(info.doc);
+    const QTextCursor &cursor = data.cursor();
+    if (const CPlusPlus::Macro *macro = findCanonicalMacro(cursor, info.doc)) {
+        modelManager->findMacroUsages(*macro);
+    } else {
+        Internal::CanonicalSymbol cs(info.doc, info.snapshot);
+        CPlusPlus::Symbol *canonicalSymbol = cs(cursor);
+        if (canonicalSymbol)
+            modelManager->findUsages(canonicalSymbol, cs.context());
+    }
+}
+
+void BuiltinModelManagerSupport::switchHeaderSource(const FilePath &filePath,
+                                                    bool inNextSplit)
+{
+    const FilePath otherFile = correspondingHeaderOrSource(filePath);
+    if (!otherFile.isEmpty())
+        openEditor(otherFile, inNextSplit);
+}
+
+void BuiltinModelManagerSupport::checkUnused(const Utils::Link &link, SearchResult *search,
+                                             const Utils::LinkHandler &callback)
+{
+    CPlusPlus::Snapshot snapshot = CppModelManager::instance()->snapshot();
+    QFile file(link.targetFilePath.toString());
+    if (!file.open(QIODevice::ReadOnly))
+        return callback(link);
+    const QByteArray &contents = file.readAll();
+    CPlusPlus::Document::Ptr cppDoc = snapshot.preprocessedDocument(contents, link.targetFilePath);
+    if (!cppDoc->parse())
+        return callback(link);
+    cppDoc->check();
+    snapshot.insert(cppDoc);
+    QTextDocument doc(QString::fromUtf8(contents));
+    QTextCursor cursor(&doc);
+    cursor.setPosition(Utils::Text::positionInText(&doc, link.targetLine, link.targetColumn + 1));
+    Internal::CanonicalSymbol cs(cppDoc, snapshot);
+    CPlusPlus::Symbol *canonicalSymbol = cs(cursor);
+    if (!canonicalSymbol || !canonicalSymbol->identifier())
+        return callback(link);
+    CppModelManager::checkForUnusedSymbol(search, link, canonicalSymbol, cs.context(), callback);
 }
 
 } // namespace CppEditor::Internal

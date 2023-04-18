@@ -1,37 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Lorenz Haas
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Lorenz Haas
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 // Tested with version 0.59 and 0.60
 
 #include "uncrustify.h"
 
 #include "uncrustifyconstants.h"
-#include "uncrustifyoptionspage.h"
 
 #include "../beautifierconstants.h"
 #include "../beautifierplugin.h"
+#include "../beautifiertr.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -40,25 +18,28 @@
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/idocument.h>
+
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/projecttree.h>
+
 #include <texteditor/formattexteditor.h>
 #include <texteditor/texteditor.h>
-#include <utils/fileutils.h>
+
+#include <utils/filepath.h>
 
 #include <QAction>
 #include <QMenu>
+#include <QVersionNumber>
 
 using namespace TextEditor;
 
-namespace Beautifier {
-namespace Internal {
+namespace Beautifier::Internal {
 
 Uncrustify::Uncrustify()
 {
     Core::ActionContainer *menu = Core::ActionManager::createMenu("Uncrustify.Menu");
-    menu->menu()->setTitle(tr("&Uncrustify"));
+    menu->menu()->setTitle(Tr::tr("&Uncrustify"));
 
     m_formatFile = new QAction(BeautifierPlugin::msgFormatCurrentFile(), this);
     Core::Command *cmd
@@ -74,7 +55,7 @@ Uncrustify::Uncrustify()
     Core::ActionManager::actionContainer(Constants::MENU_ID)->addMenu(menu);
 
     connect(&m_settings, &UncrustifySettings::supportedMimeTypesChanged,
-            [this] { updateActions(Core::EditorManager::currentEditor()); });
+            this, [this] { updateActions(Core::EditorManager::currentEditor()); });
 }
 
 QString Uncrustify::id() const
@@ -94,7 +75,7 @@ void Uncrustify::formatFile()
     const QString cfgFileName = configurationFile();
     if (cfgFileName.isEmpty()) {
         BeautifierPlugin::showError(BeautifierPlugin::msgCannotGetConfigurationFile(
-                                        tr(Constants::UNCRUSTIFY_DISPLAY_NAME)));
+                                        Tr::tr(Constants::UNCRUSTIFY_DISPLAY_NAME)));
     } else {
         formatCurrentFile(command(cfgFileName));
     }
@@ -105,7 +86,7 @@ void Uncrustify::formatSelectedText()
     const QString cfgFileName = configurationFile();
     if (cfgFileName.isEmpty()) {
         BeautifierPlugin::showError(BeautifierPlugin::msgCannotGetConfigurationFile(
-                                        tr(Constants::UNCRUSTIFY_DISPLAY_NAME)));
+                                        Tr::tr(Constants::UNCRUSTIFY_DISPLAY_NAME)));
         return;
     }
 
@@ -178,9 +159,9 @@ bool Uncrustify::isApplicable(const Core::IDocument *document) const
 Command Uncrustify::command(const QString &cfgFile, bool fragment) const
 {
     Command command;
-    command.setExecutable(m_settings.command().toString());
+    command.setExecutable(m_settings.command());
     command.setProcessing(Command::PipeProcessing);
-    if (m_settings.version() >= 62) {
+    if (m_settings.version() >= QVersionNumber(0, 62)) {
         command.addOption("--assume");
         command.addOption("%file");
     } else {
@@ -196,5 +177,4 @@ Command Uncrustify::command(const QString &cfgFile, bool fragment) const
     return command;
 }
 
-} // namespace Internal
-} // namespace Beautifier
+} // Beautifier::Internal

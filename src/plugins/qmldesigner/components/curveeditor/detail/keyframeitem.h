@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Tooling
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,6 +9,8 @@
 #include "selectableitem.h"
 
 #include <QGraphicsObject>
+
+#include <optional>
 
 namespace QmlDesigner {
 
@@ -64,7 +44,7 @@ public:
 
     void lockedCallback() override;
 
-    Keyframe keyframe() const;
+    Keyframe keyframe(bool remap = false) const;
 
     bool isUnified() const;
 
@@ -104,6 +84,8 @@ public:
 
     void moveHandle(HandleItem::Slot slot, double deltaAngle, double deltaLength);
 
+    void remapValue(double min, double max);
+
 protected:
     QVariant itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value) override;
 
@@ -129,9 +111,13 @@ private:
 
     HandleItem *m_right;
 
-    QPointF m_validPos;
+    std::optional< QPointF > m_firstPos;
+    std::optional< QPointF > m_validPos;
 
     bool m_visibleOverride = true;
+
+    double m_min = 0.0;
+    double m_max = 1.0;
 };
 
 } // End namespace QmlDesigner.

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "searchresulttreemodel.h"
 #include "searchresulttreeitems.h"
@@ -332,11 +310,20 @@ QVariant SearchResultTreeModel::data(const SearchResultTreeItem *row, int role) 
     case ItemDataRoles::ResultHighlightForegroundColor:
         result = m_colors.value(row->item.style()).highlightForeground;
         break;
+    case ItemDataRoles::FunctionHighlightBackgroundColor:
+        result = m_colors.value(row->item.style()).containingFunctionBackground;
+        break;
+    case ItemDataRoles::FunctionHighlightForegroundColor:
+        result = m_colors.value(row->item.style()).containingFunctionForeground;
+        break;
     case ItemDataRoles::ResultBeginColumnNumberRole:
         result = row->item.mainRange().begin.column;
         break;
     case ItemDataRoles::SearchTermLengthRole:
         result = row->item.mainRange().length(row->item.lineText());
+        break;
+    case ItemDataRoles::ContainingFunctionNameRole:
+        result = row->item.containingFunctionName().value_or(QString{});
         break;
     case ItemDataRoles::IsGeneratedRole:
         result = row->isGenerated();
@@ -369,7 +356,7 @@ QSet<SearchResultTreeItem *> SearchResultTreeModel::addPath(const QStringList &p
     QModelIndex currentItemIndex = QModelIndex();
     SearchResultTreeItem *partItem = nullptr;
     QStringList currentPath;
-    foreach (const QString &part, path) {
+    for (const QString &part : path) {
         const int insertionIndex = currentItem->insertionIndex(part, &partItem);
         if (!partItem) {
             SearchResultItem item;
@@ -403,12 +390,12 @@ void SearchResultTreeModel::addResultsToCurrentParent(const QList<SearchResultIt
     if (mode == SearchResult::AddOrdered) {
         // this is the mode for e.g. text search
         beginInsertRows(m_currentIndex, m_currentParent->childrenCount(), m_currentParent->childrenCount() + items.count());
-        foreach (const SearchResultItem &item, items) {
+        for (const SearchResultItem &item : items) {
             m_currentParent->appendChild(item);
         }
         endInsertRows();
     } else if (mode == SearchResult::AddSorted) {
-        foreach (const SearchResultItem &item, items) {
+        for (const SearchResultItem &item : items) {
             SearchResultTreeItem *existingItem;
             const int insertionIndex = m_currentParent->insertionIndex(item, &existingItem);
             if (existingItem) {
@@ -452,7 +439,7 @@ QList<QModelIndex> SearchResultTreeModel::addResults(const QList<SearchResultIte
     QList<SearchResultItem> sortedItems = items;
     std::stable_sort(sortedItems.begin(), sortedItems.end(), lessThanByPath);
     QList<SearchResultItem> itemSet;
-    foreach (const SearchResultItem &item, sortedItems) {
+    for (const SearchResultItem &item : sortedItems) {
         m_editorFontIsUsed |= item.useTextEditorFont();
         if (!m_currentParent || (m_currentPath != item.path())) {
             // first add all the items from before
@@ -470,7 +457,7 @@ QList<QModelIndex> SearchResultTreeModel::addResults(const QList<SearchResultIte
         itemSet.clear();
     }
     QList<QModelIndex> pathIndices;
-    foreach (SearchResultTreeItem *item, pathNodes)
+    for (SearchResultTreeItem *item : std::as_const(pathNodes))
         pathIndices << index(item);
     return pathIndices;
 }

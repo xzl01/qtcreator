@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "texteditoroverlay.h"
 #include "texteditor.h"
@@ -38,11 +16,12 @@
 using namespace TextEditor;
 using namespace TextEditor::Internal;
 
+constexpr int borderWidth = 1;
+
 TextEditorOverlay::TextEditorOverlay(TextEditorWidget *editor) :
     QObject(editor),
     m_visible(false),
     m_alpha(true),
-    m_borderWidth(1),
     m_dropShadowWidth(2),
     m_firstSelectionOriginalBegin(-1),
     m_editor(editor),
@@ -134,19 +113,15 @@ QPainterPath TextEditorOverlay::createSelectionPath(const QTextCursor &begin, co
     QTextDocument *document = m_editor->document();
 
     if (m_editor->blockBoundingGeometry(begin.block()).translated(offset).top() > clip.bottom() + 10
-        || m_editor->blockBoundingGeometry(end.block()).translated(offset).bottom() < clip.top() - 10
-        )
+        || m_editor->blockBoundingGeometry(end.block()).translated(offset).bottom()
+               < clip.top() - 10) {
         return QPainterPath(); // nothing of the selection is visible
-
+    }
 
     QTextBlock block = begin.block();
 
-    if (block.blockNumber() < m_editor->firstVisibleBlock().blockNumber() - 4)
-        block = m_editor->document()->findBlockByNumber(m_editor->firstVisibleBlock().blockNumber() - 4);
-
-    bool inSelection = false;
-
-    QVector<QRectF> selection;
+    if (block.blockNumber() < m_editor->firstVisibleBlock().blockNumber() - 1)
+        block = document->findBlockByNumber(m_editor->firstVisibleBlock().blockNumber() - 1);
 
     if (begin.position() == end.position()) {
         // special case empty selections
@@ -155,164 +130,113 @@ QPainterPath TextEditorOverlay::createSelectionPath(const QTextCursor &begin, co
         int pos = begin.position() - begin.block().position();
         QTextLine line = blockLayout->lineForTextPosition(pos);
         QRectF lineRect = line.naturalTextRect();
+        lineRect = lineRect.translated(blockGeometry.topLeft());
         int x = line.cursorToX(pos);
-        lineRect.setLeft(x - m_borderWidth);
-        lineRect.setRight(x + m_borderWidth);
-        selection += lineRect.translated(blockGeometry.topLeft());
-    } else {
-        for (; block.isValid() && block.blockNumber() <= end.blockNumber(); block = block.next()) {
-            if (! block.isVisible())
+        lineRect.setLeft(x - borderWidth);
+        lineRect.setRight(x + borderWidth);
+        QPainterPath path;
+        path.addRect(lineRect);
+        return path;
+    }
+
+    QPointF top;    //      *------|
+    QPointF left;   //  *---|      |
+    QPointF right;  //  |      |---*
+    QPointF bottom; //  |------*
+
+    for (; block.isValid() && block.blockNumber() <= end.blockNumber(); block = block.next()) {
+        if (!block.isVisible())
+            continue;
+
+        const QRectF blockGeometry = m_editor->blockBoundingGeometry(block);
+        QTextLayout *blockLayout = block.layout();
+
+        int firstLine = 0;
+        QTextLine line = blockLayout->lineAt(firstLine);
+
+        int beginChar = 0;
+        if (block == begin.block()) {
+            beginChar = begin.positionInBlock();
+            line = blockLayout->lineForTextPosition(beginChar);
+            firstLine = line.lineNumber();
+            const int lineEnd = line.textStart() + line.textLength();
+            if (beginChar == lineEnd)
                 continue;
-
-            const QRectF blockGeometry = m_editor->blockBoundingGeometry(block);
-            QTextLayout *blockLayout = block.layout();
-
-            QTextLine line = blockLayout->lineAt(0);
-            bool firstOrLastBlock = false;
-
-            int beginChar = 0;
-            if (!inSelection) {
-                if (block == begin.block()) {
-                    beginChar = begin.positionInBlock();
-                    line = blockLayout->lineForTextPosition(beginChar);
-                    firstOrLastBlock = true;
-                }
-                inSelection = true;
-            } else {
-//                while (beginChar < block.length() && document->characterAt(block.position() + beginChar).isSpace())
-//                    ++beginChar;
-//                if (beginChar == block.length())
-//                    beginChar = 0;
-            }
-
-            int lastLine = blockLayout->lineCount()-1;
-            int endChar = -1;
-            if (block == end.block()) {
-                endChar = end.positionInBlock();
-                lastLine = blockLayout->lineForTextPosition(endChar).lineNumber();
-                inSelection = false;
-                firstOrLastBlock = true;
-            } else {
-                endChar = block.length();
-                while (endChar > beginChar && document->characterAt(block.position() + endChar - 1).isSpace())
-                    --endChar;
-            }
-
-            QRectF lineRect = line.naturalTextRect();
-            if (beginChar < endChar) {
-                lineRect.setLeft(line.cursorToX(beginChar));
-                if (line.lineNumber() == lastLine)
-                    lineRect.setRight(line.cursorToX(endChar));
-                selection += lineRect.translated(blockGeometry.topLeft());
-
-                for (int lineIndex = line.lineNumber()+1; lineIndex <= lastLine; ++lineIndex) {
-                    line = blockLayout->lineAt(lineIndex);
-                    lineRect = line.naturalTextRect();
-                    if (lineIndex == lastLine)
-                        lineRect.setRight(line.cursorToX(endChar));
-                    selection += lineRect.translated(blockGeometry.topLeft());
-                }
-            } else { // empty lines
-                const int emptyLineSelectionSize = 16;
-                if (!firstOrLastBlock && !selection.isEmpty()) { // middle
-                    lineRect.setLeft(selection.last().left());
-                } else if (inSelection) { // first line
-                    lineRect.setLeft(line.cursorToX(beginChar));
-                } else { // last line
-                    if (endChar == 0)
-                        break;
-                    lineRect.setLeft(line.cursorToX(endChar) - emptyLineSelectionSize);
-                }
-                lineRect.setRight(lineRect.left() + emptyLineSelectionSize);
-                selection += lineRect.translated(blockGeometry.topLeft());
-            }
-
-            if (!inSelection)
-                break;
-
-            if (blockGeometry.translated(offset).y() > 2*viewportRect.height())
-                break;
         }
+
+        int lastLine = blockLayout->lineCount() - 1;
+        int endChar = -1;
+        if (block == end.block()) {
+            endChar = end.positionInBlock();
+            lastLine = blockLayout->lineForTextPosition(endChar).lineNumber();
+            if (endChar == beginChar)
+                break; // Do not expand overlay to empty selection at end
+        } else {
+            endChar = block.length();
+            while (endChar > beginChar
+                   && document->characterAt(block.position() + endChar - 1).isSpace())
+                --endChar;
+        }
+
+        for (int i = firstLine; i <= lastLine; ++i) {
+            line = blockLayout->lineAt(i);
+            QRectF lineRect = line.naturalTextRect();
+            if (i == firstLine && beginChar > 0)
+                lineRect.setLeft(line.cursorToX(beginChar));
+            if (line.lineNumber() == lastLine)
+                lineRect.setRight(line.cursorToX(endChar));
+            lineRect = lineRect.translated(blockGeometry.topLeft());
+            if (top.isNull())
+                top = lineRect.topLeft();
+            else if (left.isNull())
+                left = lineRect.topLeft();
+            else
+                left.setX(std::min(left.x(), lineRect.left()));
+            if (i == lastLine && block == end.block() && lineRect.right() <= right.x())
+                bottom = lineRect.bottomRight();
+            else
+                right = {std::max(lineRect.right(), right.x()), lineRect.bottom()};
+        }
+
+        if (blockGeometry.translated(offset).y() > 2 * viewportRect.height())
+            break;
     }
 
+    if (top.isNull())
+        return {};
 
-    if (selection.isEmpty())
-        return QPainterPath();
+    if (bottom.isNull())
+        bottom = right;
 
-    QVector<QPointF> points;
+    if (left.isNull())
+        left = top;
 
-    const int margin = m_borderWidth/2;
-    const int extra = 0;
+    if (right.isNull())
+        right = bottom;
 
-    const QRectF &firstSelection = selection.at(0);
-    points += (firstSelection.topLeft() + firstSelection.topRight()) / 2 + QPointF(0, -margin);
-    points += firstSelection.topRight() + QPointF(margin+1, -margin);
-    points += firstSelection.bottomRight() + QPointF(margin+1, 0);
-
-    const int count = selection.count();
-    for (int i = 1; i < count-1; ++i) {
-        qreal x = std::max({selection.at(i - 1).right(),
-                            selection.at(i).right(),
-                            selection.at(i + 1).right()})
-                  + margin;
-
-        points += QPointF(x+1, selection.at(i).top());
-        points += QPointF(x+1, selection.at(i).bottom());
-    }
-
-    const QRectF &lastSelection = selection.at(count-1);
-    points += lastSelection.topRight() + QPointF(margin+1, 0);
-    points += lastSelection.bottomRight() + QPointF(margin+1, margin+extra);
-    points += lastSelection.bottomLeft() + QPointF(-margin, margin+extra);
-    points += lastSelection.topLeft() + QPointF(-margin, 0);
-
-    for (int i = count-2; i > 0; --i) {
-        qreal x = std::min({selection.at(i - 1).left(),
-                            selection.at(i).left(),
-                            selection.at(i + 1).left()})
-                  - margin;
-
-        points += QPointF(x, selection.at(i).bottom()+extra);
-        points += QPointF(x, selection.at(i).top());
-    }
-
-    points += firstSelection.bottomLeft() + QPointF(-margin, extra);
-    points += firstSelection.topLeft() + QPointF(-margin, -margin);
-
+    constexpr QPointF marginOffset = {borderWidth, borderWidth};
+    right += marginOffset;
+    bottom += marginOffset;
 
     QPainterPath path;
-    const int corner = 4;
-    path.moveTo(points.at(0));
-    points += points.at(0);
-    QPointF previous = points.at(0);
-    for (int i = 1; i < points.size(); ++i) {
-        QPointF point = points.at(i);
-        if (point.y() == previous.y() && qAbs(point.x() - previous.x()) > 2*corner) {
-            QPointF tmp = QPointF(previous.x() + corner * ((point.x() > previous.x())?1:-1), previous.y());
-            path.quadTo(previous, tmp);
-            previous = tmp;
-            i--;
-            continue;
-        } else if (point.x() == previous.x() && qAbs(point.y() - previous.y()) > 2*corner) {
-            QPointF tmp = QPointF(previous.x(), previous.y() + corner * ((point.y() > previous.y())?1:-1));
-            path.quadTo(previous, tmp);
-            previous = tmp;
-            i--;
-            continue;
-        }
+    path.moveTo(top);
+    path.lineTo(right.x(), top.y());
+    path.lineTo(right);
+    path.lineTo(bottom.x(), right.y());
+    path.lineTo(bottom);
+    path.lineTo(left.x(), bottom.y());
+    path.lineTo(left);
+    path.lineTo(top.x(), left.y());
+    path.lineTo(top);
 
-
-        QPointF target = (previous + point) / 2;
-        path.quadTo(previous, target);
-        previous = points.at(i);
-    }
     path.closeSubpath();
     path.translate(offset);
-    return path.simplified();
+    return path;
 }
 
 void TextEditorOverlay::paintSelection(QPainter *painter,
-                                       const OverlaySelection &selection)
+                                       const OverlaySelection &selection,
+                                       const QRect &clip)
 {
 
     QTextCursor begin = selection.m_cursor_begin;
@@ -325,13 +249,13 @@ void TextEditorOverlay::paintSelection(QPainter *painter,
     if (begin.isNull() || end.isNull() || begin.position() > end.position() || !bg.isValid())
         return;
 
-    QPainterPath path = createSelectionPath(begin, end, m_editor->viewport()->rect());
+    QPainterPath path = createSelectionPath(begin, end, clip);
 
     painter->save();
     QColor penColor = fg;
     if (m_alpha)
         penColor.setAlpha(220);
-    QPen pen(penColor, m_borderWidth);
+    QPen pen(penColor, borderWidth);
     painter->translate(-.5, -.5);
 
     QRectF pathRect = path.controlPointRect();
@@ -353,8 +277,6 @@ void TextEditorOverlay::paintSelection(QPainter *painter,
         painter->setBrush(QBrush(linearGrad));
     }
 
-    painter->setRenderHint(QPainter::Antialiasing);
-
     if (selection.m_dropShadow) {
         painter->save();
         QPainterPath shadow = path;
@@ -366,7 +288,7 @@ void TextEditorOverlay::paintSelection(QPainter *painter,
         painter->restore();
     }
 
-    pen.setJoinStyle(Qt::RoundJoin);
+    pen.setJoinStyle(Qt::MiterJoin);
     painter->setPen(pen);
     painter->drawPath(path);
     painter->restore();
@@ -374,14 +296,15 @@ void TextEditorOverlay::paintSelection(QPainter *painter,
 
 void TextEditorOverlay::fillSelection(QPainter *painter,
                                       const OverlaySelection &selection,
-                                      const QColor &color)
+                                      const QColor &color,
+                                      const QRect &clip)
 {
     const QTextCursor &begin = selection.m_cursor_begin;
     const QTextCursor &end= selection.m_cursor_end;
     if (begin.isNull() || end.isNull() || begin.position() > end.position())
         return;
 
-    QPainterPath path = createSelectionPath(begin, end, m_editor->viewport()->rect());
+    QPainterPath path = createSelectionPath(begin, end, clip);
 
     painter->save();
     painter->translate(-.5, -.5);
@@ -402,7 +325,7 @@ void TextEditorOverlay::paint(QPainter *painter, const QRect &clip)
             != selection.m_fixedLength)
             continue;
 
-        paintSelection(painter, selection);
+        paintSelection(painter, selection, clip);
     }
     for (int i = m_selections.size()-1; i >= 0; --i) {
         const OverlaySelection &selection = m_selections.at(i);
@@ -413,7 +336,7 @@ void TextEditorOverlay::paint(QPainter *painter, const QRect &clip)
             != selection.m_fixedLength)
             continue;
 
-        paintSelection(painter, selection);
+        paintSelection(painter, selection, clip);
     }
 }
 
@@ -444,7 +367,7 @@ void TextEditorOverlay::fill(QPainter *painter, const QColor &color, const QRect
             != selection.m_fixedLength)
             continue;
 
-        fillSelection(painter, selection, color);
+        fillSelection(painter, selection, color, clip);
     }
     for (int i = m_selections.size()-1; i >= 0; --i) {
         const OverlaySelection &selection = m_selections.at(i);
@@ -455,7 +378,7 @@ void TextEditorOverlay::fill(QPainter *painter, const QColor &color, const QRect
             != selection.m_fixedLength)
             continue;
 
-        fillSelection(painter, selection, color);
+        fillSelection(painter, selection, color, clip);
     }
 }
 

@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import os
 import codecs
@@ -29,7 +7,6 @@ import collections
 import glob
 import struct
 import sys
-import base64
 import re
 import time
 import inspect
@@ -45,6 +22,14 @@ except:
           "Native combined debugging might not work.")
     pass
 
+try:
+    # That fails on some QNX via Windows installations
+    import base64
+    def hexencode_(s):
+        return base64.b16encode(s).decode('utf8')
+except:
+    def hexencode_(s):
+        return ''.join(["%x" % c for c in s])
 
 if sys.version_info[0] >= 3:
     toInteger = int
@@ -127,7 +112,7 @@ class Children():
         self.d.currentNumChild = self.savedNumChild
         self.d.currentMaxNumChild = self.savedMaxNumChild
         if self.d.isCli:
-            self.d.output += '\n' + '   ' * self.d.indent
+            self.d.put('\n' + '   ' * self.d.indent)
         self.d.put(self.d.childrenSuffix)
         return True
 
@@ -182,20 +167,21 @@ class DumperBase():
         self.isGdb = False
         self.isLldb = False
         self.isCli = False
+        self.isDebugBuild = None
 
         # Later set, or not set:
         self.stringCutOff = 10000
         self.displayStringLimit = 100
         self.useTimeStamps = False
 
-        self.output = ''
+        self.output = []
         self.typesReported = {}
         self.typesToReport = {}
         self.qtNamespaceToReport = None
         self.qtCustomEventFunc = 0
         self.qtCustomEventPltFunc = 0
         self.qtPropertyFunc = 0
-        self.fallbackQtVersion = 0x50200
+        self.fallbackQtVersion = 0x60200
         self.passExceptions = False
         self.isTesting = False
 
@@ -254,7 +240,6 @@ class DumperBase():
 
     def setFallbackQtVersion(self, args):
         version = int(args.get('version', self.fallbackQtVersion))
-        DumperBase.warn("got fallback qt version 0x%x" % version)
         self.fallbackQtVersion = version
 
     def resetPerStepCaches(self):
@@ -324,9 +309,9 @@ class DumperBase():
                 self.putField('name', item.name)
         else:
             self.indent += 1
-            self.output += '\n' + '   ' * self.indent
+            self.put('\n' + '   ' * self.indent)
             if isinstance(item.name, str):
-                self.output += item.name + ' = '
+                self.put(item.name + ' = ')
         item.savedIName = self.currentIName
         item.savedValue = self.currentValue
         item.savedType = self.currentType
@@ -437,25 +422,18 @@ class DumperBase():
         return None if nativeType is None else self.fromNativeType(nativeType)
 
     def registerKnownTypes(self):
-        typeId = 'unsigned short'
-        tdata = self.TypeData(self)
-        tdata.name = typeId
-        tdata.typeId = typeId
+        tdata = self.TypeData(self, 'unsigned short')
         tdata.lbitsize = 16
+        tdata.lalignment = 2
         tdata.code = TypeCode.Integral
-        self.registerType(typeId, tdata)
 
-        typeId = 'QChar'
-        tdata = self.TypeData(self)
-        tdata.name = typeId
-        tdata.typeId = typeId
+        tdata = self.TypeData(self, 'QChar')
         tdata.lbitsize = 16
+        tdata.lalignment = 2
         tdata.code = TypeCode.Struct
         tdata.lfields = [self.Field(dumper=self, name='ucs',
                                     type='unsigned short', bitsize=16, bitpos=0)]
-        tdata.lalignment = 2
-        tdata.templateArguments = []
-        self.registerType(typeId, tdata)
+        tdata.templateArguments = lambda: []
 
     def nativeDynamicType(self, address, baseType):
         return baseType  # Override in backends.
@@ -550,7 +528,7 @@ class DumperBase():
             return s.encode('hex')
         if isinstance(s, str):
             s = s.encode('utf8')
-        return base64.b16encode(s).decode('utf8')
+        return hexencode_(s)
 
     def isQt3Support(self):
         # assume no Qt 3 support by default
@@ -891,7 +869,12 @@ class DumperBase():
             self.putPlainChildren(value)
 
     def put(self, stuff):
-        self.output += stuff
+        self.output.append(stuff)
+
+    def takeOutput(self):
+        res = '\n'.join(self.output)
+        self.output = []
+        return res
 
     def check(self, exp):
         if not exp:
@@ -2263,6 +2246,7 @@ class DumperBase():
             self.put('addrbase="0x%x",' % addrBase)
             self.put('addrstep="0x%x",' % innerSize)
             self.put('arrayencoding="%s",' % enc)
+            self.put('endian="%s",' % self.packCode)
             if n > maxNumChild:
                 self.put('childrenelided="%s",' % n)  # FIXME: Act on that in frontend
                 n = maxNumChild
@@ -2512,7 +2496,10 @@ class DumperBase():
         try:
             if funcname.startswith('qdump__'):
                 typename = funcname[7:]
-                spec = inspect.getargspec(function)
+                if sys.version_info > (3,):
+                    spec = inspect.getfullargspec(function)
+                else:
+                    spec = inspect.getargspec(function)
                 if len(spec.args) == 2:
                     self.qqDumpers[typename] = function
                 elif len(spec.args) == 3 and len(spec.defaults) == 1:
@@ -2537,11 +2524,14 @@ class DumperBase():
         self.resetCaches()
 
         for mod in self.dumpermodules:
-            m = __import__(mod)
-            dic = m.__dict__
-            for name in dic.keys():
-                item = dic[name]
-                self.registerDumper(name, item)
+            try:
+                m = __import__(mod)
+                dic = m.__dict__
+                for name in dic.keys():
+                    item = dic[name]
+                    self.registerDumper(name, item)
+            except Exception as e:
+                print('Failed to load dumper module: %s (%s)' % (mod, e))
 
         msg = 'dumpers=['
         for key, value in self.qqFormats.items():
@@ -2802,6 +2792,8 @@ class DumperBase():
             return
 
         self.putAddress(value.address())
+        if value.lbitsize is not None:
+            self.putField('size', value.lbitsize // 8)
 
         if typeobj.code == TypeCode.Function:
             #DumperBase.warn('FUNCTION VALUE: %s' % value)
@@ -2825,7 +2817,7 @@ class DumperBase():
         if typeobj.code == TypeCode.Bitfield:
             #DumperBase.warn('BITFIELD VALUE: %s %d %s' % (value.name, value.lvalue, typeName))
             self.putNumChild(0)
-            dd = typeobj.ltarget.typeData().enumDisplay
+            dd = typeobj.ltarget.tdata.enumDisplay
             self.putValue(str(value.lvalue) if dd is None else dd(
                 value.lvalue, value.laddress, '%d'))
             self.putType(typeName)
@@ -2943,6 +2935,8 @@ class DumperBase():
 
     class Value():
         def __init__(self, dumper):
+            # This can be helpful to track down from where a Value was created
+            #self._stack = inspect.stack()
             self.dumper = dumper
             self.name = None
             self._type = None
@@ -3002,7 +2996,7 @@ class DumperBase():
 
         def displayEnum(self, form='%d', bitsize=None):
             intval = self.integer(bitsize)
-            dd = self.type.typeData().enumDisplay
+            dd = self.type.tdata.enumDisplay
             if dd is None:
                 return str(intval)
             return dd(intval, self.laddress, form)
@@ -3191,7 +3185,7 @@ class DumperBase():
                 return self.cast(self.type.ltarget).extractField(field)
             if self.type.code in (TypeCode.Reference, TypeCode.RValueReference):
                 return self.dereference().extractField(field)
-            #DumperBase.warn('FIELD: %s ' % field)
+            #DumperBase.warn('FIELD: %s ' % (field,))
             val = self.dumper.Value(self.dumper)
             val.name = field.name
             val.isBaseClass = field.isBase
@@ -3220,10 +3214,10 @@ class DumperBase():
                         lbyte = ldata[i]
                     else:
                         lbyte = ldata[fieldOffset + fieldSize - 1 - i]
-                    if sys.version_info[0] >= 3:
-                        data += lbyte
-                    else:
+                    if isinstance(lbyte, (str, bytes)):
                         data += ord(lbyte)
+                    else:
+                        data += lbyte
                 data = data >> fieldBitpos
                 data = data & ((1 << fieldBitsize) - 1)
                 val.lvalue = data
@@ -3255,7 +3249,7 @@ class DumperBase():
             if self.type.code == TypeCode.Typedef:
                 return self.detypedef().members(includeBases)
 
-            tdata = self.type.typeData()
+            tdata = self.type.tdata
             #if isinstance(tdata.lfields, list):
             #    return tdata.lfields
 
@@ -3318,13 +3312,13 @@ class DumperBase():
                 else:
                     val = self.dumper.nativeValueDereferenceReference(self)
             elif self.type.code == TypeCode.Pointer:
-                if self.nativeValue is None:
+                try:
+                    val = self.dumper.nativeValueDereferencePointer(self)
+                except:
                     val.laddress = self.pointer()
                     val._type = self.type.dereference()
                     if self.dumper.useDynamicType:
                         val._type = self.dumper.nativeDynamicType(val.laddress, val.type)
-                else:
-                    val = self.dumper.nativeValueDereferencePointer(self)
             else:
                 raise RuntimeError("WRONG: %s" % self.type.code)
             #DumperBase.warn("DEREFERENCING FROM: %s" % self)
@@ -3472,33 +3466,28 @@ class DumperBase():
         item_count = type_name[pos1 + 1:pos2]
         return (type_name[0:pos1].strip(), type_name[pos2 + 1:].strip(), int(item_count))
 
-    def registerType(self, typeId, tdata):
-        #DumperBase.warn('REGISTER TYPE: %s' % typeId)
-        self.typeData[typeId] = tdata
-        #typeId = typeId.replace(' ', '')
-        #self.typeData[typeId] = tdata
-        #DumperBase.warn('REGISTERED: %s' % self.typeData)
-
     def registerTypeAlias(self, existingTypeId, aliasId):
         #DumperBase.warn('REGISTER ALIAS %s FOR %s' % (aliasId, existingTypeId))
         self.typeData[aliasId] = self.typeData[existingTypeId]
 
     class TypeData():
-        def __init__(self, dumper):
+        def __init__(self, dumper, type_id):
             self.dumper = dumper
             self.lfields = None  # None or Value -> list of member Values
             self.lalignment = None  # Function returning alignment of this struct
             self.lbitsize = None
             self.ltarget = None  # Inner type for arrays
-            self.templateArguments = []
+            self.templateArguments = None
             self.code = None
-            self.name = None
-            self.typeId = None
+            self.name = type_id
+            self.typeId = type_id
             self.enumDisplay = None
             self.moduleName = None
+            #DumperBase.warn('REGISTER TYPE: %s' % type_id)
+            dumper.typeData[type_id] = self
 
         def copy(self):
-            tdata = self.dumper.TypeData(self.dumper)
+            tdata = self.dumper.TypeData(self.dumper, self.typeId)
             tdata.dumper = self.dumper
             tdata.lfields = self.lfields
             tdata.lalignment = self.lalignment
@@ -3516,23 +3505,15 @@ class DumperBase():
         def __init__(self, dumper, typeId):
             self.typeId = typeId
             self.dumper = dumper
+            self.tdata = dumper.typeData.get(typeId, None)
+            if self.tdata is None:
+                #DumperBase.warn('USING : %s' % self.typeId)
+                self.dumper.lookupType(self.typeId)
+                self.tdata = self.dumper.typeData.get(self.typeId)
 
         def __str__(self):
             #return self.typeId
             return self.stringify()
-
-        def typeData(self):
-            tdata = self.dumper.typeData.get(self.typeId, None)
-            if tdata is not None:
-                #DumperBase.warn('USING : %s' % self.typeId)
-                return tdata
-            typeId = self.typeId.replace(' ', '')
-            if tdata is not None:
-                #DumperBase.warn('USING FALLBACK : %s' % self.typeId)
-                return tdata
-            #DumperBase.warn('EXPANDING LAZILY: %s' % self.typeId)
-            self.dumper.lookupType(self.typeId)
-            return self.dumper.typeData.get(self.typeId)
 
         @property
         def name(self):
@@ -3543,30 +3524,27 @@ class DumperBase():
 
         @property
         def code(self):
-            return self.typeData().code
+            return self.tdata.code
 
         @property
         def lbitsize(self):
-            return self.typeData().lbitsize
+            return self.tdata.lbitsize
 
         @property
         def lbitpos(self):
-            return self.typeData().lbitpos
+            return self.tdata.lbitpos
 
         @property
         def ltarget(self):
-            return self.typeData().ltarget
+            return self.tdata.ltarget
 
         @property
         def moduleName(self):
-            return self.typeData().moduleName
+            return self.tdata.moduleName
 
         def stringify(self):
-            tdata = self.typeData()
-            if tdata is None:
-                return 'Type(id="%s")' % self.typeId
             return 'Type(name="%s",bsize=%s,code=%s)' \
-                % (tdata.name, tdata.lbitsize, tdata.code)
+                % (self.tdata.name, self.tdata.lbitsize, self.tdata.code)
 
         def __getitem__(self, index):
             if self.dumper.isInt(index):
@@ -3574,10 +3552,7 @@ class DumperBase():
             raise RuntimeError('CANNOT INDEX TYPE')
 
         def dynamicTypeName(self, address):
-            tdata = self.typeData()
-            if tdata is None:
-                return None
-            if tdata.code != TypeCode.Struct:
+            if self.tdata.code != TypeCode.Struct:
                 return None
             try:
                 vtbl = self.dumper.extractPointer(address)
@@ -3599,11 +3574,7 @@ class DumperBase():
             return self
 
         def check(self):
-            tdata = self.typeData()
-            if tdata is None:
-                raise RuntimeError('TYPE WITHOUT DATA: %s ALL: %s' %
-                                   (self.typeId, self.dumper.typeData.keys()))
-            if tdata.name is None:
+            if self.tdata.name is None:
                 raise RuntimeError('TYPE WITHOUT NAME: %s' % self.typeId)
 
         def dereference(self):
@@ -3616,16 +3587,14 @@ class DumperBase():
             return self
 
         def templateArguments(self):
-            tdata = self.typeData()
-            if tdata is None:
+            if self.tdata is None:
                 return self.dumper.listTemplateParameters(self.typeId)
-            return tdata.templateArguments
+            return self.tdata.templateArguments()
 
         def templateArgument(self, position):
-            tdata = self.typeData()
-            #DumperBase.warn('TDATA: %s' % tdata)
+            #DumperBase.warn('TDATA: %s' % self.tdata)
             #DumperBase.warn('ID: %s' % self.typeId)
-            if tdata is None:
+            if self.tdata is None:
                 # Native lookups didn't help. Happens for 'wrong' placement of 'const'
                 # etc. with LLDB. But not all is lost:
                 ta = self.dumper.listTemplateParameters(self.typeId)
@@ -3634,8 +3603,8 @@ class DumperBase():
                 #DumperBase.warn('RES: %s' % res.typeId)
                 return res
             #DumperBase.warn('TA: %s %s' % (position, self.typeId))
-            #DumperBase.warn('ARGS: %s' % tdata.templateArguments)
-            return tdata.templateArguments[position]
+            #DumperBase.warn('ARGS: %s' % self.tdata.templateArguments())
+            return self.tdata.templateArguments()[position]
 
         def simpleEncoding(self):
             res = {
@@ -3678,28 +3647,27 @@ class DumperBase():
             return self.code in (TypeCode.Integral, TypeCode.Float, TypeCode.Enum)
 
         def alignment(self):
-            tdata = self.typeData()
-            if tdata.code == TypeCode.Typedef:
-                return tdata.ltarget.alignment()
-            if tdata.code in (TypeCode.Integral, TypeCode.Float, TypeCode.Enum):
-                if tdata.name in ('double', 'long long', 'unsigned long long'):
+            if self.tdata.code == TypeCode.Typedef:
+                return self.tdata.ltarget.alignment()
+            if self.tdata.code in (TypeCode.Integral, TypeCode.Float, TypeCode.Enum):
+                if self.tdata.name in ('double', 'long long', 'unsigned long long'):
                     # Crude approximation.
                     return 8 if self.dumper.isWindowsTarget() else self.dumper.ptrSize()
                 return self.size()
-            if tdata.code in (TypeCode.Pointer, TypeCode.Reference, TypeCode.RValueReference):
+            if self.tdata.code in (TypeCode.Pointer, TypeCode.Reference, TypeCode.RValueReference):
                 return self.dumper.ptrSize()
-            if tdata.lalignment is not None:
-                #if isinstance(tdata.lalignment, function): # Does not work that way.
-                if hasattr(tdata.lalignment, '__call__'):
-                    return tdata.lalignment()
-                return tdata.lalignment
+            if self.tdata.lalignment is not None:
+                #if isinstance(self.tdata.lalignment, function): # Does not work that way.
+                if hasattr(self.tdata.lalignment, '__call__'):
+                    return self.tdata.lalignment()
+                return self.tdata.lalignment
             return 1
 
         def pointer(self):
             return self.dumper.createPointerType(self)
 
         def target(self):
-            return self.typeData().ltarget
+            return self.tdata.ltarget
 
         def stripTypedefs(self):
             if isinstance(self, self.dumper.Type) and self.code != TypeCode.Typedef:
@@ -3822,13 +3790,11 @@ class DumperBase():
             raise RuntimeError('Expected type in createPointerType(), got %s'
                                % type(targetType))
         typeId = targetType.typeId + ' *'
-        tdata = self.TypeData(self)
+        tdata = self.TypeData(self, typeId)
         tdata.name = targetType.name + '*'
-        tdata.typeId = typeId
         tdata.lbitsize = 8 * self.ptrSize()
         tdata.code = TypeCode.Pointer
         tdata.ltarget = targetType
-        self.registerType(typeId, tdata)
         return self.Type(self, typeId)
 
     def createReferenceType(self, targetType):
@@ -3836,14 +3802,12 @@ class DumperBase():
             raise RuntimeError('Expected type in createReferenceType(), got %s'
                                % type(targetType))
         typeId = targetType.typeId + ' &'
-        tdata = self.TypeData(self)
+        tdata = self.TypeData(self, typeId)
         tdata.name = targetType.name + ' &'
-        tdata.typeId = typeId
         tdata.code = TypeCode.Reference
         tdata.ltarget = targetType
         tdata.lbitsize = 8 * self.ptrSize()  # Needed for Gdb13393 test.
         #tdata.lbitsize = None
-        self.registerType(typeId, tdata)
         return self.Type(self, typeId)
 
     def createRValueReferenceType(self, targetType):
@@ -3851,13 +3815,11 @@ class DumperBase():
             raise RuntimeError('Expected type in createRValueReferenceType(), got %s'
                                % type(targetType))
         typeId = targetType.typeId + ' &&'
-        tdata = self.TypeData(self)
+        tdata = self.TypeData(self, typeId)
         tdata.name = targetType.name + ' &&'
-        tdata.typeId = typeId
         tdata.code = TypeCode.RValueReference
         tdata.ltarget = targetType
         tdata.lbitsize = None
-        self.registerType(typeId, tdata)
         return self.Type(self, typeId)
 
     def createArrayType(self, targetType, count):
@@ -3874,13 +3836,11 @@ class DumperBase():
             type_id = '%s[%d]' % (targetTypeId, count)
             type_name = '%s[%d]' % (targetType.name, count)
 
-        tdata = self.TypeData(self)
+        tdata = self.TypeData(self, type_id)
         tdata.name = type_name
-        tdata.typeId = type_id
         tdata.code = TypeCode.Array
         tdata.ltarget = targetType
         tdata.lbitsize = targetType.lbitsize * count
-        self.registerType(type_id, tdata)
         return self.Type(self, type_id)
 
     def createBitfieldType(self, targetType, bitsize):
@@ -3888,13 +3848,11 @@ class DumperBase():
             raise RuntimeError('Expected type in createBitfieldType(), got %s'
                                % type(targetType))
         typeId = '%s:%d' % (targetType.typeId, bitsize)
-        tdata = self.TypeData(self)
+        tdata = self.TypeData(self, typeId)
         tdata.name = '%s : %d' % (targetType.typeId, bitsize)
-        tdata.typeId = typeId
         tdata.code = TypeCode.Bitfield
         tdata.ltarget = targetType
         tdata.lbitsize = bitsize
-        self.registerType(typeId, tdata)
         return self.Type(self, typeId)
 
     def createTypedefedType(self, targetType, typeName, typeId=None):
@@ -3906,15 +3864,13 @@ class DumperBase():
         # Happens for C-style struct in GDB: typedef { int x; } struct S1;
         if targetType.typeId == typeId:
             return targetType
-        tdata = self.TypeData(self)
+        tdata = self.TypeData(self, typeId)
         tdata.name = typeName
-        tdata.typeId = typeId
         tdata.code = TypeCode.Typedef
         tdata.ltarget = targetType
         tdata.lbitsize = targetType.lbitsize
         #tdata.lfields = targetType.lfields
         tdata.lbitsize = targetType.lbitsize
-        self.registerType(typeId, tdata)
         return self.Type(self, typeId)
 
     def knownArrayTypeSize(self):
@@ -3970,10 +3926,8 @@ class DumperBase():
                 return knownType
 
             #DumperBase.warn('FAKING: %s SIZE: %s' % (typish, size))
-            tdata = self.TypeData(self)
-            tdata.name = typish
-            tdata.typeId = typish
-            tdata.templateArguments = self.listTemplateParameters(typish)
+            tdata = self.TypeData(self, typish)
+            tdata.templateArguments = lambda: self.listTemplateParameters(typish)
             if size is not None:
                 tdata.lbitsize = 8 * size
             if typish.endswith('*'):
@@ -3981,23 +3935,27 @@ class DumperBase():
                 tdata.lbitsize = 8 * self.ptrSize()
                 tdata.ltarget = self.createType(typish[:-1].strip())
 
-            self.registerType(typish, tdata)
-            typeobj = self.Type(self, typish)
+            typeobj = self.Type(self, tdata.typeId)
             #DumperBase.warn('CREATE TYPE: %s' % typeobj.stringify())
             typeobj.check()
             return typeobj
         raise RuntimeError('NEED TYPE, NOT %s' % type(typish))
 
-    def createValue(self, datish, typish):
+    def createValueFromAddressAndType(self, address, typish):
         val = self.Value(self)
         val._type = self.createType(typish)
+        #DumperBase.warn('CREATING %s AT 0x%x' % (val.type.name, datish))
+        val.laddress = address
+        if self.useDynamicType:
+            val._type = val.type.dynamicType(address)
+        return val
+
+    def createValue(self, datish, typish):
         if self.isInt(datish):  # Used as address.
-            #DumperBase.warn('CREATING %s AT 0x%x' % (val.type.name, datish))
-            val.laddress = datish
-            if self.useDynamicType:
-                val._type = val.type.dynamicType(datish)
-            return val
+            return self.createValueFromAddressAndType(datish, typish)
         if isinstance(datish, bytes):
+            val = self.Value(self)
+            val._type = self.createType(typish)
             #DumperBase.warn('CREATING %s WITH DATA %s' % (val.type.name, self.hexencode(datish)))
             val.ldata = datish
             val.check()
@@ -4005,11 +3963,8 @@ class DumperBase():
         raise RuntimeError('EXPECTING ADDRESS OR BYTES, GOT %s' % type(datish))
 
     def createProxyValue(self, proxy_data, type_name):
-        tdata = self.TypeData(self)
-        tdata.name = type_name
-        tdata.typeId = type_name
+        tdata = self.TypeData(self, type_name)
         tdata.code = TypeCode.Struct
-        self.registerType(type_name, tdata)
         val = self.Value(self)
         val._type = self.Type(self, type_name)
         val.ldata = proxy_data

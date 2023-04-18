@@ -1,42 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #pragma once
 
-#include "view3dactioncommand.h"
-#include "seekerslider.h"
-
-#include <modelcache.h>
+#include "itemlibraryinfo.h"
+#include <qmldesignercomponents_global.h>
 
 #include <abstractview.h>
-#include <QtGui/qevent.h>
-#include <QtGui/qimage.h>
-#include <QtCore/qvector.h>
-#include <QtCore/qvariant.h>
-#include <QtCore/qsize.h>
+#include <modelcache.h>
+
+#include <QImage>
+#include <QPointer>
+#include <QSize>
+#include <QTimer>
+#include <QVariant>
+#include <QVector>
 
 QT_BEGIN_NAMESPACE
+class QAction;
+class QInputEvent;
 QT_END_NAMESPACE
 
 namespace QmlDesigner {
@@ -44,13 +25,14 @@ namespace QmlDesigner {
 class Edit3DWidget;
 class Edit3DAction;
 class Edit3DCameraAction;
+class SeekerSlider;
 
-class QMLDESIGNERCORE_EXPORT Edit3DView : public AbstractView
+class QMLDESIGNERCOMPONENTS_EXPORT Edit3DView : public AbstractView
 {
     Q_OBJECT
 
 public:
-    Edit3DView(QObject *parent = nullptr);
+    Edit3DView(ExternalDependenciesInterface &externalDependencies);
     ~Edit3DView() override;
 
     WidgetInfo widgetInfo() override;
@@ -64,6 +46,7 @@ public:
     void modelAboutToBeDetached(Model *model) override;
     void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports) override;
     void customNotification(const AbstractView *view, const QString &identifier, const QList<ModelNode> &nodeList, const QList<QVariant> &data) override;
+    void nodeAtPosReady(const ModelNode &modelNode, const QVector3D &pos3d) override;
 
     void sendInputEvent(QInputEvent *e) const;
     void edit3DViewResized(const QSize &size) const;
@@ -74,20 +57,49 @@ public:
     QVector<Edit3DAction *> leftActions() const;
     QVector<Edit3DAction *> rightActions() const;
     QVector<Edit3DAction *> visibilityToggleActions() const;
+    QVector<Edit3DAction *> backgroundColorActions() const;
+    Edit3DAction *edit3DAction(View3DActionType type) const;
     void setSeeker(SeekerSlider *slider);
 
     void addQuick3DImport();
+    void startContextMenu(const QPoint &pos);
+    void dropMaterial(const ModelNode &matNode, const QPointF &pos);
+    void dropBundleMaterial(const QPointF &pos);
+    void dropTexture(const ModelNode &textureNode, const QPointF &pos);
+    void dropComponent(const ItemLibraryEntry &entry, const QPointF &pos);
 
-protected:
+private slots:
+    void onEntriesChanged();
 
 private:
+    enum class NodeAtPosReqType {
+        BundleMaterialDrop,
+        ComponentDrop,
+        MaterialDrop,
+        TextureDrop,
+        ContextMenu,
+        None
+    };
+
+    void registerEdit3DAction(Edit3DAction *action);
+    void unregisterEdit3DAction(Edit3DAction *action);
+
     void createEdit3DWidget();
     void checkImports();
+    void handleEntriesChanged();
+    void showMaterialPropertiesView();
+
+    Edit3DAction *createSelectBackgroundColorAction(QAction *syncBackgroundColorAction);
+    Edit3DAction *createGridColorSelectionAction();
+    Edit3DAction *createResetColorAction(QAction *syncBackgroundColorAction);
+    Edit3DAction *createSyncBackgroundColorAction();
 
     QPointer<Edit3DWidget> m_edit3DWidget;
     QVector<Edit3DAction *> m_leftActions;
     QVector<Edit3DAction *> m_rightActions;
     QVector<Edit3DAction *> m_visibilityToggleActions;
+    QVector<Edit3DAction *> m_backgroundColorActions;
+    QMap<View3DActionType, Edit3DAction *> m_edit3DActions;
     Edit3DAction *m_selectionModeAction = nullptr;
     Edit3DAction *m_moveToolAction = nullptr;
     Edit3DAction *m_rotateToolAction = nullptr;
@@ -108,9 +120,17 @@ private:
     Edit3DAction *m_particlesPlayAction = nullptr;
     Edit3DAction *m_particlesRestartAction = nullptr;
     Edit3DAction *m_visibilityTogglesAction = nullptr;
+    Edit3DAction *m_backgrondColorMenuAction = nullptr;
     SeekerSlider *m_seeker = nullptr;
     int particlemode;
     ModelCache<QImage> m_canvasCache;
+    ModelNode m_droppedModelNode;
+    ItemLibraryEntry m_droppedEntry;
+    NodeAtPosReqType m_nodeAtPosReqType;
+    QPoint m_contextMenuPos;
+    QTimer m_compressionTimer;
+
+    friend class Edit3DAction;
 };
 
 } // namespace QmlDesigner

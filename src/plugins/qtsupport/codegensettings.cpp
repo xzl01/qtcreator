@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "codegensettings.h"
 
@@ -30,21 +8,21 @@
 
 #include <QSettings>
 
-static const char CODE_GEN_GROUP[] = "FormClassWizardPage";
-static const char TRANSLATION_KEY[] = "RetranslationSupport";
-static const char EMBEDDING_KEY[] = "Embedding";
-static const char INCLUDE_QT_MODULE_KEY[] = "IncludeQtModule";
-static const char ADD_QT_VERSION_CHECK_KEY[] = "AddQtVersionCheck";
-
-static const bool retranslationSupportDefault = false;
-static const QtSupport::CodeGenSettings::UiClassEmbedding embeddingDefault
-    = QtSupport::CodeGenSettings::PointerAggregatedUiClass;
-static const bool includeQtModuleDefault = false;
-static const bool addQtVersionCheckDefault = false;
-
 using namespace Utils;
 
 namespace QtSupport {
+
+const char CODE_GEN_GROUP[] = "FormClassWizardPage";
+const char TRANSLATION_KEY[] = "RetranslationSupport";
+const char EMBEDDING_KEY[] = "Embedding";
+const char INCLUDE_QT_MODULE_KEY[] = "IncludeQtModule";
+const char ADD_QT_VERSION_CHECK_KEY[] = "AddQtVersionCheck";
+
+const bool retranslationSupportDefault = false;
+const CodeGenSettings::UiClassEmbedding embeddingDefault
+    = CodeGenSettings::PointerAggregatedUiClass;
+const bool includeQtModuleDefault = false;
+const bool addQtVersionCheckDefault = false;
 
 CodeGenSettings::CodeGenSettings()
     : embedding(embeddingDefault)
@@ -52,7 +30,6 @@ CodeGenSettings::CodeGenSettings()
     , includeQtModule(includeQtModuleDefault)
     , addQtVersionCheck(addQtVersionCheckDefault)
 {
-
 }
 
 bool CodeGenSettings::equals(const CodeGenSettings &rhs) const

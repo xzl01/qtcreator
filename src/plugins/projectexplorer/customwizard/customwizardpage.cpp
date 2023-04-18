@@ -1,30 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "customwizardpage.h"
+
 #include "customwizardparameters.h"
+#include "../projectexplorertr.h"
 
 #include <utils/pathchooser.h>
 #include <utils/qtcassert.h>
@@ -96,7 +76,7 @@ CustomWizardFieldPage::CustomWizardFieldPage(const QSharedPointer<CustomWizardCo
     m_formLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
     if (debug)
         qDebug() << Q_FUNC_INFO << parameters->fields.size();
-    foreach (const CustomWizardField &f, parameters->fields)
+    for (const CustomWizardField &f : std::as_const(parameters->fields))
         addField(f);
     vLayout->addLayout(m_formLayout);
     m_errorLabel->setVisible(false);
@@ -303,7 +283,7 @@ void CustomWizardFieldPage::initializePage()
 {
     QWizardPage::initializePage();
     clearError();
-    for (const LineEditData &led : qAsConst(m_lineEdits)) {
+    for (const LineEditData &led : std::as_const(m_lineEdits)) {
         if (!led.userChange.isNull()) {
             led.lineEdit->setText(led.userChange);
         } else if (!led.defaultText.isEmpty()) {
@@ -314,7 +294,7 @@ void CustomWizardFieldPage::initializePage()
         if (!led.placeholderText.isEmpty())
             led.lineEdit->setPlaceholderText(led.placeholderText);
     }
-    for (const TextEditData &ted : qAsConst(m_textEdits)) {
+    for (const TextEditData &ted : std::as_const(m_textEdits)) {
         if (!ted.userChange.isNull()) {
             ted.textEdit->setText(ted.userChange);
         } else if (!ted.defaultText.isEmpty()) {
@@ -323,7 +303,7 @@ void CustomWizardFieldPage::initializePage()
             ted.textEdit->setText(defaultText);
         }
     }
-    for (const PathChooserData &ped : qAsConst(m_pathChoosers)) {
+    for (const PathChooserData &ped : std::as_const(m_pathChoosers)) {
         if (!ped.userChange.isNull()) {
             ped.pathChooser->setFilePath(FilePath::fromUserInput(ped.userChange));
         } else if (!ped.defaultText.isEmpty()) {
@@ -371,7 +351,7 @@ bool CustomWizardFieldPage::validatePage()
 {
     clearError();
     // Check line edits with validators
-    foreach (const LineEditData &led, m_lineEdits) {
+    for (const LineEditData &led : std::as_const(m_lineEdits)) {
         if (const QValidator *val = led.lineEdit->validator()) {
             int pos = 0;
             QString text = led.lineEdit->text();
@@ -399,7 +379,7 @@ QMap<QString, QString> CustomWizardFieldPage::replacementMap(const QWizard *w,
                                                              const FieldList &f)
 {
     QMap<QString, QString> fieldReplacementMap = ctx->baseReplacements;
-    foreach (const Internal::CustomWizardField &field, f) {
+    for (const Internal::CustomWizardField &field : f) {
         const QString value = w->field(field.name).toString();
         fieldReplacementMap.insert(field.name, value);
     }
@@ -428,7 +408,7 @@ CustomWizardPage::CustomWizardPage(const QSharedPointer<CustomWizardContext> &ct
     m_pathChooser(new PathChooser)
 {
     m_pathChooser->setHistoryCompleter(QLatin1String("PE.ProjectDir.History"));
-    addRow(tr("Path:"), m_pathChooser);
+    addRow(Tr::tr("Path:"), m_pathChooser);
     connect(m_pathChooser, &PathChooser::validChanged, this, &QWizardPage::completeChanged);
 }
 

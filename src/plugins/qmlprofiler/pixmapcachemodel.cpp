@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "pixmapcachemodel.h"
-#include "qmlprofilermodelmanager.h"
 #include "qmlprofilereventtypes.h"
+#include "qmlprofilermodelmanager.h"
+#include "qmlprofilertr.h"
 
 #include <tracing/timelineformattime.h>
 
@@ -34,7 +13,7 @@ namespace Internal {
 
 PixmapCacheModel::PixmapCacheModel(QmlProfilerModelManager *manager,
                                    Timeline::TimelineModelAggregator *parent) :
-    QmlProfilerTimelineModel(manager, PixmapCacheEvent, MaximumRangeType, ProfilePixmapCache,
+    QmlProfilerTimelineModel(manager, PixmapCacheEvent, UndefinedRangeType, ProfilePixmapCache,
                              parent)
 {
 }
@@ -93,7 +72,7 @@ QVariantList PixmapCacheModel::labels() const
 
     // Cache Size
     QVariantMap element;
-    element.insert(QLatin1String("description"), tr("Cache Size"));
+    element.insert(QLatin1String("description"), Tr::tr("Cache Size"));
 
     element.insert(QLatin1String("id"), 0);
     result << element;
@@ -117,19 +96,19 @@ QVariantMap PixmapCacheModel::details(int index) const
     const Item *ev = &m_data[index];
 
     if (ev->pixmapEventType == PixmapCacheCountChanged) {
-        result.insert(QLatin1String("displayName"), tr("Image Cached"));
-        result.insert(tr("Cache Size"), QString::fromLatin1("%1 px").arg(ev->cacheSize));
+        result.insert(QLatin1String("displayName"), Tr::tr("Image Cached"));
+        result.insert(Tr::tr("Cache Size"), QString::fromLatin1("%1 px").arg(ev->cacheSize));
     } else {
-        result.insert(QLatin1String("displayName"), tr("Image Loaded"));
+        result.insert(QLatin1String("displayName"), Tr::tr("Image Loaded"));
         if (m_pixmaps[ev->urlIndex].sizes[ev->sizeIndex].loadState != Finished)
-            result.insert(tr("Result"), tr("Load Error"));
-        result.insert(tr("Duration"), Timeline::formatTime(duration(index)));
+            result.insert(Tr::tr("Result"), Tr::tr("Load Error"));
+        result.insert(Tr::tr("Duration"), Timeline::formatTime(duration(index)));
     }
 
-    result.insert(tr("File"), getFilenameOnly(m_pixmaps[ev->urlIndex].url));
-    result.insert(tr("Width"), QString::fromLatin1("%1 px")
+    result.insert(Tr::tr("File"), getFilenameOnly(m_pixmaps[ev->urlIndex].url));
+    result.insert(Tr::tr("Width"), QString::fromLatin1("%1 px")
                   .arg(m_pixmaps[ev->urlIndex].sizes[ev->sizeIndex].size.width()));
-    result.insert(tr("Height"), QString::fromLatin1("%1 px")
+    result.insert(Tr::tr("Height"), QString::fromLatin1("%1 px")
                   .arg(m_pixmaps[ev->urlIndex].sizes[ev->sizeIndex].size.height()));
     return result;
 }
@@ -432,7 +411,7 @@ QString PixmapCacheModel::fileName(int index) const
 
 void PixmapCacheModel::computeMaxCacheSize()
 {
-    foreach (const PixmapCacheModel::Item &event, m_data) {
+    for (const PixmapCacheModel::Item &event : std::as_const(m_data)) {
         if (event.pixmapEventType == PixmapCacheModel::PixmapCacheCountChanged) {
             if (event.cacheSize > m_maxCacheSize)
                 m_maxCacheSize = event.cacheSize;

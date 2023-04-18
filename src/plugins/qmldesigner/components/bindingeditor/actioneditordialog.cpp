@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "actioneditordialog.h"
 
@@ -49,23 +27,23 @@ ActionEditorDialog::ActionEditorDialog(QWidget *parent)
 {
     setupUIComponents();
 
-    QObject::connect(m_comboBoxType, QOverload<int>::of(&QComboBox::activated),
+    QObject::connect(m_comboBoxType, &QComboBox::activated,
                      [this] (int idx) { this->updateComboBoxes(idx, ComboBox::Type); });
 
     // Action connections
-    QObject::connect(m_actionTargetItem, QOverload<int>::of(&QComboBox::activated),
+    QObject::connect(m_actionTargetItem, &QComboBox::activated,
                      [this] (int idx) { this->updateComboBoxes(idx, ComboBox::TargetItem); });
-    QObject::connect(m_actionMethod, QOverload<int>::of(&QComboBox::activated),
+    QObject::connect(m_actionMethod, &QComboBox::activated,
                      [this] (int idx) { this->updateComboBoxes(idx, ComboBox::TargetProperty); });
 
     // Assignment connections
-    QObject::connect(m_assignmentTargetItem, QOverload<int>::of(&QComboBox::activated),
+    QObject::connect(m_assignmentTargetItem, &QComboBox::activated,
                      [this] (int idx) { this->updateComboBoxes(idx, ComboBox::TargetItem); });
-    QObject::connect(m_assignmentTargetProperty, QOverload<int>::of(&QComboBox::activated),
+    QObject::connect(m_assignmentTargetProperty, &QComboBox::activated,
                      [this] (int idx) { this->updateComboBoxes(idx, ComboBox::TargetProperty); });
-    QObject::connect(m_assignmentSourceItem, QOverload<int>::of(&QComboBox::activated),
+    QObject::connect(m_assignmentSourceItem, &QComboBox::activated,
                      [this] (int idx) { this->updateComboBoxes(idx, ComboBox::SourceItem); });
-    QObject::connect(m_assignmentSourceProperty, QOverload<int>::of(&QComboBox::activated),
+    QObject::connect(m_assignmentSourceProperty, &QComboBox::activated,
                      [this] (int idx) { this->updateComboBoxes(idx, ComboBox::SourceProperty); });
 }
 
@@ -77,7 +55,8 @@ void ActionEditorDialog::adjustProperties()
 {
     // Analyze the current connection editor statement/expression
     const auto qmlJSDocument = bindingEditorWidget()->qmlJsEditorDocument();
-    auto doc = QmlJS::Document::create(QLatin1String("<expression>"), QmlJS::Dialect::JavaScript);
+    auto doc = QmlJS::Document::create(Utils::FilePath::fromString("<expression>"),
+                                       QmlJS::Dialect::JavaScript);
     doc->setSource(qmlJSDocument->plainText());
     bool parseResult = doc->parseExpression();
 
@@ -229,10 +208,8 @@ void ActionEditorDialog::setAllConnections(const QList<ConnectionOption> &connec
     m_lock = false;
 }
 
-void ActionEditorDialog::updateComboBoxes(int index, ComboBox type)
+void ActionEditorDialog::updateComboBoxes([[maybe_unused]] int index, ComboBox type)
 {
-    Q_UNUSED(index)
-
     const int currentType = m_comboBoxType->currentIndex();
     const int currentStack = m_stackedLayout->currentIndex();
     bool typeChanged = false;
@@ -456,7 +433,7 @@ void ActionEditorDialog::fillAndSetTargetItem(const QString &value, bool useDefa
 {
     if (m_comboBoxType->currentIndex() == ConnectionType::Action) {
         m_actionTargetItem->clear();
-        for (const auto &connection : qAsConst(m_connections)) {
+        for (const auto &connection : std::as_const(m_connections)) {
             if (!connection.methods.isEmpty())
                 m_actionTargetItem->addItem(connection.item);
         }
@@ -471,7 +448,7 @@ void ActionEditorDialog::fillAndSetTargetItem(const QString &value, bool useDefa
         }
     } else { // ConnectionType::Assignment
         m_assignmentTargetItem->clear();
-        for (const auto &connection : qAsConst(m_connections)) {
+        for (const auto &connection : std::as_const(m_connections)) {
             if (!connection.properties.isEmpty() && connection.hasWriteableProperties())
                 m_assignmentTargetItem->addItem(connection.item);
         }
@@ -516,7 +493,7 @@ void ActionEditorDialog::fillAndSetTargetProperty(const QString &value, bool use
         if (idx == -1) {
             insertAndSetUndefined(m_assignmentTargetProperty);
         } else {
-            for (const auto &property : qAsConst(m_connections[idx].properties)) {
+            for (const auto &property : std::as_const(m_connections[idx].properties)) {
                 if (property.isWriteable)
                     m_assignmentTargetProperty->addItem(property.name, property.type);
             }
@@ -539,7 +516,7 @@ void ActionEditorDialog::fillAndSetSourceItem(const QString &value, bool useDefa
     const TypeName targetPropertyType = m_assignmentTargetProperty->currentData().value<TypeName>();
 
     if (!targetPropertyType.isEmpty()) {
-        for (const ConnectionOption &connection : qAsConst(m_connections)) {
+        for (const ConnectionOption &connection : std::as_const(m_connections)) {
             if (!connection.containsType(targetPropertyType))
                 continue;
 
@@ -547,7 +524,7 @@ void ActionEditorDialog::fillAndSetSourceItem(const QString &value, bool useDefa
         }
 
         // Add Constants
-        for (const SingletonOption &singleton : qAsConst(m_singletons)) {
+        for (const SingletonOption &singleton : std::as_const(m_singletons)) {
             if (!singleton.containsType(targetPropertyType))
                 continue;
 
@@ -583,7 +560,7 @@ void ActionEditorDialog::fillAndSetSourceProperty(const QString &value,
             else
                 insertAndSetUndefined(m_assignmentSourceProperty);
         } else if (targetProperty == "state") {
-            for (const auto &state : qAsConst(m_states))
+            for (const auto &state : std::as_const(m_states))
                 m_assignmentSourceProperty->addItem(state, specificItem);
 
             if (m_assignmentSourceProperty->findText(value) != -1)
@@ -612,7 +589,7 @@ void ActionEditorDialog::fillAndSetSourceProperty(const QString &value,
                 m_assignmentSourceProperty->addItem("false", specificItem);
                 specificsEnd = 2;
             } else if (targetProperty == "state") {
-                for (const auto &state : qAsConst(m_states))
+                for (const auto &state : std::as_const(m_states))
                     m_assignmentSourceProperty->addItem(state, specificItem);
 
                 specificsEnd = m_states.count();
@@ -622,14 +599,14 @@ void ActionEditorDialog::fillAndSetSourceProperty(const QString &value,
                 m_assignmentSourceProperty->insertSeparator(specificsEnd);
 
             if (sourceItemType == singletonItem) {
-                for (const auto &property : qAsConst(m_singletons[idx].properties)) {
+                for (const auto &property : std::as_const(m_singletons[idx].properties)) {
                     if (targetPropertyType.isEmpty() // TODO isEmpty correct?!
                         || property.type == targetPropertyType
                         || (isNumeric(property.type) && isNumeric(targetPropertyType)))
                         m_assignmentSourceProperty->addItem(property.name, property.type);
                 }
             } else {
-                for (const auto &property : qAsConst(m_connections[idx].properties)) {
+                for (const auto &property : std::as_const(m_connections[idx].properties)) {
                     if (targetPropertyType.isEmpty() // TODO isEmpty correct?!
                         || property.type == targetPropertyType
                         || (isNumeric(property.type) && isNumeric(targetPropertyType)))

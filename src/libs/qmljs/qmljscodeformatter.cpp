@@ -1,31 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljscodeformatter.h"
-
-#include <utils/porting.h>
 
 #include <QLoggingCategory>
 #include <QMetaEnum>
@@ -229,7 +205,7 @@ void CodeFormatter::recalculateStateAfter(const QTextBlock &block)
             break;
 
         case property_list_open: {
-            const QStringView tok = Utils::midView(m_currentLine,
+            const QStringView tok = QStringView(m_currentLine).mid(
                                                    m_currentToken.begin(),
                                                    m_currentToken.length);
             if (tok == QLatin1String(">"))
@@ -876,7 +852,7 @@ int CodeFormatter::column(int index) const
 
 QStringView CodeFormatter::currentTokenText() const
 {
-    return Utils::midView(m_currentLine, m_currentToken.begin(), m_currentToken.length);
+    return QStringView(m_currentLine).mid(m_currentToken.begin(), m_currentToken.length);
 }
 
 void CodeFormatter::turnInto(int newState)
@@ -950,7 +926,7 @@ int CodeFormatter::tokenizeBlock(const QTextBlock &block)
 CodeFormatter::TokenKind CodeFormatter::extendedTokenKind(const QmlJS::Token &token) const
 {
     const int kind = token.kind;
-    const QStringView text = Utils::midView(m_currentLine, token.begin(), token.length);
+    const QStringView text = QStringView(m_currentLine).mid(token.begin(), token.length);
 
     if (kind == Identifier) {
         if (text == QLatin1String("as"))
@@ -1047,7 +1023,7 @@ void CodeFormatter::dump() const
 {
     qCDebug(formatterLog) << "Current token index" << m_tokenIndex;
     qCDebug(formatterLog) << "Current state:";
-    foreach (const State &s, m_currentState) {
+    for (const State &s : m_currentState) {
         qCDebug(formatterLog) << stateToString(s.type) << s.savedIndentDepth;
     }
     qCDebug(formatterLog) << "Current indent depth:" << m_indentDepth;

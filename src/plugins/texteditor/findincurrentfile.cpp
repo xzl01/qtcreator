@@ -1,42 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "findincurrentfile.h"
-#include "texteditor.h"
-#include "textdocument.h"
 
-#include <utils/filesearch.h>
-#include <utils/fileutils.h>
+#include "textdocument.h"
+#include "texteditortr.h"
+
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/editormanager/editormanager.h>
 
+#include <utils/filesearch.h>
+#include <utils/fileutils.h>
+
 #include <QSettings>
 
-using namespace TextEditor;
-using namespace TextEditor::Internal;
+namespace TextEditor::Internal {
 
 FindInCurrentFile::FindInCurrentFile()
 {
@@ -52,7 +31,7 @@ QString FindInCurrentFile::id() const
 
 QString FindInCurrentFile::displayName() const
 {
-    return tr("Current File");
+    return Tr::tr("Current File");
 }
 
 Utils::FileIterator *FindInCurrentFile::files(const QStringList &nameFilters,
@@ -61,8 +40,9 @@ Utils::FileIterator *FindInCurrentFile::files(const QStringList &nameFilters,
 {
     Q_UNUSED(nameFilters)
     Q_UNUSED(exclusionFilters)
-    QString fileName = additionalParameters.toString();
-    QMap<QString, QTextCodec *> openEditorEncodings = TextDocument::openedTextDocumentEncodings();
+    const auto fileName = Utils::FilePath::fromVariant(additionalParameters);
+    QMap<Utils::FilePath, QTextCodec *> openEditorEncodings
+        = TextDocument::openedTextDocumentEncodings();
     QTextCodec *codec = openEditorEncodings.value(fileName);
     if (!codec)
         codec = Core::EditorManager::defaultTextCodec();
@@ -71,18 +51,18 @@ Utils::FileIterator *FindInCurrentFile::files(const QStringList &nameFilters,
 
 QVariant FindInCurrentFile::additionalParameters() const
 {
-    return QVariant::fromValue(m_currentDocument->filePath().toString());
+    return m_currentDocument->filePath().toVariant();
 }
 
 QString FindInCurrentFile::label() const
 {
-    return tr("File \"%1\":").arg(m_currentDocument->filePath().fileName());
+    return Tr::tr("File \"%1\":").arg(m_currentDocument->filePath().fileName());
 }
 
 QString FindInCurrentFile::toolTip() const
 {
     // %2 is filled by BaseFileFind::runNewSearch
-    return tr("File path: %1\n%2").arg(m_currentDocument->filePath().toUserOutput());
+    return Tr::tr("File path: %1\n%2").arg(m_currentDocument->filePath().toUserOutput());
 }
 
 bool FindInCurrentFile::isEnabled() const
@@ -118,3 +98,5 @@ void FindInCurrentFile::readSettings(QSettings *settings)
     readCommonSettings(settings, "*", "");
     settings->endGroup();
 }
+
+} // TextEditor::Internal

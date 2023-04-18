@@ -1,37 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlpreviewplugin.h"
 #include "qmlpreviewactions.h"
 
-#include <zoomaction.h>
+#include <designeractionmanager.h>
 #include <designersettings.h>
+#include <zoomaction.h>
 
 #include <utils/utilsicons.h>
+
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/projectexplorer.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/target.h>
@@ -73,7 +54,7 @@ static void handleAction(const SelectionContext &context)
             }
             ProjectExplorerPlugin::runStartupProject(Constants::QML_PREVIEW_RUN_MODE, skipDeploy);
         } else {
-            QmlPreviewPlugin::stopAllRunControls();
+            QmlPreviewWidgetPlugin::stopAllRunControls();
         }
     }
 }
@@ -81,14 +62,14 @@ static void handleAction(const SelectionContext &context)
 QmlPreviewAction::QmlPreviewAction() : ModelNodeAction(livePreviewId,
                                                        "Live Preview",
                                                        previewIcon.icon(),
-                                                       QmlPreviewPlugin::tr("Show Live Preview"),
+                                                       QmlPreviewWidgetPlugin::tr("Show Live Preview"),
                                                        ComponentCoreConstants::qmlPreviewCategory,
                                                        QKeySequence("Alt+p"),
-                                                       20,
+                                                       1,
                                                        &handleAction,
                                                        &SelectionContextFunctors::always)
 {
-    if (!QmlPreviewPlugin::getPreviewPlugin())
+    if (!QmlPreviewWidgetPlugin::getPreviewPlugin())
         defaultAction()->setVisible(false);
 
     defaultAction()->setCheckable(true);
@@ -97,7 +78,7 @@ QmlPreviewAction::QmlPreviewAction() : ModelNodeAction(livePreviewId,
 void QmlPreviewAction::updateContext()
 {
     if (selectionContext().view()->isAttached())
-        QmlPreviewPlugin::setQmlFile();
+        QmlPreviewWidgetPlugin::setQmlFile();
 
     defaultAction()->setSelectionContext(selectionContext());
 }
@@ -111,9 +92,9 @@ ZoomPreviewAction::ZoomPreviewAction()
     : m_zoomAction(new ZoomAction(nullptr))
 {
     QObject::connect(m_zoomAction.get(), &ZoomAction::zoomLevelChanged, [=](float d) {
-        QmlPreviewPlugin::setZoomFactor(d);
+        QmlPreviewWidgetPlugin::setZoomFactor(d);
     });
-    if (!QmlPreviewPlugin::getPreviewPlugin())
+    if (!QmlPreviewWidgetPlugin::getPreviewPlugin())
         m_zoomAction->setVisible(false);
 }
 
@@ -166,7 +147,7 @@ void FpsLabelAction::fpsHandler(quint16 fpsValues[8])
         fpsText = fpsText.arg("--");
     else
         fpsText = fpsText.arg(lastValidFrames);
-    for (const QPointer<QLabel> &label : qAsConst(fpsHandlerLabelList)) {
+    for (const QPointer<QLabel> &label : std::as_const(fpsHandlerLabelList)) {
         if (label)
             label->setText(fpsText);
     }
@@ -195,7 +176,7 @@ QWidget *FpsLabelAction::createWidget(QWidget *parent)
 
 void FpsLabelAction::refreshFpsLabel(quint16 frames)
 {
-    for (const auto &labelPointer : qAsConst(fpsHandlerLabelList)) {
+    for (const auto &labelPointer : std::as_const(fpsHandlerLabelList)) {
         if (labelPointer)
             labelPointer->setText(QString("%1 FPS").arg(frames));
     }
@@ -267,7 +248,7 @@ QWidget *SwitchLanguageComboboxAction::createWidget(QWidget *parent)
         refreshComboBoxFunction(project);
 
     // do this after refreshComboBoxFunction so we do not get currentLocaleChanged signals at initialization
-    connect(comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [this, comboBox](int index) {
+    connect(comboBox, &QComboBox::currentIndexChanged, [this, comboBox](int index) {
         if (index == 0) // == Default
             emit currentLocaleChanged("");
         else
@@ -281,7 +262,7 @@ SwitchLanguageAction::SwitchLanguageAction()
     : m_switchLanguageAction(new SwitchLanguageComboboxAction(nullptr))
 {
     QObject::connect(m_switchLanguageAction.get(), &SwitchLanguageComboboxAction::currentLocaleChanged,
-                     &QmlPreviewPlugin::setLanguageLocale);
+                     &QmlPreviewWidgetPlugin::setLanguageLocale);
 }
 
 QAction *SwitchLanguageAction::action() const

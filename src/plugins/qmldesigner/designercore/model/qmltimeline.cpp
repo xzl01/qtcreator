@@ -1,38 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmltimeline.h"
-#include "qmltimelinekeyframegroup.h"
 #include "abstractview.h"
-#include <nodelistproperty.h>
-#include <variantproperty.h>
-#include <nodelistproperty.h>
-#include <metainfo.h>
-#include <invalidmodelnodeexception.h>
 #include "bindingproperty.h"
 #include "qmlitemnode.h"
+#include "qmltimelinekeyframegroup.h"
+
+#include <auxiliarydataproperties.h>
+#include <invalidmodelnodeexception.h>
+#include <metainfo.h>
+#include <nodelistproperty.h>
+#include <variantproperty.h>
 
 #include <utils/qtcassert.h>
 
@@ -54,9 +33,7 @@ bool QmlTimeline::isValid() const
 
 bool QmlTimeline::isValidQmlTimeline(const ModelNode &modelNode)
 {
-    return isValidQmlModelNodeFacade(modelNode)
-               && modelNode.metaInfo().isValid()
-               && modelNode.metaInfo().isSubclassOf("QtQuick.Timeline.Timeline");
+    return isValidQmlModelNodeFacade(modelNode) && modelNode.metaInfo().isQtQuickTimelineTimeline();
 }
 
 void QmlTimeline::destroy()
@@ -208,6 +185,15 @@ void QmlTimeline::destroyKeyframesForTarget(const ModelNode &target)
         frames.destroy();
 }
 
+void QmlTimeline::removeKeyframesForTargetAndProperty(const ModelNode &target,
+                                                      const PropertyName &propertyName)
+{
+    for (QmlTimelineKeyframeGroup frames : keyframeGroupsForTarget(target)) {
+        if (frames.propertyName() == propertyName)
+            frames.destroy();
+    }
+}
+
 bool QmlTimeline::hasActiveTimeline(AbstractView *view)
 {
     if (view && view->isAttached()) {
@@ -224,7 +210,7 @@ bool QmlTimeline::isRecording() const
 {
     QTC_ASSERT(isValid(), return false);
 
-    return modelNode().hasAuxiliaryData("Record@Internal");
+    return modelNode().hasAuxiliaryData(recordProperty);
 }
 
 void QmlTimeline::toogleRecording(bool record) const
@@ -233,9 +219,9 @@ void QmlTimeline::toogleRecording(bool record) const
 
     if (!record) {
         if (isRecording())
-            modelNode().removeAuxiliaryData("Record@Internal");
+            modelNode().removeAuxiliaryData(recordProperty);
     } else {
-        modelNode().setAuxiliaryData("Record@Internal", true);
+        modelNode().setAuxiliaryData(recordProperty, true);
     }
 }
 
@@ -254,7 +240,7 @@ void QmlTimeline::resetGroupRecording() const
 void QmlTimeline::addKeyframeGroupIfNotExists(const ModelNode &node, const PropertyName &propertyName)
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (!hasKeyframeGroup(node, propertyName)) {
         ModelNode frames = modelNode().view()->createModelNode("QtQuick.Timeline.KeyframeGroup", 1, 0);
@@ -301,7 +287,7 @@ void QmlTimeline::insertKeyframe(const ModelNode &target, const PropertyName &pr
 
     QTC_ASSERT(timelineFrames.isValid(), return );
 
-    const qreal frame = modelNode().auxiliaryData("currentFrame@NodeInstance").toReal();
+    const qreal frame = modelNode().auxiliaryDataWithDefault(currentFrameProperty).toReal();
     const QVariant value = QmlObjectNode(targetNode).instanceValue(propertyName);
 
     timelineFrames.setValue(value, frame);

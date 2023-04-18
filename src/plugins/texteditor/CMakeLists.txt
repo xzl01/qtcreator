@@ -5,7 +5,7 @@ else()
 endif()
 
 add_qtc_plugin(TextEditor
-  DEPENDS Qt5::Concurrent Qt5::Network Qt5::PrintSupport Qt5::Xml
+  DEPENDS Qt::Concurrent Qt::Network Qt::PrintSupport Qt::Xml
   PUBLIC_DEPENDS ${KSYNTAXHIGHLIGHTING_TARGET}
   PLUGIN_DEPENDS Core
   SOURCES
@@ -13,8 +13,8 @@ add_qtc_plugin(TextEditor
     basefilefind.cpp basefilefind.h
     basehoverhandler.cpp basehoverhandler.h
     behaviorsettings.cpp behaviorsettings.h
-    behaviorsettingspage.cpp behaviorsettingspage.h behaviorsettingspage.ui
-    behaviorsettingswidget.cpp behaviorsettingswidget.h behaviorsettingswidget.ui
+    behaviorsettingspage.cpp behaviorsettingspage.h
+    behaviorsettingswidget.cpp behaviorsettingswidget.h
     blockrange.h
     circularclipboard.cpp circularclipboard.h
     circularclipboardassist.cpp circularclipboardassist.h
@@ -22,6 +22,7 @@ add_qtc_plugin(TextEditor
     codeassist/assistinterface.cpp codeassist/assistinterface.h
     codeassist/assistproposalitem.cpp codeassist/assistproposalitem.h
     codeassist/assistproposaliteminterface.h
+    codeassist/asyncprocessor.cpp codeassist/asyncprocessor.h
     codeassist/codeassistant.cpp codeassist/codeassistant.h
     codeassist/completionassistprovider.cpp codeassist/completionassistprovider.h
     codeassist/documentcontentcompletion.cpp codeassist/documentcontentcompletion.h
@@ -37,32 +38,32 @@ add_qtc_plugin(TextEditor
     codeassist/iassistprovider.cpp codeassist/iassistprovider.h
     codeassist/ifunctionhintproposalmodel.cpp codeassist/ifunctionhintproposalmodel.h
     codeassist/keywordscompletionassist.cpp codeassist/keywordscompletionassist.h
-    codeassist/runner.cpp codeassist/runner.h
     codeassist/textdocumentmanipulator.cpp codeassist/textdocumentmanipulator.h
     codeassist/textdocumentmanipulatorinterface.h
+    codecchooser.cpp codecchooser.h
     codestyleeditor.cpp codestyleeditor.h
     codestylepool.cpp codestylepool.h
-    codestyleselectorwidget.cpp codestyleselectorwidget.h codestyleselectorwidget.ui
+    codestyleselectorwidget.cpp codestyleselectorwidget.h
     colorpreviewhoverhandler.cpp colorpreviewhoverhandler.h
     colorscheme.cpp colorscheme.h
-    colorschemeedit.cpp colorschemeedit.h colorschemeedit.ui
+    colorschemeedit.cpp colorschemeedit.h
     command.cpp command.h
     commentssettings.cpp commentssettings.h
     completionsettings.cpp completionsettings.h
-    completionsettingspage.cpp completionsettingspage.h completionsettingspage.ui
+    completionsettingspage.cpp completionsettingspage.h
     displaysettings.cpp displaysettings.h
-    displaysettingspage.cpp displaysettingspage.h displaysettingspage.ui
+    displaysettingspage.cpp displaysettingspage.h
     extraencodingsettings.cpp extraencodingsettings.h
     findincurrentfile.cpp findincurrentfile.h
     findinfiles.cpp findinfiles.h
     findinopenfiles.cpp findinopenfiles.h
     fontsettings.cpp fontsettings.h
-    fontsettingspage.cpp fontsettingspage.h fontsettingspage.ui
+    fontsettingspage.cpp fontsettingspage.h
     formatter.h
     formattexteditor.cpp formattexteditor.h
     highlighter.cpp highlighter.h
     highlightersettings.cpp highlightersettings.h
-    highlightersettingspage.cpp highlightersettingspage.h highlightersettingspage.ui
+    highlightersettingspage.cpp highlightersettingspage.h
     icodestylepreferences.cpp icodestylepreferences.h
     icodestylepreferencesfactory.cpp icodestylepreferencesfactory.h
     indenter.h
@@ -86,16 +87,17 @@ add_qtc_plugin(TextEditor
     snippets/snippetprovider.cpp snippets/snippetprovider.h
     snippets/snippetscollection.cpp snippets/snippetscollection.h
     snippets/snippetssettings.cpp snippets/snippetssettings.h
-    snippets/snippetssettingspage.cpp snippets/snippetssettingspage.h snippets/snippetssettingspage.ui
+    snippets/snippetssettingspage.cpp snippets/snippetssettingspage.h
     storagesettings.cpp storagesettings.h
     syntaxhighlighter.cpp syntaxhighlighter.h
     tabsettings.cpp tabsettings.h
-    tabsettingswidget.cpp tabsettingswidget.h tabsettingswidget.ui
+    tabsettingswidget.cpp tabsettingswidget.h
     textdocument.cpp textdocument.h
     textdocumentlayout.cpp textdocumentlayout.h
     texteditor.cpp texteditor.h
     texteditor.qrc
     texteditor_global.h
+    texteditortr.h
     texteditor_p.h
     texteditoractionhandler.cpp texteditoractionhandler.h
     texteditorconstants.cpp texteditorconstants.h

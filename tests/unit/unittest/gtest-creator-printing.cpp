@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gtest-creator-printing.h"
 #include "gtest-std-printing.h"
@@ -31,10 +9,9 @@
 #include <gtest/gtest-printers.h>
 #include <gmock/gmock-matchers.h>
 
-#include <clangcodemodelclientmessages.h>
-#include <clangcodemodelservermessages.h>
 #include <clangtools/clangtoolsdiagnostic.h>
 #include <debugger/analyzer/diagnosticlocation.h>
+#include <imagecacheauxiliarydata.h>
 #include <modelnode.h>
 #include <projectstorage/filestatus.h>
 #include <projectstorage/projectstoragepathwatchertypes.h>
@@ -43,16 +20,26 @@
 #include <sqlite.h>
 #include <sqlitesessionchangeset.h>
 #include <sqlitevalue.h>
-#include <tooltipinfo.h>
 #include <utils/fileutils.h>
 #include <utils/linecolumn.h>
 #include <variantproperty.h>
 #include <qmldesigner/designercore/imagecache/imagecachestorageinterface.h>
 
-void PrintTo(const Utf8String &text, ::std::ostream *os)
+namespace std {
+template <typename T> ostream &operator<<(ostream &out, const QVector<T> &vector)
 {
-    *os << text;
+    out << "[";
+    copy(vector.cbegin(), vector.cend(), ostream_iterator<T>(out, ", "));
+    out << "]";
+    return out;
 }
+
+std::ostream &operator<<(std::ostream &out, const monostate &)
+{
+    return out << "monostate";
+}
+
+} // namespace std
 
 namespace Utils {
 
@@ -421,490 +408,6 @@ std::ostream &operator<<(std::ostream &out, const ConstTupleIterator &iterator)
 } // namespace SessionChangeSetInternal
 } // namespace Sqlite
 
-namespace ClangBackEnd {
-
-std::ostream &operator<<(std::ostream &os, const FollowSymbolResult &result)
-{
-    os << "("
-       << result.range
-       << ", " << result.isResultOnlyForFallBack
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const FollowSymbolMessage &message)
-{
-      os << "("
-         << message.fileContainer << ", "
-         << message.ticketNumber << ", "
-         << message.result << ", "
-         << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const RequestCompletionsMessage &message)
-{
-    os << "("
-       << message.filePath << ", "
-       << message.line << ", "
-       << message.column << ", "
-       << message.ticketNumber << ", "
-       << message.funcNameStartLine << ", "
-       << message.funcNameStartColumn
-
-       << ")";
-
-     return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const DocumentsOpenedMessage &message)
-{
-    os << "DocumentsOpenedMessage("
-       << message.fileContainers << ", "
-       << message.currentEditorFilePath << ", "
-       << message.visibleEditorFilePaths << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const EndMessage &/*message*/)
-{
-    return os << "()";
-}
-
-std::ostream &operator<<(std::ostream &os, const AliveMessage &/*message*/)
-{
-    return os << "()";
-}
-
-std::ostream &operator<<(std::ostream &os, const CompletionsMessage &message)
-{
-    os << "("
-       << message.codeCompletions << ", "
-       << message.ticketNumber
-
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const AnnotationsMessage &message)
-{
-    os << "AnnotationsMessage("
-       << message.fileContainer
-       << "," << message.diagnostics.size()
-       << "," << !message.firstHeaderErrorDiagnostic.text.isEmpty()
-       << "," << message.tokenInfos.size()
-       << "," << message.skippedPreprocessorRanges.size()
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const ReferencesMessage &message)
-{
-      os << "("
-         << message.fileContainer << ", "
-         << message.ticketNumber << ", "
-         << message.isLocalVariable << ", "
-         << message.references << ", "
-         << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const ToolTipMessage &message)
-{
-      os << "("
-         << message.fileContainer << ", "
-         << message.ticketNumber << ", "
-         << message.toolTipInfo << ", "
-         << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const EchoMessage &/*message*/)
-{
-     return os << "()";
-}
-
-std::ostream &operator<<(std::ostream &os, const DocumentsClosedMessage &message)
-{
-    os << "("
-       << message.fileContainers
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const CodeCompletion &message)
-{
-    os << "("
-       << message.text << ", "
-       << message.priority << ", "
-       << message.completionKind << ", "
-       << message.availability << ", "
-       << message.hasParameters
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const CodeCompletionChunk &chunk)
-{
-    os << "("
-       << chunk.kind << ", "
-       << chunk.text;
-
-    if (chunk.isOptional)
-        os << ", optional";
-
-    os << ")";
-
-    return os;
-}
-
-static const char *severityToText(DiagnosticSeverity severity)
-{
-    switch (severity) {
-        case DiagnosticSeverity::Ignored: return "Ignored";
-        case DiagnosticSeverity::Note: return "Note";
-        case DiagnosticSeverity::Warning: return "Warning";
-        case DiagnosticSeverity::Error: return "Error";
-        case DiagnosticSeverity::Fatal: return "Fatal";
-    }
-
-    Q_UNREACHABLE();
-}
-
-std::ostream &operator<<(std::ostream &os, const DiagnosticContainer &container)
-{
-    os << "("
-       << severityToText(container.severity) << ": "
-       << container.text << ", "
-       << container.category << ", "
-       << container.enableOption << ", "
-       << container.location << ", "
-       << container.ranges << ", "
-       << container.fixIts << ", "
-       << container.children << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const FileContainer &container)
-{
-    os << "("
-        << container.filePath << ", "
-        << container.compilationArguments << ", "
-        << container.documentRevision << ", "
-        << container.textCodecName;
-
-    if (container.hasUnsavedFileContent)
-        os << ", "
-           << container.unsavedFileContent;
-
-    os << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const FixItContainer &container)
-{
-    os << "("
-       << container.text << ", "
-       << container.range
-       << ")";
-
-    return os;
-}
-
-#define RETURN_TEXT_FOR_CASE(enumValue) case HighlightingType::enumValue: return #enumValue
-static const char *highlightingTypeToCStringLiteral(HighlightingType type)
-{
-    switch (type) {
-        RETURN_TEXT_FOR_CASE(Invalid);
-        RETURN_TEXT_FOR_CASE(Comment);
-        RETURN_TEXT_FOR_CASE(Keyword);
-        RETURN_TEXT_FOR_CASE(StringLiteral);
-        RETURN_TEXT_FOR_CASE(NumberLiteral);
-        RETURN_TEXT_FOR_CASE(Function);
-        RETURN_TEXT_FOR_CASE(VirtualFunction);
-        RETURN_TEXT_FOR_CASE(Type);
-        RETURN_TEXT_FOR_CASE(LocalVariable);
-        RETURN_TEXT_FOR_CASE(Parameter);
-        RETURN_TEXT_FOR_CASE(GlobalVariable);
-        RETURN_TEXT_FOR_CASE(Field);
-        RETURN_TEXT_FOR_CASE(Enumeration);
-        RETURN_TEXT_FOR_CASE(Operator);
-        RETURN_TEXT_FOR_CASE(Preprocessor);
-        RETURN_TEXT_FOR_CASE(Label);
-        RETURN_TEXT_FOR_CASE(FunctionDefinition);
-        RETURN_TEXT_FOR_CASE(OutputArgument);
-        RETURN_TEXT_FOR_CASE(OverloadedOperator);
-        RETURN_TEXT_FOR_CASE(PreprocessorDefinition);
-        RETURN_TEXT_FOR_CASE(PreprocessorExpansion);
-        RETURN_TEXT_FOR_CASE(PrimitiveType);
-        RETURN_TEXT_FOR_CASE(Punctuation);
-        RETURN_TEXT_FOR_CASE(Declaration);
-        RETURN_TEXT_FOR_CASE(Namespace);
-        RETURN_TEXT_FOR_CASE(Class);
-        RETURN_TEXT_FOR_CASE(Struct);
-        RETURN_TEXT_FOR_CASE(Enum);
-        RETURN_TEXT_FOR_CASE(Union);
-        RETURN_TEXT_FOR_CASE(TypeAlias);
-        RETURN_TEXT_FOR_CASE(Typedef);
-        RETURN_TEXT_FOR_CASE(QtProperty);
-        RETURN_TEXT_FOR_CASE(ObjectiveCClass);
-        RETURN_TEXT_FOR_CASE(ObjectiveCCategory);
-        RETURN_TEXT_FOR_CASE(ObjectiveCProtocol);
-        RETURN_TEXT_FOR_CASE(ObjectiveCInterface);
-        RETURN_TEXT_FOR_CASE(ObjectiveCImplementation);
-        RETURN_TEXT_FOR_CASE(ObjectiveCProperty);
-        RETURN_TEXT_FOR_CASE(ObjectiveCMethod);
-        RETURN_TEXT_FOR_CASE(TemplateTypeParameter);
-        RETURN_TEXT_FOR_CASE(TemplateTemplateParameter);
-        RETURN_TEXT_FOR_CASE(AngleBracketOpen);
-        RETURN_TEXT_FOR_CASE(AngleBracketClose);
-        RETURN_TEXT_FOR_CASE(DoubleAngleBracketClose);
-        RETURN_TEXT_FOR_CASE(TernaryIf);
-        RETURN_TEXT_FOR_CASE(TernaryElse);
-    }
-
-    return "";
-}
-#undef RETURN_TEXT_FOR_CASE
-
-std::ostream &operator<<(std::ostream &os, HighlightingType highlightingType)
-{
-    return os << highlightingTypeToCStringLiteral(highlightingType);
-}
-
-std::ostream &operator<<(std::ostream &os, HighlightingTypes types)
-{
-    os << "("
-       << types.mainHighlightingType;
-
-    if (!types.mixinHighlightingTypes.empty())
-       os << ", "<< types.mixinHighlightingTypes;
-
-    os << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const ExtraInfo &extraInfo)
-{
-    os << "("
-       << extraInfo.token << ", "
-       << extraInfo.typeSpelling << ", "
-       << extraInfo.semanticParentTypeSpelling << ", "
-       << static_cast<uint>(extraInfo.accessSpecifier) << ", "
-       << static_cast<uint>(extraInfo.storageClass) << ", "
-       << extraInfo.identifier << ", "
-       << extraInfo.includeDirectivePath << ", "
-       << extraInfo.declaration << ", "
-       << extraInfo.definition << ", "
-       << extraInfo.signal << ", "
-       << extraInfo.slot
-       << ")";
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const TokenInfoContainer &container)
-{
-    os << "("
-       << container.line << ", "
-       << container.column << ", "
-       << container.length << ", "
-       << container.types << ", "
-       << container.extraInfo << ", "
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const UnsavedFilesUpdatedMessage &message)
-{
-    os << "("
-       << message.fileContainers
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const RequestAnnotationsMessage &message)
-{
-    os << "("
-       << message.fileContainer.filePath << ","
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const RequestFollowSymbolMessage &message)
-{
-    os << "("
-       << message.fileContainer << ", "
-       << message.ticketNumber << ", "
-       << message.line << ", "
-       << message.column << ", "
-       << ")";
-
-     return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const RequestReferencesMessage &message)
-{
-    os << "("
-       << message.fileContainer << ", "
-       << message.ticketNumber << ", "
-       << message.line << ", "
-       << message.column << ", "
-       << message.local << ", "
-       << ")";
-
-     return os;
-}
-
-std::ostream &operator<<(std::ostream &out, const RequestToolTipMessage &message)
-{
-    out << "("
-        << message.fileContainer << ", "
-        << message.ticketNumber << ", "
-        << message.line << ", "
-        << message.column << ", "
-        << ")";
-
-     return out;
-}
-
-namespace {
-
-std::ostream &operator<<(std::ostream &os, const ToolTipInfo::QdocCategory category)
-{
-    return os << qdocCategoryToString(category);
-}
-} // namespace
-
-std::ostream &operator<<(std::ostream &out, const ToolTipInfo &info)
-{
-    out << "("
-       << info.text << ", "
-       << info.briefComment << ", "
-       << info.qdocIdCandidates << ", "
-       << info.qdocMark << ", "
-       << info.qdocCategory
-       << info.sizeInBytes << ", "
-       << ")";
-
-    return out;
-}
-
-std::ostream &operator<<(std::ostream &os, const SourceLocationContainer &container)
-{
-    os << "("
-       << container.filePath << ", "
-       << container.line << ", "
-       << container.column
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const SourceRangeContainer &container)
-{
-    os << "("
-       << container.start << ", "
-       << container.end
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const UnsavedFilesRemovedMessage &message)
-{
-    os << "("
-        << message.fileContainers
-        << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const DocumentsChangedMessage &message)
-{
-    os << "DocumentsChangedMessage("
-       << message.fileContainers
-       << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const DocumentVisibilityChangedMessage &message)
-{
-    os << "("
-       << message.currentEditorFilePath  << ", "
-       << message.visibleEditorFilePaths
-       << ")";
-
-    return os;
-}
-
-namespace {
-const char *symbolKindString(SymbolKind symbolKind)
-{
-    using ClangBackEnd::SymbolKind;
-
-    switch (symbolKind) {
-    case SymbolKind::None: return "None";
-    case SymbolKind::Enumeration: return "Enumeration";
-    case SymbolKind::Record: return "Record";
-    case SymbolKind::Function: return "Function";
-    case SymbolKind::Variable: return "Variable";
-    case SymbolKind::Macro: return "Macro";
-    }
-
-    return "";
-}
-
-const char *symbolTagString(SymbolTag symbolTag)
-{
-    using ClangBackEnd::SymbolTag;
-
-    switch (symbolTag) {
-    case SymbolTag::None: return "None";
-    case SymbolTag::Class: return "Class";
-    case SymbolTag::Struct: return "Struct";
-    case SymbolTag::Union: return "Union";
-    case SymbolTag::MsvcInterface: return "MsvcInterface";
-    }
-
-    return "";
-}
-} // namespace
-
-std::ostream &operator<<(std::ostream &out, SymbolKind symbolKind)
-{
-    return out << symbolKindString(symbolKind);
-}
-
-std::ostream &operator<<(std::ostream &out, SymbolTag symbolTag)
-{
-    return out << symbolTagString(symbolTag);
-}
-
-std::ostream &operator<<(std::ostream &out, SymbolTags symbolTags)
-{
-    std::copy(symbolTags.cbegin(), symbolTags.cend(), std::ostream_iterator<SymbolTag>(out, ", "));
-
-    return out;
-}
-
-} // namespace ClangBackEnd
-
 namespace Debugger {
 std::ostream &operator<<(std::ostream &out, const DiagnosticLocation &loc)
 {
@@ -955,6 +458,7 @@ const char *sourceTypeToText(SourceType sourceType)
 
     return "";
 }
+
 } // namespace
 
 std::ostream &operator<<(std::ostream &out, const FileStatus &fileStatus)
@@ -999,6 +503,7 @@ std::ostream &operator<<(std::ostream &out, const VariantProperty &property)
     return out << "(" << property.parentModelNode() << ", " << property.name() << ", "
                << property.value() << ")";
 }
+
 namespace Cache {
 
 std::ostream &operator<<(std::ostream &out, const SourceContext &sourceContext)
@@ -1010,24 +515,23 @@ std::ostream &operator<<(std::ostream &out, const SourceContext &sourceContext)
 namespace Storage {
 
 namespace {
-
-TypeAccessSemantics cleanFlags(TypeAccessSemantics accessSemantics)
+TypeTraits cleanFlags(TypeTraits traits)
 {
-    auto data = static_cast<int>(accessSemantics);
-    data &= ~static_cast<int>(TypeAccessSemantics::IsEnum);
-    return static_cast<TypeAccessSemantics>(data);
+    auto data = static_cast<int>(traits);
+    data &= ~static_cast<int>(TypeTraits::IsEnum);
+    return static_cast<TypeTraits>(data);
 }
 
-const char *typeAccessSemanticsToString(TypeAccessSemantics accessSemantics)
+const char *typeTraitsToString(TypeTraits traits)
 {
-    switch (cleanFlags(accessSemantics)) {
-    case TypeAccessSemantics::None:
+    switch (cleanFlags(traits)) {
+    case TypeTraits::None:
         return "None";
-    case TypeAccessSemantics::Reference:
+    case TypeTraits::Reference:
         return "Reference";
-    case TypeAccessSemantics::Sequence:
+    case TypeTraits::Sequence:
         return "Sequence";
-    case TypeAccessSemantics::Value:
+    case TypeTraits::Value:
         return "Value";
     default:
         break;
@@ -1036,18 +540,61 @@ const char *typeAccessSemanticsToString(TypeAccessSemantics accessSemantics)
     return "";
 }
 
-bool operator&(TypeAccessSemantics first, TypeAccessSemantics second)
+const char *typeTraitsFlagsToString(TypeTraits traits)
 {
-    return static_cast<int>(first) & static_cast<int>(second);
-}
-
-const char *typeAccessSemanticsFlagsToString(TypeAccessSemantics accessSemantics)
-{
-    if (accessSemantics & TypeAccessSemantics::IsEnum)
+    if (bool(traits & TypeTraits::IsEnum))
         return "(IsEnum)";
 
     return "";
 }
+
+} // namespace
+
+std::ostream &operator<<(std::ostream &out, TypeTraits traits)
+{
+    return out << typeTraitsToString(traits) << typeTraitsFlagsToString(traits);
+}
+
+std::ostream &operator<<(std::ostream &out, PropertyDeclarationTraits traits)
+{
+    const char *padding = "";
+
+    out << "(";
+    if (traits & PropertyDeclarationTraits::IsReadOnly) {
+        out << "readonly";
+        padding = ", ";
+    }
+
+    if (traits & PropertyDeclarationTraits::IsPointer) {
+        out << padding << "pointer";
+        padding = ", ";
+    }
+
+    if (traits & PropertyDeclarationTraits::IsList)
+        out << padding << "list";
+
+    return out << ")";
+}
+} // namespace Storage
+
+namespace Storage::Info {
+std::ostream &operator<<(std::ostream &out, const PropertyDeclaration &propertyDeclaration)
+{
+    using Utils::operator<<;
+    return out << "(\"" << propertyDeclaration.typeId << "\", " << propertyDeclaration.name << ", "
+               << propertyDeclaration.typeId << ", " << propertyDeclaration.traits << ", "
+               << propertyDeclaration.propertyTypeId << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const Type &type)
+{
+    return out << "(" << type.defaultPropertyId << ")";
+}
+} // namespace Storage::Info
+
+namespace Storage::Synchronization {
+
+namespace {
 
 const char *isQualifiedToString(IsQualified isQualified)
 {
@@ -1064,12 +611,26 @@ const char *isQualifiedToString(IsQualified isQualified)
 const char *importKindToText(ImportKind kind)
 {
     switch (kind) {
-    case ImportKind::Module:
-        return "Module";
-    case ImportKind::Directory:
-        return "Directory";
-    case ImportKind::QmlTypesDependency:
-        return "QmlTypesDependency";
+    case ImportKind::Import:
+        return "Import";
+    case ImportKind::ModuleDependency:
+        return "ModuleDependency";
+    case ImportKind::ModuleExportedImport:
+        return "ModuleExportedImport";
+    case ImportKind::ModuleExportedModuleDependency:
+        return "ModuleExportedModuleDependency";
+    }
+
+    return "";
+}
+
+const char *isAutoVersionToText(IsAutoVersion isAutoVersion)
+{
+    switch (isAutoVersion) {
+    case IsAutoVersion::No:
+        return "is not autoversion";
+    case IsAutoVersion::Yes:
+        return "is auto version";
     }
 
     return "";
@@ -1115,21 +676,18 @@ std::ostream &operator<<(std::ostream &out, ChangeLevel changeLevel)
 
 std::ostream &operator<<(std::ostream &out, const SynchronizationPackage &package)
 {
-    return out << "(" << package.imports << ", " << package.types << ", "
-               << package.updatedSourceIds << ", " << package.fileStatuses << ", "
-               << package.updatedFileStatusSourceIds << ", " << package.projectDatas << ")";
+    return out << "(imports: " << package.imports << ", types: " << package.types
+               << ", updatedSourceIds: " << package.updatedSourceIds
+               << ", fileStatuses: " << package.fileStatuses
+               << ", updatedFileStatusSourceIds: " << package.updatedFileStatusSourceIds
+               << ", updatedProjectSourceIds: " << package.updatedProjectSourceIds
+               << ", projectDatas: " << package.projectDatas << ")";
 }
 
 std::ostream &operator<<(std::ostream &out, const ProjectData &data)
 {
     return out << "(" << data.projectSourceId << ", " << data.sourceId << ", " << data.moduleId
                << ", " << data.fileType << ")";
-}
-
-std::ostream &operator<<(std::ostream &out, TypeAccessSemantics accessSemantics)
-{
-    return out << typeAccessSemanticsToString(accessSemantics)
-               << typeAccessSemanticsFlagsToString(accessSemantics);
 }
 
 std::ostream &operator<<(std::ostream &out, IsQualified isQualified)
@@ -1153,11 +711,6 @@ std::ostream &operator<<(std::ostream &out, const ExportedType &exportedType)
                << exportedType.version << ")";
 }
 
-std::ostream &operator<<(std::ostream &out, const NativeType &nativeType)
-{
-    return out << "(\"" << nativeType.name << "\")";
-}
-
 std::ostream &operator<<(std::ostream &out, const ImportedType &importedType)
 {
     return out << "(\"" << importedType.name << "\")";
@@ -1169,13 +722,14 @@ std::ostream &operator<<(std::ostream &out, const QualifiedImportedType &importe
 
 std::ostream &operator<<(std::ostream &out, const Type &type)
 {
+    using std::operator<<;
     using Utils::operator<<;
     return out << "( typename: \"" << type.typeName << "\", prototype: " << type.prototype << ", "
-               << type.prototypeId << ", " << type.accessSemantics << ", source: " << type.sourceId
+               << type.prototypeId << ", " << type.traits << ", source: " << type.sourceId
                << ", exports: " << type.exportedTypes << ", properties: " << type.propertyDeclarations
                << ", functions: " << type.functionDeclarations
                << ", signals: " << type.signalDeclarations << ", changeLevel: " << type.changeLevel
-               << ")";
+               << ", default: " << type.defaultPropertyName << ")";
 }
 
 std::ostream &operator<<(std::ostream &out, const PropertyDeclaration &propertyDeclaration)
@@ -1183,29 +737,8 @@ std::ostream &operator<<(std::ostream &out, const PropertyDeclaration &propertyD
     using Utils::operator<<;
     return out << "(\"" << propertyDeclaration.name << "\", " << propertyDeclaration.typeName
                << ", " << propertyDeclaration.typeId << ", " << propertyDeclaration.traits << ", "
-               << propertyDeclaration.typeId << ", \"" << propertyDeclaration.aliasPropertyName
-               << "\")";
-}
-
-std::ostream &operator<<(std::ostream &out, PropertyDeclarationTraits traits)
-{
-    const char *padding = "";
-
-    out << "(";
-    if (traits & PropertyDeclarationTraits::IsReadOnly) {
-        out << "readonly";
-        padding = ", ";
-    }
-
-    if (traits & PropertyDeclarationTraits::IsPointer) {
-        out << padding << "pointer";
-        padding = ", ";
-    }
-
-    if (traits & PropertyDeclarationTraits::IsList)
-        out << padding << "list";
-
-    return out << ")";
+               << propertyDeclaration.propertyTypeId << ", \""
+               << propertyDeclaration.aliasPropertyName << "\")";
 }
 
 std::ostream &operator<<(std::ostream &out, const FunctionDeclaration &functionDeclaration)
@@ -1246,11 +779,38 @@ std::ostream &operator<<(std::ostream &out, const ImportKind &importKind)
     return out << importKindToText(importKind);
 }
 
+std::ostream &operator<<(std::ostream &out, const IsAutoVersion &isAutoVersion)
+{
+    return out << isAutoVersionToText(isAutoVersion);
+}
+
 std::ostream &operator<<(std::ostream &out, const Import &import)
 {
     return out << "(" << import.moduleId << ", " << import.version << ", " << import.sourceId << ")";
 }
 
-} // namespace Storage
+std::ostream &operator<<(std::ostream &out, const ModuleExportedImport &import)
+{
+    return out << "(" << import.moduleId << ", " << import.exportedModuleId << ", "
+               << import.version << ", " << import.isAutoVersion << ")";
+}
+
+} // namespace Storage::Synchronization
+
+namespace ImageCache {
+
+std::ostream &operator<<(std::ostream &out, const LibraryIconAuxiliaryData &data)
+{
+    return out << "(" << data.enable << ")";
+}
+std::ostream &operator<<(std::ostream &out, const FontCollectorSizeAuxiliaryData &data)
+{
+    return out << "(" << data.text << ", " << data.size << ", " << data.colorName << ")";
+}
+std::ostream &operator<<(std::ostream &out, const FontCollectorSizesAuxiliaryData &data)
+{
+    return out << "(" << data.text << ", " << data.colorName << ")";
+}
+} // namespace ImageCache
 
 } // namespace QmlDesigner

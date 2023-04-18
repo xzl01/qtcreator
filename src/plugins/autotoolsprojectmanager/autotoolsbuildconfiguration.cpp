@@ -1,52 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Openismus GmbH.
-** Author: Peter Penz (ppenz@openismus.com)
-** Author: Patricia Santana Cruz (patriciasantanacruz@gmail.com)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Openismus GmbH.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "autotoolsbuildconfiguration.h"
 
 #include "autotoolsprojectconstants.h"
+#include "autotoolsprojectmanagertr.h"
 
 #include <projectexplorer/buildinfo.h>
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/projectexplorertr.h>
 #include <projectexplorer/target.h>
 
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace AutotoolsProjectManager {
-namespace Internal {
+namespace AutotoolsProjectManager::Internal {
 
 // AutotoolsBuildConfiguration
 
 class AutotoolsBuildConfiguration : public BuildConfiguration
 {
-    Q_DECLARE_TR_FUNCTIONS(AutotoolsProjectManager::Internal::AutotoolsBuildConfiguration)
-
 public:
     AutotoolsBuildConfiguration(Target *target, Id id)
         : BuildConfiguration(target, id)
@@ -55,7 +30,7 @@ public:
         // The leading / is to avoid the relative the path expansion in BuildConfiguration::buildDirectory.
         setBuildDirectory("/<foobar>");
         setBuildDirectoryHistoryCompleter("AutoTools.BuildDir.History");
-        setConfigWidgetDisplayName(tr("Autotools Manager"));
+        setConfigWidgetDisplayName(Tr::tr("Autotools Manager"));
 
         // ### Build Steps Build ###
         const FilePath autogenFile = target->project()->projectDirectory() / "autogen.sh";
@@ -82,16 +57,15 @@ AutotoolsBuildConfigurationFactory::AutotoolsBuildConfigurationFactory()
 
     setBuildGenerator([](const Kit *, const FilePath &projectPath, bool forSetup) {
         BuildInfo info;
-        info.typeName = BuildConfiguration::tr("Build");
+        info.typeName = ::ProjectExplorer::Tr::tr("Build");
         info.buildDirectory = forSetup
                 ? FilePath::fromString(projectPath.toFileInfo().absolutePath()) : projectPath;
         if (forSetup) {
             //: The name of the build configuration created by default for a autotools project.
-            info.displayName = BuildConfiguration::tr("Default");
+            info.displayName = ::ProjectExplorer::Tr::tr("Default");
         }
         return QList<BuildInfo>{info};
     });
 }
 
-} // Internal
-} // AutotoolsProjectManager
+} // AutotoolsProjectManager::Internal

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "designmodewidget.h"
 
@@ -29,8 +7,6 @@
 
 #include "qmldesignerplugin.h"
 #include "crumblebar.h"
-#include "documentwarningwidget.h"
-#include "edit3dview.h"
 
 #include <texteditor/textdocument.h>
 #include <nodeinstanceview.h>
@@ -65,7 +41,6 @@
 #include <QBoxLayout>
 #include <QComboBox>
 #include <QDir>
-#include <QLayout>
 #include <QSettings>
 #include <QToolBar>
 
@@ -110,37 +85,6 @@ QList<QToolButton *> ItemLibrarySideBarItem::createToolBarWidgets()
     return qobject_cast<ItemLibraryWidget*>(widget())->createToolBarWidgets();
 }
 
-class DesignerSideBarItem : public Core::SideBarItem
-{
-public:
-    explicit DesignerSideBarItem(QWidget *widget, WidgetInfo::ToolBarWidgetFactoryInterface *createToolBarWidgets, const QString &id);
-    ~DesignerSideBarItem() override;
-
-    QList<QToolButton *> createToolBarWidgets() override;
-
-private:
-    WidgetInfo::ToolBarWidgetFactoryInterface *m_toolBarWidgetFactory;
-
-};
-
-DesignerSideBarItem::DesignerSideBarItem(QWidget *widget, WidgetInfo::ToolBarWidgetFactoryInterface *toolBarWidgetFactory, const QString &id)
-    : Core::SideBarItem(widget, id) , m_toolBarWidgetFactory(toolBarWidgetFactory)
-{
-}
-
-DesignerSideBarItem::~DesignerSideBarItem()
-{
-    delete m_toolBarWidgetFactory;
-}
-
-QList<QToolButton *> DesignerSideBarItem::createToolBarWidgets()
-{
-    if (m_toolBarWidgetFactory)
-        return m_toolBarWidgetFactory->createToolBarWidgets();
-
-    return QList<QToolButton *>();
-}
-
 // ---------- DesignModeWidget
 DesignModeWidget::DesignModeWidget()
     : m_toolBar(new Core::EditorToolBar(this))
@@ -150,7 +94,7 @@ DesignModeWidget::DesignModeWidget()
 
 DesignModeWidget::~DesignModeWidget()
 {
-    for (QPointer<QWidget> widget : qAsConst(m_viewWidgets)) {
+    for (QPointer<QWidget> widget : std::as_const(m_viewWidgets)) {
         if (widget)
             widget.clear();
     }
@@ -167,7 +111,7 @@ QWidget *DesignModeWidget::createProjectExplorerWidget(QWidget *parent)
     navigationView.widget = nullptr;
 
     for (Core::INavigationWidgetFactory *factory : factories) {
-        if (factory->id() == "Projects") {
+        if (factory->id() == "Project") {
             navigationView = factory->createWidget();
             hideToolButtons(navigationView.dockToolBarWidgets);
         }
@@ -286,6 +230,8 @@ void DesignModeWidget::setup()
     // First get all navigation views
     QList<Core::INavigationWidgetFactory *> factories = Core::INavigationWidgetFactory::allNavigationFactories();
 
+    QList<Core::Command*> viewCommands;
+
     for (Core::INavigationWidgetFactory *factory : factories) {
         Core::NavigationView navigationView;
         navigationView.widget = nullptr;
@@ -335,7 +281,7 @@ void DesignModeWidget::setup()
                                                                actionToggle.withSuffix(uniqueId + "Widget"),
                                                                designContext);
             command->setAttribute(Core::Command::CA_Hide);
-            mviews->addAction(command);
+            viewCommands.append(command);
         }
     }
 
@@ -358,7 +304,7 @@ void DesignModeWidget::setup()
                                                            actionToggle.withSuffix(widgetInfo.uniqueId + "Widget"),
                                                            designContext);
         command->setAttribute(Core::Command::CA_Hide);
-        mviews->addAction(command);
+        viewCommands.append(command);
     }
 
     // Finally the output pane
@@ -367,7 +313,7 @@ void DesignModeWidget::setup()
         auto outputPanePlaceholder = new Core::OutputPanePlaceHolder(Core::Constants::MODE_DESIGN);
         m_outputPaneDockWidget = new ADS::DockWidget(uniqueId);
         m_outputPaneDockWidget->setWidget(outputPanePlaceholder);
-        m_outputPaneDockWidget->setWindowTitle(tr("Output Pane"));
+        m_outputPaneDockWidget->setWindowTitle(tr("Output"));
         m_dockManager->addDockWidget(ADS::NoDockWidgetArea, m_outputPaneDockWidget);
 
         // Set unique id as object name
@@ -378,11 +324,18 @@ void DesignModeWidget::setup()
                                                            actionToggle.withSuffix("OutputPaneWidget"),
                                                            designContext);
         command->setAttribute(Core::Command::CA_Hide);
-        mviews->addAction(command);
+        viewCommands.append(command);
 
         connect(outputPanePlaceholder, &Core::OutputPanePlaceHolder::visibilityChangeRequested,
                 m_outputPaneDockWidget, &ADS::DockWidget::toggleView);
     }
+
+    std::sort(viewCommands.begin(), viewCommands.end(), [](Core::Command *first, Core::Command *second){
+        return first->description() < second->description();
+    });
+
+    for (Core::Command *command : viewCommands)
+        mviews->addAction(command);
 
     // Create toolbars
     auto toolBar = new QToolBar();
@@ -412,19 +365,26 @@ void DesignModeWidget::setup()
 
     m_dockManager->initialize();
 
+    // Hide all floating widgets if the initial mode isn't design mode
+    if (Core::ModeManager::instance()->currentModeId() != Core::Constants::MODE_DESIGN) {
+        for (auto &floatingWidget : m_dockManager->floatingWidgets())
+            floatingWidget->hide();
+    }
+
     connect(Core::ModeManager::instance(),
             &Core::ModeManager::currentModeChanged,
             this,
-            [this](Utils::Id mode, Utils::Id oldMode) {
+            [this](Utils::Id mode, Utils::Id previousMode) {
                 if (mode == Core::Constants::MODE_DESIGN) {
                     m_dockManager->reloadActiveWorkspace();
                     m_dockManager->setModeChangeState(false);
                 }
 
-                if (oldMode == Core::Constants::MODE_DESIGN && mode != Core::Constants::MODE_DESIGN) {
+                if (previousMode == Core::Constants::MODE_DESIGN
+                    && mode != Core::Constants::MODE_DESIGN) {
                     m_dockManager->save();
                     m_dockManager->setModeChangeState(true);
-                    for (auto floatingWidget : m_dockManager->floatingWidgets())
+                    for (auto &floatingWidget : m_dockManager->floatingWidgets())
                         floatingWidget->hide();
                 }
             });
@@ -449,11 +409,10 @@ void DesignModeWidget::setup()
                 workspaceComboBox->setCurrentText(m_dockManager->activeWorkspace());
     });
     connect(m_dockManager, &ADS::DockManager::workspaceLoaded, workspaceComboBox, &QComboBox::setCurrentText);
-    connect(workspaceComboBox, QOverload<int>::of(&QComboBox::activated),
-            m_dockManager, [this, workspaceComboBox] (int index) {
-            Q_UNUSED(index)
-            m_dockManager->openWorkspace(workspaceComboBox->currentText());
-    });
+    connect(workspaceComboBox, &QComboBox::activated,
+            m_dockManager, [this, workspaceComboBox]([[maybe_unused]] int index) {
+                m_dockManager->openWorkspace(workspaceComboBox->currentText());
+            });
 
     const QIcon gaIcon = Utils::StyleHelper::getIconFromIconFont(
                 fontName, Theme::getIconUnicode(Theme::Icon::annotationBubble),
@@ -488,8 +447,13 @@ void DesignModeWidget::aboutToShowWorkspaces()
     });
 
     QAction *action = menu->addAction(tr("Manage..."));
-    connect(action, &QAction::triggered,
-            m_dockManager, &ADS::DockManager::showWorkspaceMananger);
+    connect(action, &QAction::triggered, m_dockManager, &ADS::DockManager::showWorkspaceMananger);
+
+    QAction *resetWorkspace = menu->addAction(tr("Reset Active"));
+    connect(resetWorkspace, &QAction::triggered, this, [this]() {
+        if (m_dockManager->resetWorkspacePreset(m_dockManager->activeWorkspace()))
+            m_dockManager->reloadActiveWorkspace();
+    });
 
     menu->addSeparator();
 
@@ -497,8 +461,7 @@ void DesignModeWidget::aboutToShowWorkspaces()
     auto sortedWorkspaces = m_dockManager->workspaces();
     Utils::sort(sortedWorkspaces);
 
-    for (const auto &workspace : qAsConst(sortedWorkspaces))
-    {
+    for (const auto &workspace : std::as_const(sortedWorkspaces)) {
         QAction *action = ag->addAction(workspace);
         action->setData(workspace);
         action->setCheckable(true);
@@ -583,11 +546,15 @@ CrumbleBar *DesignModeWidget::crumbleBar() const
     return m_crumbleBar;
 }
 
-void DesignModeWidget::showInternalTextEditor()
+void DesignModeWidget::showDockWidget(const QString &objectName, bool focus)
 {
-    auto dockWidget = m_dockManager->findDockWidget("TextEditor");
-    if (dockWidget)
+    auto dockWidget = m_dockManager->findDockWidget(objectName);
+    if (dockWidget) {
         dockWidget->toggleView(true);
+
+        if (focus)
+            dockWidget->setFocus();
+    }
 }
 
 void DesignModeWidget::contextHelp(const Core::IContext::HelpCallback &callback) const

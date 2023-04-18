@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljsutils.h"
 
 #include "parser/qmljsast_p.h"
 
+#include <utils/filepath.h>
 #include <utils/stringutils.h>
 
 #include <QColor>
@@ -256,8 +235,9 @@ const QStringList QmlJS::splitVersion(const QString &version)
  * \return The module paths if found, an empty string otherwise
  * \see qmlimportscanner in qtdeclarative/tools
  */
-QStringList QmlJS::modulePaths(const QString &name, const QString &version,
-                               const QStringList &importPaths)
+QList<Utils::FilePath> QmlJS::modulePaths(const QString &name,
+                                          const QString &version,
+                                          const QList<Utils::FilePath> &importPaths)
 {
     Q_ASSERT(maybeModuleVersion(version));
     if (importPaths.isEmpty())
@@ -267,27 +247,27 @@ QStringList QmlJS::modulePaths(const QString &name, const QString &version,
     const QStringList parts = name.split('.', Qt::SkipEmptyParts);
     auto mkpath = [](const QStringList &xs) -> QString { return xs.join(QLatin1Char('/')); };
 
-    QStringList result;
-    QString candidate;
+    QList<Utils::FilePath> result;
+    Utils::FilePath candidate;
 
     for (const QString &versionPart : splitVersion(sanitizedVersion)) {
-        for (const QString &path : importPaths) {
+        for (const Utils::FilePath &path : importPaths) {
             for (int i = parts.count() - 1; i >= 0; --i) {
-                candidate = QDir::cleanPath(QString::fromLatin1("%1/%2.%3/%4")
-                                                .arg(path,
-                                                     mkpath(parts.mid(0, i + 1)),
-                                                     versionPart,
-                                                     mkpath(parts.mid(i + 1))));
-                if (QDir(candidate).exists())
+                candidate = path.pathAppended(QString::fromLatin1("%2.%3/%4")
+                                                  .arg(mkpath(parts.mid(0, i + 1)),
+                                                       versionPart,
+                                                       mkpath(parts.mid(i + 1))))
+                                .cleanPath();
+                if (candidate.exists())
                     result << candidate;
             }
         }
     }
 
     // Version is empty
-    for (const QString &path: importPaths) {
-        candidate = QDir::cleanPath(QString::fromLatin1("%1/%2").arg(path, mkpath(parts)));
-        if (QDir(candidate).exists())
+    for (const Utils::FilePath &path : importPaths) {
+        candidate = path.pathAppended(mkpath(parts)).cleanPath();
+        if (candidate.exists())
             result << candidate;
     }
 

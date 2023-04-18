@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -36,10 +14,11 @@
 #include <QVector>
 #include <QXmlStreamReader>
 
+#include <optional>
+
 namespace ExtensionSystem {
 
 class IPlugin;
-class PluginManager;
 
 namespace Internal {
 
@@ -50,7 +29,9 @@ class EXTENSIONSYSTEM_EXPORT PluginSpecPrivate : public QObject
 public:
     PluginSpecPrivate(PluginSpec *spec);
 
+    void reset();
     bool read(const QString &fileName);
+    bool read(const QStaticPlugin &plugin);
     bool provides(const QString &pluginName, const QString &version) const;
     bool resolveDependencies(const QVector<PluginSpec *> &specs);
     bool loadLibrary();
@@ -65,19 +46,20 @@ public:
     void setForceEnabled(bool value);
     void setForceDisabled(bool value);
 
-    QPluginLoader loader;
+    std::optional<QPluginLoader> loader;
+    std::optional<QStaticPlugin> staticPlugin;
 
     QString name;
     QString version;
     QString compatVersion;
     bool required = false;
-    bool hiddenByDefault = false;
     bool experimental = false;
     bool enabledByDefault = true;
     QString vendor;
     QString copyright;
     QString license;
     QString description;
+    QString longDescription;
     QString url;
     QString category;
     QRegularExpression platformSpecification;
@@ -95,6 +77,8 @@ public:
     QHash<PluginDependency, PluginSpec *> dependencySpecs;
     PluginSpec::PluginArgumentDescriptions argumentDescriptions;
     IPlugin *plugin = nullptr;
+
+    QList<TestCreator> registeredPluginTests;
 
     PluginSpec::State state = PluginSpec::Invalid;
     bool hasError = false;

@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cpasterplugin.h"
 
+#include "cpastertr.h"
 #include "dpastedotcomprotocol.h"
 #include "fileshareprotocol.h"
 #include "pastebindotcomprotocol.h"
@@ -43,8 +22,9 @@
 
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 #include <utils/temporarydirectory.h>
 
 #include <texteditor/texteditor.h>
@@ -65,8 +45,6 @@ namespace CodePaster {
 
 class CodePasterPluginPrivate : public QObject
 {
-    Q_DECLARE_TR_FUNCTIONS(CodePaster::CodepasterPlugin)
-
 public:
     CodePasterPluginPrivate();
 
@@ -138,14 +116,9 @@ CodePasterPlugin::~CodePasterPlugin()
     delete d;
 }
 
-bool CodePasterPlugin::initialize(const QStringList &arguments, QString *errorMessage)
+void CodePasterPlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorMessage)
-
     d = new CodePasterPluginPrivate;
-
-    return true;
 }
 
 CodePasterPluginPrivate::CodePasterPluginPrivate()
@@ -170,24 +143,24 @@ CodePasterPluginPrivate::CodePasterPluginPrivate()
     ActionContainer *toolsContainer = ActionManager::actionContainer(Core::Constants::M_TOOLS);
 
     ActionContainer *cpContainer = ActionManager::createMenu("CodePaster");
-    cpContainer->menu()->setTitle(tr("&Code Pasting"));
+    cpContainer->menu()->setTitle(Tr::tr("&Code Pasting"));
     toolsContainer->addMenu(cpContainer);
 
     Command *command;
 
-    m_postEditorAction = new QAction(tr("Paste Snippet..."), this);
+    m_postEditorAction = new QAction(Tr::tr("Paste Snippet..."), this);
     command = ActionManager::registerAction(m_postEditorAction, "CodePaster.Post");
-    command->setDefaultKeySequence(QKeySequence(useMacShortcuts ? tr("Meta+C,Meta+P") : tr("Alt+C,Alt+P")));
+    command->setDefaultKeySequence(QKeySequence(useMacShortcuts ? Tr::tr("Meta+C,Meta+P") : Tr::tr("Alt+C,Alt+P")));
     connect(m_postEditorAction, &QAction::triggered, this, &CodePasterPluginPrivate::pasteSnippet);
     cpContainer->addAction(command);
 
-    m_fetchAction = new QAction(tr("Fetch Snippet..."), this);
+    m_fetchAction = new QAction(Tr::tr("Fetch Snippet..."), this);
     command = ActionManager::registerAction(m_fetchAction, "CodePaster.Fetch");
-    command->setDefaultKeySequence(QKeySequence(useMacShortcuts ? tr("Meta+C,Meta+F") : tr("Alt+C,Alt+F")));
+    command->setDefaultKeySequence(QKeySequence(useMacShortcuts ? Tr::tr("Meta+C,Meta+F") : Tr::tr("Alt+C,Alt+F")));
     connect(m_fetchAction, &QAction::triggered, this, &CodePasterPluginPrivate::fetch);
     cpContainer->addAction(command);
 
-    m_fetchUrlAction = new QAction(tr("Fetch from URL..."), this);
+    m_fetchUrlAction = new QAction(Tr::tr("Fetch from URL..."), this);
     command = ActionManager::registerAction(m_fetchUrlAction, "CodePaster.FetchUrl");
     connect(m_fetchUrlAction, &QAction::triggered, this, &CodePasterPluginPrivate::fetchUrl);
     cpContainer->addAction(command);
@@ -196,7 +169,7 @@ CodePasterPluginPrivate::CodePasterPluginPrivate()
 ExtensionSystem::IPlugin::ShutdownFlag CodePasterPlugin::aboutToShutdown()
 {
     // Delete temporary, fetched files
-    for (const QString &fetchedSnippet : qAsConst(d->m_fetchedSnippets)) {
+    for (const QString &fetchedSnippet : std::as_const(d->m_fetchedSnippets)) {
         QFile file(fetchedSnippet);
         if (file.exists())
             file.remove();
@@ -218,7 +191,7 @@ static inline void textFromCurrentEditor(QString *text, QString *mimeType)
             data = textDocument->plainText();
         } else {
             const QVariant textV = document->property("plainText"); // Diff Editor.
-            if (textV.type() == QVariant::String)
+            if (textV.typeId() == QMetaType::QString)
                 data = textV.toString();
         }
     }
@@ -289,7 +262,7 @@ void CodePasterPluginPrivate::fetchUrl()
     QUrl url;
     do {
         bool ok = true;
-        url = QUrl(QInputDialog::getText(ICore::dialogParent(), tr("Fetch from URL"), tr("Enter URL:"), QLineEdit::Normal, QString(), &ok));
+        url = QUrl(QInputDialog::getText(ICore::dialogParent(), Tr::tr("Fetch from URL"), Tr::tr("Enter URL:"), QLineEdit::Normal, QString(), &ok));
         if (!ok)
             return;
     } while (!url.isValid());
@@ -325,7 +298,8 @@ void CodePasterPluginPrivate::fetch()
 void CodePasterPluginPrivate::finishPost(const QString &link)
 {
     if (m_settings.copyToClipboard.value())
-        QApplication::clipboard()->setText(link);
+        Utils::setClipboardAndSelection(link);
+
     if (m_settings.displayOutput.value())
         MessageManager::writeDisrupting(link);
     else
@@ -377,7 +351,7 @@ void CodePasterPluginPrivate::finishFetch(const QString &titleDescription,
     }
     if (content.isEmpty()) {
         MessageManager::writeDisrupting(
-            tr("Empty snippet received for \"%1\".").arg(titleDescription));
+            Tr::tr("Empty snippet received for \"%1\".").arg(titleDescription));
         return;
     }
     // If the mime type has a preferred suffix (cpp/h/patch...), use that for

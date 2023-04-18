@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "utils_global.h"
-
-#include "porting.h"
 
 #include <QList>
 #include <QString>
@@ -40,6 +16,8 @@ QT_END_NAMESPACE
 
 namespace Utils {
 
+class FilePath;
+
 // Create a usable settings key from a category,
 // for example Editor|C++ -> Editor_C__
 QTCREATOR_UTILS_EXPORT QString settingsKey(const QString &category);
@@ -47,15 +25,6 @@ QTCREATOR_UTILS_EXPORT QString settingsKey(const QString &category);
 // Return the common prefix part of a string list:
 // "C:\foo\bar1" "C:\foo\bar2"  -> "C:\foo\bar"
 QTCREATOR_UTILS_EXPORT QString commonPrefix(const QStringList &strings);
-
-// Return the common path of a list of files:
-// "C:\foo\bar1" "C:\foo\bar2"  -> "C:\foo"
-QTCREATOR_UTILS_EXPORT QString commonPath(const QStringList &files);
-
-// On Linux/Mac replace user's home path with ~
-// Uses cleaned path and tries to use absolute path of "path" if possible
-// If path is not sub of home path, or when running on Windows, returns the input
-QTCREATOR_UTILS_EXPORT QString withTildeHomePath(const QString &path);
 
 // Removes first unescaped ampersand in text
 QTCREATOR_UTILS_EXPORT QString stripAccelerator(const QString &text);
@@ -92,15 +61,18 @@ QTCREATOR_UTILS_EXPORT QString expandMacros(const QString &str, AbstractMacroExp
 
 QTCREATOR_UTILS_EXPORT int parseUsedPortFromNetstatOutput(const QByteArray &line);
 
+QTCREATOR_UTILS_EXPORT QString appendHelper(const QString &base, int n);
+QTCREATOR_UTILS_EXPORT FilePath appendHelper(const FilePath &base, int n);
+
 template<typename T>
 T makeUniquelyNumbered(const T &preferred, const std::function<bool(const T &)> &isOk)
 {
     if (isOk(preferred))
         return preferred;
     int i = 2;
-    T tryName = preferred + QString::number(i);
+    T tryName = appendHelper(preferred, i);
     while (!isOk(tryName))
-        tryName = preferred + QString::number(++i);
+        tryName = appendHelper(preferred, ++i);
     return tryName;
 }
 
@@ -123,5 +95,24 @@ QTCREATOR_UTILS_EXPORT QString formatElapsedTime(qint64 elapsed);
 QTCREATOR_UTILS_EXPORT QString wildcardToRegularExpression(const QString &original);
 
 QTCREATOR_UTILS_EXPORT QString languageNameFromLanguageCode(const QString &languageCode);
+
+
+#ifdef QT_WIDGETS_LIB
+
+// Feeds the global clipboard and, when present, the primary selection
+QTCREATOR_UTILS_EXPORT void setClipboardAndSelection(const QString &text);
+
+#endif
+
+QTCREATOR_UTILS_EXPORT QString chopIfEndsWith(QString str, QChar c);
+QTCREATOR_UTILS_EXPORT QStringView chopIfEndsWith(QStringView str, QChar c);
+
+QTCREATOR_UTILS_EXPORT QString normalizeNewlines(const QString &text);
+
+// Skips empty parts - see QTBUG-110900
+QTCREATOR_UTILS_EXPORT QString joinStrings(const QStringList &strings, QChar separator);
+QTCREATOR_UTILS_EXPORT QString trimFront(const QString &string, QChar ch);
+QTCREATOR_UTILS_EXPORT QString trimBack(const QString &string, QChar ch);
+QTCREATOR_UTILS_EXPORT QString trim(const QString &string, QChar ch);
 
 } // namespace Utils

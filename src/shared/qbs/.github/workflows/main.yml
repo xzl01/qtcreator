@@ -23,7 +23,7 @@ jobs:
                       products.qbs_archive.targetName:qbs-linux-${{ github.run_id }}
                       products.qbs_archive.includeTests:true',
             script: './scripts/build-qbs-with-qbs.sh',
-            cacheid: 'gcc',
+            cacheid: 'gcc-qt6',
           }
     env:
       BUILD_OPTIONS: ${{ matrix.config.options }}
@@ -41,14 +41,14 @@ jobs:
         path: ~/.ccache
         key: ${{ runner.os }}-${{ matrix.config.cacheid }}-ccache-${{ steps.get-timestamp.outputs.timestamp }}
         restore-keys: ${{ runner.os }}-${{ matrix.config.cacheid }}-ccache-
-    - name: Pull the Focal Image
-      run: docker-compose pull focal
+    - name: Pull the Docker Image
+      run: docker-compose pull focal-qt6
     - name: Print ccache stats
-      run: docker-compose run focal ccache -s
+      run: docker-compose run focal-qt6 ccache -s
     - name: Build Qbs
-      run: docker-compose run focal ${{ matrix.config.script }}
+      run: docker-compose run focal-qt6 ${{ matrix.config.script }}
     - name: Print ccache stats
-      run: docker-compose run focal ccache -s
+      run: docker-compose run focal-qt6 ccache -s
     - name: Upload artifacts
       uses: 'actions/upload-artifact@v2'
       with:
@@ -58,7 +58,7 @@ jobs:
   build-linux-extra:
     name: ${{ matrix.config.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -66,7 +66,7 @@ jobs:
         - {
             name: 'Build on Linux (clang_tidy)',
             script: './scripts/run-analyzer.sh',
-            image: 'focal',
+            image: 'focal-qt6',
             options: 'profile:qt-clang_64 modules.cpp.compilerWrapper:ccache',
             cacheid: 'clang',
           }
@@ -77,29 +77,39 @@ jobs:
             cacheid: 'cmake',
           }
         - {
-            name: 'Build on Linux (QMake)',
-            script: './scripts/build-qbs-with-qmake.sh',
-            image: 'focal',
-            options: 'CONFIG+=ccache',
-            cacheid: 'qmake',
-          }
-        - {
-            name: 'Build on Linux (gcc, Qt 6)',
+            name: 'Build on Linux (gcc, ASAN)',
             image: 'focal-qt6',
             script: './scripts/build-qbs-with-qbs.sh',
             options: 'modules.cpp.compilerWrapper:ccache
-                      modules.qbsbuildconfig.enableAddressSanitizer:false
+                      modules.qbsbuildconfig.enableAddressSanitizer:true
                       modules.qbs.debugInformation:true
                       modules.qbsbuildconfig.enableBundledQt:true',
-            cacheid: 'gcc-qt6',
+            cacheid: 'gcc-asan',
+          }
+        - {
+            name: 'Build on Linux (gcc, UBSAN)',
+            image: 'focal-qt6',
+            script: './scripts/build-qbs-with-qbs.sh',
+            options: 'modules.cpp.compilerWrapper:ccache
+                      modules.qbsbuildconfig.enableUbSanitizer:true
+                      modules.qbs.debugInformation:true
+                      modules.qbsbuildconfig.enableBundledQt:true',
+            cacheid: 'gcc-ubsan',
+          }
+        - {
+            name: 'Build on Linux (gcc, Qt 5.15)',
+            image: 'focal',
+            script: './scripts/build-qbs-with-qbs.sh',
+            options: 'modules.cpp.compilerWrapper:ccache
+                      modules.qbs.debugInformation:true
+                      modules.qbsbuildconfig.enableBundledQt:true',
+            cacheid: 'gcc-qt5',
           }
     env:
       BUILD_OPTIONS: ${{ matrix.config.options }}
       QTEST_FUNCTION_TIMEOUT: 9000000
     steps:
     - uses: actions/checkout@v1
-      with:
-        submodules: true
     - name: Create .ccache dir
       run: mkdir -p ~/.ccache
     - name: prepare timestamp
@@ -111,7 +121,7 @@ jobs:
         path: ~/.ccache
         key: ${{ runner.os }}-${{ matrix.config.cacheid }}-ccache-${{ steps.get-timestamp.outputs.timestamp }}
         restore-keys: ${{ runner.os }}-${{ matrix.config.cacheid }}-ccache-
-    - name: Pull the Focal Image
+    - name: Pull the Docker Image
       run: docker-compose pull ${{ matrix.config.image }}
     - name: Print ccache stats
       run: docker-compose run ${{ matrix.config.image }} ccache -s
@@ -122,7 +132,7 @@ jobs:
 
   build-macos:
     name: Build on macOS
-    runs-on: macos-10.15
+    runs-on: macos-11
     timeout-minutes: 60
     env:
       BUILD_OPTIONS: |
@@ -274,14 +284,13 @@ jobs:
     - name: Install Qt
       uses: ./.github/actions/download-qt
       with:
-        toolchain: win64_mingw81
+        toolchain: win64_mingw
     - name: Install Qt Creator
       uses: ./.github/actions/download-qtc
     - name: Install MinGW
       uses: ./.github/actions/download-mingw
     - name: Setup Qbs
       run: |
-        qbs setup-toolchains --detect
         qbs setup-toolchains --type mingw $(which g++).exe mingw-qt
         qbs setup-qt $(which qmake).exe qt
         qbs config profiles.qt.baseProfile mingw-qt
@@ -304,7 +313,7 @@ jobs:
   test-linux:
     name: ${{ matrix.config.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     needs: build-linux
     strategy:
       fail-fast: false
@@ -323,13 +332,13 @@ jobs:
             script: './scripts/test-qbs.sh',
           }
         - {
-            name: 'Run Linux tests (gcc, Qt 6.0)',
+            name: 'Run Linux tests (gcc, Qt 6.2)',
             image: 'focal-qt6',
             profile: 'qt-gcc_64',
             script: './scripts/test-qt.sh',
           }
         - {
-            name: 'Run Linux tests (gcc, Qt 6.2 static)',
+            name: 'Run Linux tests (gcc, Qt 6.3 static)',
             image: 'focal-qt6-static',
             profile: 'qt-gcc_64',
             script: './scripts/test-qt.sh',
@@ -429,7 +438,7 @@ jobs:
         path: ./
     - name: Unpack artifact
       run: mkdir -p release/install-root/ && tar xzf qbs-linux-${{ github.run_id }}.tar.gz -C release/install-root/
-    - name: Pull the Focal-Baremetal Image
+    - name: Pull the Docker Image
       run: docker-compose pull focal-baremetal
     - name: arm-none-eabi-gcc-9_2
       run: QBS_AUTOTEST_PROFILE=arm-none-eabi-gcc-9_2 docker-compose run focal-baremetal scripts/test-baremetal.sh release/install-root/usr/local/bin
@@ -608,68 +617,74 @@ jobs:
       QTEST_FUNCTION_TIMEOUT: 9000000
       QBS_AUTOTEST_PROFILE: 'qt'
       QBS_TEST_SOURCE_ROOT: 'tests'
+      QBS_EXTRA_GRPC_LIBS: 'absl_synchronization,grpc,gpr'
     strategy:
       fail-fast: false
       matrix:
         config:
         - {
-            name: 'Run macOS tests (Xcode 12.5)',
-            runner: 'macos-11.0',
+            name: 'Run macOS tests (Xcode 14.1)',
+            runner: 'macos-12',
             target: 'desktop',
             toolchain: 'clang_64',
-            testProfile: 'xcode_12_5_1-macosx-x86_64',
+            xcodeVersion: '14.1',
+            testProfile: 'xcode_14_1-macosx-x86_64',
             qtVersion: '5.15.2',
             script: './scripts/test-qbs.sh',
           }
         - {
-            name: 'Run macOS tests (Xcode 12.5, Qt 6.0)',
-            runner: 'macos-11.0',
+            name: 'Run macOS tests (Xcode 14.1, Qt 6.3)',
+            runner: 'macos-12',
             target: 'desktop',
             toolchain: 'clang_64',
-            testProfile: 'xcode_12_5_1-macosx-x86_64',
-            qtVersion: '6.0.2',
+            xcodeVersion: '14.1',
+            testProfile: 'xcode_14_1-macosx-x86_64',
+            qtVersion: '6.3.1',
             script: './scripts/test-qt.sh',
           }
         - {
-            name: 'Run iOS tests (Xcode 12.5)',
-            runner: 'macos-11.0',
+            name: 'Run iOS tests (Xcode 14.1)',
+            runner: 'macos-12',
             target: 'ios',
             toolchain: 'ios',
-            testProfile: 'xcode_12_5_1-iphoneos-arm64',
+            xcodeVersion: '14.1',
+            testProfile: 'xcode_14_1-iphoneos-arm64',
             qtVersion: '5.15.2',
             script: './scripts/test-qbs.sh',
           }
         - {
-            name: 'Run iOS-sim tests (Xcode 12.5)',
-            runner: 'macos-11.0',
+            name: 'Run iOS-sim tests (Xcode 14.1)',
+            runner: 'macos-12',
             target: 'ios',
             toolchain: 'ios',
-            testProfile: 'xcode_12_5_1-iphonesimulator-x86_64',
+            xcodeVersion: '14.1',
+            testProfile: 'xcode_14_1-iphonesimulator-x86_64',
             qtVersion: '5.15.2',
             script: './scripts/test-qbs.sh',
           }
         - {
-            name: 'Run macOS tests (Xcode 11.6)',
-            runner: 'macos-10.15',
+            name: 'Run macOS tests (Xcode 13.4)',
+            runner: 'macos-12',
             target: 'desktop',
             toolchain: 'clang_64',
-            testProfile: 'xcode_11_6-macosx-x86_64',
+            xcodeVersion: '13.4.1',
+            testProfile: 'xcode_13_4_1-macosx-x86_64',
             qtVersion: '5.15.2',
             script: './scripts/test-qbs.sh',
           }
+
         - {
-            name: 'Run macOS tests (Xcode 10.3)',
-            runner: 'macos-10.15',
+            name: 'Run macOS tests (Xcode 12.5)',
+            runner: 'macos-11',
             target: 'desktop',
             toolchain: 'clang_64',
-            testProfile: 'xcode_10_3-macosx-x86_64',
+            xcodeVersion: '12.5.1',
+            testProfile: 'xcode_12_5_1-macosx-x86_64',
             qtVersion: '5.15.2',
             script: './scripts/test-qbs.sh',
           }
     steps:
     - uses: actions/checkout@v1
-      with:
-        submodules: true
     - name: Download artifact
       uses: actions/download-artifact@v1
       with:
@@ -687,6 +702,8 @@ jobs:
         target: ${{ matrix.config.target }}
         toolchain: ${{ matrix.config.toolchain }}
         version: ${{ matrix.config.qtVersion }}
+    - name: Select Xcode
+      run: sudo xcode-select --switch /Applications/Xcode_${{ matrix.config.xcodeVersion }}.app
     - name: Setup Qbs
       run: |
         qbs setup-toolchains --detect
@@ -703,12 +720,12 @@ jobs:
       if: ${{ failure() }}
       run: |
         for f in $(find /cores -maxdepth 1 -name 'core.*' -print); do
-          lldb --core $f --batch --one-line "bt"
+          lldb --core $f --batch --one-line "bt all"
         done;
 
   test-windows:
     name: ${{ matrix.config.name }}
-    runs-on: windows-2019
+    runs-on: windows-2022
     timeout-minutes: 60
     needs: build-windows
     strategy:
@@ -716,18 +733,18 @@ jobs:
       matrix:
         config:
         - {
-            name: 'Run Windows tests (MSVC 2019)',
+            name: 'Run Windows tests (MSVC 2022)',
             target: 'desktop',
             toolchain: 'win64_msvc2019_64',
-            testProfile: 'MSVC2019-x64',
+            testProfile: 'MSVC2022-x64',
             qtVersion: '5.15.2',
             script: './scripts/test-qbs.sh',
           }
         - {
-            name: 'Run Windows tests (MSVC 2019, Qt 6.0.2)',
+            name: 'Run Windows tests (MSVC 2022, Qt 6.0.2)',
             target: 'desktop',
             toolchain: 'win64_msvc2019_64',
-            testProfile: 'MSVC2019-x64',
+            testProfile: 'MSVC2022-x64',
             qtVersion: '6.0.2',
             script: './scripts/test-qt.sh',
           }
@@ -769,6 +786,7 @@ jobs:
       run: echo "./release/install-root/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     - name: Install required packages
       run: choco install -y pkgconfiglite --download-checksum=6004df17818f5a6dbf19cb335cc92702
+      continue-on-error: true  # pkgconfiglite installation is flaky
     - name: Install Qt
       uses: ./.github/actions/download-qt
       with:
@@ -869,8 +887,6 @@ jobs:
       shell: bash
     - name: Update PATH
       run: echo "./release/install-root/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-    - name: Install required packages
-      run: choco install -y pkgconfiglite --download-checksum=6004df17818f5a6dbf19cb335cc92702
     - name: Install OpenWatcom
       uses: ./.github/actions/download-ow
     - name: Install DigitalMars

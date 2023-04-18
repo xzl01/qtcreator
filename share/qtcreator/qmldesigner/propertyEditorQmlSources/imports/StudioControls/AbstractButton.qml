@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 import QtQuick.Templates 2.15 as T
@@ -42,6 +20,9 @@ T.AbstractButton {
     property alias iconRotation: buttonIcon.rotation
     property alias backgroundVisible: buttonBackground.visible
     property alias backgroundRadius: buttonBackground.radius
+
+    // Inverts the checked style
+    property bool checkedInverted: false
 
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
                             implicitContentWidth + leftPadding + rightPadding)
@@ -98,11 +79,12 @@ T.AbstractButton {
                     }
                 },
                 State {
-                    name: "select"
+                    name: "check"
                     when: myButton.enabled && !myButton.pressed && myButton.checked
                     PropertyChanges {
                         target: buttonIcon
-                        color: StudioTheme.Values.themeIconColorSelected
+                        color: myButton.checkedInverted ? StudioTheme.Values.themeTextSelectedTextColor
+                                                        : StudioTheme.Values.themeIconColorSelected
                     }
                 },
                 State {
@@ -125,6 +107,7 @@ T.AbstractButton {
             PropertyChanges {
                 target: buttonBackground
                 color: StudioTheme.Values.themeControlBackground
+                border.color: StudioTheme.Values.themeControlOutline
             }
             PropertyChanges {
                 target: myButton
@@ -136,20 +119,33 @@ T.AbstractButton {
             when: myButton.globalHover && !myButton.hover && !myButton.pressed && myButton.enabled
             PropertyChanges {
                 target: buttonBackground
-                color: StudioTheme.Values.themeControlBackgroundGlobalHover
+                color: StudioTheme.Values.themeControlBackground
+                border.color: StudioTheme.Values.themeControlOutline
             }
         },
         State {
             name: "hover"
-            when: myButton.hover && !myButton.pressed && myButton.enabled
+            when: !myButton.checked && myButton.hover && !myButton.pressed && myButton.enabled
             PropertyChanges {
                 target: buttonBackground
                 color: StudioTheme.Values.themeControlBackgroundHover
+                border.color: StudioTheme.Values.themeControlOutline
+            }
+        },
+        State {
+            name: "hoverCheck"
+            when: myButton.checked && myButton.hover && !myButton.pressed && myButton.enabled
+            PropertyChanges {
+                target: buttonBackground
+                color: myButton.checkedInverted ? StudioTheme.Values.themeInteractionHover
+                                                : StudioTheme.Values.themeControlBackgroundHover
+                border.color: myButton.checkedInverted ? StudioTheme.Values.themeInteractionHover
+                                                       : StudioTheme.Values.themeControlOutline
             }
         },
         State {
             name: "press"
-            when: myButton.hover && myButton.pressed
+            when: myButton.hover && myButton.pressed && myButton.enabled
             PropertyChanges {
                 target: buttonBackground
                 color: StudioTheme.Values.themeInteraction
@@ -158,6 +154,17 @@ T.AbstractButton {
             PropertyChanges {
                 target: myButton
                 z: 100
+            }
+        },
+        State {
+            name: "check"
+            when: myButton.enabled && !myButton.pressed && myButton.checked
+            PropertyChanges {
+                target: buttonBackground
+                color: myButton.checkedInverted ? StudioTheme.Values.themeInteraction
+                                                : StudioTheme.Values.themeControlBackground
+                border.color: myButton.checkedInverted ? StudioTheme.Values.themeInteraction
+                                                       : StudioTheme.Values.themeControlOutline
             }
         },
         State {

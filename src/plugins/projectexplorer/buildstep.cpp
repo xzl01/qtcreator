@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "buildstep.h"
 
@@ -31,8 +9,8 @@
 #include "deployconfiguration.h"
 #include "kitinformation.h"
 #include "project.h"
-#include "projectexplorer.h"
 #include "projectexplorerconstants.h"
+#include "sanitizerparser.h"
 #include "target.h"
 
 #include <utils/algorithm.h>
@@ -40,12 +18,7 @@
 #include <utils/layoutbuilder.h>
 #include <utils/outputformatter.h>
 #include <utils/qtcassert.h>
-#include <utils/runextensions.h>
 #include <utils/variablechooser.h>
-
-#include <QFormLayout>
-#include <QFutureWatcher>
-#include <QPointer>
 
 /*!
     \class ProjectExplorer::BuildStep
@@ -113,13 +86,21 @@
     \fn  void ProjectExplorer::BuildStep::addOutput(const QString &string, ProjectExplorer::BuildStep::OutputFormat format,
               ProjectExplorer::BuildStep::OutputNewlineSetting newlineSetting = DoAppendNewline) const
 
-    The \a string is added to the generated output, usually in the output pane.
+    The \a string is added to the generated output, usually in the output.
     It should be in plain text, with the format in the parameter.
 */
 
 /*!
     \fn  void ProjectExplorer::BuildStep::finished()
     This signal needs to be emitted if the build step runs in the GUI thread.
+*/
+
+/*!
+    \fn bool ProjectExplorer::BuildStep::isImmutable()
+
+    If this function returns \c true, the user cannot delete this build step for
+    this target and the user is prevented from changing the order in which
+    immutable steps are run. The default implementation returns \c false.
 */
 
 using namespace Utils;
@@ -130,7 +111,7 @@ namespace ProjectExplorer {
 
 static QList<BuildStepFactory *> g_buildStepFactories;
 
-BuildStep::BuildStep(BuildStepList *bsl, Utils::Id id) :
+BuildStep::BuildStep(BuildStepList *bsl, Id id) :
     ProjectConfiguration(bsl, id)
 {
     QTC_CHECK(bsl->target() && bsl->target() == this->target());
@@ -166,7 +147,7 @@ QWidget *BuildStep::doCreateConfigWidget()
             setSummaryText(m_summaryUpdater());
     };
 
-    for (BaseAspect *aspect : qAsConst(m_aspects))
+    for (BaseAspect *aspect : std::as_const(m_aspects))
         connect(aspect, &BaseAspect::changed, widget, recreateSummary);
 
     connect(buildConfiguration(), &BuildConfiguration::buildDirectoryChanged,
@@ -180,11 +161,11 @@ QWidget *BuildStep::doCreateConfigWidget()
 QWidget *BuildStep::createConfigWidget()
 {
     Layouting::Form builder;
-    for (BaseAspect *aspect : qAsConst(m_aspects)) {
+    for (BaseAspect *aspect : std::as_const(m_aspects)) {
         if (aspect->isVisible())
             aspect->addToLayout(builder.finishRow());
     }
-    auto widget = builder.emerge(false);
+    auto widget = builder.emerge(Layouting::WithoutMargins);
 
     if (m_addMacroExpander)
         VariableChooser::addSupportForChildWidgets(widget, macroExpander());
@@ -261,11 +242,11 @@ BuildConfiguration::BuildType BuildStep::buildType() const
     return BuildConfiguration::Unknown;
 }
 
-Utils::MacroExpander *BuildStep::macroExpander() const
+MacroExpander *BuildStep::macroExpander() const
 {
     if (auto bc = buildConfiguration())
         return bc->macroExpander();
-    return Utils::globalMacroExpander();
+    return globalMacroExpander();
 }
 
 QString BuildStep::fallbackWorkingDirectory() const
@@ -278,23 +259,18 @@ QString BuildStep::fallbackWorkingDirectory() const
 void BuildStep::setupOutputFormatter(OutputFormatter *formatter)
 {
     if (qobject_cast<BuildConfiguration *>(parent()->parent())) {
-        for (const Utils::Id id : buildConfiguration()->customParsers()) {
+        for (const Id id : buildConfiguration()->customParsers()) {
             if (Internal::CustomParser * const parser = Internal::CustomParser::createFromId(id))
                 formatter->addLineParser(parser);
         }
 
+        formatter->addLineParser(new Internal::SanitizerParser);
         formatter->setForwardStdOutToStdError(buildConfiguration()->parseStdOut());
     }
-    Utils::FileInProjectFinder fileFinder;
+    FileInProjectFinder fileFinder;
     fileFinder.setProjectDirectory(project()->projectDirectory());
     fileFinder.setProjectFiles(project()->files(Project::AllFiles));
     formatter->setFileFinder(fileFinder);
-}
-
-void BuildStep::reportRunResult(QFutureInterface<bool> &fi, bool success)
-{
-    fi.reportResult(success);
-    fi.reportFinished();
 }
 
 bool BuildStep::widgetExpandedByDefault() const
@@ -307,35 +283,10 @@ void BuildStep::setWidgetExpandedByDefault(bool widgetExpandedByDefault)
     m_widgetExpandedByDefault = widgetExpandedByDefault;
 }
 
-QVariant BuildStep::data(Utils::Id id) const
+QVariant BuildStep::data(Id id) const
 {
     Q_UNUSED(id)
     return {};
-}
-
-/*!
-  \fn BuildStep::isImmutable()
-
-    If this function returns \c true, the user cannot delete this build step for
-    this target and the user is prevented from changing the order in which
-    immutable steps are run. The default implementation returns \c false.
-*/
-
-void BuildStep::runInThread(const std::function<bool()> &syncImpl)
-{
-    m_runInGuiThread = false;
-    m_cancelFlag = false;
-    auto * const watcher = new QFutureWatcher<bool>(this);
-    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher] {
-        emit finished(watcher->result());
-        watcher->deleteLater();
-    });
-    watcher->setFuture(Utils::runAsync(syncImpl));
-}
-
-std::function<bool ()> BuildStep::cancelChecker() const
-{
-    return [step = QPointer<const BuildStep>(this)] { return step && step->isCanceled(); };
 }
 
 bool BuildStep::isCanceled() const
@@ -345,7 +296,7 @@ bool BuildStep::isCanceled() const
 
 void BuildStep::doCancel()
 {
-    QTC_ASSERT(!m_runInGuiThread, qWarning() << "Build step" << displayName()
+    QTC_ASSERT(false, qWarning() << "Build step" << displayName()
                << "neeeds to implement the doCancel() function");
 }
 
@@ -397,7 +348,7 @@ bool BuildStepFactory::canHandle(BuildStepList *bsl) const
     if (!m_supportedDeviceTypes.isEmpty()) {
         Target *target = bsl->target();
         QTC_ASSERT(target, return false);
-        Utils::Id deviceType = DeviceTypeKitAspect::deviceTypeId(target->kit());
+        Id deviceType = DeviceTypeKitAspect::deviceTypeId(target->kit());
         if (!m_supportedDeviceTypes.contains(deviceType))
             return false;
     }
@@ -405,7 +356,7 @@ bool BuildStepFactory::canHandle(BuildStepList *bsl) const
     if (m_supportedProjectType.isValid()) {
         if (!config)
             return false;
-        Utils::Id projectId = config->project()->id();
+        Id projectId = config->project()->id();
         if (projectId != m_supportedProjectType)
             return false;
     }
@@ -416,7 +367,7 @@ bool BuildStepFactory::canHandle(BuildStepList *bsl) const
     if (m_supportedConfiguration.isValid()) {
         if (!config)
             return false;
-        Utils::Id configId = config->id();
+        Id configId = config->id();
         if (configId != m_supportedConfiguration)
             return false;
     }
@@ -434,32 +385,32 @@ void BuildStepFactory::setFlags(BuildStepInfo::Flags flags)
     m_info.flags = flags;
 }
 
-void BuildStepFactory::setSupportedStepList(Utils::Id id)
+void BuildStepFactory::setSupportedStepList(Id id)
 {
     m_supportedStepLists = {id};
 }
 
-void BuildStepFactory::setSupportedStepLists(const QList<Utils::Id> &ids)
+void BuildStepFactory::setSupportedStepLists(const QList<Id> &ids)
 {
     m_supportedStepLists = ids;
 }
 
-void BuildStepFactory::setSupportedConfiguration(Utils::Id id)
+void BuildStepFactory::setSupportedConfiguration(Id id)
 {
     m_supportedConfiguration = id;
 }
 
-void BuildStepFactory::setSupportedProjectType(Utils::Id id)
+void BuildStepFactory::setSupportedProjectType(Id id)
 {
     m_supportedProjectType = id;
 }
 
-void BuildStepFactory::setSupportedDeviceType(Utils::Id id)
+void BuildStepFactory::setSupportedDeviceType(Id id)
 {
     m_supportedDeviceTypes = {id};
 }
 
-void BuildStepFactory::setSupportedDeviceTypes(const QList<Utils::Id> &ids)
+void BuildStepFactory::setSupportedDeviceTypes(const QList<Id> &ids)
 {
     m_supportedDeviceTypes = ids;
 }
@@ -469,7 +420,7 @@ BuildStepInfo BuildStepFactory::stepInfo() const
     return m_info;
 }
 
-Utils::Id BuildStepFactory::stepId() const
+Id BuildStepFactory::stepId() const
 {
     return m_info.id;
 }

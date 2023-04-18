@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "callgrindfunctioncycle.h"
 #include "callgrindfunction_p.h"
@@ -73,16 +51,18 @@ void FunctionCycle::setFunctions(const QVector<const Function *> &functions)
     d->m_selfCost.fill(0, d->m_data->events().size());
     d->m_inclusiveCost.fill(0, d->m_data->events().size());
 
-    foreach (const Function *func, functions) {
+    for (const Function *func : functions) {
         // just add up self cost
         Private::accumulateCost(d->m_selfCost, func->selfCosts());
         // add outgoing calls to functions that are not part of the cycle
-        foreach (const FunctionCall *call, func->outgoingCalls()) {
+        const QVector<const FunctionCall *> calls = func->outgoingCalls();
+        for (const FunctionCall *call : calls) {
             if (!functions.contains(call->callee()))
                 d->accumulateCall(call, Function::Private::Outgoing);
         }
         // add incoming calls from functions that are not part of the cycle
-        foreach (const FunctionCall *call, func->incomingCalls()) {
+        const QVector<const FunctionCall *> inCalls = func->incomingCalls();
+        for (const FunctionCall *call : inCalls) {
             if (!functions.contains(call->caller())) {
                 d->accumulateCall(call, Function::Private::Incoming);
                 d->m_called += call->calls();

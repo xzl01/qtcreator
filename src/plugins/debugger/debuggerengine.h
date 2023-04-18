@@ -1,44 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "debugger_global.h"
 #include "debuggerconstants.h"
-#include "debuggeritem.h"
 #include "debuggerprotocol.h"
 #include "breakhandler.h"
+#include "projectexplorer/abi.h"
 #include "threadshandler.h"
 
 #include <coreplugin/icontext.h>
-#include <projectexplorer/devicesupport/idevice.h>
+#include <projectexplorer/devicesupport/idevicefwd.h>
 #include <projectexplorer/runcontrol.h>
 #include <texteditor/textmark.h>
-#include <utils/fileutils.h>
 
-#include <QProcess>
+#include <utils/filepath.h>
 
 QT_BEGIN_NAMESPACE
 class QDebug;
@@ -50,6 +27,7 @@ namespace Core { class IOptionsPage; }
 namespace Utils {
 class MacroExpander;
 class Perspective;
+class ProcessResultData;
 } // Utils
 
 namespace Debugger {
@@ -122,7 +100,7 @@ public:
     ProjectExplorer::Runnable inferior;
     QString displayName; // Used in the Snapshots view.
     Utils::ProcessHandle attachPID;
-    QStringList solibSearchPath;
+    Utils::FilePaths solibSearchPath;
 
     // Used by Qml debugging.
     QUrl qmlServer;
@@ -184,8 +162,8 @@ public:
     Utils::FilePaths projectSourceFiles;
 
     // Used by Script debugging
-    QString interpreter;
-    QString mainScript;
+    Utils::FilePath interpreter;
+    Utils::FilePath mainScript;
 
     // Used by AttachCrashedExternal.
     QString crashParameter;
@@ -197,7 +175,7 @@ public:
 
     const Utils::MacroExpander *macroExpander = nullptr;
 
-    Utils::optional<int> exitCode = {};
+    std::optional<int> exitCode = {};
 
     // For Debugger testing.
     int testCase = 0;
@@ -206,6 +184,14 @@ public:
 
     Utils::FilePath dumperPath;
     int fallbackQtVersion = 0x50200;
+
+    // Common debugger constants.
+    Utils::FilePath peripheralDescriptionFile;
+
+    // UVSC-specific debugger constants.
+    Utils::FilePath uVisionProjectFilePath;
+    Utils::FilePath uVisionOptionsFilePath;
+    bool uVisionSimulator = false;
 };
 
 class UpdateParameters
@@ -501,7 +487,7 @@ public:
 
 protected:
     void setDebuggerName(const QString &name);
-    void notifyDebuggerProcessFinished(int exitCode, QProcess::ExitStatus exitStatus,
+    void notifyDebuggerProcessFinished(const Utils::ProcessResultData &resultData,
                                        const QString &backendName);
 
     virtual void setState(DebuggerState state, bool forced = false);
@@ -554,7 +540,7 @@ protected:
     bool isNativeMixedActiveFrame() const;
     void startDying() const;
 
-    ProjectExplorer::IDevice::ConstPtr device() const;
+    ProjectExplorer::IDeviceConstPtr device() const;
     DebuggerEngine *companionEngine() const;
 
 private:

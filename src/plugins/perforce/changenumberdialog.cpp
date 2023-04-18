@@ -1,44 +1,47 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "changenumberdialog.h"
 
+#include "perforcetr.h"
+
+#include <utils/layoutbuilder.h>
+
+#include <QDialogButtonBox>
 #include <QIntValidator>
+#include <QLineEdit>
 
-using namespace Perforce::Internal;
+namespace Perforce::Internal {
 
-ChangeNumberDialog::ChangeNumberDialog(QWidget *parent) : QDialog(parent)
+ChangeNumberDialog::ChangeNumberDialog(QWidget *parent)
+    : QDialog(parent)
+    , m_lineEdit(new QLineEdit(this))
 {
-    m_ui.setupUi(this);
-    m_ui.numberLineEdit->setValidator(new QIntValidator(0, 1000000, this));
+    setWindowTitle(Tr::tr("Change Number"));
+
+    m_lineEdit->setValidator(new QIntValidator(0, 1000000, this));
+
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(this);
+    buttonBox->setOrientation(Qt::Horizontal);
+    buttonBox->setStandardButtons(QDialogButtonBox::Cancel | QDialogButtonBox::Ok);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    using namespace Utils::Layouting;
+
+    Column {
+        Row { Tr::tr("Change number:"), m_lineEdit },
+        buttonBox
+    }.attachTo(this);
+
+    resize(320, 75);
 }
 
 int ChangeNumberDialog::number() const
 {
-    if (m_ui.numberLineEdit->text().isEmpty())
-        return -1;
-    bool ok;
-    return m_ui.numberLineEdit->text().toInt(&ok);
+    bool ok = false;
+    const int number = m_lineEdit->text().toInt(&ok);
+    return ok ? number : -1;
 }
+
+} // Perforce::Internal

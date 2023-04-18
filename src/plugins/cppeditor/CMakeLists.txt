@@ -1,37 +1,33 @@
 add_qtc_plugin(CppEditor
-  DEFINES CPPEDITOR_LIBRARY
-  DEPENDS Qt5::Network Qt5::Xml
-  PUBLIC_DEPENDS CPlusPlus ClangSupport Qt5::Widgets
+  DEPENDS Qt::Network Qt::Xml
+  PUBLIC_DEPENDS CPlusPlus Qt::Widgets
   PLUGIN_DEPENDS Core ProjectExplorer TextEditor
   PLUGIN_TEST_DEPENDS QbsProjectManager QmakeProjectManager
   SOURCES
     abstracteditorsupport.cpp abstracteditorsupport.h
-    abstractoverviewmodel.h
     baseeditordocumentparser.cpp baseeditordocumentparser.h
     baseeditordocumentprocessor.cpp baseeditordocumentprocessor.h
     builtincursorinfo.cpp builtincursorinfo.h
     builtineditordocumentparser.cpp builtineditordocumentparser.h
     builtineditordocumentprocessor.cpp builtineditordocumentprocessor.h
-    builtinindexingsupport.cpp builtinindexingsupport.h
-    clangbasechecks.ui
     clangdiagnosticconfig.cpp clangdiagnosticconfig.h
     clangdiagnosticconfigsmodel.cpp clangdiagnosticconfigsmodel.h
     clangdiagnosticconfigsselectionwidget.cpp clangdiagnosticconfigsselectionwidget.h
-    clangdiagnosticconfigswidget.cpp clangdiagnosticconfigswidget.h clangdiagnosticconfigswidget.ui
+    clangdiagnosticconfigswidget.cpp clangdiagnosticconfigswidget.h
     compileroptionsbuilder.cpp compileroptionsbuilder.h
     cppautocompleter.cpp cppautocompleter.h
     cppbuiltinmodelmanagersupport.cpp cppbuiltinmodelmanagersupport.h
     cppcanonicalsymbol.cpp cppcanonicalsymbol.h
     cppchecksymbols.cpp cppchecksymbols.h
     cppcodeformatter.cpp cppcodeformatter.h
-    cppcodemodelinspectordialog.cpp cppcodemodelinspectordialog.h cppcodemodelinspectordialog.ui
+    cppcodemodelinspectordialog.cpp cppcodemodelinspectordialog.h
     cppcodemodelinspectordumper.cpp cppcodemodelinspectordumper.h
     cppcodemodelsettings.cpp cppcodemodelsettings.h
-    cppcodemodelsettingspage.cpp cppcodemodelsettingspage.h cppcodemodelsettingspage.ui
+    cppcodemodelsettingspage.cpp cppcodemodelsettingspage.h
     cppcodestylepreferences.cpp cppcodestylepreferences.h
     cppcodestylepreferencesfactory.cpp cppcodestylepreferencesfactory.h
     cppcodestylesettings.cpp cppcodestylesettings.h
-    cppcodestylesettingspage.cpp cppcodestylesettingspage.h cppcodestylesettingspage.ui
+    cppcodestylesettingspage.cpp cppcodestylesettingspage.h
     cppcodestylesnippets.h
     cppcompletionassist.cpp cppcompletionassist.h
     cppcompletionassistprocessor.cpp cppcompletionassistprocessor.h
@@ -41,6 +37,7 @@ add_qtc_plugin(CppEditor
     cppdoxygen.cpp cppdoxygen.h
     cppeditor.qrc
     cppeditor_global.h
+    cppeditortr.h
     cppeditorconstants.h
     cppeditordocument.cpp cppeditordocument.h
     cppeditoroutline.cpp cppeditoroutline.h
@@ -48,7 +45,7 @@ add_qtc_plugin(CppEditor
     cppeditorwidget.cpp cppeditorwidget.h
     cppelementevaluator.cpp cppelementevaluator.h
     cppfileiterationorder.cpp cppfileiterationorder.h
-    cppfilesettingspage.cpp cppfilesettingspage.h cppfilesettingspage.ui
+    cppfilesettingspage.cpp cppfilesettingspage.h
     cppfindreferences.cpp cppfindreferences.h
     cppfollowsymbolundercursor.cpp cppfollowsymbolundercursor.h
     cppfunctiondecldeflink.cpp cppfunctiondecldeflink.h
@@ -61,14 +58,13 @@ add_qtc_plugin(CppEditor
     cpplocalsymbols.cpp cpplocalsymbols.h
     cpplocatordata.cpp cpplocatordata.h
     cpplocatorfilter.cpp cpplocatorfilter.h
-    cppminimizableinfobars.cpp cppminimizableinfobars.h
     cppmodelmanager.cpp cppmodelmanager.h
     cppmodelmanagersupport.cpp cppmodelmanagersupport.h
     cppoutline.cpp cppoutline.h
-    cppoverviewmodel.cpp cppoverviewmodel.h
+    cppoutlinemodel.cpp cppoutlinemodel.h
     cppparsecontext.cpp cppparsecontext.h
     cpppointerdeclarationformatter.cpp cpppointerdeclarationformatter.h
-    cpppreprocessordialog.cpp cpppreprocessordialog.h cpppreprocessordialog.ui
+    cpppreprocessordialog.cpp cpppreprocessordialog.h
     cppprojectfile.cpp cppprojectfile.h
     cppprojectfilecategorizer.cpp cppprojectfilecategorizer.h
     cppprojectinfogenerator.cpp cppprojectinfogenerator.h
@@ -81,12 +77,10 @@ add_qtc_plugin(CppEditor
     cppquickfixes.cpp cppquickfixes.h
     cppquickfixprojectsettings.cpp cppquickfixprojectsettings.h
     cppquickfixprojectsettingswidget.cpp cppquickfixprojectsettingswidget.h
-    cppquickfixprojectsettingswidget.ui
     cppquickfixsettings.cpp cppquickfixsettings.h
     cppquickfixsettingspage.cpp cppquickfixsettingspage.h
-    cppquickfixsettingswidget.cpp cppquickfixsettingswidget.h cppquickfixsettingswidget.ui
+    cppquickfixsettingswidget.cpp cppquickfixsettingswidget.h
     cpprefactoringchanges.cpp cpprefactoringchanges.h
-    cpprefactoringengine.cpp cpprefactoringengine.h
     cppselectionchanger.cpp cppselectionchanger.h
     cppsemanticinfo.h
     cppsemanticinfoupdater.cpp cppsemanticinfoupdater.h
@@ -102,7 +96,6 @@ add_qtc_plugin(CppEditor
     cursorineditor.h
     doxygengenerator.cpp doxygengenerator.h
     editordocumenthandle.cpp editordocumenthandle.h
-    followsymbolinterface.h
     functionutils.cpp functionutils.h
     generatedcodemodelsupport.cpp generatedcodemodelsupport.h
     headerpathfilter.cpp headerpathfilter.h
@@ -111,16 +104,13 @@ add_qtc_plugin(CppEditor
     insertionpointlocator.cpp insertionpointlocator.h
     projectinfo.cpp projectinfo.h
     projectpart.cpp projectpart.h
-    refactoringengineinterface.h
     resourcepreviewhoverhandler.cpp resourcepreviewhoverhandler.h
     searchsymbols.cpp searchsymbols.h
     semantichighlighter.cpp semantichighlighter.h
     senddocumenttracker.cpp senddocumenttracker.h
-    stringtable.cpp stringtable.h
     symbolfinder.cpp symbolfinder.h
     symbolsfindfilter.cpp symbolsfindfilter.h
     typehierarchybuilder.cpp typehierarchybuilder.h
-    usages.h
     wrappablelineedit.cpp wrappablelineedit.h
    EXPLICIT_MOC
      cppquickfixsettingswidget.h

@@ -1,42 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "buildaspects.h"
 
 #include "buildconfiguration.h"
 #include "buildpropertiessettings.h"
+#include "devicesupport/idevice.h"
+#include "kitinformation.h"
+#include "projectexplorerconstants.h"
 #include "projectexplorer.h"
+#include "projectexplorertr.h"
+#include "target.h"
 
 #include <coreplugin/fileutils.h>
 
+#include <utils/algorithm.h>
 #include <utils/fileutils.h>
 #include <utils/infolabel.h>
 #include <utils/layoutbuilder.h>
 #include <utils/pathchooser.h>
-
-#include <QLayout>
 
 using namespace Utils;
 
@@ -45,22 +27,36 @@ namespace ProjectExplorer {
 class BuildDirectoryAspect::Private
 {
 public:
+    Private(Target *target) : target(target) {}
+
     FilePath sourceDir;
+    Target * const target;
     FilePath savedShadowBuildDir;
     QString problem;
     QPointer<InfoLabel> problemLabel;
 };
 
-BuildDirectoryAspect::BuildDirectoryAspect(const BuildConfiguration *bc) : d(new Private)
+BuildDirectoryAspect::BuildDirectoryAspect(const BuildConfiguration *bc)
+    : d(new Private(bc->target()))
 {
     setSettingsKey("ProjectExplorer.BuildConfiguration.BuildDirectory");
-    setLabelText(tr("Build directory:"));
+    setLabelText(Tr::tr("Build directory:"));
     setDisplayStyle(PathChooserDisplay);
     setExpectedKind(Utils::PathChooser::Directory);
     setValidationFunction([this](FancyLineEdit *edit, QString *error) {
         const FilePath fixedDir = fixupDir(FilePath::fromUserInput(edit->text()));
         if (!fixedDir.isEmpty())
             edit->setText(fixedDir.toUserOutput());
+
+        const FilePath newPath = FilePath::fromUserInput(edit->text());
+        const auto buildDevice = BuildDeviceKitAspect::device(d->target->kit());
+
+        if (buildDevice && buildDevice->type() != ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE
+            && !buildDevice->rootPath().ensureReachable(newPath)) {
+            *error = Tr::tr("The build directory is not reachable from the build device.");
+            return false;
+        }
+
         return pathChooser() ? pathChooser()->defaultValidationFunction()(edit, error) : true;
     });
     setOpenTerminalHandler([this, bc] {
@@ -76,7 +72,7 @@ BuildDirectoryAspect::~BuildDirectoryAspect()
 void BuildDirectoryAspect::allowInSourceBuilds(const FilePath &sourceDir)
 {
     d->sourceDir = sourceDir;
-    makeCheckable(CheckBoxPlacement::Top, tr("Shadow build:"), QString());
+    makeCheckable(CheckBoxPlacement::Top, Tr::tr("Shadow build:"), QString());
     setChecked(d->sourceDir != filePath());
 }
 
@@ -96,7 +92,7 @@ void BuildDirectoryAspect::toMap(QVariantMap &map) const
     StringAspect::toMap(map);
     if (!d->sourceDir.isEmpty()) {
         const FilePath shadowDir = isChecked() ? filePath() : d->savedShadowBuildDir;
-        saveToMap(map, shadowDir.toString(), QString(), settingsKey() + ".shadowDir");
+        saveToMap(map, shadowDir.toSettings(), QString(), settingsKey() + ".shadowDir");
     }
 }
 
@@ -104,15 +100,14 @@ void BuildDirectoryAspect::fromMap(const QVariantMap &map)
 {
     StringAspect::fromMap(map);
     if (!d->sourceDir.isEmpty()) {
-        d->savedShadowBuildDir = FilePath::fromString(map.value(settingsKey() + ".shadowDir")
-                                                      .toString());
+        d->savedShadowBuildDir = FilePath::fromSettings(map.value(settingsKey() + ".shadowDir"));
         if (d->savedShadowBuildDir.isEmpty())
             setFilePath(d->sourceDir);
         setChecked(d->sourceDir != filePath());
     }
 }
 
-void BuildDirectoryAspect::addToLayout(LayoutBuilder &builder)
+void BuildDirectoryAspect::addToLayout(Layouting::LayoutBuilder &builder)
 {
     StringAspect::addToLayout(builder);
     d->problemLabel = new InfoLabel({}, InfoLabel::Warning);
@@ -130,11 +125,19 @@ void BuildDirectoryAspect::addToLayout(LayoutBuilder &builder)
             }
         });
     }
+
+    const auto buildDevice = DeviceKitAspect::device(d->target->kit());
+    if (buildDevice && buildDevice->type() != ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE)
+        pathChooser()->setAllowPathFromDevice(true);
+    else
+        pathChooser()->setAllowPathFromDevice(false);
 }
 
 FilePath BuildDirectoryAspect::fixupDir(const FilePath &dir)
 {
-    if (!dir.startsWithDriveLetter())
+    if (dir.needsDevice())
+        return dir;
+    if (HostOsInfo::isWindowsHost() && !dir.startsWithDriveLetter())
         return {};
     const QString dirString = dir.toString().toLower();
     const QStringList drives = Utils::transform(QDir::drives(), [](const QFileInfo &fi) {
@@ -161,7 +164,7 @@ void BuildDirectoryAspect::updateProblemLabel()
 
 SeparateDebugInfoAspect::SeparateDebugInfoAspect()
 {
-    setDisplayName(tr("Separate debug info:"));
+    setDisplayName(Tr::tr("Separate debug info:"));
     setSettingsKey("SeparateDebugInfo");
     setValue(ProjectExplorerPlugin::buildPropertiesSettings().separateDebugInfo.value());
 }

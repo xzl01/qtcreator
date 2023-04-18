@@ -1,41 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "archive.h"
 
 #include "algorithm.h"
-#include "checkablemessagebox.h"
-#include "environment.h"
-#include "mimetypes/mimedatabase.h"
+#include "mimeutils.h"
 #include "qtcassert.h"
 #include "qtcprocess.h"
+#include "utilstr.h"
 
-#include <QDir>
-#include <QPushButton>
 #include <QSettings>
-#include <QTimer>
 
 namespace Utils {
 
@@ -113,27 +87,27 @@ static QVector<Tool> toolsForMimeType(const MimeType &mimeType)
 
 static QVector<Tool> toolsForFilePath(const FilePath &fp)
 {
-    return toolsForMimeType(Utils::mimeTypeForFile(fp));
+    return toolsForMimeType(mimeTypeForFile(fp));
 }
 
-static Utils::optional<Tool> resolveTool(const Tool &tool)
+static std::optional<Tool> resolveTool(const Tool &tool)
 {
     const FilePath executable =
         tool.command.executable().withExecutableSuffix().searchInPath(tool.additionalSearchDirs);
     Tool resolvedTool = tool;
     resolvedTool.command.setExecutable(executable);
-    return executable.isEmpty() ? Utils::nullopt : Utils::make_optional(resolvedTool);
+    return executable.isEmpty() ? std::nullopt : std::make_optional(resolvedTool);
 }
 
-static Utils::optional<Tool> unzipTool(const FilePath &src, const FilePath &dest)
+static std::optional<Tool> unzipTool(const FilePath &src, const FilePath &dest)
 {
     const QVector<Tool> tools = toolsForFilePath(src);
     for (const Tool &tool : tools) {
-        const Utils::optional<Tool> resolvedTool = resolveTool(tool);
+        const std::optional<Tool> resolvedTool = resolveTool(tool);
         if (resolvedTool) {
             Tool result = *resolvedTool;
-            const QString srcStr = src.toString();
-            const QString destStr = dest.toString();
+            const QString srcStr = src.path();
+            const QString destStr = dest.path();
             const QString args = result.command.arguments().replace("%{src}", srcStr).replace("%{dest}", destStr);
             result.command.setArguments(args);
             return result;
@@ -147,15 +121,15 @@ bool Archive::supportsFile(const FilePath &filePath, QString *reason)
     const QVector<Tool> tools = toolsForFilePath(filePath);
     if (tools.isEmpty()) {
         if (reason)
-            *reason = tr("File format not supported.");
+            *reason = Tr::tr("File format not supported.");
         return false;
     }
     if (!anyOf(tools, [tools](const Tool &t) { return resolveTool(t); })) {
         if (reason) {
             const QStringList execs = transform<QStringList>(tools, [](const Tool &tool) {
-                return tool.command.executable().toString();
+                return tool.command.executable().toUserOutput();
             });
-            *reason = tr("Could not find any unarchiving executable in PATH (%1).")
+            *reason = Tr::tr("Could not find any unarchiving executable in PATH (%1).")
                           .arg(execs.join(", "));
         }
         return false;
@@ -163,99 +137,47 @@ bool Archive::supportsFile(const FilePath &filePath, QString *reason)
     return true;
 }
 
-bool Archive::unarchive(const FilePath &src, const FilePath &dest, QWidget *parent)
+Archive::Archive(const FilePath &src, const FilePath &dest)
 {
-    Archive *archive = unarchive(src, dest);
-    QTC_ASSERT(archive, return false);
-
-    CheckableMessageBox box(parent);
-    box.setIcon(QMessageBox::Information);
-    box.setWindowTitle(tr("Unarchiving File"));
-    box.setText(tr("Unzipping \"%1\" to \"%2\".").arg(src.toUserOutput(), dest.toUserOutput()));
-    box.setStandardButtons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    box.button(QDialogButtonBox::Ok)->setEnabled(false);
-    box.setCheckBoxVisible(false);
-    QObject::connect(archive, &Archive::outputReceived, &box, [&box](const QString &output) {
-        box.setDetailedText(box.detailedText() + output);
-    });
-    bool success = false;
-    QObject::connect(archive, &Archive::finished, [&box, &success](bool ret) {
-        box.button(QDialogButtonBox::Ok)->setEnabled(true);
-        box.button(QDialogButtonBox::Cancel)->setEnabled(false);
-        success = ret;
-    });
-    QObject::connect(&box, &QMessageBox::rejected, archive, &Archive::cancel);
-    box.exec();
-    return success;
+    const std::optional<Tool> tool = unzipTool(src, dest);
+    if (!tool)
+        return;
+    m_commandLine = tool->command;
+    m_workingDirectory = dest.absoluteFilePath();
 }
 
-Archive *Archive::unarchive(const FilePath &src, const FilePath &dest)
+Archive::~Archive() = default;
+
+bool Archive::isValid() const
 {
-    const Utils::optional<Tool> tool = unzipTool(src, dest);
-    QTC_ASSERT(tool, return nullptr);
-
-    auto archive = new Archive;
-
-    const FilePath workingDirectory = dest.absolutePath();
-    workingDirectory.ensureWritableDir();
-
-    archive->m_process = new QtcProcess;
-    archive->m_process->setProcessChannelMode(QProcess::MergedChannels);
-    QObject::connect(
-        archive->m_process,
-        &QtcProcess::readyReadStandardOutput,
-        archive,
-        [archive]() {
-            if (!archive->m_process)
-                return;
-            emit archive->outputReceived(QString::fromUtf8(
-                                             archive->m_process->readAllStandardOutput()));
-        },
-        Qt::QueuedConnection);
-    QObject::connect(
-        archive->m_process,
-        &QtcProcess::finished,
-        archive,
-        [archive] {
-            if (!archive->m_process)
-                return;
-            emit archive->finished(archive->m_process->result() == QtcProcess::FinishedWithSuccess);
-            archive->m_process->deleteLater();
-            archive->m_process = nullptr;
-            archive->deleteLater();
-        },
-        Qt::QueuedConnection);
-    QObject::connect(
-        archive->m_process,
-        &QtcProcess::errorOccurred,
-        archive,
-        [archive](QProcess::ProcessError) {
-            if (!archive->m_process)
-                return;
-            emit archive->outputReceived(tr("Command failed."));
-            emit archive->finished(false);
-            archive->m_process->deleteLater();
-            archive->m_process = nullptr;
-            archive->deleteLater();
-        },
-        Qt::QueuedConnection);
-
-    QTimer::singleShot(0, archive, [archive, tool, workingDirectory] {
-        emit archive->outputReceived(
-            tr("Running %1\nin \"%2\".\n\n", "Running <cmd> in <workingdirectory>")
-                .arg(tool->command.toUserOutput(), workingDirectory.toUserOutput()));
-    });
-
-    archive->m_process->setCommand(tool->command);
-    archive->m_process->setWorkingDirectory(workingDirectory);
-    archive->m_process->start();
-    return archive;
+    return !m_commandLine.isEmpty();
 }
 
-void Archive::cancel()
+void Archive::unarchive()
 {
-    if (m_process)
-        m_process->stopProcess();
+    QTC_ASSERT(isValid(), return);
+    QTC_ASSERT(!m_process, return);
+
+    m_workingDirectory.ensureWritableDir();
+
+    m_process.reset(new QtcProcess);
+    m_process->setProcessChannelMode(QProcess::MergedChannels);
+    QObject::connect(m_process.get(), &QtcProcess::readyReadStandardOutput, this, [this] {
+        emit outputReceived(m_process->readAllStandardOutput());
+    });
+    QObject::connect(m_process.get(), &QtcProcess::done, this, [this] {
+        const bool successfulFinish = m_process->result() == ProcessResult::FinishedWithSuccess;
+        if (!successfulFinish)
+            emit outputReceived(Tr::tr("Command failed."));
+        emit finished(successfulFinish);
+    });
+
+    emit outputReceived(Tr::tr("Running %1\nin \"%2\".\n\n", "Running <cmd> in <workingdirectory>")
+                 .arg(m_commandLine.toUserOutput(), m_workingDirectory.toUserOutput()));
+
+    m_process->setCommand(m_commandLine);
+    m_process->setWorkingDirectory(m_workingDirectory);
+    m_process->start();
 }
 
 } // namespace Utils

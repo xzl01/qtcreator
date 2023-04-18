@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Studio documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page studio-terms.html
@@ -137,13 +115,13 @@
     is to create \l{glossary-binding}{bindings} between the values of their
     \l{glossary-property}{properties}.
 
-    \image qmldesigner-connections.png "Connection View"
+    \image qmldesigner-connections.png "The Connections view"
 
     Read more about connections:
 
     \list
-        \li \l{Connection View}
-        \li \l{Adding Connections}
+        \li \l{Connections}
+        \li \l{Working with Connections}
     \endlist
 
     \section1 Device
@@ -219,7 +197,7 @@
         \li \l{Preset Components}
         \li \l{Specifying Component Properties}
         \li \l{Adding Bindings Between Properties}
-        \li \l{Specifying Dynamic Properties}
+        \li \l{Specifying Custom Properties}
     \endlist
 
     \section1 Signal
@@ -236,7 +214,7 @@
     the signal name is \c clicked, the signal handler for receiving this signal
     is named \c onClicked.
 
-    \image washingmachineui-connections.png "Connection View, Connections tab"
+    \image washingmachineui-connections.png "Connections view, Connections tab"
 
     Further, a signal is automatically emitted when the value of a
     \l{glossary-property}{property} changes.
@@ -271,7 +249,7 @@
 
     \list
         \li \l{States}
-        \li \l{Adding States}
+        \li \l{Working with States}
     \endlist
 
     \section1 Transition
@@ -286,7 +264,7 @@
     Read more about transitions:
 
     \list
-        \li \l{Transition Editor}
+        \li \l{Transitions}
         \li \l{Animating Transitions Between States}
     \endlist
     \omit
@@ -316,7 +294,7 @@
     deploys it to the \l{glossary-device}{device} specified in the
     selected \l{glossary-buildandrun-kit}{kit}, and runs it there. However,
     if you have not made any changes to the project since you last deployed
-    it, \QC simply runs it again.
+    it, \QDS simply runs it again.
 
     \endomit
 */

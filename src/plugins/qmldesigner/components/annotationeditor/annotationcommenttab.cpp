@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "annotationcommenttab.h"
 #include "ui_annotationcommenttab.h"
@@ -32,9 +10,11 @@
 #include <richtexteditor/richtexteditor.h>
 #include <projectexplorer/target.h>
 #include <qmlprojectmanager/qmlproject.h>
+#include <utils/qtcassert.h>
 
 #include <QCryptographicHash>
 
+using namespace Utils;
 namespace QmlDesigner {
 
 AnnotationCommentTab::AnnotationCommentTab(QWidget *parent)
@@ -53,7 +33,8 @@ AnnotationCommentTab::AnnotationCommentTab(QWidget *parent)
 
     const QmlDesigner::DesignDocument *designDocument = QmlDesigner::QmlDesignerPlugin::instance()
             ->documentManager().currentDesignDocument();
-    Utils::FilePath projectPath;
+
+    FilePath projectPath;
 
     Q_ASSERT(designDocument);
 
@@ -142,7 +123,8 @@ QString AnnotationCommentTab::backupFile(const QString &filePath)
 {
     const QmlDesigner::DesignDocument *designDocument = QmlDesigner::QmlDesignerPlugin::instance()
             ->documentManager().currentDesignDocument();
-    Utils::FilePath projectFolderPath;
+
+    FilePath projectFolderPath;
 
     Q_ASSERT(designDocument);
 
@@ -155,43 +137,35 @@ QString AnnotationCommentTab::backupFile(const QString &filePath)
     else
         return {};
 
-    const QDir projDir(projectFolderPath.toDir());
-
-    if (!projDir.exists())
+    if (!projectFolderPath.isDir())
         return {};
 
     const QString imageSubDir(".AnnotationImages");
-    const QDir imgDir(projDir.absolutePath() + QDir::separator() + imageSubDir);
+    const FilePath imgDir(projectFolderPath / imageSubDir);
 
-    ensureDir(imgDir);
-
-    Q_ASSERT(imgDir.exists());
     if (!imgDir.exists())
-        return {};
+        imgDir.createDir();
 
-    const QFileInfo oldFile(filePath);
-    QFileInfo newFile(imgDir, oldFile.fileName());
+    QTC_ASSERT(imgDir.isDir(), return {});
 
-    QString newName = newFile.baseName() + "_%1." + newFile.completeSuffix();
+    const FilePath oldFile = FilePath::fromString(filePath);
+    FilePath newFile = imgDir.resolvePath(oldFile.fileName());
+
+    QString newNameTemplate = newFile.baseName() + "_%1." + newFile.completeSuffix();
 
     for (size_t i = 1; true; ++i) {
         if (!newFile.exists()) {
-            QFile(oldFile.absoluteFilePath()).copy(newFile.absoluteFilePath());
+            oldFile.copyFile(newFile);
             break;
-        } else if (compareFileChecksum(oldFile.absoluteFilePath(), newFile.absoluteFilePath()) == 0)
+        } else if (compareFileChecksum(oldFile.absoluteFilePath().toString(), newFile.absoluteFilePath().toString()) == 0)
             break;
 
-        newFile.setFile(imgDir, newName.arg(i));
+        newFile = imgDir / newNameTemplate.arg(i);
     }
 
-    return projDir.relativeFilePath(newFile.absoluteFilePath());
+    return newFile.relativeChildPath(projectFolderPath).toString();
 }
 
-void AnnotationCommentTab::ensureDir(const QDir &dir)
-{
-    if (!dir.exists())
-        dir.mkdir(".");
-}
 
 int AnnotationCommentTab::compareFileChecksum(const QString &firstFile, const QString &secondFile)
 {

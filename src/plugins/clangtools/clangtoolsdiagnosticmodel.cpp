@@ -1,39 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangtoolsdiagnosticmodel.h"
 
 #include "clangtoolsdiagnosticview.h"
 #include "clangtoolsprojectsettings.h"
+#include "clangtoolstr.h"
 #include "clangtoolsutils.h"
 #include "diagnosticmark.h"
 
-#include <coreplugin/fileiconprovider.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/session.h>
 #include <texteditor/textmark.h>
+
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/qtcassert.h>
 #include <utils/utilsicons.h>
 
@@ -58,7 +38,7 @@ QVariant FilePathItem::data(int column, int role) const
         case Qt::DisplayRole:
             return m_filePath.toUserOutput();
         case Qt::DecorationRole:
-            return Core::FileIconProvider::icon(m_filePath);
+            return Utils::FileIconProvider::icon(m_filePath);
         case Debugger::DetailedErrorView::FullTextRole:
             return m_filePath.toUserOutput();
         default:
@@ -160,7 +140,7 @@ void ClangToolsDiagnosticModel::clear()
 
 void ClangToolsDiagnosticModel::updateItems(const DiagnosticItem *changedItem)
 {
-    for (auto item : qAsConst(stepsToItemsCache[changedItem->diagnostic().explainingSteps])) {
+    for (auto item : std::as_const(stepsToItemsCache[changedItem->diagnostic().explainingSteps])) {
         if (item != changedItem)
             item->setFixItStatus(changedItem->fixItStatus());
     }
@@ -211,21 +191,19 @@ static QString createExplainingStepToolTipString(const ExplainingStep &step)
     QList<StringPair> lines;
 
     if (!step.message.isEmpty()) {
-        lines << qMakePair(
-            QCoreApplication::translate("ClangTools::ExplainingStep", "Message:"),
-                step.message.toHtmlEscaped());
+        lines.push_back({Tr::tr("Message:"),
+                         step.message.toHtmlEscaped()});
     }
 
-    lines << qMakePair(
-        QCoreApplication::translate("ClangTools::ExplainingStep", "Location:"),
-                createFullLocationString(step.location));
+    lines.push_back({Tr::tr("Location:"),
+                     createFullLocationString(step.location)});
 
     QString html = QLatin1String("<html>"
                    "<head>"
                    "<style>dt { font-weight:bold; } dd { font-family: monospace; }</style>\n"
                    "<body><dl>");
 
-    foreach (const StringPair &pair, lines) {
+    for (const StringPair &pair : std::as_const(lines)) {
         html += QLatin1String("<dt>");
         html += pair.first;
         html += QLatin1String("</dt><dd>");
@@ -273,7 +251,7 @@ static QString fullText(const Diagnostic &diagnostic)
 
     // Explaining steps.
     int explainingStepNumber = 1;
-    foreach (const ExplainingStep &explainingStep, diagnostic.explainingSteps) {
+    for (const ExplainingStep &explainingStep : std::as_const(diagnostic.explainingSteps)) {
         text += createExplainingStepString(explainingStep, explainingStepNumber++)
                 + QLatin1Char('\n');
     }
@@ -512,7 +490,7 @@ DiagnosticFilterModel::DiagnosticFilterModel(QObject *parent)
                 if (!m_project && project->projectDirectory() == m_lastProjectDirectory)
                     setProject(project);
             });
-    connect(this, &QAbstractItemModel::modelReset, this, [this]() {
+    connect(this, &QAbstractItemModel::modelReset, this, [this] {
         reset();
         emit fixitCountersChanged(m_fixitsScheduled, m_fixitsScheduable);
     });
@@ -645,7 +623,7 @@ bool DiagnosticFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex &s
         }
 
         // Explicitly suppressed?
-        foreach (const SuppressedDiagnostic &d, m_suppressedDiagnostics) {
+        for (const SuppressedDiagnostic &d : std::as_const(m_suppressedDiagnostics)) {
             if (d.description != diag.description)
                 continue;
             Utils::FilePath filePath = d.filePath;

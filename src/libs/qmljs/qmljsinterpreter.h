@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,7 +9,6 @@
 #include <qmljs/parser/qmljsastfwd_p.h>
 
 #include <languageutils/fakemetaobject.h>
-#include <utils/porting.h>
 
 #include <QFileInfoList>
 #include <QHash>
@@ -150,7 +127,7 @@ public:
 
     virtual void accept(ValueVisitor *) const = 0;
 
-    virtual bool getSourceLocation(QString *fileName, int *line, int *column) const;
+    virtual bool getSourceLocation(Utils::FilePath *fileName, int *line, int *column) const;
 };
 
 template <typename RetTy> const RetTy *value_cast(const Value *)
@@ -600,7 +577,7 @@ public:
 
     using ObjectValue::prototype;
     const CppComponentValue *prototype() const;
-    QList<const CppComponentValue *> prototypes() const;
+    const QList<const CppComponentValue *> prototypes() const;
 
     LanguageUtils::FakeMetaObject::ConstPtr metaObject() const;
 
@@ -735,7 +712,7 @@ public:
     bool operator ==(const FakeMetaObjectWithOrigin &o) const;
 };
 
-QMLJS_EXPORT Utils::QHashValueType qHash(const FakeMetaObjectWithOrigin &fmoo);
+QMLJS_EXPORT size_t qHash(const FakeMetaObjectWithOrigin &fmoo);
 
 class QMLJS_EXPORT CppQmlTypes
 {
@@ -891,7 +868,7 @@ public:
     const AST::PatternElement *ast() const;
 private:
     const Value *value(ReferenceContext *referenceContext) const override;
-    bool getSourceLocation(QString *fileName, int *line, int *column) const override;
+    bool getSourceLocation(Utils::FilePath *fileName, int *line, int *column) const override;
 };
 
 class QMLJS_EXPORT ASTFunctionValue: public FunctionValue
@@ -912,7 +889,7 @@ public:
     bool isVariadic() const override;
     const ASTFunctionValue *asAstFunctionValue() const override;
 
-    bool getSourceLocation(QString *fileName, int *line, int *column) const override;
+    bool getSourceLocation(Utils::FilePath *fileName, int *line, int *column) const override;
 };
 
 class QMLJS_EXPORT ASTPropertyReference: public Reference
@@ -930,7 +907,7 @@ public:
     AST::UiPublicMember *ast() const { return m_ast; }
     QString onChangedSlotName() const { return m_onChangedSlotName; }
 
-    bool getSourceLocation(QString *fileName, int *line, int *column) const override;
+    bool getSourceLocation(Utils::FilePath *fileName, int *line, int *column) const override;
 
 private:
     const Value *value(ReferenceContext *referenceContext) const override;
@@ -959,7 +936,7 @@ public:
     QString argumentName(int index) const override;
 
     // Value interface
-    bool getSourceLocation(QString *fileName, int *line, int *column) const override;
+    bool getSourceLocation(Utils::FilePath *fileName, int *line, int *column) const override;
 };
 
 class QMLJS_EXPORT ASTObjectValue: public ObjectValue
@@ -980,7 +957,7 @@ public:
 
     const ASTObjectValue *asAstObjectValue() const override;
 
-    bool getSourceLocation(QString *fileName, int *line, int *column) const override;
+    bool getSourceLocation(Utils::FilePath *fileName, int *line, int *column) const override;
     void processMembers(MemberProcessor *processor) const override;
 
     QString defaultPropertyName() const;
@@ -997,9 +974,11 @@ public:
 
     static ImportInfo moduleImport(QString uri, LanguageUtils::ComponentVersion version,
                                    const QString &as, AST::UiImport *ast = nullptr);
-    static ImportInfo pathImport(const QString &docPath, const QString &path,
+    static ImportInfo pathImport(const Utils::FilePath &docPath,
+                                 const QString &path,
                                  LanguageUtils::ComponentVersion version,
-                                 const QString &as, AST::UiImport *ast = nullptr);
+                                 const QString &as,
+                                 AST::UiImport *ast = nullptr);
     static ImportInfo invalidImport(AST::UiImport *ast = nullptr);
     static ImportInfo implicitDirectoryImport(const QString &directory);
     static ImportInfo qrcDirectoryImport(const QString &directory);
@@ -1041,7 +1020,7 @@ public:
     ImportInfo info;
     DependencyInfo::ConstPtr deps;
     // uri imports: path to library, else empty
-    QString libraryPath;
+    Utils::FilePath libraryPath;
     // whether the import succeeded
     bool valid;
     mutable bool used;

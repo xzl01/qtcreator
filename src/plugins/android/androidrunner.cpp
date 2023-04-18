@@ -1,30 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BogDan Vatra <bog_dan_ro@yahoo.com>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
-
-#include "androidrunner.h"
+// Copyright (C) 2016 BogDan Vatra <bog_dan_ro@yahoo.com>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "androidavdmanager.h"
 #include "androidconfigurations.h"
@@ -33,7 +9,9 @@
 #include "androiddevice.h"
 #include "androidmanager.h"
 #include "androidrunconfiguration.h"
+#include "androidrunner.h"
 #include "androidrunnerworker.h"
+#include "androidtr.h"
 
 #include <coreplugin/messagemanager.h>
 #include <projectexplorer/projectexplorer.h>
@@ -129,7 +107,7 @@ void AndroidRunner::stop()
 {
     if (m_checkAVDTimer.isActive()) {
         m_checkAVDTimer.stop();
-        appendMessage("\n\n" + tr("\"%1\" terminated.").arg(m_packageName),
+        appendMessage("\n\n" + Tr::tr("\"%1\" terminated.").arg(m_packageName),
                       Utils::NormalMessageFormat);
         return;
     }
@@ -184,7 +162,8 @@ void AndroidRunner::launchAVD()
     if (!m_target || !m_target->project())
         return;
 
-    QStringList androidAbis = AndroidManager::applicationAbis(m_target);
+    // TODO: is this still needed?
+    AndroidManager::applicationAbis(m_target);
 
     // Get AVD info
     const IDevice::ConstPtr device = DeviceKitAspect::device(m_target->kit());
@@ -193,9 +172,9 @@ void AndroidRunner::launchAVD()
     emit androidDeviceInfoChanged(info);
     if (info.isValid()) {
         AndroidAvdManager avdManager;
-        if (!info.avdname.isEmpty() && avdManager.findAvd(info.avdname).isEmpty()) {
-            bool launched = avdManager.startAvdAsync(info.avdname);
-            m_launchedAVDName = launched ? info.avdname:"";
+        if (!info.avdName.isEmpty() && avdManager.findAvd(info.avdName).isEmpty()) {
+            bool launched = avdManager.startAvdAsync(info.avdName);
+            m_launchedAVDName = launched ? info.avdName:"";
         } else {
             m_launchedAVDName.clear();
         }

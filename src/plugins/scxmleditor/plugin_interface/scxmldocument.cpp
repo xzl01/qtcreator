@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "scxmldocument.h"
+#include "scxmleditortr.h"
 #include "scxmlnamespace.h"
 #include "scxmltagutils.h"
 #include "undocommands.h"
@@ -133,7 +112,7 @@ void ScxmlDocument::addNamespace(ScxmlNamespace *ns)
 
     ScxmlTag *scxmlTag = scxmlRootTag();
     if (scxmlTag) {
-        for (ScxmlNamespace *ns : qAsConst(m_namespaces)) {
+        for (ScxmlNamespace *ns : std::as_const(m_namespaces)) {
             QString prefix = ns->prefix();
             if (prefix.isEmpty())
                 prefix = "xmlns";
@@ -170,7 +149,7 @@ bool ScxmlDocument::generateSCXML(QIODevice *io, ScxmlTag *tag) const
 ScxmlTag *ScxmlDocument::createScxmlTag()
 {
     auto tag = new ScxmlTag(Scxml, this);
-    for (ScxmlNamespace *ns : qAsConst(m_namespaces)) {
+    for (ScxmlNamespace *ns : std::as_const(m_namespaces)) {
         QString prefix = ns->prefix();
         if (prefix.isEmpty())
             prefix = "xmlns";
@@ -258,16 +237,16 @@ void ScxmlDocument::initErrorMessage(const QXmlStreamReader &xml, QIODevice *io)
     QString errorString;
     switch (xml.error()) {
     case QXmlStreamReader::Error::UnexpectedElementError:
-        errorString = tr("Unexpected element.");
+        errorString = Tr::tr("Unexpected element.");
         break;
     case QXmlStreamReader::Error::NotWellFormedError:
-        errorString = tr("Not well formed.");
+        errorString = Tr::tr("Not well formed.");
         break;
     case QXmlStreamReader::Error::PrematureEndOfDocumentError:
-        errorString = tr("Premature end of document.");
+        errorString = Tr::tr("Premature end of document.");
         break;
     case QXmlStreamReader::Error::CustomError:
-        errorString = tr("Custom error.");
+        errorString = Tr::tr("Custom error.");
         break;
     default:
         break;
@@ -279,7 +258,7 @@ void ScxmlDocument::initErrorMessage(const QXmlStreamReader &xml, QIODevice *io)
         io->readLine();
     lineString = QLatin1String(io->readLine());
 
-    m_lastError = tr("Error in reading XML.\nType: %1 (%2)\nDescription: %3\n\nRow: %4, Column: %5\n%6")
+    m_lastError = Tr::tr("Error in reading XML.\nType: %1 (%2)\nDescription: %3\n\nRow: %4, Column: %5\n%6")
                       .arg(xml.error())
                       .arg(errorString)
                       .arg(xml.errorString())
@@ -295,24 +274,24 @@ bool ScxmlDocument::pasteData(const QByteArray &data, const QPointF &minPos, con
 
     if (!m_currentTag) {
         m_hasError = true;
-        m_lastError = tr("Current tag is not selected.");
+        m_lastError = Tr::tr("Current tag is not selected.");
         return false;
     }
 
     if (data.trimmed().isEmpty()) {
         m_hasError = true;
-        m_lastError = tr("Pasted data is empty.");
+        m_lastError = Tr::tr("Pasted data is empty.");
         return false;
     }
 
     bool ok = true;
-    m_undoStack->beginMacro(tr("Paste items"));
+    m_undoStack->beginMacro(Tr::tr("Paste items"));
 
     QByteArray d(data);
     QBuffer buffer(&d);
     buffer.open(QIODevice::ReadOnly);
     QXmlStreamReader xml(&buffer);
-    foreach (ScxmlNamespace *ns, m_namespaces) {
+    for (ScxmlNamespace *ns : std::as_const(m_namespaces)) {
         xml.addExtraNamespaceDeclaration(QXmlStreamNamespaceDeclaration(ns->prefix(), ns->name()));
     }
 
@@ -412,7 +391,7 @@ QByteArray ScxmlDocument::content(const QVector<ScxmlTag*> &tags) const
         if (writeScxml)
             xml.writeStartElement("scxml");
 
-        foreach (ScxmlTag *tag, tags) {
+        for (ScxmlTag *tag : tags) {
             tag->writeXml(xml);
         }
         xml.writeEndDocument();
@@ -454,10 +433,10 @@ bool ScxmlDocument::save(const QString &fileName)
         }
         file.close();
         if (!ok)
-            m_lastError = tr("Cannot save XML to the file %1.").arg(fileName);
+            m_lastError = Tr::tr("Cannot save XML to the file %1.").arg(fileName);
     } else {
         ok = false;
-        m_lastError = tr("Cannot open file %1.").arg(fileName);
+        m_lastError = Tr::tr("Cannot open file %1.").arg(fileName);
     }
 
     return ok;
@@ -540,7 +519,7 @@ void ScxmlDocument::addTag(ScxmlTag *parent, ScxmlTag *child)
         parent = rootTag();
 
     if (parent && child) {
-        m_undoStack->beginMacro(tr("Add Tag"));
+        m_undoStack->beginMacro(Tr::tr("Add Tag"));
         addTagRecursive(parent, child);
         m_undoStack->endMacro();
     }
@@ -550,7 +529,7 @@ void ScxmlDocument::removeTag(ScxmlTag *tag)
 {
     if (tag && !m_undoRedoRunning) {
         // Create undo/redo -macro, because state can includes lot of child-states
-        m_undoStack->beginMacro(tr("Remove Tag"));
+        m_undoStack->beginMacro(Tr::tr("Remove Tag"));
         removeTagRecursive(tag);
         m_undoStack->endMacro();
     }
@@ -597,7 +576,7 @@ QString ScxmlDocument::nextUniqueId(const QString &key)
         name = QString::fromLatin1("%1_%2").arg(key).arg(id);
 
         // Check duplicate
-        foreach (const ScxmlTag *tag, m_tags) {
+        for (const ScxmlTag *tag : std::as_const(m_tags)) {
             if (tag->attribute("id") == name) {
                 bFound = true;
                 break;
@@ -619,7 +598,7 @@ QString ScxmlDocument::getUniqueCopyId(const ScxmlTag *tag)
     while (true) {
         bFound = false;
         // Check duplicate
-        foreach (const ScxmlTag *t, m_tags) {
+        for (const ScxmlTag *t : std::as_const(m_tags)) {
             if (t->attribute("id") == name && t != tag) {
                 name = QString::fromLatin1("%1_Copy%2").arg(key).arg(counter);
                 bFound = true;

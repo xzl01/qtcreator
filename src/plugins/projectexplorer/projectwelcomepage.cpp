@@ -1,32 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectwelcomepage.h"
+
 #include "session.h"
 #include "sessionmodel.h"
 #include "projectexplorer.h"
+#include "projectexplorertr.h"
 
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/command.h>
@@ -40,7 +20,9 @@
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
 #include <utils/icon.h>
+#include <utils/qtcassert.h>
 #include <utils/stringutils.h>
+#include <utils/qtcassert.h>
 #include <utils/theme/theme.h>
 
 #include <QAbstractItemDelegate>
@@ -78,20 +60,22 @@ ProjectModel::ProjectModel(QObject *parent)
 
 int ProjectModel::rowCount(const QModelIndex &) const
 {
-    return ProjectExplorerPlugin::recentProjects().count();
+    return m_projects.count();
 }
 
 QVariant ProjectModel::data(const QModelIndex &index, int role) const
 {
-    QPair<QString,QString> data = ProjectExplorerPlugin::recentProjects().at(index.row());
+    if (m_projects.count() <= index.row())
+        return {};
+    RecentProjectsEntry data = m_projects.at(index.row());
     switch (role) {
     case Qt::DisplayRole:
         return data.second;
     case Qt::ToolTipRole:
     case FilePathRole:
-        return data.first;
+        return data.first.toVariant();
     case PrettyFilePathRole:
-        return Utils::withTildeHomePath(data.first);
+        return data.first.withTildeHomePath(); // FIXME: FilePath::displayName() ?
     case ShortcutRole: {
         const Id projectBase = PROJECT_BASE_ID;
         if (Command *cmd = ActionManager::command(projectBase.withSuffix(index.row() + 1)))
@@ -117,6 +101,7 @@ QHash<int, QByteArray> ProjectModel::roleNames() const
 void ProjectModel::resetProjects()
 {
     beginResetModel();
+    m_projects = ProjectExplorerPlugin::recentProjects();
     endResetModel();
 }
 
@@ -158,9 +143,9 @@ void ProjectWelcomePage::openSessionAt(int index)
 void ProjectWelcomePage::openProjectAt(int index)
 {
     QTC_ASSERT(m_projectModel, return);
-    const QString projectFile = m_projectModel->data(m_projectModel->index(index, 0),
-                                                     ProjectModel::FilePathRole).toString();
-    ProjectExplorerPlugin::openProjectWelcomePage(projectFile);
+    const QVariant projectFile = m_projectModel->data(m_projectModel->index(index, 0),
+                                                      ProjectModel::FilePathRole);
+    ProjectExplorerPlugin::openProjectWelcomePage(FilePath::fromVariant(projectFile));
 }
 
 void ProjectWelcomePage::createActions()
@@ -179,17 +164,17 @@ void ProjectWelcomePage::createActions()
     const Id sessionBase = SESSION_BASE_ID;
 
     for (int i = 1; i <= actionsCount; ++i) {
-        auto act = new QAction(tr("Open Session #%1").arg(i), this);
+        auto act = new QAction(Tr::tr("Open Session #%1").arg(i), this);
         Command *cmd = ActionManager::registerAction(act, sessionBase.withSuffix(i), welcomeContext);
-        cmd->setDefaultKeySequence(QKeySequence((useMacShortcuts ? tr("Ctrl+Meta+%1") : tr("Ctrl+Alt+%1")).arg(i)));
+        cmd->setDefaultKeySequence(QKeySequence((useMacShortcuts ? Tr::tr("Ctrl+Meta+%1") : Tr::tr("Ctrl+Alt+%1")).arg(i)));
         connect(act, &QAction::triggered, this, [this, i] {
             if (i <= m_sessionModel->rowCount())
                 openSessionAt(i - 1);
         });
 
-        act = new QAction(tr("Open Recent Project #%1").arg(i), this);
+        act = new QAction(Tr::tr("Open Recent Project #%1").arg(i), this);
         cmd = ActionManager::registerAction(act, projectBase.withSuffix(i), welcomeContext);
-        cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+Shift+%1").arg(i)));
+        cmd->setDefaultKeySequence(QKeySequence(Tr::tr("Ctrl+Shift+%1").arg(i)));
         connect(act, &QAction::triggered, this, [this, i] {
             if (i <= m_projectModel->rowCount(QModelIndex()))
                 openProjectAt(i - 1);
@@ -243,9 +228,9 @@ protected:
         QString tooltipText;
         const QString type = entryType();
         if (shortcut.isEmpty())
-            tooltipText = ProjectWelcomePage::tr("Open %1 \"%2\"").arg(type, name);
+            tooltipText = Tr::tr("Open %1 \"%2\"").arg(type, name);
         else
-            tooltipText = ProjectWelcomePage::tr("Open %1 \"%2\" (%3)").arg(type, name, shortcut);
+            tooltipText = Tr::tr("Open %1 \"%2\" (%3)").arg(type, name, shortcut);
 
         if (tooltipText.isEmpty())
             return false;
@@ -260,7 +245,7 @@ class SessionDelegate : public BaseDelegate
 protected:
     QString entryType() override
     {
-        return ProjectWelcomePage::tr("session", "Appears in \"Open session <name>\"");
+        return Tr::tr("session", "Appears in \"Open session <name>\"");
     }
     QRect toolTipArea(const QRect &itemRect, const QModelIndex &idx) const override
     {
@@ -319,9 +304,9 @@ public:
 
         QString fullSessionName = sessionName;
         if (isLastSession && isDefaultVirgin)
-            fullSessionName = ProjectWelcomePage::tr("%1 (last session)").arg(fullSessionName);
+            fullSessionName = Tr::tr("%1 (last session)").arg(fullSessionName);
         if (isActiveSession && !isDefaultVirgin)
-            fullSessionName = ProjectWelcomePage::tr("%1 (current session)").arg(fullSessionName);
+            fullSessionName = Tr::tr("%1 (current session)").arg(fullSessionName);
 
         const QRect switchRect = QRect(x, y, rc.width() - SESSION_ARROW_RECT_WIDTH, SESSION_LINE_HEIGHT);
         const bool switchActive = switchRect.contains(mousePos);
@@ -339,30 +324,31 @@ public:
         if (expanded) {
             painter->setPen(textColor);
             painter->setFont(sizedFont(12, option.widget));
-            const QStringList projects = SessionManager::projectsForSessionName(sessionName);
+            const FilePaths projects = SessionManager::projectsForSessionName(sessionName);
             int yy = firstBase + SESSION_LINE_HEIGHT - 3;
             QFontMetrics fm(option.widget->font());
-            for (const QString &project : projects) {
+            for (const FilePath &projectPath : projects) {
                 // Project name.
-                FilePath projectPath = FilePath::fromString(project);
                 QString completeBase = projectPath.completeBaseName();
                 painter->setPen(textColor);
                 painter->drawText(x1, yy, fm.elidedText(completeBase, Qt::ElideMiddle, textSpace));
                 yy += 18;
 
                 // Project path.
-                QString pathWithTilde = Utils::withTildeHomePath(projectPath.toUserOutput());
+                const QString displayPath =
+                    projectPath.osType() == OsTypeWindows ? projectPath.displayName()
+                                                          : projectPath.withTildeHomePath();
                 painter->setPen(foregroundPrimaryColor);
-                painter->drawText(x1, yy, fm.elidedText(pathWithTilde, Qt::ElideMiddle, textSpace));
+                painter->drawText(x1, yy, fm.elidedText(displayPath, Qt::ElideMiddle, textSpace));
                 yy += 22;
             }
 
             yy += 3;
             int xx = x1;
             const QStringList actions = {
-                ProjectWelcomePage::tr("Clone"),
-                ProjectWelcomePage::tr("Rename"),
-                ProjectWelcomePage::tr("Delete")
+                Tr::tr("Clone"),
+                Tr::tr("Rename"),
+                Tr::tr("Delete")
             };
             for (int i = 0; i < 3; ++i) {
                 const QString &action = actions.at(i);
@@ -392,7 +378,7 @@ public:
         int h = SESSION_LINE_HEIGHT;
         QString sessionName = idx.data(Qt::DisplayRole).toString();
         if (m_expandedSessions.contains(sessionName)) {
-            QStringList projects = SessionManager::projectsForSessionName(sessionName);
+            const FilePaths projects = SessionManager::projectsForSessionName(sessionName);
             h += projects.size() * 40 + LINK_HEIGHT - 6;
         }
         return QSize(380, h + ItemGap);
@@ -459,7 +445,7 @@ class ProjectDelegate : public BaseDelegate
 {
     QString entryType() override
     {
-        return ProjectWelcomePage::tr("project", "Appears in \"Open project <name>\"");
+        return Tr::tr("project", "Appears in \"Open project <name>\"");
     }
     int shortcutRole() const override { return ProjectModel::ShortcutRole; }
 
@@ -502,10 +488,12 @@ public:
 
         painter->setPen(themeColor(Theme::Welcome_ForegroundPrimaryColor));
         painter->setFont(sizedFont(13, option.widget));
-        QString pathWithTilde = Utils::withTildeHomePath(projectPath.toUserOutput());
-        const QString pathWithTildeElided =
-                painter->fontMetrics().elidedText(pathWithTilde, Qt::ElideMiddle, textSpace);
-        painter->drawText(x + TEXT_OFFSET_HORIZONTAL, secondBase, pathWithTildeElided);
+        const QString displayPath =
+            projectPath.osType() == OsTypeWindows ? projectPath.displayName()
+                                                  : projectPath.withTildeHomePath();
+        const QString displayPathElided =
+            painter->fontMetrics().elidedText(displayPath, Qt::ElideMiddle, textSpace);
+        painter->drawText(x + TEXT_OFFSET_HORIZONTAL, secondBase, displayPathElided);
     }
 
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &idx) const final
@@ -525,24 +513,22 @@ public:
             const QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(ev);
             const Qt::MouseButtons button = mouseEvent->button();
             if (button == Qt::LeftButton) {
-                const QString projectFile = idx.data(ProjectModel::FilePathRole).toString();
-                ProjectExplorerPlugin::openProjectWelcomePage(projectFile);
+                const QVariant projectFile = idx.data(ProjectModel::FilePathRole);
+                ProjectExplorerPlugin::openProjectWelcomePage(FilePath::fromVariant(projectFile));
                 return true;
             }
             if (button == Qt::RightButton) {
                 QMenu contextMenu;
-                QAction *action = new QAction(
-                    ProjectWelcomePage::tr("Remove Project from Recent Projects"));
+                QAction *action = new QAction(Tr::tr("Remove Project from Recent Projects"));
                 const auto projectModel = qobject_cast<ProjectModel *>(model);
                 contextMenu.addAction(action);
                 connect(action, &QAction::triggered, [idx, projectModel](){
-                    const QString projectFile = idx.data(ProjectModel::FilePathRole).toString();
-                    const QString displayName = idx.data(Qt::DisplayRole).toString();
-                    ProjectExplorerPlugin::removeFromRecentProjects(projectFile, displayName);
+                    const QVariant projectFile = idx.data(ProjectModel::FilePathRole);
+                    ProjectExplorerPlugin::removeFromRecentProjects(FilePath::fromVariant(projectFile));
                     projectModel->resetProjects();
                 });
                 contextMenu.addSeparator();
-                action = new QAction(ProjectWelcomePage::tr("Clear Recent Project List"));
+                action = new QAction(Tr::tr("Clear Recent Project List"));
                 connect(action, &QAction::triggered, [projectModel]() {
                     ProjectExplorerPlugin::clearRecentProjects();
                     projectModel->resetProjects();
@@ -591,17 +577,17 @@ public:
             projectWelcomePage->m_projectModel = new ProjectModel(this);
 
         auto manageSessionsButton = new WelcomePageButton(this);
-        manageSessionsButton->setText(ProjectWelcomePage::tr("Manage..."));
+        manageSessionsButton->setText(Tr::tr("Manage..."));
         manageSessionsButton->setWithAccentColor(true);
         manageSessionsButton->setOnClicked([] { ProjectExplorerPlugin::showSessionManager(); });
 
         auto sessionsLabel = new QLabel(this);
         sessionsLabel->setFont(brandFont());
-        sessionsLabel->setText(ProjectWelcomePage::tr("Sessions"));
+        sessionsLabel->setText(Tr::tr("Sessions"));
 
         auto recentProjectsLabel = new QLabel(this);
         recentProjectsLabel->setFont(brandFont());
-        recentProjectsLabel->setText(ProjectWelcomePage::tr("Projects"));
+        recentProjectsLabel->setText(Tr::tr("Projects"));
 
         auto sessionsList = new TreeView(this, "Sessions");
         sessionsList->setModel(projectWelcomePage->m_sessionModel);

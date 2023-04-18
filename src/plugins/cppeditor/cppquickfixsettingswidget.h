@@ -1,47 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Leander Schulten <Leander.Schulten@rwth-aachen.de>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Leander Schulten <Leander.Schulten@rwth-aachen.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#ifndef CppQuickFixSettingsWidget_H
-#define CppQuickFixSettingsWidget_H
+#pragma once
 
+#include <QApplication>
 #include <QRegularExpression>
 #include <QWidget>
 
 QT_BEGIN_NAMESPACE
+class QCheckBox;
+class QGroupBox;
+class QLineEdit;
+class QListWidget;
 class QListWidgetItem;
-namespace Ui { class CppQuickFixSettingsWidget; }
+class QPushButton;
+class QRadioButton;
 QT_END_NAMESPACE
 
-namespace CppEditor {
-class CppQuickFixSettings;
+namespace CppEditor { class CppQuickFixSettings; }
 
-namespace Internal {
+namespace CppEditor::Internal {
+
+class LineCountSpinBox;
 
 class CppQuickFixSettingsWidget : public QWidget
 {
     Q_OBJECT
+
     enum CustomDataRoles {
         Types = Qt::UserRole,
         Comparison,
@@ -52,21 +37,46 @@ class CppQuickFixSettingsWidget : public QWidget
 
 public:
     explicit CppQuickFixSettingsWidget(QWidget *parent = nullptr);
-    ~CppQuickFixSettingsWidget();
+
     void loadSettings(CppQuickFixSettings *settings);
     void saveSettings(CppQuickFixSettings *settings);
-private slots:
-    void currentCustomItemChanged(QListWidgetItem *newItem, QListWidgetItem *oldItem);
+
 signals:
     void settingsChanged();
 
 private:
-    bool isLoadingSettings = false;
-    Ui::CppQuickFixSettingsWidget *ui;
-    const QRegularExpression typeSplitter;
+    void currentCustomItemChanged(QListWidgetItem *newItem, QListWidgetItem *oldItem);
+
+    bool m_isLoadingSettings = false;
+    const QRegularExpression m_typeSplitter;
+
+    LineCountSpinBox *m_lines_getterOutsideClass;
+    LineCountSpinBox *m_lines_getterInCppFile;
+    LineCountSpinBox *m_lines_setterOutsideClass;
+    LineCountSpinBox *m_lines_setterInCppFile;
+    QLineEdit *m_lineEdit_setterParameter;
+    QCheckBox *m_checkBox_setterSlots;
+    QCheckBox *m_checkBox_signalWithNewValue;
+    QLineEdit *m_lineEdit_getterName;
+    QLineEdit *m_lineEdit_resetName;
+    QLineEdit *m_lineEdit_getterAttribute;
+    QLineEdit *m_lineEdit_setterName;
+    QLineEdit *m_lineEdit_signalName;
+    QLineEdit *m_lineEdit_memberVariableName;
+    QRadioButton *m_radioButton_generateMissingNamespace;
+    QRadioButton *m_radioButton_addUsingnamespace;
+    QRadioButton *m_radioButton_rewriteTypes;
+    QCheckBox *m_useAutoCheckBox;
+    QGroupBox *m_groupBox_customTemplate;
+    QLineEdit *m_lineEdit_customTemplateTypes;
+    QLineEdit *m_lineEdit_customTemplateComparison;
+    QLineEdit *m_lineEdit_customTemplateAssignment;
+    QLineEdit *m_lineEdit_customTemplateReturnExpression;
+    QLineEdit *m_lineEdit_customTemplateReturnType;
+    QListWidget *m_listWidget_customTemplates;
+    QPushButton *m_pushButton_removeCustomTemplate;
+    QListWidget *m_valueTypes;
+    QCheckBox *m_returnByConstRefCheckBox;
 };
 
-} // namespace Internal
-} // namespace CppEditor
-
-#endif // CppQuickFixSettingsWidget_H
+} // CppEditor::Internal

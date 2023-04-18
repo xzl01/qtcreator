@@ -1,30 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "textdocumentlayout.h"
+#include "fontsettings.h"
 #include "textdocument.h"
+#include "texteditorsettings.h"
 #include <utils/qtcassert.h>
 #include <QDebug>
 
@@ -34,7 +14,7 @@ CodeFormatterData::~CodeFormatterData() = default;
 
 TextBlockUserData::~TextBlockUserData()
 {
-    for (TextMark *mrk : qAsConst(m_marks)) {
+    for (TextMark *mrk : std::as_const(m_marks)) {
         mrk->baseTextDocument()->removeMarkFromMarksCache(mrk);
         mrk->setBaseTextDocument(nullptr);
         mrk->removedFromEditor();
@@ -597,7 +577,7 @@ TextMarks TextDocumentLayout::documentClosing()
 
 void TextDocumentLayout::documentReloaded(TextMarks marks, TextDocument *baseTextDocument)
 {
-    for (TextMark *mark : qAsConst(marks)) {
+    for (TextMark *mark : std::as_const(marks)) {
         int blockNumber = mark->lineNumber() - 1;
         QTextBlock block = document()->findBlockByNumber(blockNumber);
         if (block.isValid()) {
@@ -638,9 +618,30 @@ void TextDocumentLayout::updateMarksBlock(const QTextBlock &block)
     }
 }
 
+void TextDocumentLayout::scheduleUpdate()
+{
+    if (m_updateScheduled)
+        return;
+    m_updateScheduled = true;
+    QMetaObject::invokeMethod(this, &TextDocumentLayout::requestUpdateNow, Qt::QueuedConnection);
+}
+
+void TextDocumentLayout::requestUpdateNow()
+{
+    m_updateScheduled = false;
+    requestUpdate();
+}
+
 QRectF TextDocumentLayout::blockBoundingRect(const QTextBlock &block) const
 {
     QRectF boundingRect = QPlainTextDocumentLayout::blockBoundingRect(block);
+
+    if (TextEditorSettings::fontSettings().relativeLineSpacing() != 100) {
+        if (boundingRect.isNull())
+            return boundingRect;
+        boundingRect.setHeight(TextEditorSettings::fontSettings().lineSpacing());
+    }
+
     if (TextBlockUserData *userData = textUserData(block))
         boundingRect.adjust(0, 0, 0, userData->additionalAnnotationHeight());
     return boundingRect;

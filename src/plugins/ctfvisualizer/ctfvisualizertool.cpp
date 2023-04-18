@@ -1,28 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company,
-** info@kdab.com, author Tim Henning <tim.henning@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company,
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "ctfvisualizertool.h"
 
 #include "ctftracemanager.h"
@@ -30,6 +7,7 @@
 #include "ctfstatisticsmodel.h"
 #include "ctfstatisticsview.h"
 #include "ctftimelinemodel.h"
+#include "ctfvisualizertr.h"
 #include "ctfvisualizertraceview.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
@@ -69,13 +47,13 @@ CtfVisualizerTool::CtfVisualizerTool()
 {
     ActionContainer *menu = ActionManager::actionContainer(Debugger::Constants::M_DEBUG_ANALYZER);
     ActionContainer *options = ActionManager::createMenu(Constants::CtfVisualizerMenuId);
-    options->menu()->setTitle(tr("Chrome Trace Format Viewer"));
+    options->menu()->setTitle(Tr::tr("Chrome Trace Format Viewer"));
     menu->addMenu(options, Debugger::Constants::G_ANALYZER_REMOTE_TOOLS);
     options->menu()->setEnabled(true);
 
     const Core::Context globalContext(Core::Constants::C_GLOBAL);
 
-    m_loadJson.reset(new QAction(tr("Load JSON File"), options));
+    m_loadJson.reset(new QAction(Tr::tr("Load JSON File"), options));
     Core::Command *command = Core::ActionManager::registerAction(m_loadJson.get(), Constants::CtfVisualizerTaskLoadJson,
                                                   globalContext);
     connect(m_loadJson.get(), &QAction::triggered, this, &CtfVisualizerTool::loadJson);
@@ -84,7 +62,7 @@ CtfVisualizerTool::CtfVisualizerTool()
     m_perspective.setAboutToActivateCallback([this]() { createViews(); });
 
     m_restrictToThreadsButton->setIcon(Utils::Icons::FILTER.icon());
-    m_restrictToThreadsButton->setToolTip(tr("Restrict to Threads"));
+    m_restrictToThreadsButton->setToolTip(Tr::tr("Restrict to Threads"));
     m_restrictToThreadsButton->setPopupMode(QToolButton::InstantPopup);
     m_restrictToThreadsButton->setProperty("noArrow", true);
     m_restrictToThreadsButton->setMenu(m_restrictToThreadsMenu);
@@ -99,11 +77,11 @@ CtfVisualizerTool::~CtfVisualizerTool() = default;
 void CtfVisualizerTool::createViews()
 {
     m_traceView = new CtfVisualizerTraceView(nullptr, this);
-    m_traceView->setWindowTitle(tr("Timeline"));
+    m_traceView->setWindowTitle(Tr::tr("Timeline"));
 
     QMenu *contextMenu = new QMenu(m_traceView);
     contextMenu->addAction(m_loadJson.get());
-    connect(contextMenu->addAction(tr("Reset Zoom")), &QAction::triggered, this, [this](){
+    connect(contextMenu->addAction(Tr::tr("Reset Zoom")), &QAction::triggered, this, [this](){
         m_zoomControl->setRange(m_zoomControl->traceStart(), m_zoomControl->traceEnd());
     });
 
@@ -116,7 +94,7 @@ void CtfVisualizerTool::createViews()
     m_perspective.addWindow(m_traceView, Utils::Perspective::OperationType::SplitVertical, nullptr);
 
     m_statisticsView = new CtfStatisticsView(m_statisticsModel.get());
-    m_statisticsView->setWindowTitle(tr("Statistics"));
+    m_statisticsView->setWindowTitle(Tr::tr("Statistics"));
     connect(m_statisticsView, &CtfStatisticsView::eventTypeSelected, [this] (QString title)
     {
         int typeId = m_traceManager->getSelectionId(title.toStdString());
@@ -171,8 +149,8 @@ void CtfVisualizerTool::loadJson()
     m_isLoading = true;
 
     QString filename = QFileDialog::getOpenFileName(
-                ICore::dialogParent(), tr("Load Chrome Trace Format File"),
-                "", tr("JSON File (*.json)"));
+                ICore::dialogParent(), Tr::tr("Load Chrome Trace Format File"),
+                "", Tr::tr("JSON File (*.json)"));
     if (filename.isEmpty()) {
         m_isLoading = false;
         return;
@@ -193,8 +171,8 @@ void CtfVisualizerTool::loadJson()
         // in main thread:
         if (m_traceManager->isEmpty()) {
             QMessageBox::warning(Core::ICore::dialogParent(),
-                                 tr("CTF Visualizer"),
-                                 tr("The file does not contain any trace data."));
+                                 Tr::tr("CTF Visualizer"),
+                                 Tr::tr("The file does not contain any trace data."));
         } else {
             m_traceManager->finalize();
             m_perspective.select();
@@ -212,7 +190,7 @@ void CtfVisualizerTool::loadJson()
     m_modelAggregator->moveToThread(thread);
 
     thread->start();
-    Core::ProgressManager::addTask(*task, tr("Loading CTF File"), CtfVisualizerTaskLoadJson);
+    Core::ProgressManager::addTask(*task, Tr::tr("Loading CTF File"), CtfVisualizerTaskLoadJson);
 }
 
 }  // namespace Internal

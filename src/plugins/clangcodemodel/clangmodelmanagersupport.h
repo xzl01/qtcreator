@@ -1,39 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
-
-#include "clangcompletionassistprovider.h"
-#include "clanguiheaderondiskmanager.h"
 
 #include <cppeditor/cppmodelmanagersupport.h>
 #include <cppeditor/projectinfo.h>
 
+#include <utils/filepath.h>
 #include <utils/futuresynchronizer.h>
 #include <utils/id.h>
 
+#include <QHash>
 #include <QObject>
 #include <QPointer>
 
@@ -41,22 +18,20 @@
 
 QT_BEGIN_NAMESPACE
 class QMenu;
+class QTimer;
 class QWidget;
 QT_END_NAMESPACE
 
+namespace Core { class IEditor; }
+namespace CppEditor { class RefactoringEngineInterface; }
 namespace TextEditor { class TextEditorWidget; }
-namespace CppEditor {
-class FollowSymbolInterface;
-class RefactoringEngineInterface;
-} // namespace CppEditor
 
 namespace ClangCodeModel {
 namespace Internal {
 
 class ClangdClient;
-class ClangProjectSettings;
 
-class ClangModelManagerSupport:
+class ClangModelManagerSupport :
         public QObject,
         public CppEditor::ModelManagerSupport
 {
@@ -66,43 +41,34 @@ public:
     ClangModelManagerSupport();
     ~ClangModelManagerSupport() override;
 
-    CppEditor::CppCompletionAssistProvider *completionAssistProvider() override;
-    CppEditor::CppCompletionAssistProvider *functionHintAssistProvider() override;
-    TextEditor::BaseHoverHandler *createHoverHandler() override;
     CppEditor::BaseEditorDocumentProcessor *createEditorDocumentProcessor(
                 TextEditor::TextDocument *baseTextDocument) override;
-    CppEditor::FollowSymbolInterface &followSymbolInterface() override;
-    CppEditor::RefactoringEngineInterface &refactoringEngineInterface() override;
-    std::unique_ptr<CppEditor::AbstractOverviewModel> createOverviewModel() override;
-    bool supportsOutline(const TextEditor::TextDocument *document) const override;
-    bool supportsLocalUses(const TextEditor::TextDocument *document) const override;
+    bool usesClangd(const TextEditor::TextDocument *document) const override;
 
-    BackendCommunicator &communicator();
-    QString dummyUiHeaderOnDiskDirPath() const;
-    QString dummyUiHeaderOnDiskPath(const QString &filePath) const;
-
-    ClangProjectSettings &projectSettings(ProjectExplorer::Project *project) const;
-
-    ClangdClient *clientForProject(const ProjectExplorer::Project *project) const;
-    ClangdClient *clientForFile(const Utils::FilePath &file) const;
-
-    static ClangModelManagerSupport *instance();
-
-signals:
-    void createdClient(ClangdClient *client);
+    static ClangdClient *clientForProject(const ProjectExplorer::Project *project);
+    static ClangdClient *clientForFile(const Utils::FilePath &file);
 
 private:
+    void followSymbol(const CppEditor::CursorInEditor &data,
+                      const Utils::LinkHandler &processLinkCallback, bool resolveTarget,
+                      bool inNextSplit) override;
+    void followSymbolToType(const CppEditor::CursorInEditor &data,
+                            const Utils::LinkHandler &processLinkCallback,
+                            bool inNextSplit) override;
+    void switchDeclDef(const CppEditor::CursorInEditor &data,
+                       const Utils::LinkHandler &processLinkCallback) override;
+    void startLocalRenaming(const CppEditor::CursorInEditor &data,
+                            const CppEditor::ProjectPart *projectPart,
+                            CppEditor::RenameCallback &&renameSymbolsCallback) override;
+    void globalRename(const CppEditor::CursorInEditor &cursor, const QString &replacement,
+                      const std::function<void()> &callback) override;
+    void findUsages(const CppEditor::CursorInEditor &cursor) const override;
+    void switchHeaderSource(const Utils::FilePath &filePath, bool inNextSplit) override;
+    void checkUnused(const Utils::Link &link, Core::SearchResult *search,
+                     const Utils::LinkHandler &callback) override;
+
     void onEditorOpened(Core::IEditor *editor);
-    void onEditorClosed(const QList<Core::IEditor *> &editors);
     void onCurrentEditorChanged(Core::IEditor *newCurrent);
-    void onCppDocumentAboutToReloadOnTranslationUnit();
-    void onCppDocumentReloadFinishedOnTranslationUnit(bool success);
-    void onCppDocumentContentsChangedOnTranslationUnit(int position,
-                                                       int charsRemoved,
-                                                       int charsAdded);
-    void onCppDocumentAboutToReloadOnUnsavedFile();
-    void onCppDocumentReloadFinishedOnUnsavedFile(bool success);
-    void onCppDocumentContentsChangedOnUnsavedFile();
 
     void onAbstractEditorSupportContentsUpdated(const QString &filePath,
                                                 const QString &sourceFilePath,
@@ -113,50 +79,26 @@ private:
                                         int lineNumber,
                                         QMenu *menu);
 
-    void onProjectAdded(ProjectExplorer::Project *project);
-    void onAboutToRemoveProject(ProjectExplorer::Project *project);
-
     void onProjectPartsUpdated(ProjectExplorer::Project *project);
     void onProjectPartsRemoved(const QStringList &projectPartIds);
     void onClangdSettingsChanged();
 
-    void onDiagnosticConfigsInvalidated(const QVector<::Utils::Id> &configIds);
-
     void reinitializeBackendDocuments(const QStringList &projectPartIds);
 
     void connectTextDocumentToTranslationUnit(TextEditor::TextDocument *textDocument);
-    void connectTextDocumentToUnsavedFiles(TextEditor::TextDocument *textDocument);
-    void connectToTextDocumentContentsChangedForTranslationUnit(
-            TextEditor::TextDocument *textDocument);
-    void connectToTextDocumentContentsChangedForUnsavedFile(TextEditor::TextDocument *textDocument);
     void connectToWidgetsMarkContextMenuRequested(QWidget *editorWidget);
 
-    void updateLanguageClient(ProjectExplorer::Project *project,
-                              const CppEditor::ProjectInfo::ConstPtr &projectInfo);
-    ClangdClient *createClient(ProjectExplorer::Project *project, const Utils::FilePath &jsonDbDir);
+    void updateLanguageClient(ProjectExplorer::Project *project);
     void claimNonProjectSources(ClangdClient *client);
     void watchForExternalChanges();
     void watchForInternalChanges();
+    void scheduleClientRestart(ClangdClient *client);
+    static ClangdClient *clientWithProject(const ProjectExplorer::Project *project);
 
-    UiHeaderOnDiskManager m_uiHeaderOnDiskManager;
-    BackendCommunicator m_communicator;
-    ClangCompletionAssistProvider m_completionAssistProvider;
-    ClangCompletionAssistProvider m_functionHintAssistProvider;
-    std::unique_ptr<CppEditor::FollowSymbolInterface> m_followSymbol;
-    std::unique_ptr<CppEditor::RefactoringEngineInterface> m_refactoringEngine;
-
-    QHash<ProjectExplorer::Project *, ClangProjectSettings *> m_projectSettings;
     Utils::FutureSynchronizer m_generatorSynchronizer;
     QList<QPointer<ClangdClient>> m_clientsToRestart;
-};
-
-class ClangModelManagerSupportProvider : public CppEditor::ModelManagerSupportProvider
-{
-public:
-    QString id() const override;
-    QString displayName() const override;
-
-    CppEditor::ModelManagerSupport::Ptr createModelManagerSupport() override;
+    QTimer * const m_clientRestartTimer;
+    QHash<Utils::FilePath, QString> m_queuedShadowDocuments;
 };
 
 } // namespace Internal

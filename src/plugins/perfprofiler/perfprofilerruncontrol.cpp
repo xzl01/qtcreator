@@ -1,42 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "perfprofilerruncontrol.h"
 
 #include "perfdatareader.h"
-#include "perfprofilerconstants.h"
-#include "perfprofilerruncontrol.h"
 #include "perfprofilertool.h"
+#include "perfprofilertr.h"
 #include "perfrunconfigurationaspect.h"
 #include "perfsettings.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
-#include <projectexplorer/devicesupport/deviceprocess.h>
+
 #include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/kitinformation.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/target.h>
-#include <ssh/sshconnection.h>
+
 #include <utils/qtcprocess.h>
 
 #include <QAction>
@@ -46,8 +26,7 @@
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace PerfProfiler {
-namespace Internal {
+namespace PerfProfiler::Internal {
 
 class PerfParserWorker : public RunWorker
 {
@@ -84,13 +63,14 @@ public:
 
     void start() override
     {
-        QStringList args = m_reader.findTargetArguments(runControl());
+        CommandLine cmd{findPerfParser()};
+        m_reader.addTargetArguments(&cmd, runControl());
         QUrl url = runControl()->property("PerfConnection").toUrl();
         if (url.isValid()) {
-            args.append(QStringList{"--host", url.host(), "--port", QString::number(url.port())});
+            cmd.addArgs({"--host", url.host(), "--port", QString::number(url.port())});
         }
-        appendMessage("PerfParser args: " + args.join(' '), Utils::NormalMessageFormat);
-        m_reader.createParser(args);
+        appendMessage("PerfParser args: " + cmd.arguments(), NormalMessageFormat);
+        m_reader.createParser(cmd);
         m_reader.startParser();
     }
 
@@ -116,46 +96,43 @@ public:
     {
         setId("LocalPerfRecordWorker");
 
-        auto perfAspect = static_cast<PerfRunConfigurationAspect *>(runControl->aspect(Constants::PerfSettingsId));
+        auto perfAspect = runControl->aspect<PerfRunConfigurationAspect>();
         QTC_ASSERT(perfAspect, return);
-        PerfSettings *settings = static_cast<PerfSettings *>(perfAspect->currentSettings());
+        PerfSettings *settings = static_cast<PerfSettings *>(perfAspect->currentSettings);
         QTC_ASSERT(settings, return);
         m_perfRecordArguments = settings->perfRecordArguments();
     }
 
     void start() override
     {
-        m_process = device()->createProcess(this);
-        if (!m_process) {
-            reportFailure(tr("Could not start device process."));
-            return;
-        }
+        m_process = new QtcProcess(this);
 
-        connect(m_process, &DeviceProcess::started, this, &RunWorker::reportStarted);
-        connect(m_process, &DeviceProcess::finished, this, &RunWorker::reportStopped);
-        connect(m_process, &DeviceProcess::errorOccurred, [this](QProcess::ProcessError e) {
+        connect(m_process, &QtcProcess::started, this, &RunWorker::reportStarted);
+        connect(m_process, &QtcProcess::done, this, [this] {
             // The terminate() below will frequently lead to QProcess::Crashed. We're not interested
             // in that. FailedToStart is the only actual failure.
-            if (e == QProcess::FailedToStart) {
-                QString msg = tr("Perf Process Failed to Start");
-                QMessageBox::warning(Core::ICore::dialogParent(),
-                                     msg, tr("Make sure that you are running a recent Linux kernel and "
-                                             "that the \"perf\" utility is available."));
+            if (m_process->error() == QProcess::FailedToStart) {
+                const QString msg = Tr::tr("Perf Process Failed to Start");
+                QMessageBox::warning(Core::ICore::dialogParent(), msg,
+                                     Tr::tr("Make sure that you are running a recent Linux kernel "
+                                            "and that the \"perf\" utility is available."));
                 reportFailure(msg);
+                return;
             }
+            if (!m_process->cleanedStdErr().isEmpty())
+                appendMessage(m_process->cleanedStdErr(), Utils::StdErrFormat);
+            reportStopped();
         });
 
-        Runnable perfRunnable = runnable();
+        CommandLine cmd({device()->filePath("perf"), {"record"}});
+        cmd.addArgs(m_perfRecordArguments);
+        cmd.addArgs({"-o", "-", "--"});
+        cmd.addCommandLineAsArgs(runControl()->commandLine(), CommandLine::Raw);
 
-        QStringList arguments;
-        arguments << "record";
-        arguments += m_perfRecordArguments;
-        arguments << "-o" << "-" << "--" << perfRunnable.command.executable().toString()
-                  << ProcessArgs::splitArgs(perfRunnable.command.arguments(), OsTypeLinux);
-
-        perfRunnable.command.setExecutable("perf");
-        perfRunnable.command.setArguments(ProcessArgs::joinArgs(arguments, OsTypeLinux));
-        m_process->start(perfRunnable);
+        m_process->setCommand(cmd);
+        m_process->setWorkingDirectory(runControl()->workingDirectory());
+        appendMessage("Starting Perf: " + cmd.toUserOutput(), Utils::NormalMessageFormat);
+        m_process->start();
     }
 
     void stop() override
@@ -164,10 +141,10 @@ public:
             m_process->terminate();
     }
 
-    DeviceProcess *recorder() { return m_process; }
+    QtcProcess *recorder() { return m_process; }
 
 private:
-    QPointer<DeviceProcess> m_process;
+    QPointer<QtcProcess> m_process;
     QStringList m_perfRecordArguments;
 };
 
@@ -216,21 +193,28 @@ void PerfProfilerRunner::start()
     PerfDataReader *reader = m_perfParserWorker->reader();
     if (auto prw = qobject_cast<LocalPerfRecordWorker *>(m_perfRecordWorker)) {
         // That's the local case.
-        DeviceProcess *recorder = prw->recorder();
-        connect(recorder, &DeviceProcess::readyReadStandardError, this, [this, recorder] {
-            appendMessage(QString::fromLocal8Bit(recorder->readAllStandardError()),
+        QtcProcess *recorder = prw->recorder();
+        connect(recorder, &QtcProcess::readyReadStandardError, this, [this, recorder] {
+            appendMessage(QString::fromLocal8Bit(recorder->readAllRawStandardError()),
                           Utils::StdErrFormat);
         });
-        connect(recorder, &DeviceProcess::readyReadStandardOutput, this, [this, reader, recorder] {
-            if (!reader->feedParser(recorder->readAllStandardOutput()))
-                reportFailure(tr("Failed to transfer Perf data to perfparser."));
+        connect(recorder, &QtcProcess::readyReadStandardOutput, this, [this, reader, recorder] {
+            if (!reader->feedParser(recorder->readAllRawStandardOutput()))
+                reportFailure(Tr::tr("Failed to transfer Perf data to perfparser."));
         });
     }
 
     reportStarted();
 }
 
-} // namespace Internal
-} // namespace PerfProfiler
+// PerfProfilerRunWorkerFactory
+
+PerfProfilerRunWorkerFactory::PerfProfilerRunWorkerFactory()
+{
+    setProduct<PerfProfilerRunner>();
+    addSupportedRunMode(ProjectExplorer::Constants::PERFPROFILER_RUN_MODE);
+}
+
+} // PerfProfiler::Internal
 
 #include "perfprofilerruncontrol.moc"

@@ -1,74 +1,59 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Sergey Morozov
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 Sergey Morozov
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppcheckconstants.h"
 #include "cppcheckdiagnostic.h"
 #include "cppchecktextmark.h"
+#include "cppchecktr.h"
 
+#include <texteditor/texteditortr.h>
+
+#include <utils/stringutils.h>
 #include <utils/utilsicons.h>
 
+#include <QAction>
 #include <QMap>
 
-namespace Cppcheck {
-namespace Internal {
+using namespace TextEditor;
+using namespace Utils;
+
+namespace Cppcheck::Internal {
 
 struct Visual
 {
-    Visual(Utils::Theme::Color color, TextEditor::TextMark::Priority priority,
+    Visual(Utils::Theme::Color color, TextMark::Priority priority,
            const QIcon &icon)
         : color(color),
           priority(priority),
           icon(icon)
     {}
     Utils::Theme::Color color;
-    TextEditor::TextMark::Priority priority;
+    TextMark::Priority priority;
     QIcon icon;
 };
 
 static Visual getVisual(Diagnostic::Severity type)
 {
-    using Color = Utils::Theme::Color;
-    using Priority = TextEditor::TextMark::Priority;
+    using Color = Theme::Color;
+    using Priority = TextMark::Priority;
 
     static const QMap<Diagnostic::Severity, Visual> visuals{
         {Diagnostic::Severity::Error, {Color::IconsErrorColor, Priority::HighPriority,
-                        Utils::Icons::CRITICAL.icon()}},
+                        Icons::CRITICAL.icon()}},
         {Diagnostic::Severity::Warning, {Color::IconsWarningColor, Priority::NormalPriority,
-                        Utils::Icons::WARNING.icon()}},
+                        Icons::WARNING.icon()}},
     };
 
-    return visuals.value(type, {Color::IconsInfoColor, Priority::LowPriority,
-                                Utils::Icons::INFO.icon()});
+    return visuals.value(type, {Color::IconsInfoColor, Priority::LowPriority, Icons::INFO.icon()});
 }
 
-CppcheckTextMark::CppcheckTextMark (const Diagnostic &diagnostic)
-    : TextEditor::TextMark (diagnostic.fileName, diagnostic.lineNumber,
-                            Utils::Id(Constants::TEXTMARK_CATEGORY_ID)),
-    m_severity(diagnostic.severity),
-    m_checkId(diagnostic.checkId),
-    m_message(diagnostic.message)
+CppcheckTextMark::CppcheckTextMark(const Diagnostic &diagnostic)
+    : TextEditor::TextMark(diagnostic.fileName,
+                           diagnostic.lineNumber,
+                           {Tr::tr("Cppcheck"), Utils::Id(Constants::TEXTMARK_CATEGORY_ID)})
+    , m_severity(diagnostic.severity)
+    , m_checkId(diagnostic.checkId)
+    , m_message(diagnostic.message)
 {
     const Visual visual = getVisual(diagnostic.severity);
     setPriority(visual.priority);
@@ -77,6 +62,20 @@ CppcheckTextMark::CppcheckTextMark (const Diagnostic &diagnostic)
     setToolTip(toolTipText(diagnostic.severityText));
     setLineAnnotation(diagnostic.message);
     setSettingsPage(Constants::OPTIONS_PAGE_ID);
+    setActionsProvider([diagnostic] {
+        // Copy to clipboard action
+        QAction *action = new QAction;
+        action->setIcon(QIcon::fromTheme("edit-copy", Icons::COPY.icon()));
+        action->setToolTip(TextEditor::Tr::tr("Copy to Clipboard"));
+        QObject::connect(action, &QAction::triggered, [diagnostic]() {
+            const QString text = QString("%1:%2: %3")
+                    .arg(diagnostic.fileName.toUserOutput())
+                    .arg(diagnostic.lineNumber)
+                    .arg(diagnostic.message);
+            Utils::setClipboardAndSelection(text);
+        });
+        return QList<QAction *>{action};
+    });
 }
 
 QString CppcheckTextMark::toolTipText(const QString &severityText) const
@@ -93,5 +92,4 @@ QString CppcheckTextMark::toolTipText(const QString &severityText) const
                 "</table>").arg(m_checkId, severityText, m_message);
 }
 
-} // namespace Internal
-} // namespace Cppcheck
+} // Cppcheck::Internal

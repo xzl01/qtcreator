@@ -1,34 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtCreator.Tracing 1.0
+import QtCreator.Tracing
 
-import QtQml 2.2
-import QtQuick 2.9
-import QtQuick.Controls 2.3
-import QtQuick.Controls.Material 2.3
+import QtQml
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Controls.Material
 
 ScrollView {
     id: root
@@ -63,7 +41,7 @@ ScrollView {
     property var details: function(flameGraph) { return []; }
     property var summary: function(attached) {
         if (!attached.dataValid)
-            return qsTr("others");
+            return qsTranslate("QtC::Tracing", "others");
 
         return attached.data(summaryRole) + " (" + percent(sizeRole, attached) + "%)";
     }
@@ -252,7 +230,8 @@ ScrollView {
                 // Functions, not properties to limit the initial overhead when creating the nodes,
                 // and because FlameGraph.data(...) cannot be notified anyway.
                 function title() {
-                    return FlameGraph.data(root.detailsTitleRole) || qsTr("unknown");
+                    return FlameGraph.data(root.detailsTitleRole)
+                            || qsTranslate("QtC::Tracing", "unknown");
                 }
 
                 function note() {
@@ -288,16 +267,11 @@ ScrollView {
                     return null;
             }
 
-            onClearSelection: {
-                flamegraph.selectedTypeId = -1;
-                selectedNode = null;
-            }
-
             dialogTitle: {
                 if (currentNode)
                     return currentNode.title();
                 else if (root.model === null || root.model.rowCount() === 0)
-                    return qsTr("No data available");
+                    return qsTranslate("QtC::Tracing", "No data available");
                 else
                     return "";
             }

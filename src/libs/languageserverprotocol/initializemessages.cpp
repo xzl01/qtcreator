@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "initializemessages.h"
 
@@ -54,7 +32,7 @@ QString Trace::toString() const
 }
 #undef RETURN_CASE
 
-Utils::optional<QList<MarkupKind>>
+std::optional<QList<MarkupKind>>
 TextDocumentClientCapabilities::CompletionCapabilities::CompletionItemCapbilities::
 documentationFormat() const
 {
@@ -81,16 +59,16 @@ TextDocumentClientCapabilities::CompletionCapabilities::CompletionItemKindCapabi
                  CompletionItemKind::TypeParameter});
 }
 
-Utils::optional<QList<CompletionItemKind::Kind>>
+std::optional<QList<CompletionItemKind::Kind>>
 TextDocumentClientCapabilities::CompletionCapabilities::CompletionItemKindCapabilities::
 valueSet() const
 {
-    Utils::optional<QList<int>> array = optionalArray<int>(valueSetKey);
-    if (!array)
-        return Utils::nullopt;
-    return Utils::make_optional(Utils::transform(array.value(), [] (int value) {
-        return static_cast<CompletionItemKind::Kind>(value);
-    }));
+    if (std::optional<QList<int>> array = optionalArray<int>(valueSetKey)) {
+        return std::make_optional(Utils::transform(*array, [](int value) {
+            return static_cast<CompletionItemKind::Kind>(value);
+        }));
+    }
+    return std::nullopt;
 }
 
 void
@@ -100,7 +78,7 @@ setValueSet(const QList<CompletionItemKind::Kind> &valueSet)
     insert(valueSetKey, enumArrayToJsonArray<CompletionItemKind::Kind>(valueSet));
 }
 
-Utils::optional<QList<MarkupKind> > TextDocumentClientCapabilities::HoverCapabilities::contentFormat() const
+std::optional<QList<MarkupKind> > TextDocumentClientCapabilities::HoverCapabilities::contentFormat() const
 {
     return optionalArray<MarkupKind>(contentFormatKey);
 }
@@ -110,7 +88,7 @@ void TextDocumentClientCapabilities::HoverCapabilities::setContentFormat(const Q
     insertArray(contentFormatKey, contentFormat);
 }
 
-Utils::optional<QList<MarkupKind>>
+std::optional<QList<MarkupKind>>
 TextDocumentClientCapabilities::SignatureHelpCapabilities::SignatureInformationCapabilities::
 documentationFormat() const
 {
@@ -132,20 +110,20 @@ InitializeParams::InitializeParams()
     setTrace(s_trace);
 }
 
-Utils::optional<QJsonObject> InitializeParams::initializationOptions() const
+std::optional<QJsonObject> InitializeParams::initializationOptions() const
 {
     const QJsonValue &optionsValue = value(initializationOptionsKey);
     if (optionsValue.isObject())
         return optionsValue.toObject();
-    return Utils::nullopt;
+    return std::nullopt;
 }
 
-Utils::optional<Trace> InitializeParams::trace() const
+std::optional<Trace> InitializeParams::trace() const
 {
     const QJsonValue &traceValue = value(traceKey);
     if (traceValue.isUndefined())
-        return Utils::nullopt;
-    return Utils::make_optional(Trace(traceValue.toString()));
+        return std::nullopt;
+    return std::make_optional(Trace(traceValue.toString()));
 }
 
 InitializeRequest::InitializeRequest(const InitializeParams &params)

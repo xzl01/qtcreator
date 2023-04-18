@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "outputformatter.h"
 
@@ -30,11 +8,11 @@
 #include "fileinprojectfinder.h"
 #include "link.h"
 #include "qtcassert.h"
-#include "qtcprocess.h"
+#include "stringutils.h"
+#include "stylehelper.h"
 #include "theme/theme.h"
 
 #include <QDir>
-#include <QFileInfo>
 #include <QPair>
 #include <QPlainTextEdit>
 #include <QPointer>
@@ -138,13 +116,13 @@ FilePath OutputLineParser::absoluteFilePath(const FilePath &filePath) const
 {
     if (filePath.isEmpty())
         return filePath;
-    if (filePath.toFileInfo().isAbsolute())
+    if (filePath.isAbsolutePath())
         return filePath.cleanPath();
     FilePaths candidates;
     for (const FilePath &dir : searchDirectories()) {
-        FilePath candidate = dir.pathAppended(filePath.toString());
+        FilePath candidate = dir.resolvePath(filePath);
         if (candidate.exists() || d->skipFileExistsCheck) {
-            candidate = FilePath::fromString(QDir::cleanPath(candidate.toString()));
+            candidate = candidate.cleanPath();
             if (!candidates.contains(candidate))
                 candidates << candidate;
         }
@@ -185,6 +163,15 @@ void OutputLineParser::addLinkSpecForAbsoluteFilePath(OutputLineParser::LinkSpec
                                    match.capturedLength(capName));
 }
 
+bool Utils::OutputLineParser::fileExists(const FilePath &fp) const
+{
+#ifdef WITH_TESTS
+    if (d->skipFileExistsCheck)
+        return !fp.isEmpty();
+#endif
+    return fp.exists();
+}
+
 QString OutputLineParser::rightTrimmed(const QString &in)
 {
     int pos = in.length();
@@ -211,7 +198,7 @@ public:
     QTextCursor cursor;
     AnsiEscapeCodeHandler escapeCodeHandler;
     QPair<QString, OutputFormat> incompleteLine;
-    optional<QTextCharFormat> formatOverride;
+    std::optional<QTextCharFormat> formatOverride;
     QList<OutputLineParser *> lineParsers;
     OutputLineParser *nextParser = nullptr;
     FileInProjectFinder fileFinder;
@@ -254,7 +241,7 @@ void OutputFormatter::setLineParsers(const QList<OutputLineParser *> &parsers)
 
 void OutputFormatter::addLineParsers(const QList<OutputLineParser *> &parsers)
 {
-    for (OutputLineParser * const p : qAsConst(parsers))
+    for (OutputLineParser * const p : std::as_const(parsers))
         addLineParser(p);
 }
 
@@ -278,13 +265,21 @@ void OutputFormatter::setFileFinder(const FileInProjectFinder &finder)
 
 void OutputFormatter::setDemoteErrorsToWarnings(bool demote)
 {
-    for (OutputLineParser * const p : qAsConst(d->lineParsers))
+    for (OutputLineParser * const p : std::as_const(d->lineParsers))
         p->setDemoteErrorsToWarnings(demote);
 }
 
 void OutputFormatter::overridePostPrintAction(const PostPrintAction &postPrintAction)
 {
     d->postPrintAction = postPrintAction;
+}
+
+static void checkAndFineTuneColors(QTextCharFormat *format)
+{
+    QTC_ASSERT(format, return);
+    const QColor fgColor = StyleHelper::ensureReadableOn(format->background().color(),
+                                                         format->foreground().color());
+    format->setForeground(fgColor);
 }
 
 void OutputFormatter::doAppendMessage(const QString &text, OutputFormat format)
@@ -306,6 +301,7 @@ void OutputFormatter::doAppendMessage(const QString &text, OutputFormat format)
                 ? *res.formatOverride : outputTypeForParser(involvedParsers.last(), format);
         if (formatForParser != format && cleanLine == text && formattedText.length() == 1) {
             charFmt = charFormat(formatForParser);
+            checkAndFineTuneColors(&charFmt);
             formattedText.first().format = charFmt;
         }
     }
@@ -316,12 +312,14 @@ void OutputFormatter::doAppendMessage(const QString &text, OutputFormat format)
     }
 
     const QList<FormattedText> linkified = linkifiedText(formattedText, res.linkSpecs);
-    for (const FormattedText &output : linkified)
+    for (FormattedText output : linkified) {
+        checkAndFineTuneColors(&output.format);
         append(output.text, output.format);
+    }
     if (linkified.isEmpty())
         append({}, charFmt); // This might cause insertion of a newline character.
 
-    for (OutputLineParser * const p : qAsConst(involvedParsers)) {
+    for (OutputLineParser * const p : std::as_const(involvedParsers)) {
         if (d->postPrintAction)
             d->postPrintAction(p);
         else
@@ -354,7 +352,7 @@ OutputLineParser::Result OutputFormatter::handleMessage(const QString &text, Out
         }
     }
     QTC_CHECK(!d->nextParser);
-    for (OutputLineParser * const parser : qAsConst(d->lineParsers)) {
+    for (OutputLineParser * const parser : std::as_const(d->lineParsers)) {
         if (parser == oldNextParser) // We tried that one already.
             continue;
         const OutputLineParser::Result res
@@ -546,7 +544,7 @@ void OutputFormatter::handleLink(const QString &href)
     // to the line parsers.
     if (handleFileLink(href))
         return;
-    for (OutputLineParser * const f : qAsConst(d->lineParsers)) {
+    for (OutputLineParser * const f : std::as_const(d->lineParsers)) {
         if (f->handleLink(href))
             return;
     }
@@ -589,7 +587,7 @@ void OutputFormatter::flush()
         flushIncompleteLine();
     flushTrailingNewline();
     d->escapeCodeHandler.endFormatScope();
-    for (OutputLineParser * const p : qAsConst(d->lineParsers))
+    for (OutputLineParser * const p : std::as_const(d->lineParsers))
         p->flush();
     if (d->nextParser)
         d->nextParser->runPostPrintActions(plainTextEdit());
@@ -604,13 +602,13 @@ bool OutputFormatter::hasFatalErrors() const
 
 void OutputFormatter::addSearchDir(const FilePath &dir)
 {
-    for (OutputLineParser * const p : qAsConst(d->lineParsers))
+    for (OutputLineParser * const p : std::as_const(d->lineParsers))
         p->addSearchDir(dir);
 }
 
 void OutputFormatter::dropSearchDir(const FilePath &dir)
 {
-    for (OutputLineParser * const p : qAsConst(d->lineParsers))
+    for (OutputLineParser * const p : std::as_const(d->lineParsers))
         p->dropSearchDir(dir);
 }
 
@@ -638,7 +636,7 @@ void OutputFormatter::appendMessage(const QString &text, OutputFormat format)
         d->prependCarriageReturn = false;
         out.prepend('\r');
     }
-    out = QtcProcess::normalizeNewlines(out);
+    out = Utils::normalizeNewlines(out);
     if (out.endsWith('\r')) {
         d->prependCarriageReturn = true;
         out.chop(1);

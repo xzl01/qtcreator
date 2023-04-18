@@ -1,38 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "registerhandler.h"
 
 #include "debuggerengine.h"
-#include "watchdelegatewidgets.h"
 
 #include "memoryagent.h"
 #include "debuggeractions.h"
 #include "debuggerdialogs.h"
 #include "debuggercore.h"
 #include "debuggerengine.h"
+#include "debuggertr.h"
 
 #include <utils/basetreeview.h>
 #include <utils/qtcassert.h>
@@ -44,8 +22,7 @@
 
 using namespace Utils;
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 enum RegisterColumns
 {
@@ -582,20 +559,20 @@ QVariant RegisterSubItem::data(int column, int role) const
         case Qt::ToolTipRole:
             if (m_subKind == IntegerRegister) {
                 if (m_subFormat == CharacterFormat)
-                    return RegisterHandler::tr("Content as ASCII Characters");
+                    return Tr::tr("Content as ASCII Characters");
                 if (m_subFormat == SignedDecimalFormat)
-                    return RegisterHandler::tr("Content as %1-bit Signed Decimal Values").arg(8 * m_subSize);
+                    return Tr::tr("Content as %1-bit Signed Decimal Values").arg(8 * m_subSize);
                 if (m_subFormat == DecimalFormat)
-                    return RegisterHandler::tr("Content as %1-bit Unsigned Decimal Values").arg(8 * m_subSize);
+                    return Tr::tr("Content as %1-bit Unsigned Decimal Values").arg(8 * m_subSize);
                 if (m_subFormat == HexadecimalFormat)
-                    return RegisterHandler::tr("Content as %1-bit Hexadecimal Values").arg(8 * m_subSize);
+                    return Tr::tr("Content as %1-bit Hexadecimal Values").arg(8 * m_subSize);
                 if (m_subFormat == OctalFormat)
-                    return RegisterHandler::tr("Content as %1-bit Octal Values").arg(8 * m_subSize);
+                    return Tr::tr("Content as %1-bit Octal Values").arg(8 * m_subSize);
                 if (m_subFormat == BinaryFormat)
-                    return RegisterHandler::tr("Content as %1-bit Binary Values").arg(8 * m_subSize);
+                    return Tr::tr("Content as %1-bit Binary Values").arg(8 * m_subSize);
             }
             if (m_subKind == FloatRegister)
-                return RegisterHandler::tr("Content as %1-bit Floating Point Values").arg(8 * m_subSize);
+                return Tr::tr("Content as %1-bit Floating Point Values").arg(8 * m_subSize);
 
         default:
             break;
@@ -643,7 +620,7 @@ QVariant RegisterGroup::data(int column, int role) const
         break;
 
     case Qt::ToolTipRole:
-        return RegisterHandler::tr("A group of registers.");
+        return Tr::tr("A group of registers.");
 
     default:
         break;
@@ -692,7 +669,7 @@ RegisterHandler::RegisterHandler(DebuggerEngine *engine)
     : m_engine(engine)
 {
     setObjectName("RegisterModel");
-    setHeader({tr("Name"), tr("Value")});
+    setHeader({Tr::tr("Name"), Tr::tr("Value")});
 }
 
 void RegisterHandler::updateRegister(const Register &r)
@@ -764,16 +741,16 @@ bool RegisterHandler::contextMenuEvent(const ItemViewEvent &ev)
 
     auto menu = new QMenu;
 
-    addAction(this, menu, tr("Reload Register Listing"),
+    addAction(this, menu, Tr::tr("Reload Register Listing"),
               m_engine->hasCapability(RegisterCapability)
                 && (state == InferiorStopOk || state == InferiorUnrunnable),
               [this] { m_engine->reloadRegisters(); });
 
     menu->addSeparator();
 
-    addAction(this, menu, tr("Open Memory View at Value of Register %1 0x%2")
+    addAction(this, menu, Tr::tr("Open Memory View at Value of Register %1 0x%2")
               .arg(registerName).arg(address, 0, 16),
-              tr("Open Memory View at Value of Register"),
+              Tr::tr("Open Memory View at Value of Register"),
               address,
               [this, registerName, address] {
                     MemoryViewSetupData data;
@@ -784,8 +761,8 @@ bool RegisterHandler::contextMenuEvent(const ItemViewEvent &ev)
                     m_engine->openMemoryView(data);
               });
 
-    addAction(this, menu, tr("Open Memory Editor at 0x%1").arg(address, 0, 16),
-              tr("Open Memory Editor"),
+    addAction(this, menu, Tr::tr("Open Memory Editor at 0x%1").arg(address, 0, 16),
+              Tr::tr("Open Memory Editor"),
               address && actionsEnabled && m_engine->hasCapability(ShowMemoryCapability),
               [this, registerName, address] {
                     MemoryViewSetupData data;
@@ -796,12 +773,12 @@ bool RegisterHandler::contextMenuEvent(const ItemViewEvent &ev)
                     m_engine->openMemoryView(data);
               });
 
-    addAction(this, menu, tr("Open Disassembler at 0x%1").arg(address, 0, 16),
-              tr("Open Disassembler"),
+    addAction(this, menu, Tr::tr("Open Disassembler at 0x%1").arg(address, 0, 16),
+              Tr::tr("Open Disassembler"),
               address && m_engine->hasCapability(DisassemblerCapability),
               [this, address] { m_engine->openDisassemblerView(Location(address)); });
 
-    addAction(this, menu, tr("Open Disassembler..."),
+    addAction(this, menu, Tr::tr("Open Disassembler..."),
               m_engine->hasCapability(DisassemblerCapability),
               [this, address] {
                     AddressDialog dialog;
@@ -829,10 +806,10 @@ bool RegisterHandler::contextMenuEvent(const ItemViewEvent &ev)
         });
     };
 
-    addFormatAction(tr("Hexadecimal"), HexadecimalFormat);
-    addFormatAction(tr("Decimal"), DecimalFormat);
-    addFormatAction(tr("Octal"), OctalFormat);
-    addFormatAction(tr("Binary"), BinaryFormat);
+    addFormatAction(Tr::tr("Hexadecimal"), HexadecimalFormat);
+    addFormatAction(Tr::tr("Decimal"), DecimalFormat);
+    addFormatAction(Tr::tr("Octal"), OctalFormat);
+    addFormatAction(Tr::tr("Binary"), BinaryFormat);
 
     menu->addAction(debuggerSettings()->settingsDialog.action());
     connect(menu, &QMenu::aboutToHide, menu, &QObject::deleteLater);
@@ -874,7 +851,7 @@ QVariant RegisterEditItem::data(int column, int role) const
             break;
         case Qt::ToolTipRole: {
                 RegisterItem *registerItem = parent()->parent();
-                return RegisterHandler::tr("Edit bits %1...%2 of register %3")
+                return Tr::tr("Edit bits %1...%2 of register %3")
                         .arg(m_index * 8).arg(m_index * 8 + 7).arg(registerItem->m_reg.name);
             }
         default:
@@ -908,5 +885,4 @@ Qt::ItemFlags RegisterEditItem::flags(int column) const
     return f;
 }
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal

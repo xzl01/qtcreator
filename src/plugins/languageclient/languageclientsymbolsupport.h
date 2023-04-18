@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,6 +9,8 @@
 #include <texteditor/textdocument.h>
 
 #include <languageserverprotocol/languagefeatures.h>
+
+#include <functional>
 
 namespace Core {
 class SearchResult;
@@ -43,28 +23,36 @@ namespace LanguageClient {
 
 class Client;
 
-class LANGUAGECLIENT_EXPORT SymbolSupport
+class LANGUAGECLIENT_EXPORT SymbolSupport : public QObject
 {
-    Q_DECLARE_TR_FUNCTIONS(SymbolSupport)
 public:
     explicit SymbolSupport(Client *client);
 
     void findLinkAt(TextEditor::TextDocument *document,
                     const QTextCursor &cursor,
-                    Utils::ProcessLinkCallback callback,
+                    Utils::LinkHandler callback,
                     const bool resolveTarget);
 
+    bool supportsFindUsages(TextEditor::TextDocument *document) const;
     using ResultHandler = std::function<void(const QList<LanguageServerProtocol::Location> &)>;
-    Utils::optional<LanguageServerProtocol::MessageId> findUsages(
+    std::optional<LanguageServerProtocol::MessageId> findUsages(
             TextEditor::TextDocument *document,
             const QTextCursor &cursor,
             const ResultHandler &handler = {});
 
     bool supportsRename(TextEditor::TextDocument *document);
-    void renameSymbol(TextEditor::TextDocument *document, const QTextCursor &cursor);
+    void renameSymbol(TextEditor::TextDocument *document, const QTextCursor &cursor,
+                      const QString &newSymbolName = {},
+                      const std::function<void()> &callback = {},
+                      bool preferLowerCaseFileNames = true);
 
     static Core::Search::TextRange convertRange(const LanguageServerProtocol::Range &range);
     static QStringList getFileContents(const Utils::FilePath &filePath);
+
+    using SymbolMapper = std::function<QString(const QString &)>;
+    void setDefaultRenamingSymbolMapper(const SymbolMapper &mapper);
+
+    void setLimitRenamingToProjects(bool limit) { m_limitRenamingToProjects = limit; }
 
 private:
     void handleFindReferencesResponse(
@@ -72,17 +60,28 @@ private:
         const QString &wordUnderCursor,
         const ResultHandler &handler);
 
-    void requestPrepareRename(const LanguageServerProtocol::TextDocumentPositionParams &params,
-                              const QString &placeholder);
+    void requestPrepareRename(TextEditor::TextDocument *document,
+                              const LanguageServerProtocol::TextDocumentPositionParams &params,
+                              const QString &placeholder,
+                              const QString &oldSymbolName, const std::function<void()> &callback,
+                              bool preferLowerCaseFileNames);
     void requestRename(const LanguageServerProtocol::TextDocumentPositionParams &positionParams,
-                       const QString &newName, Core::SearchResult *search);
+                       Core::SearchResult *search);
+    Core::SearchResult *createSearch(const LanguageServerProtocol::TextDocumentPositionParams &positionParams,
+                                     const QString &placeholder, const QString &oldSymbolName,
+                                     const std::function<void()> &callback,
+                                     bool preferLowerCaseFileNames);
     void startRenameSymbol(const LanguageServerProtocol::TextDocumentPositionParams &params,
-                           const QString &placeholder);
+                           const QString &placeholder, const QString &oldSymbolName,
+                           const std::function<void()> &callback, bool preferLowerCaseFileNames);
     void handleRenameResponse(Core::SearchResult *search,
                               const LanguageServerProtocol::RenameRequest::Response &response);
-    void applyRename(const QList<Core::SearchResultItem> &checkedItems);
+    void applyRename(const QList<Core::SearchResultItem> &checkedItems, Core::SearchResult *search);
+    QString derivePlaceholder(const QString &oldSymbol, const QString &newSymbol);
 
     Client *m_client = nullptr;
+    SymbolMapper m_defaultSymbolMapper;
+    bool m_limitRenamingToProjects = false;
 };
 
 } // namespace LanguageClient

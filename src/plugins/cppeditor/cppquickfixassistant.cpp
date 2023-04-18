@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppquickfixassistant.h"
 
@@ -51,26 +29,15 @@ namespace Internal {
 // -------------------------
 class CppQuickFixAssistProcessor : public IAssistProcessor
 {
-    IAssistProposal *perform(const AssistInterface *interface) override
+    IAssistProposal *perform() override
     {
-        QSharedPointer<const AssistInterface> assistInterface(interface);
-        auto cppInterface = assistInterface.staticCast<const CppQuickFixInterface>();
-
-        QuickFixOperations quickFixes;
-        for (CppQuickFixFactory *factory : CppQuickFixFactory::cppQuickFixFactories())
-            factory->match(*cppInterface, quickFixes);
-
-        return GenericProposal::createProposal(interface, quickFixes);
+        return GenericProposal::createProposal(interface(), quickFixOperations(interface()));
     }
 };
 
 // -------------------------
 // CppQuickFixAssistProvider
 // -------------------------
-IAssistProvider::RunType CppQuickFixAssistProvider::runType() const
-{
-    return Synchronous;
-}
 
 IAssistProcessor *CppQuickFixAssistProvider::createProcessor(const AssistInterface *) const
 {
@@ -80,10 +47,8 @@ IAssistProcessor *CppQuickFixAssistProvider::createProcessor(const AssistInterfa
 // --------------------------
 // CppQuickFixAssistInterface
 // --------------------------
-CppQuickFixInterface::CppQuickFixInterface(CppEditorWidget *editor,
-                                                       AssistReason reason)
-    : AssistInterface(editor->document(), editor->position(),
-                      editor->textDocument()->filePath(), reason)
+CppQuickFixInterface::CppQuickFixInterface(CppEditorWidget *editor, AssistReason reason)
+    : AssistInterface(editor->textCursor(), editor->textDocument()->filePath(), reason)
     , m_editor(editor)
     , m_semanticInfo(editor->semanticInfo())
     , m_snapshot(CppModelManager::instance()->snapshot())
@@ -94,7 +59,7 @@ CppQuickFixInterface::CppQuickFixInterface(CppEditorWidget *editor,
     QTC_CHECK(m_semanticInfo.doc->translationUnit());
     QTC_CHECK(m_semanticInfo.doc->translationUnit()->ast());
     ASTPath astPath(m_semanticInfo.doc);
-    m_path = astPath(editor->textCursor());
+    m_path = astPath(adjustedCursor());
 }
 
 const QList<AST *> &CppQuickFixInterface::path() const
@@ -135,6 +100,60 @@ bool CppQuickFixInterface::isCursorOn(unsigned tokenIndex) const
 bool CppQuickFixInterface::isCursorOn(const AST *ast) const
 {
     return currentFile()->isCursorOn(ast);
+}
+
+// Some users like to select identifiers and expect the quickfix to apply to the selection.
+// However, as the cursor position is at the end of the selection, it can happen that
+// the quickfix is applied to the following token instead; see e.g. QTCREATORBUG-27886.
+// We try to detect this condition: If there is a selection *and* this selection
+// corresponds to a C++ token, we move the cursor to that token's position.
+QTextCursor CppQuickFixInterface::adjustedCursor()
+{
+    QTextCursor cursor = this->cursor();
+    if (!cursor.hasSelection())
+        return cursor;
+
+    const TranslationUnit * const tu = m_semanticInfo.doc->translationUnit();
+    const int selStart = cursor.selectionStart();
+    const int selEnd = cursor.selectionEnd();
+    const QTextDocument * const doc = m_editor->textDocument()->document();
+
+    // Binary search for matching token.
+    for (int l = 0, u = tu->tokenCount() - 1; l <= u; ) {
+        const int i = (l + u) / 2;
+        const int tokenPos = tu->getTokenPositionInDocument(i, doc);
+        if (selStart < tokenPos) {
+            u = i - 1;
+            continue;
+        }
+        if (selStart > tokenPos) {
+            l = i + 1;
+            continue;
+        }
+
+        // Selection does not end at token end.
+        if (tokenPos + tu->tokenAt(i).utf16chars() != selEnd)
+            break;
+
+        cursor.setPosition(selStart);
+
+        // Try not to have the cursor "at the edge", in order to prevent potential ambiguities.
+        if (selEnd - selStart > 1)
+            cursor.setPosition(cursor.position() + 1);
+
+        return cursor;
+    }
+    return cursor;
+}
+
+QuickFixOperations quickFixOperations(const TextEditor::AssistInterface *interface)
+{
+    const auto cppInterface = dynamic_cast<const CppQuickFixInterface *>(interface);
+    QTC_ASSERT(cppInterface, return {});
+    QuickFixOperations quickFixes;
+    for (CppQuickFixFactory *factory : CppQuickFixFactory::cppQuickFixFactories())
+        factory->match(*cppInterface, quickFixes);
+    return quickFixes;
 }
 
 } // namespace Internal

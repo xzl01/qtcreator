@@ -1,43 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlitemnode.h"
 #include <metainfo.h>
-#include "qmlchangeset.h"
 #include "nodelistproperty.h"
 #include "nodehints.h"
+#include "nodeproperty.h"
 #include "variantproperty.h"
 #include "bindingproperty.h"
 #include "qmlanchors.h"
-#include "invalidmodelnodeexception.h"
 #include "itemlibraryinfo.h"
 
-#include "plaintexteditmodifier.h"
-#include "rewriterview.h"
-#include "modelmerger.h"
-#include "rewritingexception.h"
+#include <model.h>
+#include <abstractview.h>
+
+#include <coreplugin/icore.h>
 
 #include <QUrl>
 #include <QPlainTextEdit>
@@ -48,24 +25,20 @@
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
-#ifndef QMLDESIGNER_TEST
-#include <designermcumanager.h>
-#endif
-
 namespace QmlDesigner {
 
 bool QmlItemNode::isItemOrWindow(const ModelNode &modelNode)
 {
-    if (modelNode.metaInfo().isSubclassOf("QtQuick.Item"))
-        return true;
+    auto metaInfo = modelNode.metaInfo();
+    auto model = modelNode.model();
 
-    if (modelNode.metaInfo().isSubclassOf("FlowView.FlowDecision"))
+    if (metaInfo.isBasedOn(model->qtQuickItemMetaInfo(),
+                           model->flowViewFlowDecisionMetaInfo(),
+                           model->flowViewFlowWildcardMetaInfo())) {
         return true;
+    }
 
-    if (modelNode.metaInfo().isSubclassOf("FlowView.FlowWildcard"))
-        return true;
-
-    if (modelNode.metaInfo().isGraphicalItem()  && modelNode.isRootNode())
+    if (metaInfo.isGraphicalItem() && modelNode.isRootNode())
         return true;
 
     return false;
@@ -96,8 +69,10 @@ QmlItemNode QmlItemNode::createQmlItemNodeFromImage(AbstractView *view, const QS
     auto doCreateQmlItemNodeFromImage = [=, &newQmlItemNode, &parentproperty]() {
         NodeMetaInfo metaInfo = view->model()->metaInfo("QtQuick.Image");
         QList<QPair<PropertyName, QVariant> > propertyPairList;
-        propertyPairList.append({PropertyName("x"), QVariant(qRound(position.x()))});
-        propertyPairList.append({PropertyName("y"), QVariant(qRound(position.y()))});
+        if (const int intX = qRound(position.x()))
+            propertyPairList.append({PropertyName("x"), QVariant(intX)});
+        if (const int intY = qRound(position.y()))
+            propertyPairList.append({PropertyName("y"), QVariant(intY)});
 
         QString relativeImageName = imageName;
 
@@ -158,8 +133,10 @@ QmlItemNode QmlItemNode::createQmlItemNodeFromFont(AbstractView *view,
     auto doCreateQmlItemNodeFromFont = [=, &newQmlItemNode, &parentproperty]() {
         NodeMetaInfo metaInfo = view->model()->metaInfo("QtQuick.Text");
         QList<QPair<PropertyName, QVariant>> propertyPairList;
-        propertyPairList.append({PropertyName("x"), QVariant(qRound(position.x()))});
-        propertyPairList.append({PropertyName("y"), QVariant(qRound(position.y()))});
+        if (const int intX = qRound(position.x()))
+            propertyPairList.append({PropertyName("x"), QVariant(intX)});
+        if (const int intY = qRound(position.y()))
+            propertyPairList.append({PropertyName("y"), QVariant(intY)});
         propertyPairList.append({PropertyName("font.family"), QVariant(fontFamily)});
         propertyPairList.append({PropertyName("font.pointSize"), 20});
         propertyPairList.append({PropertyName("text"), QVariant(fontFamily)});
@@ -179,6 +156,64 @@ QmlItemNode QmlItemNode::createQmlItemNodeFromFont(AbstractView *view,
         doCreateQmlItemNodeFromFont();
 
     return newQmlItemNode;
+}
+
+QmlItemNode QmlItemNode::createQmlItemNodeForEffect(AbstractView *view,
+                                                    QmlItemNode parentQmlItemNode,
+                                                    const QString &effectPath,
+                                                    bool isLayerEffect)
+{
+    if (!parentQmlItemNode.isValid())
+        parentQmlItemNode = QmlItemNode(view->rootModelNode());
+
+    NodeAbstractProperty parentProperty = isLayerEffect
+            ? parentQmlItemNode.nodeAbstractProperty("layer.effect")
+            : parentQmlItemNode.defaultNodeAbstractProperty();
+
+    return createQmlItemNodeForEffect(view, parentProperty, effectPath, isLayerEffect);
+}
+
+QmlItemNode QmlItemNode::createQmlItemNodeForEffect(AbstractView *view,
+                                                    NodeAbstractProperty parentProperty,
+                                                    const QString &effectPath,
+                                                    bool isLayerEffect)
+{
+    QmlItemNode newQmlItemNode;
+
+    auto createEffectNode = [=, &newQmlItemNode, &parentProperty]() {
+        const QString effectName = QFileInfo(effectPath).baseName();
+        Import import = Import::createLibraryImport("Effects." + effectName, "1.0");
+        try {
+            if (!view->model()->hasImport(import, true, true))
+                view->model()->changeImports({import}, {});
+        } catch (const Exception &) {
+            QTC_ASSERT(false, return);
+        }
+
+        TypeName type(effectName.toUtf8());
+        newQmlItemNode = QmlItemNode(view->createModelNode(type, -1, -1));
+
+        placeEffectNode(parentProperty, newQmlItemNode, isLayerEffect);
+    };
+
+    view->executeInTransaction("QmlItemNode::createQmlItemNodeFromEffect", createEffectNode);
+    return newQmlItemNode;
+}
+
+void QmlItemNode::placeEffectNode(NodeAbstractProperty &parentProperty, const QmlItemNode &effectNode, bool isLayerEffect) {
+    if (isLayerEffect && !parentProperty.isEmpty()) { // already contains a node
+        ModelNode oldEffect = parentProperty.toNodeProperty().modelNode();
+        QmlObjectNode(oldEffect).destroy();
+    }
+
+    parentProperty.reparentHere(effectNode);
+
+    if (!isLayerEffect) {
+        effectNode.modelNode().bindingProperty("source").setExpression("parent");
+        effectNode.modelNode().bindingProperty("anchors.fill").setExpression("parent");
+    } else {
+        parentProperty.parentModelNode().variantProperty("layer.enabled").setValue(true);
+    }
 }
 
 bool QmlItemNode::isValid() const
@@ -201,7 +236,8 @@ QList<QmlItemNode> QmlItemNode::children() const
                 childrenList.append(modelNode().nodeListProperty("children").toModelNodeList());
 
         if (modelNode().hasNodeListProperty("data")) {
-            foreach (const ModelNode &node, modelNode().nodeListProperty("data").toModelNodeList()) {
+            const QList<ModelNode> nodes = modelNode().nodeListProperty("data").toModelNodeList();
+            for (const ModelNode &node : nodes) {
                 if (QmlItemNode::isValidQmlItemNode(node))
                     childrenList.append(node);
             }
@@ -221,7 +257,8 @@ QList<QmlObjectNode> QmlItemNode::resources() const
                 resourcesList.append(modelNode().nodeListProperty("resources").toModelNodeList());
 
         if (modelNode().hasNodeListProperty("data")) {
-            foreach (const ModelNode &node, modelNode().nodeListProperty("data").toModelNodeList()) {
+            const QList<ModelNode> nodes = modelNode().nodeListProperty("data").toModelNodeList();
+            for (const ModelNode &node : nodes) {
                 if (!QmlItemNode::isValidQmlItemNode(node))
                     resourcesList.append(node);
             }
@@ -284,10 +321,9 @@ bool QmlItemNode::instanceIsAnchoredByChildren() const
 
 bool QmlItemNode::instanceIsMovable() const
 {
-    if (modelNode().metaInfo().isValid()
-            &&  (modelNode().metaInfo().isSubclassOf("FlowView.FlowDecision")
-                 || modelNode().metaInfo().isSubclassOf("FlowView.FlowWildcard")
-                 ))
+    auto metaInfo = modelNode().metaInfo();
+    auto m = model();
+    if (metaInfo.isBasedOn(m->flowViewFlowDecisionMetaInfo(), m->flowViewFlowWildcardMetaInfo()))
         return true;
 
     return nodeInstance().isMovable();
@@ -310,7 +346,7 @@ bool QmlItemNode::instanceHasScaleOrRotationTransform() const
 
 bool itemIsMovable(const ModelNode &modelNode)
 {
-    if (modelNode.metaInfo().isSubclassOf("QtQuick.Controls.Tab"))
+    if (modelNode.metaInfo().isQtQuickControlsTab())
         return false;
 
     if (!modelNode.hasParentProperty())
@@ -324,7 +360,7 @@ bool itemIsMovable(const ModelNode &modelNode)
 
 bool itemIsResizable(const ModelNode &modelNode)
 {
-    if (modelNode.metaInfo().isSubclassOf("QtQuick.Controls.Tab"))
+    if (modelNode.metaInfo().isQtQuickControlsTab())
         return false;
 
     return NodeHints::fromModelNode(modelNode).isResizable();
@@ -344,41 +380,6 @@ bool QmlItemNode::modelIsResizable() const
             && !modelNode().hasBindingProperty("height")
             && itemIsResizable(modelNode())
             && !modelIsInLayout();
-}
-
-static bool isMcuRotationAllowed(QString itemName, bool hasChildren)
-{
-#ifndef QMLDESIGNER_TEST
-    const QString propName = "rotation";
-    const DesignerMcuManager &manager = DesignerMcuManager::instance();
-    if (manager.isMCUProject()) {
-        if (manager.allowedItemProperties().contains(itemName)) {
-            const DesignerMcuManager::ItemProperties properties =
-                    manager.allowedItemProperties().value(itemName);
-            if (properties.properties.contains(propName)) {
-                if (hasChildren)
-                    return properties.allowChildren;
-                return true;
-            }
-        }
-
-        if (manager.bannedItems().contains(itemName))
-            return false;
-
-        if (manager.bannedProperties().contains(propName))
-            return false;
-    }
-#endif
-
-    return true;
-}
-
-bool QmlItemNode::modelIsRotatable() const
-{
-    return !modelNode().hasBindingProperty("rotation")
-            && itemIsResizable(modelNode())
-            && !modelIsInLayout()
-            && isMcuRotationAllowed(QString::fromUtf8(modelNode().type()), hasChildren());
 }
 
 bool QmlItemNode::modelIsInLayout() const
@@ -489,7 +490,7 @@ QList<ModelNode> toModelNodeList(const QList<QmlItemNode> &qmlItemNodeList)
 {
     QList<ModelNode> modelNodeList;
 
-    foreach (const QmlItemNode &qmlItemNode, qmlItemNodeList)
+    for (const QmlItemNode &qmlItemNode : qmlItemNodeList)
         modelNodeList.append(qmlItemNode.modelNode());
 
     return modelNodeList;
@@ -552,10 +553,15 @@ void QmlItemNode::setPostionInBaseState(const QPointF &position)
     modelNode().variantProperty("y").setValue(qRound(position.y()));
 }
 
+namespace {
+constexpr AuxiliaryDataKeyView flowXProperty{AuxiliaryDataType::Document, "flowX"};
+constexpr AuxiliaryDataKeyView flowYProperty{AuxiliaryDataType::Document, "flowY"};
+} // namespace
+
 void QmlItemNode::setFlowItemPosition(const QPointF &position)
 {
-    modelNode().setAuxiliaryData("flowX", position.x());
-    modelNode().setAuxiliaryData("flowY", position.y());
+    modelNode().setAuxiliaryData(flowXProperty, position.x());
+    modelNode().setAuxiliaryData(flowYProperty, position.y());
 }
 
 QPointF QmlItemNode::flowPosition() const
@@ -563,8 +569,8 @@ QPointF QmlItemNode::flowPosition() const
     if (!isValid())
         return QPointF();
 
-    return QPointF(modelNode().auxiliaryData("flowX").toInt(),
-                   modelNode().auxiliaryData("flowY").toInt());
+    return QPointF(modelNode().auxiliaryDataWithDefault(flowXProperty).toInt(),
+                   modelNode().auxiliaryDataWithDefault(flowYProperty).toInt());
 }
 
 bool QmlItemNode::isInLayout() const
@@ -574,7 +580,7 @@ bool QmlItemNode::isInLayout() const
         ModelNode parent = modelNode().parentProperty().parentModelNode();
 
         if (parent.isValid() && parent.metaInfo().isValid())
-            return parent.metaInfo().isSubclassOf("QtQuick.Layouts.Layout");
+            return parent.metaInfo().isQtQuickLayoutsLayout();
     }
 
     return false;
@@ -596,20 +602,17 @@ bool QmlItemNode::isInStackedContainer() const
 
 bool QmlItemNode::isFlowView() const
 {
-    return modelNode().isValid()
-            && modelNode().metaInfo().isSubclassOf("FlowView.FlowView");
+    return modelNode().isValid() && modelNode().metaInfo().isFlowViewFlowView();
 }
 
 bool QmlItemNode::isFlowItem() const
 {
-    return modelNode().isValid()
-            && modelNode().metaInfo().isSubclassOf("FlowView.FlowItem");
+    return modelNode().isValid() && modelNode().metaInfo().isFlowViewFlowItem();
 }
 
 bool QmlItemNode::isFlowActionArea() const
 {
-    return modelNode().isValid()
-            && modelNode().metaInfo().isSubclassOf("FlowView.FlowActionArea");
+    return modelNode().isValid() && modelNode().metaInfo().isFlowViewFlowActionArea();
 }
 
 ModelNode QmlItemNode::rootModelNode() const
@@ -661,8 +664,7 @@ bool QmlFlowItemNode::isValid() const
 
 bool QmlFlowItemNode::isValidQmlFlowItemNode(const ModelNode &modelNode)
 {
-    return isValidQmlObjectNode(modelNode) && modelNode.metaInfo().isValid()
-            && modelNode.metaInfo().isSubclassOf("FlowView.FlowItem");
+    return isValidQmlObjectNode(modelNode) && modelNode.metaInfo().isFlowViewFlowItem();
 }
 
 QList<QmlFlowActionAreaNode> QmlFlowItemNode::flowActionAreas() const
@@ -688,8 +690,7 @@ bool QmlFlowActionAreaNode::isValid() const
 
 bool QmlFlowActionAreaNode::isValidQmlFlowActionAreaNode(const ModelNode &modelNode)
 {
-    return isValidQmlObjectNode(modelNode) && modelNode.metaInfo().isValid()
-           && modelNode.metaInfo().isSubclassOf("FlowView.FlowActionArea");
+    return isValidQmlObjectNode(modelNode) && modelNode.metaInfo().isFlowViewFlowActionArea();
 }
 
 ModelNode QmlFlowActionAreaNode::targetTransition() const
@@ -745,7 +746,7 @@ bool QmlFlowViewNode::isValid() const
 bool QmlFlowViewNode::isValidQmlFlowViewNode(const ModelNode &modelNode)
 {
     return isValidQmlObjectNode(modelNode) && modelNode.metaInfo().isValid()
-           && modelNode.metaInfo().isSubclassOf("FlowView.FlowView");
+           && modelNode.metaInfo().isFlowViewFlowView();
 }
 
 QList<QmlFlowItemNode> QmlFlowViewNode::flowItems() const
@@ -988,8 +989,14 @@ QList<ModelNode> QmlFlowViewNode::transitionsForProperty(const PropertyName &pro
     return list;
 }
 
-PropertyNameList QmlFlowViewNode::st_mouseSignals = { "clicked", "doubleClicked", "pressAndHold",
-                                                      "pressed", "released", "wheel" };
+PropertyNameList QmlFlowViewNode::s_mouseSignals = []() {
+    PropertyNameList mouseSignals = {
+        "clicked", "doubleClicked", "pressAndHold", "pressed", "released", "wheel"};
+
+    Q_ASSERT(std::is_sorted(mouseSignals.begin(), mouseSignals.end()));
+
+    return mouseSignals;
+}();
 
 QList<QmlConnections> QmlFlowViewNode::getAssociatedConnections(const ModelNode &node)
 {
@@ -1015,8 +1022,7 @@ QList<QmlConnections> QmlFlowViewNode::getAssociatedConnections(const ModelNode 
                 sourceProperty = sourceComponents[1];
             }
 
-            if (st_mouseSignals.contains(signalWithoutPrefix)
-                && sourceId == node.id()
+            if (mouseSignals().contains(signalWithoutPrefix) && sourceId == node.id()
                 && sourceProperty == "trigger()")
                 return true;
         }

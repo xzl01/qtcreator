@@ -3,7 +3,7 @@
 function(create_python_xy PythonExe PythonZipFilePath)
   get_filename_component(python_lib_dir "${PythonExe}" DIRECTORY)
   get_filename_component(python_lib_dir "${python_lib_dir}/Lib" ABSOLUTE)
-  foreach(dir collections encodings importlib json urllib)
+  foreach(dir collections encodings importlib json urllib re)
       file(COPY ${python_lib_dir}/${dir}
           DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/python-lib
           FILES_MATCHING PATTERN "*.py"
@@ -64,6 +64,7 @@ function(create_python_xy PythonExe PythonZipFilePath)
   set(ENV{PYTHONOPTIMIZE} "2")
   execute_process(
     COMMAND "${PythonExe}" -OO -m compileall "${CMAKE_CURRENT_BINARY_DIR}/python-lib" -b
+    ${QTC_COMMAND_ERROR_IS_FATAL}
   )
 
   file(GLOB_RECURSE python_lib_files "${CMAKE_CURRENT_BINARY_DIR}/python-lib/*.py")
@@ -75,5 +76,6 @@ function(create_python_xy PythonExe PythonZipFilePath)
   execute_process(
     COMMAND ${CMAKE_COMMAND} -E tar cf "${PythonZipFilePath}" . --format=zip
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/python-lib/"
+    ${QTC_COMMAND_ERROR_IS_FATAL}
   )
 endfunction()

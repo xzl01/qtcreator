@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Andre Hartmann <aha_1980@gmx.de>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 Andre Hartmann <aha_1980@gmx.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "javascriptfilter.h"
+
+#include "../coreplugintr.h"
 
 #include <QClipboard>
 #include <QGuiApplication>
@@ -37,8 +17,8 @@ enum class EngineAction { Reset = 1, Abort };
 JavaScriptFilter::JavaScriptFilter()
 {
     setId("JavaScriptFilter");
-    setDisplayName(tr("Evaluate JavaScript"));
-    setDescription(tr("Evaluates arbitrary JavaScript expressions and copies the result."));
+    setDisplayName(Tr::tr("Evaluate JavaScript"));
+    setDescription(Tr::tr("Evaluates arbitrary JavaScript expressions and copies the result."));
     setDefaultIncludedByDefault(false);
     setDefaultShortcutString("=");
     m_abortTimer.setSingleShot(true);
@@ -72,17 +52,17 @@ QList<LocatorFilterEntry> JavaScriptFilter::matchesFor(
 
     QList<LocatorFilterEntry> entries;
     if (entry.trimmed().isEmpty()) {
-        entries.append({this, tr("Reset Engine"), QVariant::fromValue(EngineAction::Reset)});
+        entries.append({this, Tr::tr("Reset Engine"), QVariant::fromValue(EngineAction::Reset)});
     } else {
         const QString result = m_engine->evaluate(entry).toString();
         if (m_aborted) {
-            const QString message = entry + " = " + tr("Engine aborted after timeout.");
+            const QString message = entry + " = " + Tr::tr("Engine aborted after timeout.");
             entries.append({this, message, QVariant::fromValue(EngineAction::Abort)});
         } else {
             const QString expression = entry + " = " + result;
-            entries.append({this, expression, QVariant()});
-            entries.append({this, tr("Copy to clipboard: %1").arg(result), result});
-            entries.append({this, tr("Copy to clipboard: %1").arg(expression), expression});
+            entries.append({this, expression});
+            entries.append({this, Tr::tr("Copy to clipboard: %1").arg(result), result});
+            entries.append({this, Tr::tr("Copy to clipboard: %1").arg(expression), expression});
         }
     }
 

@@ -1,50 +1,28 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlobjectnode.h"
+#include "abstractview.h"
+#include "bindingproperty.h"
+#include "nodeinstance.h"
+#include "nodeinstanceview.h"
+#include "nodelistproperty.h"
+#include "nodemetainfo.h"
+#include "nodeproperty.h"
+#include "qml3dnode.h"
 #include "qmlitemnode.h"
 #include "qmlstate.h"
 #include "qmltimelinekeyframegroup.h"
 #include "qmlvisualnode.h"
-#include "qml3dnode.h"
 #include "variantproperty.h"
-#include "nodeproperty.h"
+
+#include <auxiliarydataproperties.h>
+#include <designersettings.h>
 #include <invalidmodelnodeexception.h>
-#include "abstractview.h"
-#include "nodeinstance.h"
-#include "nodemetainfo.h"
-#include "bindingproperty.h"
-#include "nodelistproperty.h"
-#include "nodeinstanceview.h"
 
 #include <qmltimeline.h>
 
-#ifndef QMLDESIGNER_TEST
-#include <qmldesignerplugin.h>
-#endif
-
+#include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
 #include <QRegularExpression>
@@ -54,7 +32,7 @@ namespace QmlDesigner {
 void QmlObjectNode::setVariantProperty(const PropertyName &name, const QVariant &value)
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (timelineIsActive() && currentTimeline().isRecording()) {
         modelNode().validId();
@@ -63,17 +41,21 @@ void QmlObjectNode::setVariantProperty(const PropertyName &name, const QVariant 
 
         Q_ASSERT(timelineFrames.isValid());
 
-        qreal frame = currentTimeline().modelNode().auxiliaryData("currentFrame@NodeInstance").toReal();
+        qreal frame = currentTimeline().modelNode().auxiliaryDataWithDefault(currentFrameProperty).toReal();
         timelineFrames.setValue(value, frame);
 
         return;
-    } else if (modelNode().hasId() && timelineIsActive() && currentTimeline().hasKeyframeGroup(modelNode(), name)) {
+    } else if (modelNode().hasId() && timelineIsActive()
+               && currentTimeline().hasKeyframeGroup(modelNode(), name)) {
         QmlTimelineKeyframeGroup timelineFrames(currentTimeline().keyframeGroup(modelNode(), name));
 
         Q_ASSERT(timelineFrames.isValid());
 
         if (timelineFrames.isRecording()) {
-            qreal frame = currentTimeline().modelNode().auxiliaryData("currentFrame@NodeInstance").toReal();
+            qreal frame = currentTimeline()
+                              .modelNode()
+                              .auxiliaryDataWithDefault(currentFrameProperty)
+                              .toReal();
             timelineFrames.setValue(value, frame);
 
             return;
@@ -94,7 +76,7 @@ void QmlObjectNode::setVariantProperty(const PropertyName &name, const QVariant 
 void QmlObjectNode::setBindingProperty(const PropertyName &name, const QString &expression)
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (isInBaseState()) {
         modelNode().bindingProperty(name).setExpression(expression); //basestate
@@ -143,7 +125,7 @@ QVariant  QmlObjectNode::instanceValue(const PropertyName &name) const
 bool QmlObjectNode::hasProperty(const PropertyName &name) const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return false;
 
     if (currentState().hasPropertyChanges(modelNode())) {
         QmlPropertyChanges propertyChanges = currentState().propertyChanges(modelNode());
@@ -157,7 +139,7 @@ bool QmlObjectNode::hasProperty(const PropertyName &name) const
 bool QmlObjectNode::hasBindingProperty(const PropertyName &name) const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return false;
 
     if (currentState().hasPropertyChanges(modelNode())) {
         QmlPropertyChanges propertyChanges = currentState().propertyChanges(modelNode());
@@ -196,7 +178,7 @@ bool QmlObjectNode::instanceHasValue(const PropertyName &name) const
 bool QmlObjectNode::propertyAffectedByCurrentState(const PropertyName &name) const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return false;
 
     if (currentState().isBaseState())
         return modelNode().hasProperty(name);
@@ -213,14 +195,14 @@ bool QmlObjectNode::propertyAffectedByCurrentState(const PropertyName &name) con
 QVariant QmlObjectNode::modelValue(const PropertyName &name) const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return false;
 
     if (timelineIsActive() && currentTimeline().hasTimeline(modelNode(), name)) {
         QmlTimelineKeyframeGroup timelineFrames(currentTimeline().keyframeGroup(modelNode(), name));
 
         Q_ASSERT(timelineFrames.isValid());
 
-        qreal frame = currentTimeline().modelNode().auxiliaryData("currentFrame@NodeInstance").toReal();
+        qreal frame = currentTimeline().modelNode().auxiliaryDataWithDefault(currentFrameProperty).toReal();
 
         QVariant value = timelineFrames.value(frame);
 
@@ -246,16 +228,16 @@ QVariant QmlObjectNode::modelValue(const PropertyName &name) const
 
 bool QmlObjectNode::isTranslatableText(const PropertyName &name) const
 {
-    if (modelNode().metaInfo().isValid() && modelNode().metaInfo().hasProperty(name))
-        if (modelNode().metaInfo().propertyTypeName(name) == "QString" || modelNode().metaInfo().propertyTypeName(name) == "string") {
-            if (modelNode().hasBindingProperty(name)) {
-                static QRegularExpression regularExpressionPattern(
-                            QLatin1String("^qsTr(|Id|anslate)\\(\".*\"\\)$"));
-                return modelNode().bindingProperty(name).expression().contains(regularExpressionPattern);
-            }
-
-            return false;
+    if (modelNode().metaInfo().isValid() && modelNode().metaInfo().hasProperty(name)
+        && modelNode().metaInfo().property(name).propertyType().isString()) {
+        if (modelNode().hasBindingProperty(name)) {
+            static QRegularExpression regularExpressionPattern(
+                QLatin1String("^qsTr(|Id|anslate)\\(\".*\"\\)$"));
+            return modelNode().bindingProperty(name).expression().contains(regularExpressionPattern);
         }
+
+        return false;
+    }
 
     return false;
 }
@@ -274,23 +256,28 @@ QString QmlObjectNode::stripedTranslatableText(const PropertyName &name) const
     return instanceValue(name).toString();
 }
 
-QString QmlObjectNode::expression(const PropertyName &name) const
+BindingProperty QmlObjectNode::bindingProperty(const PropertyName &name) const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     if (currentState().isBaseState())
-        return modelNode().bindingProperty(name).expression();
+        return modelNode().bindingProperty(name);
 
     if (!currentState().hasPropertyChanges(modelNode()))
-        return modelNode().bindingProperty(name).expression();
+        return modelNode().bindingProperty(name);
 
     QmlPropertyChanges propertyChanges(currentState().propertyChanges(modelNode()));
 
     if (!propertyChanges.modelNode().hasProperty(name))
-        return modelNode().bindingProperty(name).expression();
+        return modelNode().bindingProperty(name);
 
-    return propertyChanges.modelNode().bindingProperty(name).expression();
+    return propertyChanges.modelNode().bindingProperty(name);
+}
+
+QString QmlObjectNode::expression(const PropertyName &name) const
+{
+    return bindingProperty(name).expression();
 }
 
 /*!
@@ -314,15 +301,15 @@ bool QmlObjectNode::instanceCanReparent() const
 QmlPropertyChanges QmlObjectNode::propertyChangeForCurrentState() const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
-     if (currentState().isBaseState())
-         return QmlPropertyChanges();
+    if (currentState().isBaseState())
+        return QmlPropertyChanges();
 
-     if (!currentState().hasPropertyChanges(modelNode()))
-         return QmlPropertyChanges();
+    if (!currentState().hasPropertyChanges(modelNode()))
+        return QmlPropertyChanges();
 
-     return currentState().propertyChanges(modelNode());
+    return currentState().propertyChanges(modelNode());
 }
 
 static void removeStateOperationsForChildren(const QmlObjectNode &node)
@@ -340,10 +327,11 @@ static void removeStateOperationsForChildren(const QmlObjectNode &node)
 
 static void removeAnimationsFromAnimation(const ModelNode &animation)
 {
-    QTC_ASSERT(animation.isValid(), return);
+    QTC_ASSERT(animation.isValid(), return );
 
+    auto model = animation.model();
     const QList<ModelNode> propertyAnimations = animation.subModelNodesOfType(
-        "QtQuick.PropertyAnimation");
+        model->qtQuickPropertyAnimationMetaInfo());
 
     for (const ModelNode &child : propertyAnimations) {
         if (!child.hasBindingProperty("target")) {
@@ -394,7 +382,9 @@ static void removeAliasExports(const QmlObjectNode &node)
     if (hasAliasExport)
         rootNode.removeProperty(propertyName);
 
-    foreach (const ModelNode &childNode, node.modelNode().directSubModelNodes()) {
+
+    const QList<ModelNode> nodes = node.modelNode().directSubModelNodes();
+    for (const ModelNode &childNode : nodes) {
         removeAliasExports(childNode);
     }
 
@@ -426,7 +416,7 @@ static void deleteAllReferencesToNodeAndChildren(const ModelNode &node)
 void QmlObjectNode::destroy()
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     removeLayerEnabled(modelNode());
     removeAliasExports(modelNode());
@@ -443,7 +433,7 @@ void QmlObjectNode::destroy()
     }
 
     const auto subNodes = modelNode().allSubModelNodesAndThisNode();
-    for (auto &timelineNode : qAsConst(timelineNodes)) {
+    for (auto &timelineNode : std::as_const(timelineNodes)) {
         QmlTimeline timeline(timelineNode);
         for (const auto &subNode : subNodes)
             timeline.destroyKeyframesForTarget(subNode);
@@ -471,7 +461,7 @@ void QmlObjectNode::destroy()
 void QmlObjectNode::ensureAliasExport()
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (!isAliasExported()) {
         modelNode().validId();
@@ -504,11 +494,12 @@ bool QmlObjectNode::isAliasExported() const
 QList<QmlModelState> QmlObjectNode::allAffectingStates() const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     QList<QmlModelState> returnList;
 
-    foreach (const QmlModelState &state, allDefinedStates()) {
+    const QList<QmlModelState> states = allDefinedStates();
+    for (const QmlModelState &state : states) {
         if (state.affectsModelNode(modelNode()))
             returnList.append(state);
     }
@@ -522,10 +513,11 @@ QList<QmlModelState> QmlObjectNode::allAffectingStates() const
 QList<QmlModelStateOperation> QmlObjectNode::allAffectingStatesOperations() const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     QList<QmlModelStateOperation> returnList;
-    foreach (const QmlModelState &state, allDefinedStates()) {
+    const QList<QmlModelState> states = allDefinedStates();
+    for (const QmlModelState &state : states) {
         if (state.affectsModelNode(modelNode()))
             returnList.append(state.stateOperations(modelNode()));
     }
@@ -540,7 +532,8 @@ static QList<QmlVisualNode> allQmlVisualNodesRecursive(const QmlItemNode &qmlIte
     if (qmlItemNode.isValid()) {
         qmlVisualNodeList.append(qmlItemNode);
 
-        foreach (const ModelNode &modelNode, qmlItemNode.modelNode().directSubModelNodes()) {
+        const QList<ModelNode> nodes = qmlItemNode.modelNode().directSubModelNodes();
+        for (const ModelNode &modelNode : nodes) {
             if (QmlVisualNode::isValidQmlVisualNode(modelNode))
                 qmlVisualNodeList.append(allQmlVisualNodesRecursive(modelNode));
         }
@@ -552,7 +545,7 @@ static QList<QmlVisualNode> allQmlVisualNodesRecursive(const QmlItemNode &qmlIte
 QList<QmlModelState> QmlObjectNode::allDefinedStates() const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     QList<QmlModelState> returnList;
 
@@ -561,8 +554,14 @@ QList<QmlModelState> QmlObjectNode::allDefinedStates() const
     if (QmlVisualNode::isValidQmlVisualNode(view()->rootModelNode()))
         allVisualNodes.append(allQmlVisualNodesRecursive(view()->rootModelNode()));
 
-    for (const QmlVisualNode &node : qAsConst(allVisualNodes))
+    for (const QmlVisualNode &node : std::as_const(allVisualNodes))
         returnList.append(node.states().allStates());
+
+    const auto allNodes = view()->allModelNodes();
+    for (const ModelNode &node : allNodes) {
+        if (node.simplifiedTypeName() == "StateGroup")
+            returnList.append(QmlModelStateGroup(node).allStates());
+    }
 
     return returnList;
 }
@@ -577,6 +576,37 @@ QList<QmlModelStateOperation> QmlObjectNode::allInvalidStateOperations() const
     return result;
 }
 
+QmlModelStateGroup QmlObjectNode::states() const
+{
+    if (isValid())
+        return QmlModelStateGroup(modelNode());
+    else
+        return QmlModelStateGroup();
+}
+
+QList<ModelNode> QmlObjectNode::allTimelines() const
+{
+    QList<ModelNode> timelineNodes;
+    const auto allNodes = view()->allModelNodes();
+    for (const auto &timelineNode : allNodes) {
+        if (QmlTimeline::isValidQmlTimeline(timelineNode))
+            timelineNodes.append(timelineNode);
+    }
+
+    return timelineNodes;
+}
+
+QList<ModelNode> QmlObjectNode::getAllConnections() const
+{
+    if (!isValid())
+        return {};
+
+    auto list = view()->allModelNodesOfType(model()->qtQuickConnectionsMetaInfo());
+    return Utils::filtered(list, [this](const ModelNode &connection) {
+        return connection.hasBindingProperty("target")
+               && connection.bindingProperty("target").resolveToModelNode() == modelNode();
+    });
+}
 
 /*!
     Removes a variant property of the object specified by \a name from the
@@ -586,7 +616,7 @@ QList<QmlModelStateOperation> QmlObjectNode::allInvalidStateOperations() const
 void  QmlObjectNode::removeProperty(const PropertyName &name)
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (isInBaseState()) {
         modelNode().removeProperty(name); //basestate
@@ -601,7 +631,7 @@ QList<ModelNode> toModelNodeList(const QList<QmlObjectNode> &qmlObjectNodeList)
 {
     QList<ModelNode> modelNodeList;
 
-    foreach (const QmlObjectNode &qmlObjectNode, qmlObjectNodeList)
+    for (const QmlObjectNode &qmlObjectNode : qmlObjectNodeList)
         modelNodeList.append(qmlObjectNode.modelNode());
 
     return modelNodeList;
@@ -611,7 +641,7 @@ QList<QmlObjectNode> toQmlObjectNodeList(const QList<ModelNode> &modelNodeList)
 {
     QList<QmlObjectNode> qmlObjectNodeList;
 
-    foreach (const ModelNode &modelNode, modelNodeList) {
+    for (const ModelNode &modelNode : modelNodeList) {
         if (QmlObjectNode::isValidQmlObjectNode(modelNode))
              qmlObjectNodeList.append(modelNode);
     }
@@ -630,27 +660,34 @@ QVariant QmlObjectNode::instanceValue(const ModelNode &modelNode, const Property
     return modelNode.view()->nodeInstanceView()->instanceForModelNode(modelNode).property(name);
 }
 
-QString QmlObjectNode::generateTranslatableText(const QString &text)
+QString QmlObjectNode::generateTranslatableText([[maybe_unused]] const QString &text,
+                                                const DesignerSettings &settings)
 {
-#ifndef QMLDESIGNER_TEST
-
-    if (QmlDesignerPlugin::instance()->settings().value(
-            DesignerSettingsKey::TYPE_OF_QSTR_FUNCTION).toInt())
-
-        switch (QmlDesignerPlugin::instance()->settings().value(
-                    DesignerSettingsKey::TYPE_OF_QSTR_FUNCTION).toInt()) {
+    if (settings.value(DesignerSettingsKey::TYPE_OF_QSTR_FUNCTION).toInt())
+        switch (settings.value(DesignerSettingsKey::TYPE_OF_QSTR_FUNCTION).toInt()) {
         case 0: return QString(QStringLiteral("qsTr(\"%1\")")).arg(text);
         case 1: return QString(QStringLiteral("qsTrId(\"%1\")")).arg(text);
-        case 2: return QString(QStringLiteral("qsTranslate(\"\"\"%1\")")).arg(text);
+        case 2: return QString(QStringLiteral("qsTranslate(\"%1\", \"context\")")).arg(text);
         default:
             break;
-
         }
     return QString(QStringLiteral("qsTr(\"%1\")")).arg(text);
-#else
-    Q_UNUSED(text)
-    return QString();
-#endif
+}
+
+QString QmlObjectNode::stripedTranslatableTextFunction(const QString &text)
+{
+    const QRegularExpression regularExpressionPattern(
+                QLatin1String("^qsTr(|Id|anslate)\\(\"(.*)\"\\)$"));
+    const QRegularExpressionMatch match = regularExpressionPattern.match(text);
+    if (match.hasMatch())
+        return match.captured(2);
+    return text;
+}
+
+QString QmlObjectNode::convertToCorrectTranslatableFunction(const QString &text,
+                                                            const DesignerSettings &designerSettings)
+{
+    return generateTranslatableText(stripedTranslatableTextFunction(text), designerSettings);
 }
 
 TypeName QmlObjectNode::instanceType(const PropertyName &name) const
@@ -676,15 +713,6 @@ QmlObjectNode QmlObjectNode::nodeForInstance(const NodeInstance &instance) const
 QmlItemNode QmlObjectNode::itemForInstance(const NodeInstance &instance) const
 {
     return QmlItemNode(ModelNode(instance.modelNode(), view()));
-}
-
-QmlObjectNode::QmlObjectNode()
-{
-}
-
-QmlObjectNode::QmlObjectNode(const ModelNode &modelNode)
-    : QmlModelNodeFacade(modelNode)
-{
 }
 
 bool QmlObjectNode::isValidQmlObjectNode(const ModelNode &modelNode)
@@ -814,14 +842,13 @@ QmlObjectNode *QmlObjectNode::getQmlObjectNodeOfCorrectType(const ModelNode &mod
     // Create QmlObjectNode of correct type for the modelNode
     // Note: Currently we are only interested in differentiating 3D nodes, so no check for
     // visual nodes is done for efficiency reasons
-    if (modelNode.isValid() && modelNode.isSubclassOf("QtQuick3D.Node"))
+    if (modelNode.isValid() && modelNode.metaInfo().isQtQuick3DNode())
         return new Qml3DNode(modelNode);
     return new QmlObjectNode(modelNode);
 }
 
-bool QmlObjectNode::isBlocked(const PropertyName &propName) const
+bool QmlObjectNode::isBlocked([[maybe_unused]] const PropertyName &propName) const
 {
-    Q_UNUSED(propName)
     return false;
 }
 

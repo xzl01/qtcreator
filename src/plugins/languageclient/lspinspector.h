@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "dynamiccapabilities.h"
 
+#include <QPointer>
 #include <QTime>
 #include <QWidget>
 
@@ -45,18 +24,16 @@ public:
     LspLogMessage();
     LspLogMessage(MessageSender sender,
                   const QTime &time,
-                  const LanguageServerProtocol::BaseMessage &message);
+                  const LanguageServerProtocol::JsonRpcMessage &message);
     QTime time;
-    LanguageServerProtocol::BaseMessage message;
+    LanguageServerProtocol::JsonRpcMessage message;
 
     LanguageServerProtocol::MessageId id() const;
     QString displayText() const;
-    QJsonObject &json() const;
 
 private:
-    mutable Utils::optional<LanguageServerProtocol::MessageId> m_id;
-    mutable Utils::optional<QString> m_displayText;
-    mutable Utils::optional<QJsonObject> m_json;
+    mutable std::optional<LanguageServerProtocol::MessageId> m_id;
+    mutable std::optional<QString> m_displayText;
 };
 
 struct Capabilities
@@ -71,12 +48,11 @@ class LspInspector : public QObject
 public:
     LspInspector() {}
 
-    QWidget *createWidget(const QString &defaultClient = {});
-
+    void show(const QString &defaultClient = {});
 
     void log(const LspLogMessage::MessageSender sender,
              const QString &clientName,
-             const LanguageServerProtocol::BaseMessage &message);
+             const LanguageServerProtocol::JsonRpcMessage &message);
     void clientInitialized(const QString &clientName,
                            const LanguageServerProtocol::ServerCapabilities &capabilities);
     void updateCapabilities(const QString &clientName,
@@ -94,6 +70,7 @@ signals:
 private:
     QMap<QString, std::list<LspLogMessage>> m_logs;
     QMap<QString, Capabilities> m_capabilities;
+    QPointer<QWidget> m_currentWidget;
     int m_logSize = 100; // default log size if no widget is currently visible
 };
 

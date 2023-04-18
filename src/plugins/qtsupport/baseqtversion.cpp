@@ -1,50 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "baseqtversion.h"
+
+#include "profilereader.h"
 #include "qtconfigwidget.h"
 #include "qtkitinformation.h"
-
+#include "qtsupportconstants.h"
+#include "qtsupporttr.h"
 #include "qtversionfactory.h"
 #include "qtversionmanager.h"
-#include "profilereader.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/progressmanager/progressmanager.h>
+
 #include <proparser/qmakevfs.h>
+
 #include <projectexplorer/deployablefile.h>
 #include <projectexplorer/deploymentdata.h>
-#include <projectexplorer/toolchainmanager.h>
-#include <projectexplorer/toolchain.h>
-#include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/headerpath.h>
 #include <projectexplorer/project.h>
+#include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
-#include <qtsupport/qtkitinformation.h>
-#include <qtsupport/qtsupportconstants.h>
+#include <projectexplorer/toolchain.h>
+#include <projectexplorer/toolchainmanager.h>
 
 #include <utils/algorithm.h>
 #include <utils/buildablehelperlibrary.h>
@@ -54,7 +34,6 @@
 #include <utils/macroexpander.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
-#include <utils/runextensions.h>
 #include <utils/stringutils.h>
 #include <utils/winutils.h>
 
@@ -66,6 +45,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QUrl>
+#include <QtConcurrent>
 
 #include <algorithm>
 
@@ -157,7 +137,17 @@ static QSet<Id> versionedIds(const QByteArray &prefix, int major, int minor)
         result.insert(Id::fromName(featureDotMajor + '.' + minorStr));
     }
 
+    // FIXME: Terrible hack. Get rid of using version numbers as tags!
+    if (major > 5)
+        result.unite(versionedIds(prefix, major - 1, 15));
+
     return result;
+}
+
+static QSet<Id> versionedIds(const QVersionNumber &version)
+{
+    return versionedIds(Constants::FEATURE_QT_PREFIX,
+                        version.majorVersion(), version.minorVersion());
 }
 
 // Wrapper to make the std::unique_ptr<Utils::MacroExpander> "copyable":
@@ -190,7 +180,7 @@ public:
     static bool queryQMakeVariables(const FilePath &binary,
                                     const Environment &env,
                                     QHash<ProKey, ProString> *versionInfo,
-                                    QString *error = nullptr);
+                                    QString *error);
     enum PropertyVariant { PropertyVariantDev, PropertyVariantGet, PropertyVariantSrc };
     QString qmakeProperty(const QByteArray &name, PropertyVariant variant = PropertyVariantGet);
     static QString qmakeProperty(const QHash<ProKey, ProString> &versionInfo,
@@ -259,78 +249,6 @@ MacroExpander *MacroExpanderWrapper::macroExpander(const QtVersion *qtversion) c
 } // Internal
 
 ///////////////
-// QtVersionNumber
-///////////////
-QtVersionNumber::QtVersionNumber(int ma, int mi, int p)
-    : majorVersion(ma), minorVersion(mi), patchVersion(p)
-{ }
-
-QtVersionNumber::QtVersionNumber(const QString &versionString)
-{
-    if (::sscanf(versionString.toLatin1().constData(), "%d.%d.%d",
-           &majorVersion, &minorVersion, &patchVersion) != 3)
-        majorVersion = minorVersion = patchVersion = -1;
-}
-
-QSet<Id> QtVersionNumber::features() const
-{
-    return versionedIds(Constants::FEATURE_QT_PREFIX, majorVersion, minorVersion);
-}
-
-bool QtVersionNumber::matches(int major, int minor, int patch) const
-{
-    if (major < 0)
-        return true;
-    if (major != majorVersion)
-        return false;
-
-    if (minor < 0)
-        return true;
-    if (minor != minorVersion)
-        return false;
-
-    if (patch < 0)
-        return true;
-    return (patch == patchVersion);
-}
-
-bool QtVersionNumber::operator <(const QtVersionNumber &b) const
-{
-    if (majorVersion != b.majorVersion)
-        return majorVersion < b.majorVersion;
-    if (minorVersion != b.minorVersion)
-        return minorVersion < b.minorVersion;
-    return patchVersion < b.patchVersion;
-}
-
-bool QtVersionNumber::operator >(const QtVersionNumber &b) const
-{
-    return b < *this;
-}
-
-bool QtVersionNumber::operator ==(const QtVersionNumber &b) const
-{
-    return majorVersion == b.majorVersion
-            && minorVersion == b.minorVersion
-            && patchVersion == b.patchVersion;
-}
-
-bool QtVersionNumber::operator !=(const QtVersionNumber &b) const
-{
-    return !(*this == b);
-}
-
-bool QtVersionNumber::operator <=(const QtVersionNumber &b) const
-{
-    return !(*this > b);
-}
-
-bool QtVersionNumber::operator >=(const QtVersionNumber &b) const
-{
-    return b <= *this;
-}
-
-///////////////
 // QtVersion
 ///////////////
 
@@ -347,14 +265,14 @@ QString QtVersion::defaultUnexpandedDisplayName() const
 {
     QString location;
     if (qmakeFilePath().isEmpty()) {
-        location = QCoreApplication::translate("QtVersion", "<unknown>");
+        location = Tr::tr("<unknown>");
     } else {
         // Deduce a description from '/foo/qt-folder/[qtbase]/bin/qmake' -> '/foo/qt-folder'.
         // '/usr' indicates System Qt 4.X on Linux.
         for (FilePath dir = qmakeFilePath().parentDir(); !dir.isEmpty(); dir = dir.parentDir()) {
             const QString dirName = dir.fileName();
             if (dirName == "usr") { // System-installed Qt.
-                location = QCoreApplication::translate("QtVersion", "System");
+                location = Tr::tr("System");
                 break;
             }
             location = dirName;
@@ -368,52 +286,52 @@ QString QtVersion::defaultUnexpandedDisplayName() const
     }
 
     return detectionSource() == "PATH" ?
-        QCoreApplication::translate("QtVersion", "Qt %{Qt:Version} in PATH (%2)").arg(location) :
-        QCoreApplication::translate("QtVersion", "Qt %{Qt:Version} (%2)").arg(location);
+        Tr::tr("Qt %{Qt:Version} in PATH (%2)").arg(location) :
+        Tr::tr("Qt %{Qt:Version} (%2)").arg(location);
 }
 
 QSet<Id> QtVersion::availableFeatures() const
 {
-    QSet<Id> features = qtVersion().features(); // Qt Version features
+    QSet<Id> features = versionedIds(qtVersion()); // Qt Version features
 
     features.insert(Constants::FEATURE_QWIDGETS);
     features.insert(Constants::FEATURE_QT_WEBKIT);
     features.insert(Constants::FEATURE_QT_CONSOLE);
 
-    if (qtVersion() < QtVersionNumber(4, 7, 0))
+    if (qtVersion() < QVersionNumber(4, 7, 0))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 1, 0));
 
-    if (qtVersion().matches(4, 7, 0))
+    if (qtVersion() == QVersionNumber(4, 7, 0))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 1, 1));
 
-    if (qtVersion().matches(4))
+    if (QVersionNumber(4).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 0));
 
-    if (qtVersion().matches(5, 0))
+    if (QVersionNumber(5, 0).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 1));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_PREFIX, 1, 0));
 
-    if (qtVersion().matches(5, 1))
+    if (QVersionNumber(5, 1).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 2));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_PREFIX, 1, 1));
 
-    if (qtVersion().matches(5, 2))
+    if (QVersionNumber(5, 2).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 3));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_PREFIX, 1, 2));
 
-    if (qtVersion().matches(5, 3))
+    if (QVersionNumber(5, 3).isPrefixOf(qtVersion()))
         return features;
 
     features.insert(Constants::FEATURE_QT_QUICK_UI_FILES);
@@ -421,7 +339,7 @@ QSet<Id> QtVersion::availableFeatures() const
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 4));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_PREFIX, 1, 3));
 
-    if (qtVersion().matches(5, 4))
+    if (QVersionNumber(5, 4).isPrefixOf(qtVersion()))
         return features;
 
     features.insert(Constants::FEATURE_QT_3D);
@@ -430,7 +348,7 @@ QSet<Id> QtVersion::availableFeatures() const
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_PREFIX, 1, 4));
     features.unite(versionedIds(Constants::FEATURE_QT_CANVAS3D_PREFIX, 1, 0));
 
-    if (qtVersion().matches(5, 5))
+    if (QVersionNumber(5, 5).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 6));
@@ -438,67 +356,72 @@ QSet<Id> QtVersion::availableFeatures() const
     features.unite(versionedIds(Constants::FEATURE_QT_LABS_CONTROLS_PREFIX, 1, 0));
     features.unite(versionedIds(Constants::FEATURE_QT_CANVAS3D_PREFIX, 1, 1));
 
-    if (qtVersion().matches(5, 6))
+    if (QVersionNumber(5, 6).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 7));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 2, 0));
     features.subtract(versionedIds(Constants::FEATURE_QT_LABS_CONTROLS_PREFIX, 1, 0));
 
-    if (qtVersion().matches(5, 7))
+    if (QVersionNumber(5, 7).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 8));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 2, 1));
 
-    if (qtVersion().matches(5, 8))
+    if (QVersionNumber(5, 8).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 9));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 2, 2));
 
-    if (qtVersion().matches(5, 9))
+    if (QVersionNumber(5, 9).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 10));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 2, 3));
 
-    if (qtVersion().matches(5, 10))
+    if (QVersionNumber(5, 10).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 11));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 2, 4));
 
-    if (qtVersion().matches(5, 11))
+    if (QVersionNumber(5, 11).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 12));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 2, 5));
 
-    if (qtVersion().matches(5, 12))
+    if (QVersionNumber(5, 12).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 13));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 2, 13));
 
-    if (qtVersion().matches(5, 13))
+    if (QVersionNumber(5, 13).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 14));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 2, 14));
 
-    if (qtVersion().matches(5, 14))
+    if (QVersionNumber(5, 14).isPrefixOf(qtVersion()))
         return features;
 
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 2, 15));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 2, 15));
 
-    if (qtVersion().matches(5, 15))
+    if (QVersionNumber(5, 15).isPrefixOf(qtVersion()))
         return features;
 
     // Qt 6 uses versionless imports
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_PREFIX, 6, -1));
     features.unite(versionedIds(Constants::FEATURE_QT_QUICK_CONTROLS_2_PREFIX, 6, -1));
+
+    if (QVersionNumber(6, 1).isPrefixOf(qtVersion()))
+        return features;
+
+    features.insert(Constants::FEATURE_QT_QML_CMAKE_API);
 
     return features;
 }
@@ -518,7 +441,7 @@ Tasks QtVersion::validateKit(const Kit *k)
     if (dt != "DockerDeviceType") {
         const QSet<Id> tdt = targetDeviceTypes();
         if (!tdt.isEmpty() && !tdt.contains(dt))
-            result << BuildSystemTask(Task::Warning, tr("Device type is not supported by Qt version."));
+            result << BuildSystemTask(Task::Warning, Tr::tr("Device type is not supported by Qt version."));
     }
 
     if (ToolChain *tc = ToolChainKitAspect::cxxToolChain(k)) {
@@ -548,15 +471,15 @@ Tasks QtVersion::validateKit(const Kit *k)
         QString message;
         if (!fullMatch) {
             if (!fuzzyMatch)
-                message = tr("The compiler \"%1\" (%2) cannot produce code for the Qt version \"%3\" (%4).");
+                message = Tr::tr("The compiler \"%1\" (%2) cannot produce code for the Qt version \"%3\" (%4).");
             else
-                message = tr("The compiler \"%1\" (%2) may not produce code compatible with the Qt version \"%3\" (%4).");
+                message = Tr::tr("The compiler \"%1\" (%2) may not produce code compatible with the Qt version \"%3\" (%4).");
             message = message.arg(tc->displayName(), targetAbi.toString(),
                                   version->displayName(), qtAbiString);
             result << BuildSystemTask(fuzzyMatch ? Task::Warning : Task::Error, message);
         }
     } else if (ToolChainKitAspect::cToolChain(k)) {
-        const QString message = tr("The kit has a Qt version, but no C++ compiler.");
+        const QString message = Tr::tr("The kit has a Qt version, but no C++ compiler.");
         result << BuildSystemTask(Task::Warning, message);
     }
     return result;
@@ -725,14 +648,14 @@ void QtVersion::fromMap(const QVariantMap &map)
     d->m_isAutodetected = map.value(QTVERSIONAUTODETECTED).toBool();
     d->m_detectionSource = map.value(QTVERSIONDETECTIONSOURCE).toString();
     d->m_overrideFeatures = Utils::Id::fromStringList(map.value(QTVERSION_OVERRIDE_FEATURES).toStringList());
-    d->m_qmakeCommand = FilePath::fromVariant(map.value(QTVERSIONQMAKEPATH));
+    d->m_qmakeCommand = FilePath::fromSettings(map.value(QTVERSIONQMAKEPATH));
 
     FilePath qmake = d->m_qmakeCommand;
     // FIXME: Check this is still needed or whether ProcessArgs::splitArg handles it.
     QString string = d->m_qmakeCommand.path();
     if (string.startsWith('~'))
         string.remove(0, 1).prepend(QDir::homePath());
-    qmake.setPath(string);
+    qmake = qmake.withNewPath(string);
     if (!d->m_qmakeCommand.needsDevice()) {
         if (BuildableHelperLibrary::isQtChooser(qmake)) {
             // we don't want to treat qtchooser as a normal qmake
@@ -742,7 +665,7 @@ void QtVersion::fromMap(const QVariantMap &map)
         }
     }
 
-    d->m_data.qtSources = FilePath::fromVariant(map.value(QTVERSIONSOURCEPATH));
+    d->m_data.qtSources = FilePath::fromSettings(map.value(QTVERSIONSOURCEPATH));
 
     // Handle ABIs provided by the SDKTool:
     // Note: Creator does not write these settings itself, so it has to come from the SDKTool!
@@ -768,7 +691,7 @@ QVariantMap QtVersion::toMap() const
     if (!d->m_overrideFeatures.isEmpty())
         result.insert(QTVERSION_OVERRIDE_FEATURES, Utils::Id::toStringList(d->m_overrideFeatures));
 
-    result.insert(QTVERSIONQMAKEPATH, qmakeFilePath().toVariant());
+    result.insert(QTVERSIONQMAKEPATH, qmakeFilePath().toSettings());
     return result;
 }
 
@@ -793,18 +716,18 @@ QtVersion::Predicate QtVersion::isValidPredicate(const QtVersion::Predicate &pre
 QString QtVersion::invalidReason() const
 {
     if (displayName().isEmpty())
-        return QCoreApplication::translate("QtVersion", "Qt version has no name");
+        return Tr::tr("Qt version has no name");
     if (qmakeFilePath().isEmpty())
-        return QCoreApplication::translate("QtVersion", "No qmake path set");
+        return Tr::tr("No qmake path set");
     if (!d->m_qmakeIsExecutable)
-        return QCoreApplication::translate("QtVersion", "qmake does not exist or is not executable");
+        return Tr::tr("qmake does not exist or is not executable");
     if (!d->m_data.installed)
-        return QCoreApplication::translate("QtVersion", "Qt version is not properly installed, please run make install");
+        return Tr::tr("Qt version is not properly installed, please run make install");
     if (binPath().isEmpty())
-        return QCoreApplication::translate("QtVersion",
-                                           "Could not determine the path to the binaries of the Qt installation, maybe the qmake path is wrong?");
+        return Tr::tr("Could not determine the path to the binaries of the Qt installation, "
+                      "maybe the qmake path is wrong?");
     if (d->m_mkspecUpToDate && d->m_mkspecFullPath.isEmpty())
-        return QCoreApplication::translate("QtVersion", "The default mkspec symlink is broken.");
+        return Tr::tr("The default mkspec symlink is broken.");
     return QString();
 }
 
@@ -812,10 +735,10 @@ QStringList QtVersion::warningReason() const
 {
     QStringList ret;
     if (qtAbis().isEmpty())
-        ret << QCoreApplication::translate("QtVersion", "ABI detection failed: Make sure to use a matching compiler when building.");
+        ret << Tr::tr("ABI detection failed: Make sure to use a matching compiler when building.");
     if (d->m_versionInfo.value(ProKey("QT_INSTALL_PREFIX/get"))
             != d->m_versionInfo.value(ProKey("QT_INSTALL_PREFIX"))) {
-        ret << QCoreApplication::translate("QtVersion", "Non-installed -prefix build - for internal development only.");
+        ret << Tr::tr("Non-installed -prefix build - for internal development only.");
     }
     return ret;
 }
@@ -914,14 +837,14 @@ QString QtVersion::toHtml(bool verbose) const
     QString rc;
     QTextStream str(&rc);
     str << "<html><body><table>";
-    str << "<tr><td><b>" << QCoreApplication::translate("QtVersion", "Name:")
+    str << "<tr><td><b>" << Tr::tr("Name:")
         << "</b></td><td>" << displayName() << "</td></tr>";
     if (!isValid()) {
         str << "<tr><td colspan=2><b>"
-            << QCoreApplication::translate("QtVersion", "Invalid Qt version")
+            << Tr::tr("Invalid Qt version")
             << "</b></td></tr>";
     } else {
-        str << "<tr><td><b>" << QCoreApplication::translate("QtVersion", "ABI:")
+        str << "<tr><td><b>" << Tr::tr("ABI:")
             << "</b></td>";
         const Abis abis = qtAbis();
         if (abis.isEmpty()) {
@@ -934,30 +857,29 @@ QString QtVersion::toHtml(bool verbose) const
             }
         }
         const OsType osType = d->m_qmakeCommand.osType();
-        str << "<tr><td><b>" << QCoreApplication::translate("QtVersion", "Source:")
+        str << "<tr><td><b>" << Tr::tr("Source:")
             << "</b></td><td>" << sourcePath().toUserOutput() << "</td></tr>";
-        str << "<tr><td><b>" << QCoreApplication::translate("QtVersion", "mkspec:")
+        str << "<tr><td><b>" << Tr::tr("mkspec:")
             << "</b></td><td>" << QDir::toNativeSeparators(mkspec()) << "</td></tr>";
-        str << "<tr><td><b>" << QCoreApplication::translate("QtVersion", "qmake:")
+        str << "<tr><td><b>" << Tr::tr("qmake:")
             << "</b></td><td>" << d->m_qmakeCommand.toUserOutput() << "</td></tr>";
         ensureMkSpecParsed();
         if (!mkspecPath().isEmpty()) {
             if (d->m_defaultConfigIsDebug || d->m_defaultConfigIsDebugAndRelease) {
-                str << "<tr><td><b>" << QCoreApplication::translate("QtVersion", "Default:") << "</b></td><td>"
+                str << "<tr><td><b>" << Tr::tr("Default:") << "</b></td><td>"
                     << (d->m_defaultConfigIsDebug ? "debug" : "release");
                 if (d->m_defaultConfigIsDebugAndRelease)
                     str << " debug_and_release";
                 str << "</td></tr>";
             } // default config.
         }
-        str << "<tr><td><b>" << QCoreApplication::translate("QtVersion", "Version:")
+        str << "<tr><td><b>" << Tr::tr("Version:")
             << "</b></td><td>" << qtVersionString() << "</td></tr>";
         if (verbose) {
             const QHash<ProKey, ProString> vInfo = d->versionInfo();
             if (!vInfo.isEmpty()) {
-                QList<ProKey> keys = vInfo.keys();
-                Utils::sort(keys);
-                foreach (const ProKey &key, keys) {
+                const QList<ProKey> keys = Utils::sorted(vInfo.keys());
+                for (const ProKey &key : keys) {
                     const QString &value = vInfo.value(key).toQString();
                     QString variableName = key.toQString();
                     if (variableName != "QMAKE_MKSPECS"
@@ -1042,7 +964,7 @@ FilePath QtVersion::qmlRuntimeFilePath() const
         return d->m_qmlRuntimePath;
 
     FilePath path = binPath();
-    if (qtVersion() >= QtVersionNumber(6, 2, 0))
+    if (qtVersion() >= QVersionNumber(6, 2, 0))
         path = path.pathAppended("qml").withExecutableSuffix();
     else
         path = path.pathAppended("qmlscene").withExecutableSuffix();
@@ -1069,7 +991,7 @@ FilePath QtVersion::qmlplugindumpFilePath() const
 FilePath QtVersionPrivate::findHostBinary(HostBinaries binary) const
 {
     FilePath baseDir;
-    if (q->qtVersion() < QtVersionNumber(5, 0, 0)) {
+    if (q->qtVersion() < QVersionNumber(5, 0, 0)) {
         baseDir = q->binPath();
     } else {
         switch (binary) {
@@ -1080,7 +1002,7 @@ FilePath QtVersionPrivate::findHostBinary(HostBinaries binary) const
             break;
         case Rcc:
         case Uic:
-            if (q->qtVersion() >= QtVersionNumber(6, 1))
+            if (q->qtVersion() >= QVersionNumber(6, 1))
                 baseDir = q->hostLibexecPath();
             else
                 baseDir = q->hostBinPath();
@@ -1112,7 +1034,7 @@ FilePath QtVersionPrivate::findHostBinary(HostBinaries binary) const
         if (HostOsInfo::isWindowsHost()) {
             possibleCommands << "rcc.exe";
         } else {
-            const QString majorString = QString::number(q->qtVersion().majorVersion);
+            const QString majorString = QString::number(q->qtVersion().majorVersion());
             possibleCommands << ("rcc-qt" + majorString) << ("rcc" + majorString) << "rcc";
         }
         break;
@@ -1120,7 +1042,7 @@ FilePath QtVersionPrivate::findHostBinary(HostBinaries binary) const
         if (HostOsInfo::isWindowsHost()) {
             possibleCommands << "uic.exe";
         } else {
-            const QString majorString = QString::number(q->qtVersion().majorVersion);
+            const QString majorString = QString::number(q->qtVersion().majorVersion());
             possibleCommands << ("uic-qt" + majorString) << ("uic" + majorString) << "uic";
         }
         break;
@@ -1130,7 +1052,7 @@ FilePath QtVersionPrivate::findHostBinary(HostBinaries binary) const
     default:
         Q_ASSERT(false);
     }
-    for (const QString &possibleCommand : qAsConst(possibleCommands)) {
+    for (const QString &possibleCommand : std::as_const(possibleCommands)) {
         const FilePath fullPath = baseDir / possibleCommand;
         if (fullPath.isExecutableFile())
             return fullPath;
@@ -1200,12 +1122,12 @@ void QtVersion::ensureMkSpecParsed() const
     Environment env = d->m_qmakeCommand.deviceEnvironment();
     setupQmakeRunEnvironment(env);
     option.environment = env.toProcessEnvironment();
+    if (d->m_qmakeCommand.needsDevice())
+        option.device_root = d->m_qmakeCommand.withNewPath("/").toFSPathString(); // Empty for host!
     ProMessageHandler msgHandler(true);
     ProFileCacheManager::instance()->incRefCount();
     QMakeParser parser(ProFileCacheManager::instance()->cache(), &vfs, &msgHandler);
     ProFileEvaluator evaluator(&option, &parser, &vfs, &msgHandler);
-    // FIXME: toString() would be better, but the pro parser Q_ASSERTs on anything
-    // non-local.
     evaluator.loadNamedSpec(mkspecPath().path(), false);
 
     parseMkSpec(&evaluator);
@@ -1242,7 +1164,7 @@ void QtVersion::setId(int id)
 QString QtVersion::mkspec() const
 {
     d->updateMkspec();
-    return d->m_mkspec.toString();
+    return d->m_mkspec.toFSPathString();
 }
 
 QString QtVersion::mkspecFor(ToolChain *tc) const
@@ -1274,15 +1196,13 @@ bool QtVersion::hasMkspec(const QString &spec) const
     if (spec.isEmpty())
         return true; // default spec of a Qt version
 
-    QDir mkspecDir = QDir(hostDataPath().toString() + "/mkspecs/");
-    const QString absSpec = mkspecDir.absoluteFilePath(spec);
-    if (QFileInfo(absSpec).isDir() && QFileInfo(absSpec + "/qmake.conf").isFile())
+    const FilePath absSpec = hostDataPath() / "mkspecs" / spec;
+    if (absSpec.pathAppended("qmake.conf").isReadableFile())
         return true;
-    mkspecDir.setPath(sourcePath().toString() + "/mkspecs/");
-    const QString absSrcSpec = mkspecDir.absoluteFilePath(spec);
+
+    const FilePath absSrcSpec = sourcePath() / "mkspecs" / spec;
     return absSrcSpec != absSpec
-            && QFileInfo(absSrcSpec).isDir()
-            && QFileInfo(absSrcSpec + "/qmake.conf").isFile();
+            && absSrcSpec.pathAppended("qmake.conf").isReadableFile();
 }
 
 QtVersion::QmakeBuildConfigs QtVersion::defaultBuildConfig() const
@@ -1303,9 +1223,9 @@ QString QtVersion::qtVersionString() const
     return d->m_data.qtVersionString;
 }
 
-QtVersionNumber QtVersion::qtVersion() const
+QVersionNumber QtVersion::qtVersion() const
 {
-    return QtVersionNumber(qtVersionString());
+    return QVersionNumber::fromString(qtVersionString());
 }
 
 void QtVersionPrivate::updateVersionInfo()
@@ -1321,10 +1241,11 @@ void QtVersionPrivate::updateVersionInfo()
     m_data.hasExamples = false;
     m_data.hasDocumentation = false;
 
-    if (!queryQMakeVariables(m_qmakeCommand, q->qmakeRunEnvironment(), &m_versionInfo)) {
+    QString error;
+    if (!queryQMakeVariables(m_qmakeCommand, q->qmakeRunEnvironment(), &m_versionInfo, &error)) {
         m_qmakeIsExecutable = false;
-        qWarning("Cannot update Qt version information: %s cannot be run.",
-                 qPrintable(m_qmakeCommand.toString()));
+        qWarning("Cannot update Qt version information from %s: %s.",
+                 qPrintable(m_qmakeCommand.displayName()), qPrintable(error));
         return;
     }
     m_qmakeIsExecutable = true;
@@ -1352,25 +1273,24 @@ void QtVersionPrivate::updateVersionInfo()
     m_data.hostDataPath = fileProperty("QT_HOST_DATA");
     m_data.hostPrefixPath = fileProperty("QT_HOST_PREFIX");
 
-    // Now check for a qt that is configured with a prefix but not installed
-    if (!m_data.hostBinPath.isReadableDir())
-        m_data.installed = false;
+    struct CheckDir
+    {
+        FilePath *path;
+        bool *isReadable;
+    };
 
-    // Framework builds for Qt 4.8 don't use QT_INSTALL_HEADERS
-    // so we don't check on mac
-    if (!HostOsInfo::isMacHost()) {
-        if (!m_data.headerPath.isReadableDir())
-            m_data.installed = false;
-    }
+    QList<CheckDir> checkDirs = {
+        {&m_data.hostBinPath, &m_data.installed},
+        {&m_data.docsPath, &m_data.hasDocumentation},
+        {&m_data.examplesPath, &m_data.hasExamples},
+        {&m_data.demosPath, &m_data.hasDemos},
+    };
+    if (m_data.binPath.osType() != OsTypeMac)
+        checkDirs.push_back({&m_data.headerPath, &m_data.installed});
 
-    if (m_data.docsPath.isReadableDir())
-        m_data.hasDocumentation = true;
-
-    if (m_data.examplesPath.isReadableDir())
-        m_data.hasExamples = true;
-
-    if (m_data.demosPath.isReadableDir())
-        m_data.hasDemos = true;
+    QtConcurrent::map(checkDirs, [](CheckDir &checkDir) {
+        *checkDir.isReadable = checkDir.path->isReadableDir();
+    }).waitForFinished();
 
     m_data.qtVersionString = qmakeProperty("QT_VERSION");
 
@@ -1440,21 +1360,20 @@ FilePath QtVersion::examplesPath() const // QT_INSTALL_EXAMPLES
     return d->m_data.examplesPath;
 }
 
-QStringList QtVersion::qtSoPaths() const
+FilePaths QtVersion::qtSoPaths() const
 {
+    FilePaths paths;
     const FilePaths qtPaths = {libraryPath(), pluginPath(), qmlPath(), importsPath()};
-    QSet<QString> paths;
-    for (const FilePath &p : qtPaths) {
-        QString path = p.toString();
-        if (path.isEmpty())
+    for (const FilePath &qtPath : qtPaths) {
+        if (qtPath.isEmpty())
             continue;
-        QDirIterator it(path, QStringList("*.so"), QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            it.next();
-            paths.insert(it.fileInfo().absolutePath());
-        }
+
+        const FilePaths soPaths =
+                qtPath.dirEntries({{"*.so"}, QDir::Files, QDirIterator::Subdirectories});
+        paths.append(soPaths);
     }
-    return Utils::toList(paths);
+    FilePath::removeDuplicates(paths);
+    return paths;
 }
 
 MacroExpander *QtVersion::macroExpander() const
@@ -1467,177 +1386,151 @@ QtVersion::createMacroExpander(const std::function<const QtVersion *()> &qtVersi
 {
     const auto versionProperty =
         [qtVersion](const std::function<QString(const QtVersion *)> &property) {
-            return [property, qtVersion]() -> QString {
+            return [property, qtVersion] {
                 const QtVersion *version = qtVersion();
                 return version ? property(version) : QString();
             };
         };
-    std::unique_ptr<MacroExpander> expander(new MacroExpander);
-    expander->setDisplayName(QtKitAspect::tr("Qt version"));
+    const auto pathProperty =
+        [qtVersion](const std::function<FilePath(const QtVersion *)> &property) {
+            return [property, qtVersion] {
+                const QtVersion *version = qtVersion();
+                return version ? property(version).path() : QString();
+            };
+        };
 
-    expander->registerVariable("Qt:Version",
-                               QtKitAspect::tr("The version string of the current Qt version."),
-                               versionProperty([](const QtVersion *version) {
-                                   return version->qtVersionString();
-                               }));
+    std::unique_ptr<MacroExpander> expander(new MacroExpander);
+    expander->setDisplayName(Tr::tr("Qt version"));
+
+    expander->registerVariable(
+        "Qt:Version",
+        Tr::tr("The version string of the current Qt version."),
+        versionProperty(&QtVersion::qtVersionString));
 
     expander->registerVariable(
         "Qt:Type",
-        QtKitAspect::tr("The type of the current Qt version."),
-        versionProperty([](const QtVersion *version) {
-            return version->type();
-        }));
+        Tr::tr("The type of the current Qt version."),
+        versionProperty(&QtVersion::type));
 
     expander->registerVariable(
         "Qt:Mkspec",
-        QtKitAspect::tr("The mkspec of the current Qt version."),
+        Tr::tr("The mkspec of the current Qt version."),
         versionProperty([](const QtVersion *version) {
             return QDir::toNativeSeparators(version->mkspec());
         }));
 
-    expander->registerVariable("Qt:QT_INSTALL_PREFIX",
-                               QtKitAspect::tr(
-                                   "The installation prefix of the current Qt version."),
-                               versionProperty([](const QtVersion *version) {
-                                   return version->prefix().path();
-                               }));
+    expander->registerVariable(
+        "Qt:QT_INSTALL_PREFIX",
+        Tr::tr("The installation prefix of the current Qt version."),
+        pathProperty(&QtVersion::prefix));
 
-    expander->registerVariable("Qt:QT_INSTALL_DATA",
-                               QtKitAspect::tr(
-                                   "The installation location of the current Qt version's data."),
-                               versionProperty([](const QtVersion *version) {
-                                   return version->dataPath().path();
-                               }));
+    expander->registerVariable(
+        "Qt:QT_INSTALL_DATA",
+        Tr::tr("The installation location of the current Qt version's data."),
+        pathProperty(&QtVersion::dataPath));
 
-    expander->registerVariable("Qt:QT_HOST_PREFIX",
-                               QtKitAspect::tr(
-                                   "The host location of the current Qt version."),
-                               versionProperty([](const QtVersion *version) {
-                                   return version->hostPrefixPath().path();
-                               }));
+    expander->registerVariable(
+        "Qt:QT_HOST_PREFIX",
+        Tr::tr("The host location of the current Qt version."),
+        pathProperty(&QtVersion::hostPrefixPath));
 
     expander->registerVariable("Qt:QT_HOST_LIBEXECS",
-                               QtKitAspect::tr("The installation location of the current Qt "
-                                               "version's internal host executable files."),
-                               versionProperty([](const QtVersion *version) {
-                                   return version->hostLibexecPath().path();
-                               }));
+        Tr::tr("The installation location of the current Qt "
+               "version's internal host executable files."),
+        pathProperty(&QtVersion::hostLibexecPath));
 
     expander->registerVariable(
         "Qt:QT_INSTALL_HEADERS",
-        QtKitAspect::tr("The installation location of the current Qt version's header files."),
-        versionProperty(
-            [](const QtVersion *version) { return version->headerPath().path(); }));
+        Tr::tr("The installation location of the current Qt version's header files."),
+        pathProperty(&QtVersion::headerPath));
 
     expander->registerVariable(
         "Qt:QT_INSTALL_LIBS",
-        QtKitAspect::tr("The installation location of the current Qt version's library files."),
-        versionProperty(
-            [](const QtVersion *version) { return version->libraryPath().path(); }));
+        Tr::tr("The installation location of the current Qt version's library files."),
+        pathProperty(&QtVersion::libraryPath));
 
     expander->registerVariable(
         "Qt:QT_INSTALL_DOCS",
-        QtKitAspect::tr(
-            "The installation location of the current Qt version's documentation files."),
-        versionProperty(
-            [](const QtVersion *version) { return version->docsPath().path(); }));
+        Tr::tr("The installation location of the current Qt version's documentation files."),
+        pathProperty(&QtVersion::docsPath));
 
     expander->registerVariable(
         "Qt:QT_INSTALL_BINS",
-        QtKitAspect::tr("The installation location of the current Qt version's executable files."),
-        versionProperty([](const QtVersion *version) { return version->binPath().path(); }));
+        Tr::tr("The installation location of the current Qt version's executable files."),
+        pathProperty(&QtVersion::binPath));
 
     expander->registerVariable(
         "Qt:QT_INSTALL_LIBEXECS",
-        QtKitAspect::tr(
-            "The installation location of the current Qt version's internal executable files."),
-        versionProperty(
-            [](const QtVersion *version) { return version->libExecPath().path(); }));
+        Tr::tr("The installation location of the current Qt version's internal executable files."),
+        pathProperty(&QtVersion::libExecPath));
 
-    expander
-        ->registerVariable("Qt:QT_INSTALL_PLUGINS",
-                           QtKitAspect::tr(
-                               "The installation location of the current Qt version's plugins."),
-                           versionProperty([](const QtVersion *version) {
-                               return version->pluginPath().path();
-                           }));
+    expander->registerVariable(
+        "Qt:QT_INSTALL_PLUGINS",
+        Tr::tr("The installation location of the current Qt version's plugins."),
+        pathProperty(&QtVersion::pluginPath));
 
-    expander
-        ->registerVariable("Qt:QT_INSTALL_QML",
-                           QtKitAspect::tr(
-                               "The installation location of the current Qt version's QML files."),
-                           versionProperty([](const QtVersion *version) {
-                               return version->qmlPath().path();
-                           }));
+    expander->registerVariable(
+        "Qt:QT_INSTALL_QML",
+        Tr::tr("The installation location of the current Qt version's QML files."),
+        pathProperty(&QtVersion::qmlPath));
 
-    expander
-        ->registerVariable("Qt:QT_INSTALL_IMPORTS",
-                           QtKitAspect::tr(
-                               "The installation location of the current Qt version's imports."),
-                           versionProperty([](const QtVersion *version) {
-                               return version->importsPath().path();
-                           }));
+    expander->registerVariable(
+        "Qt:QT_INSTALL_IMPORTS",
+        Tr::tr("The installation location of the current Qt version's imports."),
+        pathProperty(&QtVersion::importsPath));
 
     expander->registerVariable(
         "Qt:QT_INSTALL_TRANSLATIONS",
-        QtKitAspect::tr("The installation location of the current Qt version's translation files."),
-        versionProperty(
-            [](const QtVersion *version) { return version->translationsPath().path(); }));
+        Tr::tr("The installation location of the current Qt version's translation files."),
+        pathProperty(&QtVersion::translationsPath));
 
     expander->registerVariable(
         "Qt:QT_INSTALL_CONFIGURATION",
-        QtKitAspect::tr("The installation location of the current Qt version's translation files."),
-        versionProperty(
-            [](const QtVersion *version) { return version->configurationPath().path(); }));
+        Tr::tr("The installation location of the current Qt version's translation files."),
+        pathProperty(&QtVersion::configurationPath));
 
-    expander
-        ->registerVariable("Qt:QT_INSTALL_EXAMPLES",
-                           QtKitAspect::tr(
-                               "The installation location of the current Qt version's examples."),
-                           versionProperty([](const QtVersion *version) {
-                               return version->examplesPath().path();
-                           }));
+    expander->registerVariable(
+        "Qt:QT_INSTALL_EXAMPLES",
+        Tr::tr("The installation location of the current Qt version's examples."),
+        pathProperty(&QtVersion::examplesPath));
 
-    expander->registerVariable("Qt:QT_INSTALL_DEMOS",
-                               QtKitAspect::tr(
-                                   "The installation location of the current Qt version's demos."),
-                               versionProperty([](const QtVersion *version) {
-                                   return version->demosPath().path();
-                               }));
+    expander->registerVariable(
+        "Qt:QT_INSTALL_DEMOS",
+        Tr::tr("The installation location of the current Qt version's demos."),
+        pathProperty(&QtVersion::demosPath));
 
-    expander->registerVariable("Qt:QMAKE_MKSPECS",
-                               QtKitAspect::tr("The current Qt version's default mkspecs (Qt 4)."),
-                               versionProperty([](const QtVersion *version) {
-                                   return version->d->qmakeProperty("QMAKE_MKSPECS");
-                               }));
+    expander->registerVariable(
+        "Qt:QMAKE_MKSPECS",
+        Tr::tr("The current Qt version's default mkspecs (Qt 4)."),
+        versionProperty([](const QtVersion *version) {
+            return version->d->qmakeProperty("QMAKE_MKSPECS");
+        }));
 
-    expander->registerVariable("Qt:QMAKE_SPEC",
-                               QtKitAspect::tr(
-                                   "The current Qt version's default mkspec (Qt 5; host system)."),
-                               versionProperty([](const QtVersion *version) {
-                                   return version->d->qmakeProperty("QMAKE_SPEC");
-                               }));
+    expander->registerVariable(
+        "Qt:QMAKE_SPEC",
+        Tr::tr("The current Qt version's default mkspec (Qt 5; host system)."),
+        versionProperty([](const QtVersion *version) {
+            return version->d->qmakeProperty("QMAKE_SPEC");
+        }));
 
-    expander
-        ->registerVariable("Qt:QMAKE_XSPEC",
-                           QtKitAspect::tr(
-                               "The current Qt version's default mkspec (Qt 5; target system)."),
-                           versionProperty([](const QtVersion *version) {
-                               return version->d->qmakeProperty("QMAKE_XSPEC");
-                           }));
+    expander->registerVariable(
+        "Qt:QMAKE_XSPEC",
+        Tr::tr("The current Qt version's default mkspec (Qt 5; target system)."),
+        versionProperty([](const QtVersion *version) {
+            return version->d->qmakeProperty("QMAKE_XSPEC");
+        }));
 
-    expander->registerVariable("Qt:QMAKE_VERSION",
-                               QtKitAspect::tr("The current Qt's qmake version."),
-                               versionProperty([](const QtVersion *version) {
-                                   return version->d->qmakeProperty("QMAKE_VERSION");
-                               }));
+    expander->registerVariable(
+        "Qt:QMAKE_VERSION",
+        Tr::tr("The current Qt's qmake version."),
+        versionProperty([](const QtVersion *version) {
+            return version->d->qmakeProperty("QMAKE_VERSION");
+        }));
 
     //    FIXME: Re-enable once we can detect expansion loops.
     //    expander->registerVariable("Qt:Name",
-    //        QtKitAspect::tr("The display name of the current Qt version."),
-    //        versionProperty([](QtVersion *version) {
-    //            return version->displayName();
-    //        }));
+    //        Tr::tr("The display name of the current Qt version."),
+    //        versionProperty(&QtVersion::displayName));
 
     return expander;
 }
@@ -1692,7 +1585,7 @@ void QtVersion::populateQmlFileFinder(FileInProjectFinder *finder, const Target 
     if (startupProject) {
         if (ProjectNode *rootNode = startupProject->rootProjectNode()) {
             rootNode->forEachNode([&](FileNode *node) {
-                if (auto resourceNode = dynamic_cast<ResourceEditor::ResourceFileNode *>(node))
+                if (auto resourceNode = dynamic_cast<ProjectExplorer::ResourceFileNode *>(node))
                     finder->addMappedPath(node->filePath(), ":" + resourceNode->qrcPath());
             });
         } else {
@@ -1740,11 +1633,11 @@ void QtVersion::setupQmakeRunEnvironment(Environment &env) const
 
 bool QtVersion::hasQmlDumpWithRelocatableFlag() const
 {
-    return ((qtVersion() > QtVersionNumber(4, 8, 4) && qtVersion() < QtVersionNumber(5, 0, 0))
-            || qtVersion() >= QtVersionNumber(5, 1, 0));
+    return ((qtVersion() > QVersionNumber(4, 8, 4) && qtVersion() < QVersionNumber(5, 0, 0))
+            || qtVersion() >= QVersionNumber(5, 1, 0));
 }
 
-Tasks QtVersion::reportIssuesImpl(const QString &proFile, const QString &buildDir) const
+Tasks QtVersion::reportIssuesImpl(const FilePath &proFile, const FilePath &buildDir) const
 {
     Q_UNUSED(proFile)
     Q_UNUSED(buildDir)
@@ -1752,15 +1645,15 @@ Tasks QtVersion::reportIssuesImpl(const QString &proFile, const QString &buildDi
 
     if (!isValid()) {
         //: %1: Reason for being invalid
-        const QString msg = QCoreApplication::translate("QmakeProjectManager::QtVersion", "The Qt version is invalid: %1").arg(invalidReason());
+        const QString msg = Tr::tr("The Qt version is invalid: %1").arg(invalidReason());
         results.append(BuildSystemTask(Task::Error, msg));
     }
 
     FilePath qmake = qmakeFilePath();
     if (!qmake.isExecutableFile()) {
         //: %1: Path to qmake executable
-        const QString msg = QCoreApplication::translate("QmakeProjectManager::QtVersion",
-                                                        "The qmake command \"%1\" was not found or is not executable.").arg(qmake.toUserOutput());
+        const QString msg = Tr::tr(
+                    "The qmake command \"%1\" was not found or is not executable.").arg(qmake.displayName());
         results.append(BuildSystemTask(Task::Error, msg));
     }
 
@@ -1772,11 +1665,9 @@ bool QtVersion::supportsMultipleQtAbis() const
     return false;
 }
 
-Tasks QtVersion::reportIssues(const QString &proFile, const QString &buildDir) const
+Tasks QtVersion::reportIssues(const FilePath &proFile, const FilePath &buildDir) const
 {
-    Tasks results = reportIssuesImpl(proFile, buildDir);
-    Utils::sort(results);
-    return results;
+    return Utils::sorted(reportIssuesImpl(proFile, buildDir));
 }
 
 QtConfigWidget *QtVersion::createConfigurationWidget() const
@@ -1788,8 +1679,6 @@ static QByteArray runQmakeQuery(const FilePath &binary, const Environment &env, 
 {
     QTC_ASSERT(error, return QByteArray());
 
-    const int timeOutMS = 30000; // Might be slow on some machines.
-
     // Prevent e.g. qmake 4.x on MinGW to show annoying errors about missing dll's.
     WindowsCrashDialogBlocker crashDialogBlocker;
 
@@ -1798,33 +1687,35 @@ static QByteArray runQmakeQuery(const FilePath &binary, const Environment &env, 
     process.setCommand({binary, {"-query"}});
     process.start();
 
-    if (!process.waitForStarted()) {
-        *error = QCoreApplication::translate("QtVersion", "Cannot start \"%1\": %2").arg(binary.toUserOutput()).arg(process.errorString());
-        return QByteArray();
-    }
-    if (!process.waitForFinished(timeOutMS)) {
-        process.stopProcess();
-        *error = QCoreApplication::translate("QtVersion", "Timeout running \"%1\" (%2 ms).").arg(binary.toUserOutput()).arg(timeOutMS);
-        return QByteArray();
+    if (!process.waitForFinished()) {
+        *error = Tr::tr("Timeout running \"%1\".").arg(binary.displayName());
+        return {};
     }
     if (process.exitStatus() != QProcess::NormalExit) {
-        *error = QCoreApplication::translate("QtVersion", "\"%1\" crashed.").arg(binary.toUserOutput());
-        return QByteArray();
+        *error = Tr::tr("\"%1\" crashed.").arg(binary.displayName());
+        return {};
+    }
+
+    const QByteArray out = process.readAllRawStandardOutput();
+    if (out.isEmpty()) {
+        *error = Tr::tr("\"%1\" produced no output: %2.")
+                .arg(binary.displayName(), process.cleanedStdErr());
+        return {};
     }
 
     error->clear();
-    return process.readAllStandardOutput();
+    return out;
 }
 
 bool QtVersionPrivate::queryQMakeVariables(const FilePath &binary, const Environment &env,
-                                               QHash<ProKey, ProString> *versionInfo, QString *error)
+                                           QHash<ProKey, ProString> *versionInfo, QString *error)
 {
     QString tmp;
     if (!error)
         error = &tmp;
 
     if (!binary.isExecutableFile()) {
-        *error = QCoreApplication::translate("QtVersion", "qmake \"%1\" is not an executable.").arg(binary.toUserOutput());
+        *error = ::QtSupport::Tr::tr("qmake \"%1\" is not an executable.").arg(binary.displayName());
         return false;
     }
 
@@ -1837,7 +1728,7 @@ bool QtVersionPrivate::queryQMakeVariables(const FilePath &binary, const Environ
         // starting container process caused: exec: "/bin/qmake": stat /bin/qmake: no such file or directory"
         // Since we have a rough idea on what the output looks like we can work around this.
         // Output does not always start with QT_SYSROOT, see QTCREATORBUG-26123.
-        *error = QString::fromUtf8(output);
+        *error += QString::fromUtf8(output);
         return false;
     }
 
@@ -2028,7 +1919,7 @@ bool QtVersion::isQmlDebuggingSupported(const Kit *k, QString *reason)
     QtVersion *version = QtKitAspect::qtVersion(k);
     if (!version) {
         if (reason)
-            *reason = QCoreApplication::translate("QtVersion", "No Qt version.");
+            *reason = Tr::tr("No Qt version.");
         return false;
     }
     return version->isQmlDebuggingSupported(reason);
@@ -2038,13 +1929,13 @@ bool QtVersion::isQmlDebuggingSupported(QString *reason) const
 {
     if (!isValid()) {
         if (reason)
-            *reason = QCoreApplication::translate("QtVersion", "Invalid Qt version.");
+            *reason = Tr::tr("Invalid Qt version.");
         return false;
     }
 
-    if (qtVersion() < QtVersionNumber(5, 0, 0)) {
+    if (qtVersion() < QVersionNumber(5, 0, 0)) {
         if (reason)
-            *reason = QCoreApplication::translate("QtVersion", "Requires Qt 5.0.0 or newer.");
+            *reason = Tr::tr("Requires Qt 5.0.0 or newer.");
         return false;
     }
 
@@ -2057,7 +1948,7 @@ bool QtVersion::isQtQuickCompilerSupported(const Kit *k, QString *reason)
     QtVersion *version = QtKitAspect::qtVersion(k);
     if (!version) {
         if (reason)
-            *reason = QCoreApplication::translate("QtVersion", "No Qt version.");
+            *reason = Tr::tr("No Qt version.");
         return false;
     }
     return version->isQtQuickCompilerSupported(reason);
@@ -2067,20 +1958,20 @@ bool QtVersion::isQtQuickCompilerSupported(QString *reason) const
 {
     if (!isValid()) {
         if (reason)
-            *reason = QCoreApplication::translate("QtVersion", "Invalid Qt version.");
+            *reason = Tr::tr("Invalid Qt version.");
         return false;
     }
 
-    if (qtVersion() < QtVersionNumber(5, 3, 0)) {
+    if (qtVersion() < QVersionNumber(5, 3, 0)) {
         if (reason)
-            *reason = QCoreApplication::translate("QtVersion", "Requires Qt 5.3.0 or newer.");
+            *reason = Tr::tr("Requires Qt 5.3.0 or newer.");
         return false;
     }
 
     const QString qtQuickCompilerPrf = mkspecsPath().toString() + "/features/qtquickcompiler.prf";
     if (!QFileInfo::exists(qtQuickCompilerPrf)) {
         if (reason)
-            *reason = QCoreApplication::translate("QtVersion", "This Qt Version does not contain Qt Quick Compiler.");
+            *reason = Tr::tr("This Qt Version does not contain Qt Quick Compiler.");
         return false;
     }
 
@@ -2093,32 +1984,52 @@ FilePaths QtVersionPrivate::qtCorePaths()
     const QString versionString = m_data.qtVersionString;
 
     const QDir::Filters filters = QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot;
+    static const QStringList nameFilters{"QtCore*.framework",
+                                         "libQtCore*",
+                                         "libQt5Core*",
+                                         "libQt6Core*",
+                                         "QtCore*",
+                                         "Qt5Core*",
+                                         "Qt6Core*"};
 
-    const FilePaths entries = m_data.libraryPath.dirEntries(filters)
-                            + m_data.binPath.dirEntries(filters);
+    const FilePaths entries = m_data.libraryPath.dirEntries({nameFilters, filters})
+                              + m_data.binPath.dirEntries(filters);
 
     FilePaths staticLibs;
     FilePaths dynamicLibs;
+
+    auto isDynamicLib = [&versionString](const QString &file) {
+        return file.endsWith(".dll") || file.endsWith(QString::fromLatin1(".so.") + versionString)
+               || file.endsWith(".so")
+#if defined(Q_OS_OPENBSD)
+               || file.contains(QRegularExpression("\\.so\\.[0-9]+\\.[0-9]+$")) // QTCREATORBUG-23818
+#endif
+               || file.endsWith(QLatin1Char('.') + versionString + ".dylib");
+    };
+
+    auto isStaticLib = [](const QString &file) {
+        return file.endsWith(".a") || file.endsWith(".lib");
+    };
+
+    auto isFramework = [](const QString &file) {
+        return file.startsWith("QtCore") && file.endsWith(".framework");
+    };
+
+    auto isQtCore = [](const QString &file) {
+        return file.startsWith("libQtCore") || file.startsWith("QtCore")
+               || file.startsWith("libQt5Core") || file.startsWith("Qt5Core")
+               || file.startsWith("libQt6Core") || file.startsWith("Qt6Core");
+    };
+
     for (const FilePath &entry : entries) {
         const QString file = entry.fileName();
-        if (file.startsWith("QtCore") && file.endsWith(".framework") && entry.isReadableDir()) {
-            // handle Framework
+        if (isFramework(file) && entry.isReadableDir()) {
             dynamicLibs.append(entry.pathAppended(file.left(file.lastIndexOf('.'))));
-        } else if (file.startsWith("libQtCore") || file.startsWith("QtCore")
-                || file.startsWith("libQt5Core") || file.startsWith("Qt5Core")
-                || file.startsWith("libQt6Core") || file.startsWith("Qt6Core")) {
-            if (entry.isReadableFile()) {
-                if (file.endsWith(".a") || file.endsWith(".lib"))
-                    staticLibs.append(entry);
-                else if (file.endsWith(".dll")
-                         || file.endsWith(QString::fromLatin1(".so.") + versionString)
-                         || file.endsWith(".so")
-#if defined(Q_OS_OPENBSD)
-                         || file.contains(QRegularExpression("\\.so\\.[0-9]+\\.[0-9]+$")) // QTCREATORBUG-23818
-#endif
-                         || file.endsWith(QLatin1Char('.') + versionString + ".dylib"))
-                    dynamicLibs.append(entry);
-            }
+        } else if (isQtCore(file)) {
+            if (isDynamicLib(file) && entry.isReadableFile())
+                dynamicLibs.append(entry);
+            else if (isStaticLib(file) && entry.isReadableFile())
+                staticLibs.append(entry);
         }
     }
     // Only handle static libs if we cannot find dynamic ones:
@@ -2296,17 +2207,23 @@ static Abi scanQtBinaryForBuildStringAndRefineAbi(const FilePath &library,
 
 Abis QtVersion::qtAbisFromLibrary(const FilePaths &coreLibraries)
 {
-    Abis res;
-    for (const FilePath &library : coreLibraries) {
-        for (const Abi &abi : Abi::abisOfBinary(library)) {
-            Abi tmp = abi;
+    auto filePathToAbiList = [](const FilePath &library) { // Fetch all abis from all libraries ...
+        Abis abis = Abi::abisOfBinary(library);
+        for (Abi &abi : abis) {
             if (abi.osFlavor() == Abi::UnknownFlavor)
-                tmp = scanQtBinaryForBuildStringAndRefineAbi(library, abi);
-            if (!res.contains(tmp))
-                res.append(tmp);
+                abi = scanQtBinaryForBuildStringAndRefineAbi(library, abi);
         }
-    }
-    return res;
+        return abis;
+    };
+
+    auto uniqueAbis = [](Abis &result, const Abis &abis) { // ... merge the results into one list ...
+        for (const Abi &abi : abis) {
+            if (!result.contains(abi))
+                result.append(abi);
+        }
+    };
+
+    return QtConcurrent::blockingMappedReduced<Abis>(coreLibraries, filePathToAbiList, uniqueAbis);
 }
 
 void QtVersion::resetCache() const
@@ -2337,8 +2254,8 @@ QtVersion *QtVersionFactory::createQtVersionFromQMakePath
     ProFileEvaluator evaluator(&globals, &parser, &vfs, &msgHandler);
     evaluator.loadNamedSpec(mkspec.path(), false);
 
-    QList<QtVersionFactory *> factories = g_qtVersionFactories;
-    Utils::sort(factories, [](const QtVersionFactory *l, const QtVersionFactory *r) {
+    const QList<QtVersionFactory *> factories = Utils::sorted(g_qtVersionFactories,
+            [](const QtVersionFactory *l, const QtVersionFactory *r) {
         return l->m_priority > r->m_priority;
     });
 
@@ -2350,7 +2267,7 @@ QtVersion *QtVersionFactory::createQtVersionFromQMakePath
     setup.platforms = evaluator.values("QMAKE_PLATFORM"); // It's a list in general.
     setup.isQnx = !evaluator.value("QNX_CPUDIR").isEmpty();
 
-    foreach (QtVersionFactory *factory, factories) {
+    for (QtVersionFactory *factory : factories) {
         if (!factory->m_restrictionChecker || factory->m_restrictionChecker(setup)) {
             QtVersion *ver = factory->create();
             QTC_ASSERT(ver, continue);
@@ -2366,8 +2283,7 @@ QtVersion *QtVersionFactory::createQtVersionFromQMakePath
     }
     ProFileCacheManager::instance()->decRefCount();
     if (error) {
-        *error = QCoreApplication::translate("QtSupport::QtVersionFactory",
-                    "No factory found for qmake: \"%1\"").arg(qmakePath.toUserOutput());
+        *error = Tr::tr("No factory found for qmake: \"%1\"").arg(qmakePath.displayName());
     }
     return nullptr;
 }
@@ -2411,7 +2327,7 @@ QtVersion *QtVersionFactory::create() const
 
 QtVersion *QtVersion::clone() const
 {
-    for (QtVersionFactory *factory : qAsConst(g_qtVersionFactories)) {
+    for (QtVersionFactory *factory : std::as_const(g_qtVersionFactories)) {
         if (factory->m_supportedType == d->m_type) {
             QtVersion *version = factory->create();
             QTC_ASSERT(version, return nullptr);

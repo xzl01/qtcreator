@@ -1,31 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "genericprojectwizard.h"
-#include "genericprojectconstants.h"
+
 #include "filesselectionwizardpage.h"
+#include "genericprojectconstants.h"
+#include "genericprojectmanagertr.h"
 
 #include <coreplugin/icore.h>
 #include <projectexplorer/projectexplorerconstants.h>
@@ -36,7 +16,7 @@
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
 #include <utils/filewizardpage.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
 
 #include <QApplication>
 #include <QDebug>
@@ -65,18 +45,18 @@ GenericProjectWizardDialog::GenericProjectWizardDialog(const Core::BaseFileWizar
                                                        QWidget *parent) :
     Core::BaseFileWizard(factory, QVariantMap(), parent)
 {
-    setWindowTitle(tr("Import Existing Project"));
+    setWindowTitle(Tr::tr("Import Existing Project"));
 
     // first page
     m_firstPage = new Utils::FileWizardPage;
-    m_firstPage->setTitle(tr("Project Name and Location"));
-    m_firstPage->setFileNameLabel(tr("Project name:"));
-    m_firstPage->setPathLabel(tr("Location:"));
+    m_firstPage->setTitle(Tr::tr("Project Name and Location"));
+    m_firstPage->setFileNameLabel(Tr::tr("Project name:"));
+    m_firstPage->setPathLabel(Tr::tr("Location:"));
     addPage(m_firstPage);
 
     // second page
     m_secondPage = new FilesSelectionWizardPage(this);
-    m_secondPage->setTitle(tr("File Selection"));
+    m_secondPage->setTitle(Tr::tr("File Selection"));
     addPage(m_secondPage);
 }
 
@@ -115,10 +95,10 @@ GenericProjectWizard::GenericProjectWizard()
 {
     setSupportedProjectTypes({Constants::GENERICPROJECT_ID});
     setIcon(ProjectExplorer::Icons::WIZARD_IMPORT_AS_PROJECT.icon());
-    setDisplayName(tr("Import Existing Project"));
+    setDisplayName(Tr::tr("Import Existing Project"));
     setId("Z.Makefile");
-    setDescription(tr("Imports existing projects that do not use qmake, CMake, Qbs, Meson, or Autotools. "
-                      "This allows you to use %1 as a code editor.")
+    setDescription(Tr::tr("Imports existing projects that do not use qmake, CMake, Qbs, Meson, or Autotools. "
+                          "This allows you to use %1 as a code editor.")
                    .arg(Core::Constants::IDE_DISPLAY_NAME));
     setCategory(QLatin1String(ProjectExplorer::Constants::IMPORT_WIZARD_CATEGORY));
     setDisplayCategory(QLatin1String(ProjectExplorer::Constants::IMPORT_WIZARD_CATEGORY_DISPLAY));
@@ -129,10 +109,9 @@ Core::BaseFileWizard *GenericProjectWizard::create(QWidget *parent,
                                                    const Core::WizardDialogParameters &parameters) const
 {
     auto wizard = new GenericProjectWizardDialog(this, parent);
-
     wizard->setFilePath(parameters.defaultPath());
-
-    foreach (QWizardPage *p, wizard->extensionPages())
+    const QList<QWizardPage *> pages = wizard->extensionPages();
+    for (QWizardPage *p : pages)
         wizard->addPage(p);
 
     return wizard;
@@ -160,7 +139,7 @@ Core::GeneratedFiles GenericProjectWizard::generateFiles(const QWizard *w,
 
     QStringList includePaths;
     const QDir dir(projectPath.toString());
-    foreach (const QString &path, paths) {
+    for (const QString &path : paths) {
         QFileInfo fileInfo(path);
         QDir thisDir(fileInfo.absoluteFilePath());
 

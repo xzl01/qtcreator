@@ -1,61 +1,28 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "settingswidget.h"
 
-#include "ui_settingswidget.h"
-
 #include "clangtoolsconstants.h"
+#include "clangtoolstr.h"
 #include "clangtoolsutils.h"
+#include "runsettingswidget.h"
 
 #include <cppeditor/clangdiagnosticconfigsmodel.h>
 #include <cppeditor/clangdiagnosticconfigsselectionwidget.h>
 
 #include <debugger/analyzer/analyzericons.h>
+#include <debugger/debuggertr.h>
 
-#include <utils/optional.h>
+#include <utils/layoutbuilder.h>
+#include <utils/pathchooser.h>
 
+using namespace CppEditor;
 using namespace Utils;
 
-namespace ClangTools {
-namespace Internal {
+namespace ClangTools::Internal {
 
 static SettingsWidget *m_instance = nullptr;
-
-static void setupPathChooser(PathChooser *const chooser,
-                             const QString &promptDiaglogTitle,
-                             const QString &placeHolderText,
-                             const FilePath &pathFromSettings,
-                             const QString &historyCompleterId)
-{
-    chooser->setPromptDialogTitle(promptDiaglogTitle);
-    chooser->setDefaultValue(placeHolderText);
-    chooser->setFilePath(pathFromSettings);
-    chooser->setExpectedKind(Utils::PathChooser::ExistingCommand);
-    chooser->setHistoryCompleter(historyCompleterId);
-}
 
 SettingsWidget *SettingsWidget::instance()
 {
@@ -63,55 +30,64 @@ SettingsWidget *SettingsWidget::instance()
 }
 
 SettingsWidget::SettingsWidget()
-    : m_ui(new Ui::SettingsWidget)
-    , m_settings(ClangToolsSettings::instance())
+    : m_settings(ClangToolsSettings::instance())
 {
     m_instance = this;
-    m_ui->setupUi(this);
 
-    //
-    // Group box "Executables"
-    //
+    resize(400, 300);
 
-    QString placeHolderText = shippedClangTidyExecutable().toUserOutput();
-    FilePath path = m_settings->clangTidyExecutable();
-    if (path.isEmpty() && placeHolderText.isEmpty())
-        path = Constants::CLANG_TIDY_EXECUTABLE_NAME;
-    setupPathChooser(m_ui->clangTidyPathChooser,
-                     tr("Clang-Tidy Executable"),
-                     placeHolderText,
-                     path,
-                     "ClangTools.ClangTidyExecutable.History");
+    auto createPathChooser = [this](ClangToolType tool)
+    {
+        const QString placeHolderText = toolShippedExecutable(tool).toUserOutput();
+        FilePath path = m_settings->executable(tool);
+        if (path.isEmpty() && placeHolderText.isEmpty()) {
+            path = tool == ClangToolType::Tidy ? FilePath(Constants::CLANG_TIDY_EXECUTABLE_NAME)
+                                               : FilePath(Constants::CLAZY_STANDALONE_EXECUTABLE_NAME);
+        }
+        PathChooser *pathChooser = new PathChooser;
+        pathChooser->setExpectedKind(PathChooser::ExistingCommand);
+        pathChooser->setPromptDialogTitle(tool == ClangToolType::Tidy ? Tr::tr("Clang-Tidy Executable")
+                                                                      : Tr::tr("Clazy Executable"));
+        pathChooser->setDefaultValue(placeHolderText);
+        pathChooser->setFilePath(path);
+        pathChooser->setHistoryCompleter(tool == ClangToolType::Tidy
+                                        ? QString("ClangTools.ClangTidyExecutable.History")
+                                        : QString("ClangTools.ClazyStandaloneExecutable.History"));
+        return pathChooser;
+    };
+    m_clangTidyPathChooser = createPathChooser(ClangToolType::Tidy);
+    m_clazyStandalonePathChooser = createPathChooser(ClangToolType::Clazy);
 
-    placeHolderText = shippedClazyStandaloneExecutable().toUserOutput();
-    path = m_settings->clazyStandaloneExecutable();
-    if (path.isEmpty() && placeHolderText.isEmpty())
-        path = Constants::CLAZY_STANDALONE_EXECUTABLE_NAME;
-    setupPathChooser(m_ui->clazyStandalonePathChooser,
-                     tr("Clazy Executable"),
-                     placeHolderText,
-                     path,
-                     "ClangTools.ClazyStandaloneExecutable.History");
+    m_runSettingsWidget = new RunSettingsWidget;
+    m_runSettingsWidget->fromSettings(m_settings->runSettings());
 
-    //
-    // Group box "Run Options"
-    //
+    using namespace Layouting;
 
-    m_ui->runSettingsWidget->fromSettings(m_settings->runSettings());
+    Column {
+        Group {
+            title(Tr::tr("Executables")),
+            Form {
+                Tr::tr("Clang-Tidy:"), m_clangTidyPathChooser, br,
+                Tr::tr("Clazy-Standalone:"), m_clazyStandalonePathChooser
+            }
+        },
+        m_runSettingsWidget,
+        st
+    }.attachTo(this);
 }
 
 void SettingsWidget::apply()
 {
     // Executables
-    m_settings->setClangTidyExecutable(clangTidyPath());
-    m_settings->setClazyStandaloneExecutable(clazyStandalonePath());
+    m_settings->setExecutable(ClangToolType::Tidy, clangTidyPath());
+    m_settings->setExecutable(ClangToolType::Clazy, clazyStandalonePath());
 
     // Run options
-    m_settings->setRunSettings(m_ui->runSettingsWidget->toSettings());
+    m_settings->setRunSettings(m_runSettingsWidget->toSettings());
 
     // Custom configs
-    const CppEditor::ClangDiagnosticConfigs customConfigs
-        = m_ui->runSettingsWidget->diagnosticSelectionWidget()->customConfigs();
+    const ClangDiagnosticConfigs customConfigs
+        = m_runSettingsWidget->diagnosticSelectionWidget()->customConfigs();
     m_settings->setDiagnosticConfigs(customConfigs);
 
     m_settings->writeSettings();
@@ -124,12 +100,12 @@ SettingsWidget::~SettingsWidget()
 
 FilePath SettingsWidget::clangTidyPath() const
 {
-    return m_ui->clangTidyPathChooser->rawFilePath();
+    return m_clangTidyPathChooser->rawFilePath();
 }
 
 FilePath SettingsWidget::clazyStandalonePath() const
 {
-    return m_ui->clazyStandalonePathChooser->rawFilePath();
+    return m_clazyStandalonePathChooser->rawFilePath();
 }
 
 // ClangToolsOptionsPage
@@ -137,14 +113,11 @@ FilePath SettingsWidget::clazyStandalonePath() const
 ClangToolsOptionsPage::ClangToolsOptionsPage()
 {
     setId(Constants::SETTINGS_PAGE_ID);
-    setDisplayName(QCoreApplication::translate(
-                       "ClangTools::Internal::ClangToolsOptionsPage",
-                       "Clang Tools"));
+    setDisplayName(Tr::tr("Clang Tools"));
     setCategory("T.Analyzer");
-    setDisplayCategory(QCoreApplication::translate("Analyzer", "Analyzer"));
+    setDisplayCategory(::Debugger::Tr::tr("Analyzer"));
     setCategoryIconPath(Analyzer::Icons::SETTINGSCATEGORY_ANALYZER);
     setWidgetCreator([] { return new SettingsWidget; });
 }
 
-} // namespace Internal
-} // namespace ClangTools
+} // ClangTools::Internal

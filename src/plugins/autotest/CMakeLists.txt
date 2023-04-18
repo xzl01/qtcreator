@@ -1,9 +1,11 @@
 add_qtc_plugin(AutoTest
+  PLUGIN_CLASS AutotestPlugin
   PLUGIN_DEPENDS Core CppEditor Debugger ProjectExplorer QmlJSTools TextEditor
   PLUGIN_TEST_DEPENDS QmakeProjectManager QtSupport QbsProjectManager
   SOURCES
     autotest.qrc
     autotest_global.h
+    autotesttr.h
     autotestconstants.h
     autotesticons.h
     autotestplugin.cpp autotestplugin.h
@@ -72,7 +74,7 @@ add_qtc_plugin(AutoTest
     testrunconfiguration.h
     testrunner.cpp testrunner.h
     testsettings.cpp testsettings.h
-    testsettingspage.cpp testsettingspage.h testsettingspage.ui
+    testsettingspage.cpp testsettingspage.h
     testtreeitem.cpp testtreeitem.h
     testtreeitemdelegate.cpp testtreeitemdelegate.h
     testtreemodel.cpp testtreemodel.h

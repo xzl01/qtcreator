@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtquick-properties.html
@@ -51,7 +29,7 @@
     another preset component in the field.
 
     If you have specified values for properties that are not supported by the
-    new component type, \QC offers to remove them for you. If you'd rather do
+    new component type, \QDS offers to remove them for you. If you'd rather do
     this yourself, you can select the \inlineimage icons/action-icon.png
     (\uicontrol Actions) menu next to the property name, and then select
     \uicontrol Reset to remove the property values before trying again.
@@ -97,8 +75,8 @@
 
     In the \uicontrol Size group, you can set the width and height of a
     component. You can also use the resize cursor to \l{Resizing 2D Components}
-    {resize 2D components} in \uicontrol {Form Editor} or the scaling gizmo
-    to \l{Scaling Components}{scale 3D components} in \uicontrol {3D Editor}.
+    {resize 2D components} in the \uicontrol {2D} view or the scaling gizmo
+    to \l{Scaling Components}{scale 3D components} in the \uicontrol{3D} view.
     The values in the \uicontrol X and \uicontrol Y fields change accordingly.
 
     The component size and position can also be managed automatically
@@ -129,16 +107,16 @@
     Set the scale factor in the \uicontrol Scale field. A value of less than
     1.0 makes the component smaller, whereas a value greater than 1.0 makes
     it larger. A negative value causes the component to be mirrored in
-    \uicontrol {Form Editor}.
+    the \uicontrol {2D} view.
 
     In the \uicontrol Rotation field, specify the rotation of the component
     in degrees clockwise around the origin point.
 
     Alternatively, you can move, resize, or rotate components by dragging them
-    in \l{Form Editor}.
+    in the \l {2D} view.
 
     For more information about transforming 3D components, see
-    \l{Managing 3D Transformations} and \l{3D Editor}.
+    \l{Managing 3D Transformations} and \l{3D}{the 3D view}.
 
     \section1 Visibility
 
@@ -175,7 +153,7 @@
     If the \uicontrol Clip check box is selected, the component and its children
     are clipped to the bounding rectangle of the component.
 
-    in the \uicontrol State field, select the \l{Adding States}{state} to
+    in the \uicontrol State field, select the \l{Working with States}{state} to
     change the value of a property in that state.
 
     \section1 Picking Colors
@@ -414,7 +392,8 @@
     Typically, this component should be a shader effect with a source texture
     specified. You can use the effects in \uicontrol Components >
     \uicontrol {Qt Quick Studio Effects} that are based on the components in the
-    \l {Qt Graphical Effects} module.
+    \l {https://doc.qt.io/qt-5/qtgraphicaleffects-index.html}
+    {Qt Graphical Effects} module.
 
     To enable the component to pass the layer's offscreen surface to the effect
     correctly, the \uicontrol {Sampler name} field is set to the source
@@ -439,7 +418,7 @@
     The value of the \uicontrol Format field specifies the internal OpenGL
     format of the texture. Depending on the OpenGL implementation, it might
     allow you to save some texture memory. However, use the \uicontrol RGB
-    and \uicontrol Alpha values with caution, because the underlying hardware
+    and \uicontrol Alpha values with caution because the underlying hardware
     and driver might not support them.
 
     In the \uicontrol {Texture mirroring} field, specify whether the generated
@@ -475,13 +454,13 @@
     {main toolbar}.
 
     To apply the values to one or several other components, select
-    them in \l Navigator or \l{Form Editor}, and then select
+    them in the \l Navigator or \l {2D} view, and then select
     \inlineimage icons/paste-formatting.png
     .
 
     \section1 Editing Properties Inline
 
-    You can double-click components in \l {Form Editor} to edit their
+    You can double-click components in the \l {2D} view to edit their
     text, color, or source properties inline. Because you can specify several
     of these properties for some components, such as \l {text-edit}{Text Edit},
     you can also right-click components to open the inline editors from the

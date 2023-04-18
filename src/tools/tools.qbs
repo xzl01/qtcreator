@@ -5,7 +5,6 @@ Project {
     name: "Tools"
     references: [
         "buildoutputparser/buildoutputparser.qbs",
-        "clangbackend/clangbackend.qbs",
         "cplusplustools.qbs",
         "disclaim/disclaim.qbs",
         "processlauncher/processlauncher.qbs",
@@ -15,9 +14,9 @@ Project {
         "qtc-askpass/qtc-askpass.qbs",
         "qtpromaker/qtpromaker.qbs",
         "sdktool/sdktool.qbs",
+        "sdktool/sdktoollib.qbs",
         "valgrindfake/valgrindfake.qbs",
         "iostool/iostool.qbs",
-        "winrtdebughelper/winrtdebughelper.qbs"
     ].concat(project.additionalTools)
 
     Project {

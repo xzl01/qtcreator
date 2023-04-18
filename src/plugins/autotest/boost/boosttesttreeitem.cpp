@@ -1,41 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "boosttesttreeitem.h"
+
 #include "boosttestconstants.h"
 #include "boosttestconfiguration.h"
-#include "boosttestframework.h"
 #include "boosttestparser.h"
-#include "../testframeworkmanager.h"
+
+#include "../autotesttr.h"
+#include "../itestframework.h"
 
 #include <cppeditor/cppmodelmanager.h>
 #include <projectexplorer/session.h>
 #include <utils/qtcassert.h>
 
-#include <QFileInfo>
 #include <QRegularExpression>
+
+using namespace Utils;
 
 namespace Autotest {
 namespace Internal {
@@ -144,7 +125,7 @@ bool BoostTestTreeItem::modify(const TestParseResult *result)
 
 TestTreeItem *BoostTestTreeItem::createParentGroupNode() const
 {
-    const Utils::FilePath &absPath = filePath().absolutePath();
+    const FilePath &absPath = filePath().absolutePath();
     return new BoostTestTreeItem(framework(), absPath.baseName(), absPath, TestTreeItem::GroupNode);
 }
 
@@ -185,7 +166,7 @@ QList<ITestConfiguration *> BoostTestTreeItem::getAllTestConfigurations() const
     };
 
     // we only need the unique project files (and number of test cases for the progress indicator)
-    QHash<Utils::FilePath, BoostTestCases> testsPerProjectfile;
+    QHash<FilePath, BoostTestCases> testsPerProjectfile;
     forAllChildItems([&testsPerProjectfile](TestTreeItem *item){
         if (item->type() != TestSuite)
             return;
@@ -203,7 +184,7 @@ QList<ITestConfiguration *> BoostTestTreeItem::getAllTestConfigurations() const
     });
 
     for (auto it = testsPerProjectfile.begin(), end = testsPerProjectfile.end(); it != end; ++it) {
-        for (const QString &target : qAsConst(it.value().internalTargets)) {
+        for (const QString &target : std::as_const(it.value().internalTargets)) {
             BoostTestConfiguration *config = new BoostTestConfiguration(framework());
             config->setProject(project);
             config->setProjectFile(it.key());
@@ -228,7 +209,7 @@ QList<ITestConfiguration *> BoostTestTreeItem::getTestConfigurations(
         QSet<QString> internalTargets;
     };
 
-    QHash<Utils::FilePath, BoostTestCases> testCasesForProjectFile;
+    QHash<FilePath, BoostTestCases> testCasesForProjectFile;
     forAllChildren([&testCasesForProjectFile, &predicate](TreeItem *it){
         auto item = static_cast<BoostTestTreeItem *>(it);
         if (item->type() != TestCase)
@@ -333,9 +314,8 @@ ITestConfiguration *BoostTestTreeItem::debugConfiguration() const
 
 QString BoostTestTreeItem::nameSuffix() const
 {
-    static QString markups[] = {QCoreApplication::translate("BoostTestTreeItem", "parameterized"),
-                                QCoreApplication::translate("BoostTestTreeItem", "fixture"),
-                                QCoreApplication::translate("BoostTestTreeItem", "templated")};
+    static QString markups[] = {Tr::tr("parameterized"), Tr::tr("fixture"), Tr::tr("templated")};
+
     QString suffix;
     if (m_state & Parameterized)
         suffix = QString(" [") + markups[0];
@@ -368,10 +348,10 @@ bool BoostTestTreeItem::enabled() const
 
 TestTreeItem *BoostTestTreeItem::findChildByNameStateAndFile(const QString &name,
                                                              BoostTestTreeItem::TestStates state,
-                                                             const Utils::FilePath &proFile) const
+                                                             const FilePath &proFile) const
 {
     return static_cast<TestTreeItem *>(
-                findAnyChild([name, state, proFile](const Utils::TreeItem *other){
+                findAnyChild([name, state, proFile](const TreeItem *other){
         const BoostTestTreeItem *boostItem = static_cast<const BoostTestTreeItem *>(other);
         return boostItem->proFile() == proFile && boostItem->fullName() == name
                 && boostItem->state() == state;

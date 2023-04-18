@@ -1,36 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
+
+#include "propertymetainfo.h"
+
+#include <projectstorage/projectstoragefwd.h>
+#include <projectstorageids.h>
 
 #include <QIcon>
 #include <QList>
 #include <QString>
 #include <QVariant>
 
-#include "qmldesignercorelib_global.h"
+#include <qmldesignercorelib_global.h>
 
 QT_BEGIN_NAMESPACE
 class QDeclarativeContext;
@@ -47,27 +30,23 @@ class NodeMetaInfo
 public:
     NodeMetaInfo() {}
     NodeMetaInfo(Model *, const TypeName &, int, int) {}
+    NodeMetaInfo(TypeId, NotNullPointer<const ProjectStorage<Sqlite::Database>>) {}
+    NodeMetaInfo(NotNullPointer<const ProjectStorage<Sqlite::Database>>) {}
 
     bool isValid() const { return {}; }
     bool isFileComponent() const { return {}; }
     bool hasProperty(const PropertyName &) const { return {}; }
+    PropertyMetaInfos properties() const { return {}; }
+    PropertyMetaInfos localProperties() const { return {}; }
+    PropertyMetaInfo property(const PropertyName &) const { return {}; }
     PropertyNameList propertyNames() const { return {}; }
     PropertyNameList signalNames() const { return {}; }
     PropertyNameList directPropertyNames() const { return {}; }
     PropertyName defaultPropertyName() const { return "data"; }
     bool hasDefaultProperty() const { return {}; }
-    TypeName propertyTypeName(const PropertyName &) const { return {}; }
-    bool propertyIsWritable(const PropertyName &) const { return {}; }
-    bool propertyIsListProperty(const PropertyName &) const { return {}; }
-    bool propertyIsEnumType(const PropertyName &) const { return {}; }
-    bool propertyIsPrivate(const PropertyName &) const { return {}; }
-    QString propertyEnumScope(const PropertyName &) const { return {}; }
-    QStringList propertyKeysForEnum(const PropertyName &) const { return {}; }
-    QVariant propertyCastedValue(const PropertyName &, const QVariant &) const { return {}; }
 
-    QList<NodeMetaInfo> classHierarchy() const { return {}; }
-    QList<NodeMetaInfo> superClasses() const { return {}; }
-    NodeMetaInfo directSuperClass() const { return {}; }
+    std::vector<NodeMetaInfo> classHierarchy() const { return {}; }
+    std::vector<NodeMetaInfo> superClasses() const { return {}; }
 
     bool defaultPropertyIsComponent() const { return {}; }
 
@@ -82,16 +61,29 @@ public:
     bool hasCustomParser() const { return {}; }
 
     bool availableInVersion(int, int) const { return {}; }
-    bool isSubclassOf(const TypeName &, int = -1, int = -1) const { return {}; }
+    bool isBasedOn(const NodeMetaInfo &) const { return {}; }
+    bool isBasedOn(const NodeMetaInfo &, const NodeMetaInfo &) const { return {}; }
+    bool isBasedOn(const NodeMetaInfo &, const NodeMetaInfo &, const NodeMetaInfo &) const
+    {
+        return {};
+    }
 
     bool isGraphicalItem() const { return {}; }
     bool isLayoutable() const { return {}; }
     bool isView() const { return {}; }
     bool isTabView() const { return {}; }
+    bool isQtQuick3DNode() const { return {}; }
+    bool isQtQuick3DModel() const { return {}; }
+    bool isQtQuick3DMaterial() const { return {}; }
+    bool isQtQuickLoader() const { return {}; }
+    bool isQtQuickItem() const { return {}; }
+    bool isQtQuick3DTexture() const { return {}; }
 
     QString importDirectoryPath() const { return {}; }
 
     static void clearCache() {}
 };
+
+using NodeMetaInfos = std::vector<NodeMetaInfo>;
 
 } // namespace QmlDesigner

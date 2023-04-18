@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "abstractproperty.h"
 #include "internalnode_p.h"
 #include <model.h>
 #include "model_p.h"
 #include <modelnode.h>
-#include "invalidpropertyexception.h"
 #include "variantproperty.h"
 #include "bindingproperty.h"
 #include "signalhandlerproperty.h"
@@ -45,11 +22,6 @@ namespace QmlDesigner {
 \ingroup CoreModel
 \brief The AbstractProperty class is a value holder for a property.
 */
-
-AbstractProperty::AbstractProperty():
-        m_internalNode(new Internal::InternalNode)
-{
-}
 
 AbstractProperty::AbstractProperty(const PropertyName &propertyName, const Internal::InternalNodePointer  &internalNode, Model* model,  AbstractView *view)
     : m_propertyName(propertyName),
@@ -81,10 +53,6 @@ AbstractProperty::AbstractProperty(const AbstractProperty &property, AbstractVie
 
 AbstractProperty::~AbstractProperty() = default;
 
-AbstractProperty::AbstractProperty(const AbstractProperty &other) = default;
-
-AbstractProperty& AbstractProperty::operator=(const AbstractProperty &other) = default;
-
 Internal::InternalNodePointer AbstractProperty::internalNode() const
 {
     return m_internalNode;
@@ -92,7 +60,7 @@ Internal::InternalNodePointer AbstractProperty::internalNode() const
 
 Internal::ModelPrivate *AbstractProperty::privateModel() const
 {
-    return m_model ? m_model->d : nullptr;
+    return m_model ? m_model->d.get() : nullptr;
 }
 
 Model *AbstractProperty::model() const
@@ -126,12 +94,8 @@ PropertyName AbstractProperty::name() const
 */
 bool AbstractProperty::isValid() const
 {
-    return !m_internalNode.isNull() &&
-            !m_model.isNull() &&
-            m_internalNode->isValid() &&
-            !m_propertyName.isEmpty() &&
-            !m_propertyName.contains(' ') &&
-            m_propertyName != "id";
+    return m_internalNode && !m_model.isNull() && m_internalNode->isValid
+           && !m_propertyName.isEmpty() && !m_propertyName.contains(' ') && m_propertyName != "id";
 }
 
 bool AbstractProperty::exists() const
@@ -146,7 +110,7 @@ bool AbstractProperty::exists() const
 */
 ModelNode AbstractProperty::parentModelNode() const
 {
-    return ModelNode(m_internalNode, m_model.data(), view());
+    return ModelNode(m_internalNode, m_model.data(), m_view);
 }
 
 /*!
@@ -167,7 +131,7 @@ bool AbstractProperty::isDefaultProperty() const
 VariantProperty AbstractProperty::toVariantProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return {};
 
     VariantProperty propertyVariant(name(), internalNode(), model(), view());
 
@@ -180,7 +144,7 @@ VariantProperty AbstractProperty::toVariantProperty() const
 NodeProperty AbstractProperty::toNodeProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return {};
 
     NodeProperty propertyNode(name(), internalNode(), model(), view());
 
@@ -193,7 +157,7 @@ NodeProperty AbstractProperty::toNodeProperty() const
 SignalHandlerProperty AbstractProperty::toSignalHandlerProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return {};
 
     SignalHandlerProperty propertyNode(name(), internalNode(), model(), view());
 
@@ -203,10 +167,23 @@ SignalHandlerProperty AbstractProperty::toSignalHandlerProperty() const
     return SignalHandlerProperty();
 }
 
+SignalDeclarationProperty AbstractProperty::toSignalDeclarationProperty() const
+{
+    if (!isValid())
+        return {};
+
+    SignalDeclarationProperty propertyNode(name(), internalNode(), model(), view());
+
+    if (propertyNode.isSignalDeclarationProperty())
+        return propertyNode;
+
+    return SignalDeclarationProperty();
+}
+
 NodeListProperty AbstractProperty::toNodeListProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return {};
 
     NodeListProperty propertyNodeList(name(), internalNode(), model(), view());
 
@@ -219,7 +196,7 @@ NodeListProperty AbstractProperty::toNodeListProperty() const
 NodeAbstractProperty AbstractProperty::toNodeAbstractProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return {};
 
     NodeAbstractProperty propertyNodeAbstract(name(), internalNode(), model(), view());
 
@@ -232,7 +209,7 @@ NodeAbstractProperty AbstractProperty::toNodeAbstractProperty() const
 BindingProperty AbstractProperty::toBindingProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return {};
 
     BindingProperty propertyBinding(name(), internalNode(), model(), view());
 
@@ -245,7 +222,7 @@ BindingProperty AbstractProperty::toBindingProperty() const
 bool AbstractProperty::isVariantProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return false;
 
     if (internalNode()->hasProperty(name())) {
         Q_ASSERT(internalNode()->property(name()));
@@ -258,7 +235,7 @@ bool AbstractProperty::isVariantProperty() const
 bool AbstractProperty::isNodeAbstractProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return false;
 
     if (internalNode()->hasProperty(name())) {
         Q_ASSERT(internalNode()->property(name()));
@@ -271,7 +248,7 @@ bool AbstractProperty::isNodeAbstractProperty() const
 bool AbstractProperty::isNodeListProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return false;
 
     if (internalNode()->hasProperty(name())) {
         Q_ASSERT(internalNode()->property(name()));
@@ -284,7 +261,7 @@ bool AbstractProperty::isNodeListProperty() const
 bool AbstractProperty::isNodeProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return false;
 
     if (internalNode()->hasProperty(name())) {
         Q_ASSERT(internalNode()->property(name()));
@@ -297,7 +274,7 @@ bool AbstractProperty::isNodeProperty() const
 bool AbstractProperty::isSignalHandlerProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return false;
 
     if (internalNode()->hasProperty(name())) {
         Q_ASSERT(internalNode()->property(name()));
@@ -307,11 +284,23 @@ bool AbstractProperty::isSignalHandlerProperty() const
     return false;
 }
 
+bool AbstractProperty::isSignalDeclarationProperty() const
+{
+    if (!isValid())
+        return false;
+
+    if (internalNode()->hasProperty(name())) {
+        Q_ASSERT(internalNode()->property(name()));
+        return internalNode()->property(name())->isSignalDeclarationProperty();
+    }
+
+    return false;
+}
 
 bool AbstractProperty::isBindingProperty() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return false;
 
     if (internalNode()->hasProperty(name())) {
         Q_ASSERT(internalNode()->property(name()));
@@ -329,7 +318,7 @@ bool AbstractProperty::isDynamic() const
 TypeName AbstractProperty::dynamicTypeName() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, m_propertyName);
+        return {};
 
     if (internalNode()->hasProperty(name()))
         return internalNode()->property(name())->dynamicTypeName();

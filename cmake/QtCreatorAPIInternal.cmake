@@ -1,7 +1,15 @@
+if (CMAKE_VERSION GREATER_EQUAL 3.19)
+  set(QTC_COMMAND_ERROR_IS_FATAL COMMAND_ERROR_IS_FATAL ANY)
+endif()
+
 if (CMAKE_VERSION VERSION_LESS 3.18)
   if (CMAKE_CXX_COMPILER_ID STREQUAL GNU)
     set(BUILD_WITH_PCH OFF CACHE BOOL "" FORCE)
   endif()
+endif()
+
+if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.18)
+  include(CheckLinkerFlag)
 endif()
 
 include(FeatureSummary)
@@ -105,6 +113,7 @@ set(__QTC_PLUGINS "" CACHE INTERNAL "*** Internal ***")
 set(__QTC_LIBRARIES "" CACHE INTERNAL "*** Internal ***")
 set(__QTC_EXECUTABLES "" CACHE INTERNAL "*** Internal ***")
 set(__QTC_TESTS "" CACHE INTERNAL "*** Internal ***")
+set(__QTC_RESOURCE_FILES "" CACHE INTERNAL "*** Internal ***")
 
 # handle SCCACHE hack
 # SCCACHE does not work with the /Zi option, which makes each compilation write debug info
@@ -113,15 +122,24 @@ set(__QTC_TESTS "" CACHE INTERNAL "*** Internal ***")
 # This increases memory usage, disk space usage and linking time, so should only be
 # enabled if necessary.
 # Must be called after project(...).
-function(qtc_handle_sccache_support)
-  if (MSVC AND WITH_SCCACHE_SUPPORT)
-    foreach(config DEBUG RELWITHDEBINFO)
-      foreach(lang C CXX)
-        set(flags_var "CMAKE_${lang}_FLAGS_${config}")
-        string(REPLACE "/Zi" "/Z7" ${flags_var} "${${flags_var}}")
-        set(${flags_var} "${${flags_var}}" PARENT_SCOPE)
+function(qtc_handle_compiler_cache_support)
+  if (WITH_SCCACHE_SUPPORT OR WITH_CCACHE_SUPPORT)
+    if (MSVC)
+      foreach(config DEBUG RELWITHDEBINFO)
+        foreach(lang C CXX)
+          set(flags_var "CMAKE_${lang}_FLAGS_${config}")
+          string(REPLACE "/Zi" "/Z7" ${flags_var} "${${flags_var}}")
+          set(${flags_var} "${${flags_var}}" PARENT_SCOPE)
+        endforeach()
       endforeach()
-    endforeach()
+    endif()
+  endif()
+  if (WITH_CCACHE_SUPPORT)
+    find_program(CCACHE_PROGRAM ccache)
+    if(CCACHE_PROGRAM)
+      set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "CXX compiler launcher" FORCE)
+      set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "C compiler launcher" FORCE)
+    endif()
   endif()
 endfunction()
 
@@ -154,11 +172,28 @@ function(qtc_enable_release_for_debug_configuration)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" PARENT_SCOPE)
 endfunction()
 
-function(qtc_enable_sanitize _sanitize_flags)
+function(qtc_enable_sanitize _target _sanitize_flags)
+  target_compile_options("${_target}" PUBLIC -fsanitize=${SANITIZE_FLAGS})
+
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=${_sanitize_flags}")
+    target_link_options("${_target}" PUBLIC -fsanitize=${SANITIZE_FLAGS})
   endif()
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" PARENT_SCOPE)
+endfunction()
+
+function(qtc_add_link_flags_no_undefined target)
+  # needs CheckLinkerFlags
+  if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.18)
+    set(no_undefined_flag "-Wl,--no-undefined")
+    check_linker_flag(CXX ${no_undefined_flag} QTC_LINKER_SUPPORTS_NO_UNDEFINED)
+    if (NOT QTC_LINKER_SUPPORTS_NO_UNDEFINED)
+        set(no_undefined_flag "-Wl,-undefined,error")
+        check_linker_flag(CXX ${no_undefined_flag} QTC_LINKER_SUPPORTS_UNDEFINED_ERROR)
+        if (NOT QTC_LINKER_SUPPORTS_UNDEFINED_ERROR)
+            return()
+        endif()
+    endif()
+    target_link_options("${target}" PRIVATE "${no_undefined_flag}")
+  endif()
 endfunction()
 
 function(append_extra_translations target_name)
@@ -201,6 +236,16 @@ function(set_public_headers target sources)
   endforeach()
 endfunction()
 
+function(update_resource_files_list sources)
+  foreach(source IN LISTS sources)
+    if (source MATCHES "\.qrc$")
+      get_filename_component(resource_name ${source} NAME_WE)
+      string(REPLACE "-" "_" resource_name ${resource_name})
+      update_cached_list(__QTC_RESOURCE_FILES "${resource_name}")
+    endif()
+  endforeach()
+endfunction()
+
 function(set_public_includes target includes)
   foreach(inc_dir IN LISTS includes)
     if (NOT IS_ABSOLUTE ${inc_dir})
@@ -217,22 +262,23 @@ endfunction()
 function(finalize_test_setup test_name)
   cmake_parse_arguments(_arg "" "TIMEOUT" "" ${ARGN})
   if (DEFINED _arg_TIMEOUT)
-    set(timeout ${_arg_TIMEOUT})
+    set(timeout_arg TIMEOUT ${_arg_TIMEOUT})
   else()
-    set(timeout 5)
+    set(timeout_arg)
   endif()
   # Never translate tests:
   set_tests_properties(${name}
     PROPERTIES
       QT_SKIP_TRANSLATION ON
-      TIMEOUT ${timeout}
+      ${timeout_arg}
   )
 
   if (WIN32)
     list(APPEND env_path $ENV{PATH})
     list(APPEND env_path ${CMAKE_BINARY_DIR}/${_IDE_PLUGIN_PATH})
     list(APPEND env_path ${CMAKE_BINARY_DIR}/${_IDE_BIN_PATH})
-    list(APPEND env_path $<TARGET_FILE_DIR:Qt5::Test>)
+    # version-less target Qt::Test is an interface library that links to QtX::Test
+    list(APPEND env_path $<TARGET_FILE_DIR:$<TARGET_PROPERTY:Qt::Test,INTERFACE_LINK_LIBRARIES>>)
     if (TARGET libclang)
         list(APPEND env_path $<TARGET_FILE_DIR:libclang>)
     endif()
@@ -295,6 +341,10 @@ function(find_dependent_plugins varName)
   set(_RESULT ${ARGN})
 
   foreach(i ${ARGN})
+    if(NOT TARGET ${i})
+      continue()
+    endif()
+    set(_dep)
     get_property(_dep TARGET "${i}" PROPERTY _arg_DEPENDS)
     if (_dep)
       find_dependent_plugins(_REC ${_dep})
@@ -381,15 +431,15 @@ function(enable_pch target)
             PROPERTIES GENERATED TRUE)
 
         _add_pch_target(${PROJECT_NAME}PchGui
-          "${QtCreator_SOURCE_DIR}/src/shared/qtcreator_gui_pch.h" Qt5::Widgets)
+          "${QtCreator_SOURCE_DIR}/src/shared/qtcreator_gui_pch.h" Qt::Widgets)
         _add_pch_target(${PROJECT_NAME}PchConsole
-          "${QtCreator_SOURCE_DIR}/src/shared/qtcreator_pch.h" Qt5::Core)
+          "${QtCreator_SOURCE_DIR}/src/shared/qtcreator_pch.h" Qt::Core)
       endif()
 
       unset(PCH_TARGET)
-      if ("Qt5::Widgets" IN_LIST dependencies)
+      if ("Qt::Widgets" IN_LIST dependencies)
         set(PCH_TARGET ${PROJECT_NAME}PchGui)
-      elseif ("Qt5::Core" IN_LIST dependencies)
+      elseif ("Qt::Core" IN_LIST dependencies)
         set(PCH_TARGET ${PROJECT_NAME}PchConsole)
       endif()
 
@@ -481,6 +531,7 @@ function(extend_qtc_target target_name)
   endif()
 
   set_public_headers(${target_name} "${_arg_SOURCES}")
+  update_resource_files_list("${_arg_SOURCES}")
 
   foreach(file IN LISTS _arg_EXPLICIT_MOC)
     set_explicit_moc(${target_name} "${file}")

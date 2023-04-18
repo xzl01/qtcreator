@@ -1,30 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mcukitinformation.h"
+#include "mcusupporttr.h"
 
+#include <cmakeprojectmanager/cmakekitinformation.h>
+#include <utils/algorithm.h>
+#include <utils/filepath.h>
 #include <utils/qtcassert.h>
 
 using namespace ProjectExplorer;
@@ -40,7 +22,7 @@ public:
 
     void makeReadOnly() override {}
     void refresh() override {}
-    void addToLayout(Utils::LayoutBuilder &) override {}
+    void addToLayout(Utils::Layouting::LayoutBuilder &) override {}
 };
 
 } // anonymous namespace
@@ -52,36 +34,36 @@ McuDependenciesKitAspect::McuDependenciesKitAspect()
 {
     setObjectName(QLatin1String("McuDependenciesKitAspect"));
     setId(McuDependenciesKitAspect::id());
-    setDisplayName(tr("MCU Dependencies"));
-    setDescription(tr("Paths to 3rd party dependencies"));
+    setDisplayName(Tr::tr("MCU Dependencies"));
+    setDescription(Tr::tr("Paths to 3rd party dependencies"));
     setPriority(28500);
 }
 
-Tasks McuDependenciesKitAspect::validate(const Kit *k) const
+Tasks McuDependenciesKitAspect::validate(const Kit *kit) const
 {
     Tasks result;
-    QTC_ASSERT(k, return result);
+    QTC_ASSERT(kit, return result);
 
-    const QVariant checkFormat = k->value(McuDependenciesKitAspect::id());
-    if (!checkFormat.isNull() && !checkFormat.canConvert(QVariant::List))
-        return {BuildSystemTask(Task::Error, tr("The MCU dependencies setting value is invalid."))};
+    // check dependencies are defined properly for this kit
+    const QVariant checkFormat = kit->value(McuDependenciesKitAspect::id());
+    if (!checkFormat.isValid() || checkFormat.isNull())
+        return result;
+    if (!checkFormat.canConvert(QVariant::List))
+        return {BuildSystemTask(Task::Error, Tr::tr("The MCU dependencies setting value is invalid."))};
 
-    const QVariant envStringList = k->value(EnvironmentKitAspect::id());
-    if (!envStringList.isNull() && !envStringList.canConvert(QVariant::List))
-        return {BuildSystemTask(Task::Error, tr("The environment setting value is invalid."))};
-
-    const auto environment = Utils::NameValueDictionary(envStringList.toStringList());
-    for (const auto &dependency : dependencies(k)) {
-        if (!environment.hasKey(dependency.name)) {
+    // check paths defined in cmake variables for given dependencies exist
+    const auto cMakeEntries = Utils::NameValueDictionary(configuration(kit));
+    for (const auto &dependency : dependencies(kit)) {
+        auto givenPath = Utils::FilePath::fromUserInput(cMakeEntries.value(dependency.name));
+        if (givenPath.isEmpty()) {
             result << BuildSystemTask(Task::Warning,
-                                      tr("Environment variable %1 not defined.")
-                                          .arg(dependency.name));
+                                      Tr::tr("CMake variable %1 not defined.").arg(dependency.name));
         } else {
-            const auto path = Utils::FilePath::fromUserInput(environment.value(dependency.name)
-                                                             + "/" + dependency.value);
-            if (!path.exists()) {
+            const auto detectionPath = givenPath.resolvePath(dependency.value);
+            if (!detectionPath.exists()) {
                 result << BuildSystemTask(Task::Warning,
-                                          tr("%1 not found.").arg(path.toUserOutput()));
+                                          Tr::tr("CMake variable %1: path %2 does not exist.")
+                                              .arg(dependency.name, detectionPath.toUserOutput()));
             }
         }
     }
@@ -89,40 +71,41 @@ Tasks McuDependenciesKitAspect::validate(const Kit *k) const
     return result;
 }
 
-void McuDependenciesKitAspect::fix(Kit *k)
+void McuDependenciesKitAspect::fix(Kit *kit)
 {
-    QTC_ASSERT(k, return);
+    QTC_ASSERT(kit, return );
 
-    const QVariant variant = k->value(McuDependenciesKitAspect::id());
+    const QVariant variant = kit->value(McuDependenciesKitAspect::id());
     if (!variant.isNull() && !variant.canConvert(QVariant::List)) {
-        qWarning("Kit \"%s\" has a wrong mcu dependencies value set.", qPrintable(k->displayName()));
-        setDependencies(k, Utils::NameValueItems());
+        qWarning("Kit \"%s\" has a wrong mcu dependencies value set.",
+                 qPrintable(kit->displayName()));
+        setDependencies(kit, Utils::NameValueItems());
     }
 }
 
-KitAspectWidget *McuDependenciesKitAspect::createConfigWidget(Kit *k) const
+KitAspectWidget *McuDependenciesKitAspect::createConfigWidget(Kit *kit) const
 {
-    QTC_ASSERT(k, return nullptr);
-    return new McuDependenciesKitAspectWidget(k, this);
+    QTC_ASSERT(kit, return nullptr);
+    return new McuDependenciesKitAspectWidget(kit, this);
 }
 
-KitAspect::ItemList McuDependenciesKitAspect::toUserOutput(const Kit *k) const
+KitAspect::ItemList McuDependenciesKitAspect::toUserOutput(const Kit *kit) const
 {
-    Q_UNUSED(k)
+    Q_UNUSED(kit)
 
     return {};
 }
 
 Utils::Id McuDependenciesKitAspect::id()
 {
-    return "PE.Profile.McuDependencies";
+    return "PE.Profile.McuCMakeDependencies";
 }
 
-Utils::NameValueItems McuDependenciesKitAspect::dependencies(const Kit *k)
+Utils::NameValueItems McuDependenciesKitAspect::dependencies(const Kit *kit)
 {
-    if (k)
+    if (kit)
         return Utils::NameValueItem::fromStringList(
-            k->value(McuDependenciesKitAspect::id()).toStringList());
+            kit->value(McuDependenciesKitAspect::id()).toStringList());
     return Utils::NameValueItems();
 }
 
@@ -131,6 +114,15 @@ void McuDependenciesKitAspect::setDependencies(Kit *k, const Utils::NameValueIte
     if (k)
         k->setValue(McuDependenciesKitAspect::id(),
                     Utils::NameValueItem::toStringList(dependencies));
+}
+
+Utils::NameValuePairs McuDependenciesKitAspect::configuration(const Kit *kit)
+{
+    using namespace CMakeProjectManager;
+    const auto config = CMakeConfigurationKitAspect::configuration(kit).toList();
+    return Utils::transform<Utils::NameValuePairs>(config, [](const CMakeConfigItem &it) {
+        return Utils::NameValuePair(QString::fromUtf8(it.key), QString::fromUtf8(it.value));
+    });
 }
 
 } // namespace Internal

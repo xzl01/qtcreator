@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,12 +7,13 @@
 
 #include <utils/fileutils.h>
 #include <utils/id.h>
-#include <utils/optional.h>
 #include <utils/theme/theme.h>
 
 #include <QCoreApplication>
 #include <QIcon>
 #include <QVector>
+
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 class QAction;
@@ -49,15 +28,18 @@ namespace TextEditor {
 
 class TextDocument;
 
+class TextMarkCategory
+{
+public:
+    QString displayName;
+    Utils::Id id;
+};
+
 class TEXTEDITOR_EXPORT TextMark
 {
-    Q_DECLARE_TR_FUNCTIONS(TextEditor::TextMark)
 public:
-    TextMark(const Utils::FilePath &fileName,
-             int lineNumber,
-             Utils::Id category,
-             double widthFactor = 1.0);
     TextMark() = delete;
+    TextMark(const Utils::FilePath &filePath, int lineNumber, TextMarkCategory category);
     virtual ~TextMark();
 
     // determine order on markers on the same line.
@@ -68,12 +50,15 @@ public:
         HighPriority // shown on top.
     };
 
-    Utils::FilePath fileName() const;
+    Utils::FilePath filePath() const;
     int lineNumber() const;
 
     virtual void paintIcon(QPainter *painter, const QRect &rect) const;
-    virtual void paintAnnotation(QPainter &painter, QRectF *annotationRect,
-                                 const qreal fadeInOffset, const qreal fadeOutOffset,
+    virtual void paintAnnotation(QPainter &painter,
+                                 const QRect &eventRect,
+                                 QRectF *annotationRect,
+                                 const qreal fadeInOffset,
+                                 const qreal fadeOutOffset,
                                  const QPointF &contentOffset) const;
     struct AnnotationRects
     {
@@ -87,7 +72,7 @@ public:
     AnnotationRects annotationRects(const QRectF &boundingRect, const QFontMetrics &fm,
                                     const qreal fadeInOffset, const qreal fadeOutOffset) const;
     /// called if the filename of the document changed
-    virtual void updateFileName(const Utils::FilePath &fileName);
+    virtual void updateFilePath(const Utils::FilePath &filePath);
     virtual void updateLineNumber(int lineNumber);
     virtual void updateBlock(const QTextBlock &block);
     virtual void move(int line);
@@ -98,21 +83,19 @@ public:
     virtual void dragToLine(int lineNumber);
     void addToToolTipLayout(QGridLayout *target) const;
     virtual bool addToolTipContent(QLayout *target) const;
+    virtual QColor annotationColor() const;
 
     void setIcon(const QIcon &icon);
     void setIconProvider(const std::function<QIcon()> &iconProvider);
     const QIcon icon() const;
-    // call this if the icon has changed.
     void updateMarker();
     Priority priority() const { return m_priority;}
     void setPriority(Priority prioriy);
     bool isVisible() const;
     void setVisible(bool isVisible);
-    Utils::Id category() const { return m_category; }
-    double widthFactor() const;
-    void setWidthFactor(double factor);
+    TextMarkCategory category() const { return m_category; }
 
-    Utils::optional<Utils::Theme::Color> color() const;
+    std::optional<Utils::Theme::Color> color() const;
     void setColor(const Utils::Theme::Color &color);
 
     QString defaultToolTip() const { return m_defaultToolTip; }
@@ -122,7 +105,7 @@ public:
     void setBaseTextDocument(TextDocument *baseTextDocument) { m_baseTextDocument = baseTextDocument; }
 
     QString lineAnnotation() const { return m_lineAnnotation; }
-    void setLineAnnotation(const QString &lineAnnotation) { m_lineAnnotation = lineAnnotation; }
+    void setLineAnnotation(const QString &lineAnnotation);
 
     QString toolTip() const;
     void setToolTip(const QString &toolTip);
@@ -130,6 +113,10 @@ public:
 
     QVector<QAction *> actions() const;
     void setActions(const QVector<QAction *> &actions); // Takes ownership
+    void setActionsProvider(const std::function<QList<QAction *>()> &actionsProvider); // Takes ownership
+
+    bool isLocationMarker() const;;
+    void setIsLocationMarker(bool newIsLocationMarker);
 
 protected:
     void setSettingsPage(Utils::Id settingsPage);
@@ -141,18 +128,19 @@ private:
     Utils::FilePath m_fileName;
     int m_lineNumber = 0;
     Priority m_priority = LowPriority;
+    bool m_isLocationMarker = false;
     QIcon m_icon;
     std::function<QIcon()> m_iconProvider;
-    Utils::optional<Utils::Theme::Color> m_color;
+    std::optional<Utils::Theme::Color> m_color;
     bool m_visible = false;
-    Utils::Id m_category;
-    double m_widthFactor = 1.0;
+    TextMarkCategory m_category;
     QString m_lineAnnotation;
     QString m_toolTip;
     std::function<QString()> m_toolTipProvider;
     QString m_defaultToolTip;
-    QVector<QAction *> m_actions;
-    QAction *m_settingsAction = nullptr;
+    QVector<QAction *> m_actions; // FIXME Remove in master
+    std::function<QList<QAction *>()> m_actionsProvider;
+    Utils::Id m_settingsPage;
 };
 
 } // namespace TextEditor

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlstate.h"
 #include "abstractview.h"
@@ -44,15 +22,17 @@ QmlModelState::QmlModelState()
 }
 
 QmlModelState::QmlModelState(const ModelNode &modelNode)
-        : QmlModelNodeFacade(modelNode)
+    : QmlModelNodeFacade(modelNode)
 {
 }
 
 QmlPropertyChanges QmlModelState::propertyChanges(const ModelNode &node)
 {
-    if (!isBaseState()) {
+    if (isValid() && !isBaseState()) {
         addChangeSetIfNotExists(node);
-        foreach (const ModelNode &childNode, modelNode().nodeListProperty("changes").toModelNodeList()) {
+
+        const QList<ModelNode> nodes = modelNode().nodeListProperty("changes").toModelNodeList();
+        for (const ModelNode &childNode : nodes) {
             //### exception if not valid QmlModelStateOperation
             if (QmlPropertyChanges::isValidQmlPropertyChanges(childNode)
                     && QmlPropertyChanges(childNode).target().isValid()
@@ -68,8 +48,9 @@ QList<QmlModelStateOperation> QmlModelState::stateOperations(const ModelNode &no
 {
     QList<QmlModelStateOperation> returnList;
 
-    if (!isBaseState() &&  modelNode().hasNodeListProperty("changes")) {
-        foreach (const ModelNode &childNode, modelNode().nodeListProperty("changes").toModelNodeList()) {
+    if (!isBaseState() && modelNode().hasNodeListProperty("changes")) {
+        const QList<ModelNode> nodes = modelNode().nodeListProperty("changes").toModelNodeList();
+        for (const ModelNode &childNode : nodes) {
             if (QmlModelStateOperation::isValidQmlModelStateOperation(childNode)) {
                 QmlModelStateOperation stateOperation(childNode);
                 ModelNode targetNode = stateOperation.target();
@@ -86,8 +67,9 @@ QList<QmlPropertyChanges> QmlModelState::propertyChanges() const
 {
     QList<QmlPropertyChanges> returnList;
 
-    if (!isBaseState() &&  modelNode().hasNodeListProperty("changes")) {
-        foreach (const ModelNode &childNode, modelNode().nodeListProperty("changes").toModelNodeList()) {
+    if (!isBaseState() && modelNode().hasNodeListProperty("changes")) {
+        const QList<ModelNode> nodes = modelNode().nodeListProperty("changes").toModelNodeList();
+        for (const ModelNode &childNode : nodes) {
             //### exception if not valid QmlModelStateOperation
             if (QmlPropertyChanges::isValidQmlPropertyChanges(childNode))
                 returnList.append(QmlPropertyChanges(childNode));
@@ -100,8 +82,9 @@ QList<QmlPropertyChanges> QmlModelState::propertyChanges() const
 
 bool QmlModelState::hasPropertyChanges(const ModelNode &node) const
 {
-    if (!isBaseState() &&  modelNode().hasNodeListProperty("changes")) {
-        foreach (const QmlPropertyChanges &changeSet, propertyChanges()) {
+    if (!isBaseState() && modelNode().hasNodeListProperty("changes")) {
+        const QList<QmlPropertyChanges> changes = propertyChanges();
+        for (const QmlPropertyChanges &changeSet : changes) {
             if (changeSet.target().isValid() && changeSet.target() == node)
                 return true;
         }
@@ -113,7 +96,8 @@ bool QmlModelState::hasPropertyChanges(const ModelNode &node) const
 bool QmlModelState::hasStateOperation(const ModelNode &node) const
 {
     if (!isBaseState()) {
-        foreach (const  QmlModelStateOperation &stateOperation, stateOperations()) {
+        const  QList<QmlModelStateOperation> operations = stateOperations();
+        for (const  QmlModelStateOperation &stateOperation : operations) {
             if (stateOperation.target() == node)
                 return true;
         }
@@ -126,8 +110,9 @@ QList<QmlModelStateOperation> QmlModelState::stateOperations() const
     //### exception if not valid
     QList<QmlModelStateOperation> returnList;
 
-    if (!isBaseState() &&  modelNode().hasNodeListProperty("changes")) {
-        foreach (const ModelNode &childNode, modelNode().nodeListProperty("changes").toModelNodeList()) {
+    if (!isBaseState() && modelNode().hasNodeListProperty("changes")) {
+        const QList<ModelNode> nodes = modelNode().nodeListProperty("changes").toModelNodeList();
+        for (const ModelNode &childNode : nodes) {
             //### exception if not valid QmlModelStateOperation
             if (QmlModelStateOperation::isValidQmlModelStateOperation(childNode))
                 returnList.append(QmlModelStateOperation(childNode));
@@ -152,7 +137,7 @@ QList<QmlModelStateOperation> QmlModelState::allInvalidStateOperations() const
 void QmlModelState::addChangeSetIfNotExists(const ModelNode &node)
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (!hasPropertyChanges(node)) {
         ModelNode newChangeSet;
@@ -177,7 +162,7 @@ void QmlModelState::removePropertyChanges(const ModelNode &node)
     //### exception if not valid
 
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (!isBaseState()) {
         QmlPropertyChanges changeSet(propertyChanges(node));
@@ -193,6 +178,9 @@ void QmlModelState::removePropertyChanges(const ModelNode &node)
 */
 bool QmlModelState::affectsModelNode(const ModelNode &node) const
 {
+    if (!isValid())
+        return false;
+
     if (isBaseState())
         return false;
 
@@ -203,7 +191,8 @@ QList<QmlObjectNode> QmlModelState::allAffectedNodes() const
 {
     QList<QmlObjectNode> returnList;
 
-    foreach (const ModelNode &childNode, modelNode().nodeListProperty("changes").toModelNodeList()) {
+    const QList<ModelNode> nodes = modelNode().nodeListProperty("changes").toModelNodeList();
+    for (const ModelNode &childNode : nodes) {
         if (QmlModelStateOperation::isValidQmlModelStateOperation(childNode) &&
             !returnList.contains(QmlModelStateOperation(childNode).target()))
             returnList.append(QmlModelStateOperation(childNode).target());
@@ -234,8 +223,7 @@ bool QmlModelState::isValid() const
 bool QmlModelState::isValidQmlModelState(const ModelNode &modelNode)
 {
     return isValidQmlModelNodeFacade(modelNode)
-            && modelNode.metaInfo().isValid()
-            && (modelNode.metaInfo().isSubclassOf("QtQuick.State") || isBaseState(modelNode));
+           && (modelNode.metaInfo().isQtQuickState() || isBaseState(modelNode));
 }
 
 /**
@@ -264,19 +252,33 @@ bool QmlModelState::isBaseState(const ModelNode &modelNode)
 QmlModelState QmlModelState::duplicate(const QString &name) const
 {
     if (!isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
-    if (!QmlVisualNode::isValidQmlVisualNode(modelNode().parentProperty().parentModelNode()))
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-
-//    QmlModelState newState(stateGroup().addState(name));
     QmlModelState newState(createQmlState(view(), {{PropertyName("name"), QVariant(name)}}));
-    foreach (const ModelNode &childNode, modelNode().nodeListProperty("changes").toModelNodeList()) {
-        ModelNode newModelNode(view()->createModelNode(childNode.type(), childNode.majorVersion(), childNode.minorVersion()));
-        foreach (const BindingProperty &bindingProperty, childNode.bindingProperties())
-            newModelNode.bindingProperty(bindingProperty.name()).setExpression(bindingProperty.expression());
-        foreach (const VariantProperty &variantProperty, childNode.variantProperties())
-            newModelNode.variantProperty(variantProperty.name()).setValue(variantProperty.value());
+
+    if (hasExtend())
+        newState.setExtend(extend());
+
+    const QList<ModelNode> nodes = modelNode().nodeListProperty("changes").toModelNodeList();
+    for (const ModelNode &childNode : nodes) {
+        ModelNode newModelNode(view()->createModelNode(childNode.type(),
+                                                       childNode.majorVersion(),
+                                                       childNode.minorVersion()));
+
+        for (const BindingProperty &bindingProperty : childNode.bindingProperties()) {
+            auto property = newModelNode.bindingProperty(bindingProperty.name());
+            property.setExpression(bindingProperty.expression());
+        }
+
+        const QList<BindingProperty> bindingProperties = childNode.bindingProperties();
+        for (const BindingProperty &bindingProperty : bindingProperties)
+            newModelNode.bindingProperty(bindingProperty.name())
+                .setExpression(bindingProperty.expression());
+
+        for (const VariantProperty &variantProperty : childNode.variantProperties()) {
+            auto property = newModelNode.variantProperty(variantProperty.name());
+            property.setValue(variantProperty.value());
+        }
         newState.modelNode().nodeListProperty("changes").reparentHere(newModelNode);
     }
 
@@ -287,14 +289,13 @@ QmlModelState QmlModelState::duplicate(const QString &name) const
 
 QmlModelStateGroup QmlModelState::stateGroup() const
 {
-    QmlVisualNode parentNode(modelNode().parentProperty().parentModelNode());
+    QmlObjectNode parentNode(modelNode().parentProperty().parentModelNode());
     return parentNode.states();
 }
 
 ModelNode QmlModelState::createQmlState(AbstractView *view, const PropertyListType &propertyList)
 {
     QTC_ASSERT(view, return {});
-    QTC_CHECK(view->majorQtQuickVersion() < 3);
 
     const QByteArray typeName = "QtQuick.State";
     NodeMetaInfo metaInfo = view->model()->metaInfo(typeName);
@@ -308,15 +309,15 @@ ModelNode QmlModelState::createQmlState(AbstractView *view, const PropertyListTy
 void QmlModelState::setAsDefault()
 {
     if ((!isBaseState()) && (modelNode().isValid())) {
-        view()->rootModelNode().variantProperty("state").setValue(name());
+        stateGroup().modelNode().variantProperty("state").setValue(name());
     }
 }
 
 bool QmlModelState::isDefault() const
 {
     if ((!isBaseState()) && (modelNode().isValid())) {
-        if (view()->rootModelNode().hasProperty("state")) {
-            return (view()->rootModelNode().variantProperty("state").value() == name());
+        if (stateGroup().modelNode().hasProperty("state")) {
+            return (stateGroup().modelNode().variantProperty("state").value() == name());
         }
     }
 
@@ -358,6 +359,28 @@ void QmlModelState::removeAnnotation()
         modelNode().removeCustomId();
         modelNode().removeAnnotation();
     }
+}
+
+QString QmlModelState::extend() const
+{
+    if (isBaseState())
+        return QString();
+
+    return modelNode().variantProperty("extend").value().toString();
+}
+
+void QmlModelState::setExtend(const QString &name)
+{
+    if ((!isBaseState()) && (modelNode().isValid()))
+        modelNode().variantProperty("extend").setValue(name);
+}
+
+bool QmlModelState::hasExtend() const
+{
+    if (!isBaseState() && modelNode().isValid())
+        return modelNode().hasVariantProperty("extend");
+
+    return false;
 }
 
 QmlModelState QmlModelState::createBaseState(const AbstractView *view)

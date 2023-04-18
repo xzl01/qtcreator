@@ -1,41 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdbwatcher.h"
 
-#include "../qdbutils.h"
 #include "hostmessages.h"
+#include "../qdbtr.h"
+#include "../qdbutils.h"
 
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 #include <utils/qtcprocess.h>
 
 #include <QFile>
 #include <QTimer>
 
-namespace Qdb {
-namespace Internal {
+namespace Qdb::Internal {
 
 const int startupDelay = 500; // time in ms to wait for host server startup before retrying
 const QString qdbSocketName = "qdb.socket";
@@ -62,17 +40,10 @@ void QdbWatcher::start(RequestType requestType)
 
 void QdbWatcher::startPrivate()
 {
-    void (QLocalSocket::*LocalSocketErrorFunction)(QLocalSocket::LocalSocketError)
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-                = &QLocalSocket::error;
-#else
-                = &QLocalSocket::errorOccurred;
-#endif
-
     m_socket = std::unique_ptr<QLocalSocket>(new QLocalSocket());
     connect(m_socket.get(), &QLocalSocket::connected,
             this, &QdbWatcher::handleWatchConnection);
-    connect(m_socket.get(), LocalSocketErrorFunction,
+    connect(m_socket.get(), &QLocalSocket::errorOccurred,
             this, &QdbWatcher::handleWatchError);
     m_socket->connectToServer(qdbSocketName);
 }
@@ -108,14 +79,14 @@ void QdbWatcher::handleWatchError(QLocalSocket::LocalSocketError error)
     if (error != QLocalSocket::ServerNotFoundError
             && error != QLocalSocket::ConnectionRefusedError) {
         stop();
-        emit watcherError(tr("Unexpected QLocalSocket error: %1")
+        emit watcherError(Tr::tr("Unexpected QLocalSocket error: %1")
                           .arg(m_socket->errorString()));
         return;
     }
 
     if (m_retried) {
         stop();
-        emit watcherError(tr("Could not connect to QDB host server even after trying to start it."));
+        emit watcherError(Tr::tr("Could not connect to QDB host server even after trying to start it."));
         return;
     }
     retry();
@@ -128,7 +99,7 @@ void QdbWatcher::handleWatchMessage()
         const auto document = QJsonDocument::fromJson(responseBytes);
         if (document.isNull()) {
             const QString message =
-                    tr("Invalid JSON response received from QDB server: %1");
+                    Tr::tr("Invalid JSON response received from QDB server: %1");
             emit watcherError(message.arg(QString::fromUtf8(responseBytes)));
             return;
         }
@@ -141,16 +112,16 @@ void QdbWatcher::forkHostServer()
     Utils::FilePath qdbFilePath = findTool(QdbTool::Qdb);
     QFile executable(qdbFilePath.toString());
     if (!executable.exists()) {
-        const QString message = tr("Could not find QDB host server executable. "
+        const QString message = Tr::tr("Could not find QDB host server executable. "
                                    "You can set the location with environment variable %1.")
-                .arg(QLatin1String(overridingEnvironmentVariable(QdbTool::Qdb)));
+                                    .arg(overridingEnvironmentVariable(QdbTool::Qdb));
         showMessage(message, true);
         return;
     }
     if (Utils::QtcProcess::startDetached({qdbFilePath, {"server"}}))
-        showMessage(tr("QDB host server started."), false);
+        showMessage(Tr::tr("QDB host server started."), false);
     else
-        showMessage(tr("Could not start QDB host server in %1").arg(qdbFilePath.toString()), true);
+        showMessage(Tr::tr("Could not start QDB host server in %1").arg(qdbFilePath.toString()), true);
 }
 
 void QdbWatcher::retry()
@@ -159,7 +130,7 @@ void QdbWatcher::retry()
     {
         QMutexLocker lock(&s_startMutex);
         if (!s_startedServer) {
-            showMessage(tr("Starting QDB host server."), false);
+            showMessage(Tr::tr("Starting QDB host server."), false);
             forkHostServer();
             s_startedServer = true;
         }
@@ -167,5 +138,4 @@ void QdbWatcher::retry()
     QTimer::singleShot(startupDelay, this, &QdbWatcher::startPrivate);
 }
 
-} // namespace Internal
-} // namespace Qdb
+} // Qdb::Internal

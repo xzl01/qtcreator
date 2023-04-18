@@ -98,10 +98,11 @@ enum {
     And             = 8,
     Equality        = 9,
     Relational      = 10,
-    Shift           = 11,
-    Additive        = 12,
-    Multiplicative  = 13,
-    PointerToMember = 14
+    ThreeWayComp    = 11,
+    Shift           = 12,
+    Additive        = 13,
+    Multiplicative  = 14,
+    PointerToMember = 15
 };
 } // namespace Precedece
 
@@ -116,29 +117,30 @@ inline int precedence(int tokenKind, bool templateArguments)
         return Prec::Assignment;
 
     switch (tokenKind) {
-    case T_COMMA:           return Prec::Comma;
-    case T_QUESTION:        return Prec::Conditional;
-    case T_PIPE_PIPE:       return Prec::LogicalOr;
-    case T_AMPER_AMPER:     return Prec::LogicalAnd;
-    case T_PIPE:            return Prec::InclusiveOr;
-    case T_CARET:           return Prec::ExclusiveOr;
-    case T_AMPER:           return Prec::And;
+    case T_COMMA:               return Prec::Comma;
+    case T_QUESTION:            return Prec::Conditional;
+    case T_PIPE_PIPE:           return Prec::LogicalOr;
+    case T_AMPER_AMPER:         return Prec::LogicalAnd;
+    case T_PIPE:                return Prec::InclusiveOr;
+    case T_CARET:               return Prec::ExclusiveOr;
+    case T_AMPER:               return Prec::And;
     case T_EQUAL_EQUAL:
-    case T_EXCLAIM_EQUAL:   return Prec::Equality;
+    case T_EXCLAIM_EQUAL:       return Prec::Equality;
     case T_GREATER:
     case T_LESS:
     case T_LESS_EQUAL:
-    case T_GREATER_EQUAL:   return Prec::Relational;
+    case T_GREATER_EQUAL:       return Prec::Relational;
+    case T_LESS_EQUAL_GREATER:  return Prec::ThreeWayComp;
     case T_LESS_LESS:
-    case T_GREATER_GREATER: return Prec::ExclusiveOr;
+    case T_GREATER_GREATER:     return Prec::ExclusiveOr;
     case T_PLUS:
-    case T_MINUS:           return Prec::Additive;
+    case T_MINUS:               return Prec::Additive;
     case T_STAR:
     case T_SLASH:
-    case T_PERCENT:         return Prec::Multiplicative;
+    case T_PERCENT:             return Prec::Multiplicative;
     case T_ARROW_STAR:
-    case T_DOT_STAR:        return Prec::PointerToMember;
-    default:                return Prec::Unknown;
+    case T_DOT_STAR:            return Prec::PointerToMember;
+    default:                    return Prec::Unknown;
     }
 }
 
@@ -1300,6 +1302,7 @@ bool Parser::parseOperator(OperatorAST *&node) // ### FIXME
     case T_GREATER_EQUAL:
     case T_GREATER_GREATER_EQUAL:
     case T_LESS_EQUAL:
+    case T_LESS_EQUAL_GREATER:
     case T_LESS_LESS_EQUAL:
     case T_MINUS_EQUAL:
     case T_PERCENT_EQUAL:
@@ -1568,6 +1571,8 @@ bool Parser::parseDeclaratorOrAbstractDeclarator(DeclaratorAST *&node, Specifier
     return parseAbstractDeclarator(node, decl_specifier_list);
 }
 
+
+
 bool Parser::parseCoreDeclarator(DeclaratorAST *&node, SpecifierListAST *decl_specifier_list, ClassSpecifierAST *)
 {
     DEBUG_THIS_RULE();
@@ -1616,9 +1621,51 @@ bool Parser::parseCoreDeclarator(DeclaratorAST *&node, SpecifierListAST *decl_sp
             node = ast;
             return true;
         }
+    } else if (const auto decl = parseDecompositionDeclarator(decl_specifier_list)) {
+        DeclaratorAST *ast = new (_pool) DeclaratorAST;
+        ast->attribute_list = attributes;
+        ast->ptr_operator_list = ptr_operators;
+        ast->core_declarator = decl;
+        node = ast;
+        return true;
     }
     rewind(start);
     return false;
+}
+
+DecompositionDeclaratorAST *Parser::parseDecompositionDeclarator(
+        SpecifierListAST *decl_specifier_list)
+{
+    if (!_languageFeatures.cxx11Enabled || LA() != T_LBRACKET || !hasAuto(decl_specifier_list))
+        return nullptr;
+    consumeToken();
+
+    const auto decl = new (_pool) DecompositionDeclaratorAST;
+    for (NameListAST **iter = &decl->identifiers; ; iter = &(*iter)->next) {
+        if (LA() != T_IDENTIFIER) {
+            error(cursor(), "expected an identifier");
+            return nullptr;
+        }
+        SimpleNameAST * const name_ast = new (_pool) SimpleNameAST;
+        name_ast->identifier_token = consumeToken();
+        *iter = new (_pool) NameListAST;
+        (*iter)->value = name_ast;
+
+        if (LA() == T_RBRACKET) {
+            consumeToken();
+            return decl;
+        }
+
+        if (LA() == T_COMMA) {
+            consumeToken();
+            continue;
+        }
+
+        error(cursor(), "expected ',' or ']'");
+        return nullptr;
+    }
+
+    return nullptr;
 }
 
 static bool maybeCppInitializer(DeclaratorAST *declarator)
@@ -1637,6 +1684,18 @@ static bool maybeCppInitializer(DeclaratorAST *declarator)
         return false;
 
     return true;
+}
+
+bool Parser::hasAuto(SpecifierListAST *decl_specifier_list) const
+{
+    for (SpecifierListAST *iter = decl_specifier_list; iter; iter = iter->next) {
+        SpecifierAST *spec = iter->value;
+        if (SimpleSpecifierAST *simpleSpec = spec->asSimpleSpecifier()) {
+            if (_translationUnit->tokenKind(simpleSpec->specifier_token) == T_AUTO)
+                return true;
+        }
+    }
+    return false;
 }
 
 bool Parser::parseDeclarator(DeclaratorAST *&node, SpecifierListAST *decl_specifier_list, ClassSpecifierAST *declaringClass)
@@ -1711,19 +1770,9 @@ bool Parser::parseDeclarator(DeclaratorAST *&node, SpecifierListAST *decl_specif
             parseRefQualifier(ast->ref_qualifier_token);
             parseExceptionSpecification(ast->exception_specification);
 
-            if (_languageFeatures.cxx11Enabled && ! node->ptr_operator_list && LA() == T_ARROW) {
-                // only allow if there is 1 type spec, which has to be 'auto'
-                bool hasAuto = false;
-                for (SpecifierListAST *iter = decl_specifier_list; !hasAuto && iter; iter = iter->next) {
-                    SpecifierAST *spec = iter->value;
-                    if (SimpleSpecifierAST *simpleSpec = spec->asSimpleSpecifier()) {
-                        if (_translationUnit->tokenKind(simpleSpec->specifier_token) == T_AUTO)
-                            hasAuto = true;
-                    }
-                }
-
-                if (hasAuto)
-                    parseTrailingReturnType(ast->trailing_return_type);
+            if (_languageFeatures.cxx11Enabled && ! node->ptr_operator_list && LA() == T_ARROW
+                    && hasAuto(decl_specifier_list)) {
+                parseTrailingReturnType(ast->trailing_return_type);
             }
 
             parseOverrideFinalQualifiers(ast->cv_qualifier_list);
@@ -2752,7 +2801,7 @@ bool Parser::parseInitDeclarator(DeclaratorAST *&node, SpecifierListAST *decl_sp
             return true;
         }
         rewind(colon_token);
-    } else if (isFunctionDeclarator && declaringClass && node->core_declarator && LA() == T_EQUAL && LA(3) == T_SEMICOLON) { // = 0, = delete, = default
+    } else if (isFunctionDeclarator && node->core_declarator && LA() == T_EQUAL && LA(3) == T_SEMICOLON) { // = 0, = delete, = default
         if (!_languageFeatures.cxx11Enabled || LA(2) == T_NUMERIC_LITERAL) {
             parseInitializer(node->initializer, &node->equal_token);
         } else {
@@ -2767,6 +2816,9 @@ bool Parser::parseInitDeclarator(DeclaratorAST *&node, SpecifierListAST *decl_sp
         }
     } else if (node->core_declarator && (LA() == T_EQUAL || (_languageFeatures.cxx11Enabled && !isFunctionDeclarator && LA() == T_LBRACE) || (! declaringClass && LA() == T_LPAREN))) {
         parseInitializer(node->initializer, &node->equal_token);
+    } else if (node->core_declarator && node->core_declarator->asDecompositionDeclarator()) {
+        error(cursor(), "structured binding needs initializer");
+        return false;
     }
     return true;
 }
@@ -5625,56 +5677,6 @@ parse_as_unary_expression:
     }
 
     return parseUnaryExpression(node);
-}
-
-bool Parser::parsePmExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::PointerToMember)
-}
-
-bool Parser::parseMultiplicativeExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::Multiplicative)
-}
-
-bool Parser::parseAdditiveExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::Additive)
-}
-
-bool Parser::parseShiftExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::Shift)
-}
-
-bool Parser::parseRelationalExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::Relational)
-}
-
-bool Parser::parseEqualityExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::Equality)
-}
-
-bool Parser::parseAndExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::And)
-}
-
-bool Parser::parseExclusiveOrExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::ExclusiveOr)
-}
-
-bool Parser::parseInclusiveOrExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::InclusiveOr)
-}
-
-bool Parser::parseLogicalAndExpression(ExpressionAST *&node)
-{
-    PARSE_EXPRESSION_WITH_OPERATOR_PRECEDENCE(node, Prec::LogicalAnd)
 }
 
 bool Parser::parseLogicalOrExpression(ExpressionAST *&node)

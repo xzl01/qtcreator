@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cmakefilecompletionassist.h"
 
@@ -29,25 +7,25 @@
 #include "cmakeprojectconstants.h"
 #include "cmaketool.h"
 
-#include <texteditor/codeassist/assistinterface.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
+#include <texteditor/codeassist/assistinterface.h>
 
 #include <QFileInfo>
 
-using namespace CMakeProjectManager::Internal;
 using namespace TextEditor;
 using namespace ProjectExplorer;
 
-// -------------------------------
-// CMakeFileCompletionAssistProvider
-// -------------------------------
+namespace CMakeProjectManager::Internal {
 
-IAssistProcessor *CMakeFileCompletionAssistProvider::createProcessor(const AssistInterface *) const
+class CMakeFileCompletionAssist : public KeywordsCompletionAssistProcessor
 {
-    return new CMakeFileCompletionAssist;
-}
+public:
+    CMakeFileCompletionAssist();
+
+    IAssistProposal *performAsync() final;
+};
 
 CMakeFileCompletionAssist::CMakeFileCompletionAssist() :
     KeywordsCompletionAssistProcessor(Keywords())
@@ -56,10 +34,10 @@ CMakeFileCompletionAssist::CMakeFileCompletionAssist() :
     setDynamicCompletionFunction(&TextEditor::pathComplete);
 }
 
-IAssistProposal *CMakeFileCompletionAssist::perform(const AssistInterface *interface)
+IAssistProposal *CMakeFileCompletionAssist::performAsync()
 {
     Keywords kw;
-    const Utils::FilePath &filePath = interface->filePath();
+    const Utils::FilePath &filePath = interface()->filePath();
     if (!filePath.isEmpty() && filePath.toFileInfo().isFile()) {
         Project *p = SessionManager::projectForFile(filePath);
         if (p && p->activeTarget()) {
@@ -70,5 +48,12 @@ IAssistProposal *CMakeFileCompletionAssist::perform(const AssistInterface *inter
     }
 
     setKeywords(kw);
-    return KeywordsCompletionAssistProcessor::perform(interface);
+    return KeywordsCompletionAssistProcessor::performAsync();
 }
+
+IAssistProcessor *CMakeFileCompletionAssistProvider::createProcessor(const AssistInterface *) const
+{
+    return new CMakeFileCompletionAssist;
+}
+
+} // CMakeProjectManager::Internal

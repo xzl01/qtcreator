@@ -1,6 +1,6 @@
 add_qtc_test(tst_manual_proparser
   MANUALTEST
-  DEPENDS Qt5::Core Qt5::Core5Compat
+  DEPENDS Qt::Core Qt::Core5Compat
   DEFINES
     "QMAKE_BUILTIN_PRFS"
     "QT_NO_CAST_TO_ASCII"
@@ -30,11 +30,6 @@ extend_qtc_test(tst_manual_proparser
     qmakeparser.cpp qmakeparser.h
     qmakevfs.cpp qmakevfs.h
     registry.cpp registry_p.h
-)
-
-extend_qtc_test(tst_manual_proparser
-  SOURCES_PREFIX "${PROJECT_SOURCE_DIR}/src/libs/utils/"
-  SOURCES porting.h
 )
 
 extend_qtc_test(tst_manual_proparser CONDITION WIN32

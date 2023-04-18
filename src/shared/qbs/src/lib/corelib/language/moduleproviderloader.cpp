@@ -54,6 +54,7 @@
 
 #include <tools/fileinfo.h>
 #include <tools/jsliterals.h>
+#include <tools/scripttools.h>
 #include <tools/stlutils.h>
 #include <tools/stringconstants.h>
 
@@ -71,7 +72,7 @@ ModuleProviderLoader::ModuleProviderLoader(ItemReader *reader, Evaluator *evalua
 {
 }
 
-ModuleProviderLoader::ModuleProviderResult ModuleProviderLoader::executeModuleProvider(
+ModuleProviderLoader::ModuleProviderResult ModuleProviderLoader::executeModuleProviders(
         ProductContext &productContext,
         const CodeLocation &dependsItemLocation,
         const QualifiedId &moduleName,
@@ -91,35 +92,36 @@ ModuleProviderLoader::ModuleProviderResult ModuleProviderLoader::executeModulePr
                 providersToRun.push_back({providerName, ModuleProviderLookup::Scoped});
         }
     }
-    result = findModuleProvider(providersToRun, productContext, dependsItemLocation);
+    result = executeModuleProvidersHelper(productContext, dependsItemLocation, providersToRun);
 
     if (fallbackMode == FallbackMode::Enabled
             && !result.providerFound
             && !providerNames) {
             qCDebug(lcModuleLoader) << "Specific module provider not found for"
                                 << moduleName.toString()  << ", setting up fallback.";
-        result = findModuleProvider(
-                {{moduleName, ModuleProviderLookup::Fallback}},
+        result = executeModuleProvidersHelper(
                 productContext,
-                dependsItemLocation);
+                dependsItemLocation,
+                {{moduleName, ModuleProviderLookup::Fallback}});
     }
 
     return result;
 }
 
-ModuleProviderLoader::ModuleProviderResult ModuleProviderLoader::findModuleProvider(
-        const std::vector<Provider> &providers,
+ModuleProviderLoader::ModuleProviderResult ModuleProviderLoader::executeModuleProvidersHelper(
         ProductContext &product,
-        const CodeLocation &dependsItemLocation)
+        const CodeLocation &dependsItemLocation,
+        const std::vector<Provider> &providers)
 {
     if (providers.empty())
         return {};
     QStringList allSearchPaths;
     ModuleProviderResult result;
+    const auto qbsModule = evaluateQbsModule(product);
     for (const auto &[name, lookupType] : providers) {
-        const QVariantMap config = moduleProviderConfig(product).value(name.toString()).toMap();
-        ModuleProviderInfo &info =
-                m_storedModuleProviderInfo.providers[{name.toString(), config, int(lookupType)}];
+        const QVariantMap config = getModuleProviderConfig(product).value(name.toString()).toMap();
+        ModuleProviderInfo &info = m_storedModuleProviderInfo.providers[
+            {name.toString(), config, qbsModule, int(lookupType)}];
         const bool fromCache = !info.name.isEmpty();
         if (!fromCache) {
             info.name = name;
@@ -127,8 +129,8 @@ ModuleProviderLoader::ModuleProviderResult ModuleProviderLoader::findModuleProvi
             info.providerFile = findModuleProviderFile(name, lookupType);
             if (!info.providerFile.isEmpty()) {
                 qCDebug(lcModuleLoader) << "Running provider" << name << "at" << info.providerFile;
-                info.searchPaths = getProviderSearchPaths(
-                        name, info.providerFile, product, config, dependsItemLocation);
+                info.searchPaths = evaluateModuleProvider(
+                        product, dependsItemLocation, name, info.providerFile, config, qbsModule);
                 info.transientOutput = m_parameters.dryRun();
             }
         }
@@ -160,7 +162,7 @@ ModuleProviderLoader::ModuleProviderResult ModuleProviderLoader::findModuleProvi
     return result;
 }
 
-QVariantMap ModuleProviderLoader::moduleProviderConfig(
+QVariantMap ModuleProviderLoader::getModuleProviderConfig(
         ProductContext &product)
 {
     if (product.theModuleProviderConfig)
@@ -181,9 +183,12 @@ QVariantMap ModuleProviderLoader::moduleProviderConfig(
                     collectMap(childItem, QualifiedId(name) << it.key());
                     continue;
                 }
-                case Value::JSSourceValueType:
-                    value = m_evaluator->value(item, it.key()).toVariant();
+                case Value::JSSourceValueType: {
+                    const ScopedJsValue sv(m_evaluator->engine()->context(),
+                                           m_evaluator->value(item, it.key()));
+                    value = getJsVariant(m_evaluator->engine()->context(), sv);
                     break;
+                }
                 case Value::VariantValueType:
                     value = static_cast<VariantValue *>(it.value().get())->value();
                     break;
@@ -228,7 +233,7 @@ std::optional<std::vector<QualifiedId>> ModuleProviderLoader::getModuleProviders
 }
 
 QString ModuleProviderLoader::findModuleProviderFile(
-            const QualifiedId &name, ModuleProviderLookup lookupType)
+        const QualifiedId &name, ModuleProviderLookup lookupType)
 {
     for (const QString &path : m_reader->allSearchPaths()) {
         QString fullPath = FileInfo::resolvePath(path, QStringLiteral("module-providers"));
@@ -260,12 +265,49 @@ QString ModuleProviderLoader::findModuleProviderFile(
     return {};
 }
 
-QStringList ModuleProviderLoader::getProviderSearchPaths(
+QVariantMap ModuleProviderLoader::evaluateQbsModule(ProductContext &product) const
+{
+    const QString properties[] = {
+        QStringLiteral("sysroot"),
+    };
+    const auto qbsItemValue = std::static_pointer_cast<ItemValue>(
+        product.item->property(StringConstants::qbsModule()));
+    QVariantMap result;
+    for (const auto &property : properties) {
+        const ScopedJsValue val(m_evaluator->engine()->context(),
+                                m_evaluator->value(qbsItemValue->item(), property));
+        auto value = getJsVariant(m_evaluator->engine()->context(), val);
+        if (value.isValid())
+            result[property] = std::move(value);
+    }
+    return result;
+}
+
+Item *ModuleProviderLoader::createProviderScope(
+    ProductContext &product, const QVariantMap &qbsModule)
+{
+    const auto qbsItemValue = std::static_pointer_cast<ItemValue>(
+        product.item->property(StringConstants::qbsModule()));
+
+    Item *fakeQbsModule = Item::create(product.item->pool(), ItemType::Scope);
+
+    for (auto it = qbsModule.begin(), end = qbsModule.end(); it != end; ++it) {
+        fakeQbsModule->setProperty(it.key(), VariantValue::create(it.value()));
+    }
+
+    Item *scope = Item::create(product.item->pool(), ItemType::Scope);
+    scope->setFile(qbsItemValue->item()->file());
+    scope->setProperty(StringConstants::qbsModule(), ItemValue::create(fakeQbsModule));
+    return scope;
+}
+
+QStringList ModuleProviderLoader::evaluateModuleProvider(
+        ProductContext &product,
+        const CodeLocation &dependsItemLocation,
         const QualifiedId &name,
         const QString &providerFile,
-        ProductContext &product,
         const QVariantMap &moduleConfig,
-        const CodeLocation &location)
+        const QVariantMap &qbsModule)
 {
     QTemporaryFile dummyItemFile;
     if (!dummyItemFile.open()) {
@@ -278,6 +320,11 @@ QStringList ModuleProviderLoader::getProviderSearchPaths(
     const QString projectBuildDir = product.project->item->variantProperty(
                 StringConstants::buildDirectoryProperty())->value().toString();
     const QString searchPathBaseDir = ModuleProviderInfo::outputDirPath(projectBuildDir, name);
+
+    // include qbs module into hash
+    auto jsConfig = moduleConfig;
+    jsConfig[StringConstants::qbsModule()] = qbsModule;
+
     QTextStream stream(&dummyItemFile);
     using Qt::endl;
     setupDefaultCodec(stream);
@@ -286,7 +333,7 @@ QStringList ModuleProviderLoader::getProviderSearchPaths(
     stream << "import '" << providerFile << "' as Provider" << endl;
     stream << "Provider {" << endl;
     stream << "    name: " << toJSLiteral(name.toString()) << endl;
-    stream << "    property var config: (" << toJSLiteral(moduleConfig) << ')' << endl;
+    stream << "    property var config: (" << toJSLiteral(jsConfig) << ')' << endl;
     stream << "    outputBaseDir: FileInfo.joinPaths(baseDirPrefix, "
               "        Utilities.getHash(JSON.stringify(config)))" << endl;
     stream << "    property string baseDirPrefix: " << toJSLiteral(searchPathBaseDir) << endl;
@@ -296,14 +343,16 @@ QStringList ModuleProviderLoader::getProviderSearchPaths(
     stream << "}" << endl;
     stream.flush();
     Item * const providerItem =
-            m_reader->readFile(dummyItemFile.fileName(), location);
+            m_reader->readFile(dummyItemFile.fileName(), dependsItemLocation);
     if (providerItem->type() != ItemType::ModuleProvider) {
         throw ErrorInfo(Tr::tr("File '%1' declares an item of type '%2', "
                                "but '%3' was expected.")
             .arg(providerFile, providerItem->typeName(),
                  BuiltinDeclarations::instance().nameForType(ItemType::ModuleProvider)));
     }
-    providerItem->setParent(product.item);
+
+    providerItem->setScope(createProviderScope(product, qbsModule));
+
     providerItem->overrideProperties(moduleConfig, name.toString(), m_parameters, m_logger);
 
     m_probesResolver->resolveProbes(&product, providerItem);

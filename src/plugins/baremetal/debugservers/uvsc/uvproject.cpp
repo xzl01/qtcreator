@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "uvproject.h"
 #include "uvscserverprovider.h"
@@ -31,7 +9,6 @@
 #include <debugger/debuggerkitinformation.h>
 #include <debugger/debuggerruncontrol.h>
 
-#include <projectexplorer/runcontrol.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
 
@@ -43,9 +20,7 @@ using namespace Debugger;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
-namespace Uv {
+namespace BareMetal::Internal::Uv {
 
 const char kProjectSchema[] = "2.1";
 
@@ -95,18 +70,17 @@ static void extractAllFiles(const DebuggerRunTool *runTool, QStringList &include
         return;
     const QVector<ProjectPart::ConstPtr> parts = info->projectParts();
     for (const ProjectPart::ConstPtr &part : parts) {
-        for (const ProjectFile &file : qAsConst(part->files)) {
+        for (const ProjectFile &file : std::as_const(part->files)) {
             if (!file.active)
                 continue;
-            const auto path = FilePath::fromString(file.path);
-            if (file.isHeader() && !headers.contains(path))
-                headers.push_back(path);
-            else if (file.isSource() && !sources.contains(path))
-                sources.push_back(path);
-            else if (file.path.endsWith(".s") && !assemblers.contains(path))
-                assemblers.push_back(path);
+            if (file.isHeader() && !headers.contains(file.path))
+                headers.push_back(file.path);
+            else if (file.isSource() && !sources.contains(file.path))
+                sources.push_back(file.path);
+            else if (file.path.endsWith(".s") && !assemblers.contains(file.path))
+                assemblers.push_back(file.path);
         }
-        for (const HeaderPath &include : qAsConst(part->headerPaths)) {
+        for (const HeaderPath &include : std::as_const(part->headerPaths)) {
             if (!includes.contains(include.path))
                 includes.push_back(include.path);
         }
@@ -260,6 +234,4 @@ ProjectOptions::ProjectOptions(const UvscServerProvider *provider)
     m_debugOpt->appendProperty("uTrg", int(!useSimulator));
 }
 
-} // namespace Uv
-} // namespace Internal
-} // namespace BareMetal
+} // namespace BareMetal::Internal::Uv

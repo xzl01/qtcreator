@@ -1,4 +1,304 @@
-qtcreator (7.0.1-1+dde+deepin1) UNRELEASED; urgency=medium
+qtcreator (10.0.0-1deepin) unstable; urgency=medium
+
+  * Bump 10.0.0 for deepin beige.
+  * Relax dependency on clangd.
+
+ -- Tianyu Chen <chentianyu1@uniontech.com>  Tue, 18 Apr 2023 10:05:48 +0800
+
+qtcreator (10.0.0-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+  * Switch watch file back to stable releases.
+  * The usage of libdebuginfod seems to have been dropped, so:
+    - drop the patch cmake_libdebuginfod.diff, no more needed
+    - drop the libdebuginfod-dev build dependency
+
+ -- Pino Toscano <pino@debian.org>  Thu, 30 Mar 2023 08:31:13 +0200
+
+qtcreator (10.0.0~rc1-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream development release.
+  * Update the patches:
+    - fix_qdoc_search_patch.patch: drop, fixed upstream
+
+ -- Pino Toscano <pino@debian.org>  Thu, 16 Mar 2023 15:20:39 +0100
+
+qtcreator (10.0.0~beta2-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream development release.
+  * Merge changes from 9.0.2-1, and 9.0.2-2:
+    - refresh patch fix_qdoc_search_patch.patch
+
+ -- Pino Toscano <pino@debian.org>  Thu, 02 Mar 2023 16:43:13 +0100
+
+qtcreator (10.0.0~beta1-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream development release.
+  * Switch watch file to the unstable releases.
+  * Switch Vcs-* fields to the 'experimental' packaging branch.
+  * Update the build dependencies according to the upstream build system:
+    - add libdebuginfod-dev
+  * Properly find the debuginfod library using cmake, to link against it when
+    using newer versions of elfutils; patch cmake_libdebuginfod.diff.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 18 Feb 2023 21:12:16 +0100
+
+qtcreator (9.0.2-2) unstable; urgency=medium
+
+  * Fix search path for qdoc (Closes: #1031893).
+    Thanks Pino Toscano for the help!
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Mon, 27 Feb 2023 13:12:24 -0300
+
+qtcreator (9.0.2-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+
+ -- Pino Toscano <pino@debian.org>  Wed, 22 Feb 2023 19:22:48 +0100
+
+qtcreator (9.0.1-2) unstable; urgency=medium
+
+  * Team upload.
+  * Drop the clang-tidy, and clang-tools build dependencies: finally LLVM 14
+    was fixed.
+  * Update standards version to 4.6.2, no changes needed.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 04 Feb 2023 12:58:56 +0100
+
+qtcreator (9.0.1-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+
+ -- Pino Toscano <pino@debian.org>  Thu, 15 Dec 2022 23:12:28 +0100
+
+qtcreator (9.0.0-4) unstable; urgency=medium
+
+  * Team upload.
+  * Upload to unstable.
+  * Switch Vcs-* fields back to the 'master' packaging branch.
+
+ -- Pino Toscano <pino@debian.org>  Thu, 01 Dec 2022 06:22:59 +0100
+
+qtcreator (9.0.0-3) experimental; urgency=medium
+
+  * Team upload.
+  * When building with clang, force the v4 of the DWARF info: apparently the
+    DWARF v5 that clang produces are not fully supported by dwz (see also
+    #1016936):
+    - append -gdwarf-4 to CFLAGS and CXXFLAGS
+
+ -- Pino Toscano <pino@debian.org>  Mon, 28 Nov 2022 20:51:55 +0100
+
+qtcreator (9.0.0-2) experimental; urgency=medium
+
+  * Team upload.
+  * Merge changes from 8.0.2-1.
+  * Build using clang on mips64el, and mipsel, to workaround a GCC bug:
+    https://gcc.gnu.org/bugzilla/show_bug.cgi?id=102602
+    - point CC & CXX to clang
+    - restore explicit as-needed linking, as it seems needed when using clang
+    - disable the build with precompiled headers (PCH), as it is not working
+
+ -- Pino Toscano <pino@debian.org>  Sun, 27 Nov 2022 13:53:28 +0100
+
+qtcreator (9.0.0-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+  * Switch watch file back to stable releases.
+
+ -- Pino Toscano <pino@debian.org>  Thu, 24 Nov 2022 22:05:01 +0100
+
+qtcreator (9.0.0~rc1-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream development release.
+  * Add the qt6-image-formats-plugins dependency to qtcreator-doc: some of the
+    images are in webp format, and qt6-image-formats-plugins contains the Qt
+    plugin to open them.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 12 Nov 2022 10:08:36 +0100
+
+qtcreator (9.0.0~beta2-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream development release.
+  * Switch watch file to the unstable releases.
+  * Switch Vcs-* fields to the 'experimental' packaging branch.
+  * Update the build dependencies according to the upstream build system:
+    - bump all the Qt packages to 6.2, in case they did not have a version set
+      already
+  * Stop shipping the upstream changelogs in /usr/share/doc/qtcreator-data/,
+    as upstream now installs them in /usr/share/qtcreator/changelog/, and they
+    can be opened from the Help menu.
+
+ -- Pino Toscano <pino@debian.org>  Sun, 30 Oct 2022 07:53:39 +0100
+
+qtcreator (8.0.2-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+  * Drop the qt6-qpa-plugins dependency, as the Qt6 6.3.1 packaging provides
+    all the essential bits in library packages.
+  * Remove breaks/replaces for versions older than oldstable.
+  * Temporarily add the clang-tidy, and clang-tools build dependencies to
+    workaround the broken CMake config files shipped in llvm-14-dev (which is
+    the current version pulled by llvm-dev): it is still affected by #1021857,
+    and the LLVM maintainers have not fixed it in testing for almost 2 months.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 26 Nov 2022 08:30:01 +0100
+
+qtcreator (8.0.1-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+
+ -- Pino Toscano <pino@debian.org>  Thu, 11 Aug 2022 21:13:30 +0200
+
+qtcreator (8.0.0-3) unstable; urgency=medium
+
+  * Team upload.
+  * Add the qml6-module-qtqml-workerscript, and qml6-module-qtquick-layouts
+    dependencies, needed in various QML sources; also add qt6-qpa-plugins,
+    needed for the XCB base plugin. (Closes: #1016210)
+  * Switch the qmlscene-qt6 recommend to qml-qt6, as that is actually what
+    qtcreator uses when using Qt6.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 30 Jul 2022 08:06:55 +0200
+
+qtcreator (8.0.0-2) unstable; urgency=medium
+
+  * Team upload.
+  * Upload to unstable.
+
+ -- Pino Toscano <pino@debian.org>  Fri, 29 Jul 2022 05:55:19 +0200
+
+qtcreator (8.0.0-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+  * Switch watch file back to stable releases.
+
+ -- Pino Toscano <pino@debian.org>  Wed, 20 Jul 2022 19:04:38 +0200
+
+qtcreator (8.0.0~rc1-2) experimental; urgency=medium
+
+  * Team upload.
+  * Pass --low-mem-die-limit 3000000 to dwz on some architectures (currently:
+    armel armhf mipsel), as an attempt to complete the dwz processing without
+    running into "out of memory" failures.
+
+ -- Pino Toscano <pino@debian.org>  Fri, 08 Jul 2022 07:05:58 +0200
+
+qtcreator (8.0.0~rc1-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream development release.
+
+ -- Pino Toscano <pino@debian.org>  Thu, 07 Jul 2022 20:31:08 +0200
+
+qtcreator (8.0.0~beta2-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream development release.
+  * Update the build dependencies according to the upstream build system:
+    - drop libicu-dev, no more used for many releases already
+    - drop liblitehtml-dev, as the system version is not enough to replace the
+      embedded copy
+    - drop zlib1g-dev, not directly used
+    - explicitly add python3, used during the build
+  * Use a qtcreator-data.docs file to install the upstream changelog files,
+    rather than passing all of them as arguments to dh_installdocs.
+  * Limit the search of 'qmldir' files only to those executable, and make the
+    chmod call verbose so it is easier to see whether there are any.
+
+ -- Pino Toscano <pino@debian.org>  Tue, 28 Jun 2022 21:04:42 +0200
+
+qtcreator (8.0.0~beta1-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream development release.
+  * Switch watch file to the unstable releases, mangling -beta/-rc in the
+    version.
+  * Switch Vcs-* fields to the 'experimental' packaging branch.
+  * Update the patches:
+    - upstream_Correctly-include-KSyntaxHighlighting-headers.patch: drop,
+      backported from upstream
+    - debian_paths.diff: refresh
+  * Switch qtcreator to build with Qt6 instead of Qt5:
+    - remove libkf5syntaxhighlighting-dev, libqt5opengl5-dev,
+      libqt5serialport5-dev, libqt5sql5-sqlite, libqt5svg5-dev,
+      libqt5x11extras5-dev, qml-module-qtquick-controls, qml-module-qtquick2,
+      qtbase5-dev, qtbase5-private-dev, qtdeclarative5-dev,
+      qtdeclarative5-private-dev, qtscript5-dev, qttools5-dev,
+      qttools5-dev-tools, and qttools5-private-dev
+    - add libqt6core5compat6-dev, libqt6opengl6-dev, libqt6quicktimeline6-dev,
+      libqt6serialport6-dev, libqt6shadertools6-dev, libqt6svg6-dev,
+      qt6-base-dev, qt6-base-private-dev, qt6-declarative-dev,
+      qt6-declarative-private-dev, qt6-quick3d-dev, qt6-tools-dev, and
+      qt6-tools-private-dev
+    - stop exporting QT_SELECT, no more needed
+    - replace libqt5designercomponents5 with libqt6designercomponents6 in the
+      strict dependency for Designer bits
+    - update the runtime dependencies/recommends/suggests:
+      - switch libqt5sql5-sqlite to libqt6sql6-sqlite
+      - switch qml-module-qtqml-models2 to qml6-module-qtqml-models
+      - switch qml-module-qtquick-controls to qml6-module-qtquick-controls
+      - switch qml-module-qtquick2 to qml6-module-qtquick
+      - drop qtchooser, no more needed with Qt6
+      - switch qmlscene to qmlscene-qt6
+      - drop qt5-doc, there is no Qt6 equivalent in Debian yet
+      - switch qtbase5-dev-tools to qt6-base-dev-tools
+      - switch qtdeclarative5-dev-tools to qt6-declarative-dev-tools
+      - switch qttools5-dev-tools to qt6-tools-dev-tools
+      - switch qttranslations5-l10n to qt6-translations-l10n
+    - remove the license files installed from the embedded copy of
+      KSyntaxHighlighting
+    - the switch enables the build of the QML Designer plugin, which is built
+      only when using Qt >= 6.2.0 (Closes: #1006555)
+  * qtcreator now uses clangd instead of libclang for the Clang code model:
+    - add clangd >= 14 as dependency: the unversioned name is used, and the
+      current requirement is 14+
+    - stop depending on the version of clang-N used by the unversioned clang,
+      as there is no more need for the exact Clang version to locale the Clang
+      includes
+    - add the same clangd version also as build dependency: while it is not
+      needed at build time, it makes sure that qtcreator can be built only when
+      the runtime clangd requirement is satisfied
+
+ -- Pino Toscano <pino@debian.org>  Fri, 17 Jun 2022 20:16:14 +0200
+
+qtcreator (7.0.2-2) unstable; urgency=medium
+
+  * Team upload.
+  * Backport part of upstream commit 4d9215e44d70c10be2c183592e8280c4d7292a83
+    to fix the includes of KSyntaxHighlighting, so they work also with 5.94.0+;
+    patch upstream_Correctly-include-KSyntaxHighlighting-headers.patch.
+  * Remove inactive Uploaders.
+
+ -- Pino Toscano <pino@debian.org>  Mon, 30 May 2022 19:22:51 +0200
+
+qtcreator (7.0.2-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+  * Bump Standards-Version to 4.6.1, no changes required.
+
+ -- Pino Toscano <pino@debian.org>  Tue, 24 May 2022 20:05:21 +0200
+
+qtcreator (7.0.1-1+dde+deepin2) unstable; urgency=medium
+
+  * Drop upstream_Correctly-include-KSyntaxHighlighting-headers.patch.
+
+ -- Tianyu Chen <chentianyu1@uniontech.com>  Tue, 18 Apr 2023 09:51:36 +0800
+
+qtcreator (7.0.1-1+dde+deepin1) unstable; urgency=medium
 
   * update
   * update

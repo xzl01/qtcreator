@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "baremetalconstants.h"
 
+#include "baremetaltr.h"
 #include "keilparser.h"
 #include "keiltoolchain.h"
 
@@ -54,8 +33,7 @@
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
+namespace BareMetal::Internal {
 
 // Helpers:
 
@@ -287,7 +265,7 @@ static Macros dumpArmPredefinedMacros(const FilePath &compiler, const QStringLis
     cpp.setCommand({compiler, args});
 
     cpp.runBlocking();
-    if (cpp.result() != QtcProcess::FinishedWithSuccess) {
+    if (cpp.result() != ProcessResult::FinishedWithSuccess) {
         qWarning() << cpp.exitMessage();
         return {};
     }
@@ -395,7 +373,7 @@ static Abi::BinaryFormat guessFormat(Abi::Architecture arch)
 
 static Abi guessAbi(const Macros &macros)
 {
-    const auto arch = guessArchitecture(macros);
+    const Abi::Architecture arch = guessArchitecture(macros);
     return {arch, Abi::OS::BareMetalOS, Abi::OSFlavor::GenericFlavor,
                 guessFormat(arch), guessWordWidth(macros, arch)};
 }
@@ -403,10 +381,9 @@ static Abi guessAbi(const Macros &macros)
 static QString buildDisplayName(Abi::Architecture arch, Utils::Id language,
                                 const QString &version)
 {
-    const auto archName = Abi::toString(arch);
-    const auto langName = ToolChainManager::displayNameOfLanguageId(language);
-    return KeilToolChain::tr("KEIL %1 (%2, %3)")
-            .arg(version, langName, archName);
+    const QString archName = Abi::toString(arch);
+    const QString langName = ToolChainManager::displayNameOfLanguageId(language);
+    return Tr::tr("KEIL %1 (%2, %3)").arg(version, langName, archName);
 }
 
 static void addDefaultCpuArgs(const FilePath &compiler, QStringList &extraArgs)
@@ -428,7 +405,7 @@ static void addDefaultCpuArgs(const FilePath &compiler, QStringList &extraArgs)
 KeilToolChain::KeilToolChain() :
     ToolChain(Constants::KEIL_TOOLCHAIN_TYPEID)
 {
-    setTypeDisplayName(tr("KEIL"));
+    setTypeDisplayName(Tr::tr("KEIL"));
     setTargetAbiKey("TargetAbi");
     setCompilerCommandKey("CompilerPath");
 }
@@ -473,9 +450,9 @@ ToolChain::BuiltInHeaderPathsRunner KeilToolChain::createBuiltInHeaderPathsRunne
     const HeaderPathsCache headerPaths = headerPathsCache();
 
     return [compiler,
-            headerPaths](const QStringList &flags, const QString &fileName, const QString &) {
+            headerPaths](const QStringList &flags, const FilePath &sysRoot, const QString &) {
         Q_UNUSED(flags)
-        Q_UNUSED(fileName)
+        Q_UNUSED(sysRoot)
 
         const HeaderPaths paths = dumpHeaderPaths(compiler);
         headerPaths->insert({}, paths);
@@ -549,7 +526,7 @@ FilePath KeilToolChain::makeCommand(const Environment &env) const
 
 KeilToolChainFactory::KeilToolChainFactory()
 {
-    setDisplayName(KeilToolChain::tr("KEIL"));
+    setDisplayName(Tr::tr("KEIL"));
     setSupportedToolChainType(Constants::KEIL_TOOLCHAIN_TYPEID);
     setSupportedLanguages({ProjectExplorer::Constants::C_LANGUAGE_ID,
                            ProjectExplorer::Constants::CXX_LANGUAGE_ID});
@@ -619,8 +596,8 @@ Toolchains KeilToolChainFactory::autoDetect(const ToolchainDetector &detector) c
         if (!productKey.startsWith("App"))
             continue;
         registry.beginGroup(productKey);
-        const FilePath productPath(FilePath::fromString(registry.value("ProductDir")
-                                                        .toString()));
+        const FilePath productPath(FilePath::fromUserInput(registry.value("ProductDir")
+                                                           .toString()));
         // Fetch the toolchain executable path.
         FilePath compilerPath;
         if (productPath.endsWith("ARM"))
@@ -657,7 +634,7 @@ Toolchains KeilToolChainFactory::autoDetectToolchains(
 {
     Toolchains result;
 
-    for (const Candidate &candidate : qAsConst(candidates)) {
+    for (const Candidate &candidate : std::as_const(candidates)) {
         const Toolchains filtered = Utils::filtered(
                     alreadyKnown, [candidate](ToolChain *tc) {
             return tc->typeId() == Constants::IAREW_TOOLCHAIN_TYPEID
@@ -723,11 +700,11 @@ KeilToolChainConfigWidget::KeilToolChainConfigWidget(KeilToolChain *tc) :
 {
     m_compilerCommand->setExpectedKind(PathChooser::ExistingCommand);
     m_compilerCommand->setHistoryCompleter("PE.KEIL.Command.History");
-    m_mainLayout->addRow(tr("&Compiler path:"), m_compilerCommand);
+    m_mainLayout->addRow(Tr::tr("&Compiler path:"), m_compilerCommand);
     m_platformCodeGenFlagsLineEdit = new QLineEdit(this);
     m_platformCodeGenFlagsLineEdit->setText(ProcessArgs::joinArgs(tc->extraCodeModelFlags()));
-    m_mainLayout->addRow(tr("Platform codegen flags:"), m_platformCodeGenFlagsLineEdit);
-    m_mainLayout->addRow(tr("&ABI:"), m_abiWidget);
+    m_mainLayout->addRow(Tr::tr("Platform codegen flags:"), m_platformCodeGenFlagsLineEdit);
+    m_mainLayout->addRow(Tr::tr("&ABI:"), m_abiWidget);
 
     m_abiWidget->setEnabled(false);
 
@@ -820,5 +797,4 @@ void KeilToolChainConfigWidget::handlePlatformCodeGenFlagsChange()
         handleCompilerCommandChange();
 }
 
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal

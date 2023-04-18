@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import inspect
 import os
@@ -441,9 +419,8 @@ class Dumper(DumperBase):
                     targetTypeName = typeName[0:pos1].strip()
                 #DumperBase.warn("TARGET TYPENAME: %s" % targetTypeName)
                 targetType = self.fromNativeType(nativeTargetType)
-                tdata = targetType.typeData().copy()
-                tdata.name = targetTypeName
-                targetType.typeData = lambda: tdata
+                targetType.tdata = targetType.tdata.copy()
+                targetType.tdata.name = targetTypeName
                 return self.createArrayType(targetType, count)
             if hasattr(nativeType, 'GetVectorElementType'):  # New in 3.8(?) / 350.x
                 nativeTargetType = nativeType.GetVectorElementType()
@@ -457,8 +434,7 @@ class Dumper(DumperBase):
         if res is None:
             #  # This strips typedefs for pointers. We don't want that.
             #  typeobj.nativeType = nativeType.GetUnqualifiedType()
-            tdata = self.TypeData(self)
-            tdata.typeId = typeId
+            tdata = self.TypeData(self, typeId)
             tdata.name = typeName
             tdata.lbitsize = nativeType.GetByteSize() * 8
             if code == lldb.eTypeClassBuiltin:
@@ -471,6 +447,8 @@ class Dumper(DumperBase):
                 elif typeName == 'void':
                     tdata.code = TypeCode.Void
                 elif typeName == 'wchar_t':
+                    tdata.code = TypeCode.Integral
+                elif typeName in ("char16_t", "char32_t", "char8_t"):
                     tdata.code = TypeCode.Integral
                 else:
                     self.warn('UNKNOWN TYPE KEY: %s: %s' % (typeName, code))
@@ -486,13 +464,12 @@ class Dumper(DumperBase):
                     self.nativeStructAlignment(nativeType)
                 tdata.lfields = lambda value: \
                     self.listMembers(value, nativeType)
-                tdata.templateArguments = self.listTemplateParametersHelper(nativeType)
+                tdata.templateArguments = lambda: \
+                    self.listTemplateParametersHelper(nativeType)
             elif code == lldb.eTypeClassFunction:
                 tdata.code = TypeCode.Function
             elif code == lldb.eTypeClassMemberPointer:
                 tdata.code = TypeCode.MemberPointer
-
-            self.registerType(typeId, tdata)  # Fix up fields and template args
         #    warn('CREATE TYPE: %s' % typeId)
         #else:
         #    warn('REUSE TYPE: %s' % typeId)
@@ -716,7 +693,18 @@ class Dumper(DumperBase):
             pass
         return '0x%x' % address
 
-    def qtVersionAndNamespace(self):
+    def fetchInternalFunctions(self):
+        funcs = self.target.FindFunctions('QObject::customEvent')
+        if len(funcs):
+            symbol = funcs[0].GetSymbol()
+            self.qtCustomEventFunc = symbol.GetStartAddress().GetLoadAddress(self.target)
+
+        funcs = self.target.FindFunctions('QObject::property')
+        if len(funcs):
+            symbol = funcs[0].GetSymbol()
+            self.qtPropertyFunc = symbol.GetStartAddress().GetLoadAddress(self.target)
+
+    def fetchQtVersionAndNamespace(self):
         for func in self.target.FindFunctions('qVersion'):
             name = func.GetSymbol().GetName()
             if name.endswith('()'):
@@ -752,24 +740,41 @@ class Dumper(DumperBase):
             qtVersion = 0x10000 * int(major) + 0x100 * int(minor) + int(patch)
             self.qtVersion = lambda: qtVersion
 
-            funcs = self.target.FindFunctions('QObject::customEvent')
-            if len(funcs):
-                symbol = funcs[0].GetSymbol()
-                self.qtCustomEventFunc = symbol.GetStartAddress().GetLoadAddress(self.target)
-
-            funcs = self.target.FindFunctions('QObject::property')
-            if len(funcs):
-                symbol = funcs[0].GetSymbol()
-                self.qtPropertyFunc = symbol.GetStartAddress().GetLoadAddress(self.target)
             return (qtNamespace, qtVersion)
 
-        return ('', 0x50200)
+        try:
+            versionValue = self.target.EvaluateExpression('qtHookData[2]')
+            if versionValue.IsValid():
+                return ('', versionValue.unsigned)
+        except:
+            pass
+
+        return ('', self.fallbackQtVersion)
+
+    def qtVersionAndNamespace(self):
+        qtVersionAndNamespace = None
+        try:
+            qtVersionAndNamespace = self.fetchQtVersionAndNamespace()
+            DumperBase.warn("Detected Qt Version: 0x%0x (namespace='%s')" %
+                            (qtVersionAndNamespace[1], qtVersionAndNamespace[0] or "no namespace"))
+        except Exception as e:
+            DumperBase.warn('[lldb] Error detecting Qt version: %s' % e)
+
+        try:
+            self.fetchInternalFunctions()
+            DumperBase.warn('Found function QObject::property: 0x%0x' % self.qtPropertyFunc)
+            DumperBase.warn('Found function QObject::customEvent: 0x%0x' % self.qtCustomEventFunc)
+        except Exception as e:
+            DumperBase.warn('[lldb] Error fetching internal Qt functions: %s' % e)
+
+        # Cache version information by overriding this function.
+        self.qtVersionAndNamespace = lambda: qtVersionAndNamespace
+        return qtVersionAndNamespace
 
     def qtNamespace(self):
         return self.qtVersionAndNamespace()[0]
 
     def qtVersion(self):
-        self.qtVersionAndNamespace()
         return self.qtVersionAndNamespace()[1]
 
     def handleCommand(self, command):
@@ -789,6 +794,7 @@ class Dumper(DumperBase):
 
     def lookupNativeType(self, name):
         #DumperBase.warn('LOOKUP TYPE NAME: %s' % name)
+
         typeobj = self.typeCache.get(name)
         if typeobj is not None:
             #DumperBase.warn('CACHED: %s' % name)
@@ -843,6 +849,15 @@ class Dumper(DumperBase):
             typeobj = self.lookupNativeType(name[6:])
             if typeobj is not None:
                 return typeobj
+
+        # For QMetaType based typenames we have to re-format the type name.
+        # Converts "T<A,B<C,D>>"" to "T<A, B<C, D> >" since FindFirstType
+        # expects it that way.
+        name = name.replace(',', ', ').replace('>>', '> >')
+        typeobj = self.target.FindFirstType(name)
+        if typeobj.IsValid():
+            self.typeCache[name] = typeobj
+            return typeobj
 
         return lldb.SBType()
 
@@ -1255,7 +1270,7 @@ class Dumper(DumperBase):
             self.reportResult('error="No frame"', args)
             return
 
-        self.output = ''
+        self.output = []
         isPartial = len(self.partialVariable) > 0
 
         self.currentIName = 'local'
@@ -1308,7 +1323,7 @@ class Dumper(DumperBase):
         self.handleWatches(args)
 
         self.put('],partial="%d"' % isPartial)
-        self.reportResult(self.output, args)
+        self.reportResult(self.takeOutput(), args)
 
 
     def fetchRegisters(self, args=None):
@@ -2086,7 +2101,7 @@ class SummaryDumper(Dumper, LogMixin):
 
         self.dumpermodules = ['qttypes']
         self.loadDumpers({})
-        self.output = ''
+        self.output = []
 
     def report(self, stuff):
         return  # Don't mess up lldb output
@@ -2108,12 +2123,12 @@ class SummaryDumper(Dumper, LogMixin):
         self.expandedINames = [value.name] if expanded else []
 
         savedOutput = self.output
-        self.output = ''
+        self.output = []
         with TopLevelItem(self, value.name):
             self.putItem(value)
 
         # FIXME: Hook into putField, etc to build up object instead of parsing MI
-        response = gdbmiparser.parse_response("^ok,summary=%s" % self.output)
+        response = gdbmiparser.parse_response("^ok,summary=%s" % self.takeOutput())
 
         self.output = savedOutput
         self.expandedINames = oldExpanded

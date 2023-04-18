@@ -1,37 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cmakeeditor.h"
 
-#include "cmakefilecompletionassist.h"
-#include "cmakeprojectconstants.h"
-#include "cmakeindenter.h"
 #include "cmakeautocompleter.h"
+#include "cmakefilecompletionassist.h"
+#include "cmakeindenter.h"
+#include "cmakeprojectconstants.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
+#include <coreplugin/coreplugintr.h>
 #include <texteditor/textdocument.h>
 #include <texteditor/texteditoractionhandler.h>
 
@@ -43,12 +22,17 @@
 using namespace Core;
 using namespace TextEditor;
 
-namespace CMakeProjectManager {
-namespace Internal {
+namespace CMakeProjectManager::Internal {
 
 //
 // CMakeEditor
 //
+
+class CMakeEditor : public TextEditor::BaseTextEditor
+{
+public:
+    void contextHelp(const HelpCallback &callback) const final;
+};
 
 void CMakeEditor::contextHelp(const HelpCallback &callback) const
 {
@@ -92,8 +76,10 @@ void CMakeEditor::contextHelp(const HelpCallback &callback) const
     }
 
     const QString id = "command/" + textAt(begin, end - begin).toLower();
-    callback(
-        {{id, Utils::Text::wordUnderCursor(editorWidget()->textCursor())}, {}, HelpItem::Unknown});
+    callback({{id, Utils::Text::wordUnderCursor(editorWidget()->textCursor())},
+              {},
+              {},
+              HelpItem::Unknown});
 }
 
 //
@@ -108,7 +94,7 @@ public:
 private:
     bool save(const QString &fileName = QString());
     void findLinkAt(const QTextCursor &cursor,
-                    Utils::ProcessLinkCallback &&processLinkCallback,
+                    const Utils::LinkHandler &processLinkCallback,
                     bool resolveTarget = true,
                     bool inNextSplit = false) override;
     void contextMenuEvent(QContextMenuEvent *e) override;
@@ -152,7 +138,7 @@ static QString unescape(const QString &s)
 }
 
 void CMakeEditorWidget::findLinkAt(const QTextCursor &cursor,
-                                   Utils::ProcessLinkCallback &&processLinkCallback,
+                                   const Utils::LinkHandler &processLinkCallback,
                                    bool/* resolveTarget*/,
                                    bool /*inNextSplit*/)
 {
@@ -234,12 +220,12 @@ static TextDocument *createCMakeDocument()
 CMakeEditorFactory::CMakeEditorFactory()
 {
     setId(Constants::CMAKE_EDITOR_ID);
-    setDisplayName(QCoreApplication::translate("OpenWith::Editors", "CMake Editor"));
+    setDisplayName(::Core::Tr::tr("CMake Editor"));
     addMimeType(Constants::CMAKE_MIMETYPE);
     addMimeType(Constants::CMAKE_PROJECT_MIMETYPE);
 
-    setEditorCreator([]() { return new CMakeEditor; });
-    setEditorWidgetCreator([]() { return new CMakeEditorWidget; });
+    setEditorCreator([] { return new CMakeEditor; });
+    setEditorWidgetCreator([] { return new CMakeEditorWidget; });
     setDocumentCreator(createCMakeDocument);
     setIndenterCreator([](QTextDocument *doc) { return new CMakeIndenter(doc); });
     setUseGenericHighlighter(true);
@@ -247,7 +233,7 @@ CMakeEditorFactory::CMakeEditorFactory()
     setCodeFoldingSupported(true);
 
     setCompletionAssistProvider(new CMakeFileCompletionAssistProvider);
-    setAutoCompleterCreator([]() { return new CMakeAutoCompleter; });
+    setAutoCompleterCreator([] { return new CMakeAutoCompleter; });
 
     setEditorActionHandlers(TextEditorActionHandler::UnCommentSelection
             | TextEditorActionHandler::JumpToFileUnderCursor
@@ -259,5 +245,4 @@ CMakeEditorFactory::CMakeEditorFactory()
     contextMenu->addAction(ActionManager::command(TextEditor::Constants::UN_COMMENT_SELECTION));
 }
 
-} // namespace Internal
-} // namespace CMakeProjectManager
+} // CMakeProjectManager::Internal

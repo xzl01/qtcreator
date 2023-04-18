@@ -1,27 +1,5 @@
-﻿/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelinesectionitem.h"
 
@@ -49,7 +27,6 @@
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
-#include <QHBoxLayout>
 #include <QMenu>
 #include <QPainter>
 #include <QPainterPath>
@@ -209,7 +186,7 @@ AbstractView *TimelineSectionItem::view() const
 
 bool TimelineSectionItem::isSelected() const
 {
-    return m_targetNode.isValid() && m_targetNode.isSelected();
+    return m_targetNode.isSelected();
 }
 
 ModelNode TimelineSectionItem::targetNode() const
@@ -484,7 +461,7 @@ void TimelineSectionItem::invalidateFrames()
 bool TimelineSectionItem::collapsed() const
 {
     return m_targetNode.isValid()
-            && (!m_targetNode.hasAuxiliaryData("timeline_expanded") || m_targetNode.locked());
+           && (!m_targetNode.hasAuxiliaryData(timelineExpandedProperty) || m_targetNode.locked());
 }
 
 void TimelineSectionItem::createPropertyItems()
@@ -509,9 +486,9 @@ void TimelineSectionItem::toggleCollapsed()
     QTC_ASSERT(m_targetNode.isValid(), return );
 
     if (collapsed())
-        m_targetNode.setAuxiliaryData("timeline_expanded", true);
+        m_targetNode.setAuxiliaryData(timelineExpandedProperty, true);
     else
-        m_targetNode.removeAuxiliaryData("timeline_expanded");
+        m_targetNode.removeAuxiliaryData(timelineExpandedProperty);
 
     invalidateHeight();
 }
@@ -989,7 +966,7 @@ void TimelineBarItem::commitPosition(const QPointF & /*point*/)
 
 bool TimelineBarItem::isLocked() const
 {
-    return sectionItem()->targetNode().isValid() && sectionItem()->targetNode().locked();
+    return sectionItem()->targetNode().locked();
 }
 
 TimelineBarItem *TimelineBarItem::asTimelineBarItem()
@@ -1002,22 +979,24 @@ void TimelineBarItem::scrollOffsetChanged()
     sectionItem()->invalidateBar();
 }
 
-void TimelineBarItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
-{
-    Q_UNUSED(option)
-    Q_UNUSED(widget)
+namespace {
+constexpr AuxiliaryDataKeyView timelineOverrideColorProperty{AuxiliaryDataType::Document,
+                                                             "Timeline.OverrideColor"};
+} // namespace
 
+void TimelineBarItem::paint(QPainter *painter,
+                            [[maybe_unused]] const QStyleOptionGraphicsItem *option,
+                            [[maybe_unused]] QWidget *widget)
+{
     QColor brushColorSelected = Theme::getColor(Theme::QmlDesigner_HighlightColor);
     QColor brushColor = Theme::getColor(Theme::QmlDesigner_HighlightColor).darker(120);
     const QColor indicatorColor = Theme::getColor(Theme::PanelTextColorLight);
 
     ModelNode target = sectionItem()->targetNode();
-    if (target.isValid()) {
-        QColor overrideColor = target.auxiliaryData(TimelineConstants::C_BAR_ITEM_OVERRIDE).value<QColor>();
-        if (overrideColor.isValid()) {
-            brushColorSelected = overrideColor;
-            brushColor = brushColorSelected.darker(120);
-        }
+    QColor overrideColor = target.auxiliaryDataWithDefault(timelineOverrideColorProperty).value<QColor>();
+    if (overrideColor.isValid()) {
+        brushColorSelected = overrideColor;
+        brushColor = brushColorSelected.darker(120);
     }
 
     const QRectF itemRect = rect();
@@ -1083,10 +1062,11 @@ void TimelineBarItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     auto setColor = [this] () {
         ModelNode target = sectionItem()->targetNode();
         if (target.isValid()) {
-            QColor current = target.auxiliaryData(TimelineConstants::C_BAR_ITEM_OVERRIDE).value<QColor>();
+            QColor current = target.auxiliaryDataWithDefault(timelineOverrideColorProperty)
+                                 .value<QColor>();
             QColor color = QColorDialog::getColor(current, nullptr);
             if (color.isValid())
-                target.setAuxiliaryData(TimelineConstants::C_BAR_ITEM_OVERRIDE, color);
+                target.setAuxiliaryData(timelineOverrideColorProperty, color);
         }
     };
 
@@ -1095,8 +1075,7 @@ void TimelineBarItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     QAction* resetColor = menu.addAction(tr("Reset Color"));
     auto reset = [this]() {
         ModelNode target = sectionItem()->targetNode();
-        if (target.isValid())
-            target.removeAuxiliaryData(TimelineConstants::C_BAR_ITEM_OVERRIDE);
+        target.removeAuxiliaryData(timelineOverrideColorProperty);
     };
     QObject::connect(resetColor, &QAction::triggered, reset);
 

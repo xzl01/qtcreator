@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -36,6 +14,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace ProjectExplorer {
 
@@ -66,8 +45,6 @@ inline const QStringList gccPredefinedMacrosOptions(Utils::Id languageId)
 
 class PROJECTEXPLORER_EXPORT GccToolChain : public ToolChain
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::GccToolChain)
-
 public:
     GccToolChain(Utils::Id typeId);
 
@@ -150,7 +127,7 @@ protected:
                                           Utils::Id languageId,
                                           ExtraHeaderPathsFunction extraHeaderPathsFunction,
                                           const QStringList &flags,
-                                          const QString &sysRoot,
+                                          const Utils::FilePath &sysRoot,
                                           const QString &originalTargetTriple);
 
     static HeaderPaths gccHeaderPaths(const Utils::FilePath &gcc,
@@ -174,7 +151,7 @@ protected:
 private:
     void updateSupportedAbis() const;
     static QStringList gccPrepareArguments(const QStringList &flags,
-                                           const QString &sysRoot,
+                                           const Utils::FilePath &sysRoot,
                                            const QStringList &platformCodeGenFlags,
                                            Utils::Id languageId,
                                            OptionsReinterpreter reinterpretOptions);
@@ -204,12 +181,12 @@ private:
 
 class PROJECTEXPLORER_EXPORT ClangToolChain : public GccToolChain
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::ClangToolChain)
-
 public:
     ClangToolChain();
     explicit ClangToolChain(Utils::Id typeId);
     ~ClangToolChain() override;
+
+    bool matchesCompilerCommand(const Utils::FilePath &command) const override;
 
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
 
@@ -232,12 +209,19 @@ public:
     QVariantMap toMap() const override;
     bool fromMap(const QVariantMap &data) override;
 
+    void setPriority(int priority) { m_priority = priority; }
+    int priority() const override { return m_priority; }
+
 protected:
     Utils::LanguageExtensions defaultLanguageExtensions() const override;
     void syncAutodetectedWithParentToolchains();
 
 private:
+    // "resolved" on macOS from /usr/bin/clang(++) etc to <DeveloperDir>/usr/bin/clang(++)
+    // which is used for comparison with matchesCompileCommand
+    mutable std::optional<Utils::FilePath> m_resolvedCompilerCommand;
     QByteArray m_parentToolChainId;
+    int m_priority = PriorityNormal;
     QMetaObject::Connection m_mingwToolchainAddedConnection;
     QMetaObject::Connection m_thisToolchainRemovedConnection;
 
@@ -252,8 +236,6 @@ private:
 
 class PROJECTEXPLORER_EXPORT MingwToolChain : public GccToolChain
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::MingwToolChain)
-
 public:
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
 
@@ -272,8 +254,6 @@ private:
 
 class PROJECTEXPLORER_EXPORT LinuxIccToolChain : public GccToolChain
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::LinuxIccToolChain)
-
 public:
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
     QList<Utils::OutputLineParser *> createOutputParsers() const override;

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qbsprofilemanager.h"
 
@@ -29,6 +7,7 @@
 #include "qbsproject.h"
 #include "qbsprojectmanagerconstants.h"
 #include "qbsprojectmanagerplugin.h"
+#include "qbsprojectmanagertr.h"
 #include "qbssettings.h"
 
 #include <coreplugin/icore.h>
@@ -124,7 +103,7 @@ QbsProfileManager::QbsProfileManager() : m_defaultPropertyProvider(new DefaultPr
 
     setObjectName(QLatin1String("QbsProjectManager"));
     connect(ProjectExplorer::KitManager::instance(), &ProjectExplorer::KitManager::kitsLoaded, this,
-            [this]() { m_kitsToBeSetupForQbs = ProjectExplorer::KitManager::kits(); } );
+            [this] { m_kitsToBeSetupForQbs = ProjectExplorer::KitManager::kits(); } );
     connect(ProjectExplorer::KitManager::instance(), &ProjectExplorer::KitManager::kitAdded, this,
             &QbsProfileManager::addProfileFromKit);
     connect(ProjectExplorer::KitManager::instance(), &ProjectExplorer::KitManager::kitUpdated, this,
@@ -176,7 +155,7 @@ void QbsProfileManager::addProfileFromKit(const ProjectExplorer::Kit *k)
 
     // set up properties:
     QVariantMap data = m_defaultPropertyProvider->properties(k, QVariantMap());
-    for (PropertyProvider *provider : qAsConst(g_propertyProviders)) {
+    for (PropertyProvider *provider : std::as_const(g_propertyProviders)) {
         if (provider->canHandle(k))
             data = provider->properties(k, data);
     }
@@ -247,15 +226,15 @@ QString QbsProfileManager::runQbsConfig(QbsConfigOp op, const QString &key, cons
     Utils::QtcProcess qbsConfig;
     qbsConfig.setCommand({qbsConfigExe, args});
     qbsConfig.start();
-    if (!qbsConfig.waitForStarted(3000) || !qbsConfig.waitForFinished(5000)) {
+    if (!qbsConfig.waitForFinished(5000)) {
         Core::MessageManager::writeFlashing(
-            tr("Failed to run qbs config: %1").arg(qbsConfig.errorString()));
+            Tr::tr("Failed to run qbs config: %1").arg(qbsConfig.errorString()));
     } else if (qbsConfig.exitCode() != 0) {
         Core::MessageManager::writeFlashing(
-            tr("Failed to run qbs config: %1")
-                .arg(QString::fromLocal8Bit(qbsConfig.readAllStandardError())));
+            Tr::tr("Failed to run qbs config: %1")
+                .arg(QString::fromLocal8Bit(qbsConfig.readAllRawStandardError())));
     }
-    return QString::fromLocal8Bit(qbsConfig.readAllStandardOutput()).trimmed();
+    return QString::fromLocal8Bit(qbsConfig.readAllRawStandardOutput()).trimmed();
 }
 
 QVariant fromJSLiteral(const QString &str)

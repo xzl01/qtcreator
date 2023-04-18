@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "sourceutils.h"
 
 #include "debuggerinternalconstants.h"
 #include "debuggerengine.h"
+#include "debuggertr.h"
 #include "disassemblerlines.h"
 #include "watchdata.h"
 #include "watchutils.h"
@@ -70,15 +49,15 @@ static void debugCppSymbolRecursion(QTextStream &str, const Overview &o,
     for (int i = 0; i < recursion; i++)
         str << "  ";
     str << "Symbol: " << o.prettyName(s.name()) << " at line " << s.line();
-    if (s.isFunction())
+    if (s.asFunction())
         str << " function";
-    if (s.isClass())
+    if (s.asClass())
         str << " class";
-    if (s.isDeclaration())
+    if (s.asDeclaration())
         str << " declaration";
-    if (s.isBlock())
+    if (s.asBlock())
         str << " block";
-    if (doRecurse && s.isScope()) {
+    if (doRecurse && s.asScope()) {
         const Scope *scoped = s.asScope();
         const int size =  scoped->memberCount();
         str << " scoped symbol of " << size << '\n';
@@ -106,17 +85,17 @@ QDebug operator<<(QDebug d, const Scope &scope)
     QTextStream str(&output);
     const int size =  scope.memberCount();
     str << "Scope of " << size;
-    if (scope.isNamespace())
+    if (scope.asNamespace())
         str << " namespace";
-    if (scope.isClass())
+    if (scope.asClass())
         str << " class";
-    if (scope.isEnum())
+    if (scope.asEnum())
         str << " enum";
-    if (scope.isBlock())
+    if (scope.asBlock())
         str << " block";
-    if (scope.isFunction())
+    if (scope.asFunction())
         str << " function";
-    if (scope.isDeclaration())
+    if (scope.asDeclaration())
         str << " prototype";
 #if 0 // ### port me
     if (const Symbol *owner = &scope) {
@@ -134,8 +113,7 @@ QDebug operator<<(QDebug d, const Scope &scope)
 
 } // namespace CPlusPlus
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 /* getUninitializedVariables(): Get variables that are not initialized
  * at a certain line of a function from the code model to be able to
@@ -168,7 +146,7 @@ static void blockRecursion(const Overview &overview,
     // Fixme: loop variables or similar are currently seen in the outer scope
     for (int s = scope->memberCount() - 1; s >= 0; --s){
         const CPlusPlus::Symbol *symbol = scope->memberAt(s);
-        if (symbol->isDeclaration()) {
+        if (symbol->asDeclaration()) {
             // Find out about shadowed symbols by bookkeeping
             // the already seen occurrences in a hash.
             const QString name = overview.prettyName(symbol->name());
@@ -210,7 +188,7 @@ QStringList getUninitializedVariables(const Snapshot &snapshot,
     // and the innermost scope at cursor position
     const Function *function = nullptr;
     const Scope *innerMostScope = nullptr;
-    if (symbolAtLine->isFunction()) {
+    if (symbolAtLine->asFunction()) {
         function = symbolAtLine->asFunction();
         if (function->memberCount() == 1) // Skip over function block
             if (Block *block = function->memberAt(0)->asBlock())
@@ -218,7 +196,7 @@ QStringList getUninitializedVariables(const Snapshot &snapshot,
     } else {
         if (const Scope *functionScope = symbolAtLine->enclosingFunction()) {
             function = functionScope->asFunction();
-            innerMostScope = symbolAtLine->isBlock() ?
+            innerMostScope = symbolAtLine->asBlock() ?
                              symbolAtLine->asBlock() :
                              symbolAtLine->enclosingBlock();
         }
@@ -243,10 +221,10 @@ QStringList getUninitializedVariables(const Snapshot &snapshot,
     return result;
 }
 
-QString cppFunctionAt(const QString &fileName, int line, int column)
+QString cppFunctionAt(const FilePath &filePath, int line, int column)
 {
     const Snapshot snapshot = CppModelManager::instance()->snapshot();
-    if (const Document::Ptr document = snapshot.document(fileName))
+    if (const Document::Ptr document = snapshot.document(filePath))
         return document->functionAt(line, column);
 
     return QString();
@@ -261,9 +239,9 @@ QString cppExpressionAt(TextEditorWidget *editorWidget, int pos,
     if (function)
         function->clear();
 
-    const QString fileName = editorWidget->textDocument()->filePath().toString();
+    const FilePath filePath = editorWidget->textDocument()->filePath();
     const Snapshot snapshot = CppModelManager::instance()->snapshot();
-    const Document::Ptr document = snapshot.document(fileName);
+    const Document::Ptr document = snapshot.document(filePath);
     QTextCursor tc = editorWidget->textCursor();
     QString expr;
     if (tc.hasSelection() && pos >= tc.selectionStart() && pos <= tc.selectionEnd()) {
@@ -356,7 +334,9 @@ class DebuggerValueMark : public TextEditor::TextMark
 {
 public:
     DebuggerValueMark(const FilePath &fileName, int lineNumber, const QString &value)
-        : TextMark(fileName, lineNumber, Constants::TEXT_MARK_CATEGORY_VALUE)
+        : TextMark(fileName,
+                   lineNumber,
+                   {Tr::tr("Debugger Value"), Constants::TEXT_MARK_CATEGORY_VALUE})
     {
         setPriority(TextEditor::TextMark::HighPriority);
         setToolTipProvider([] { return QString(); });
@@ -380,7 +360,7 @@ static int firstRelevantLine(const Document::Ptr document, int line, int column)
     if (!scope)
         scope = symbol->enclosingScope();
 
-    while (scope && !scope->isFunction() )
+    while (scope && !scope->asFunction() )
         scope = scope->enclosingScope();
 
     if (!scope)
@@ -397,7 +377,7 @@ static void setValueAnnotationsHelper(BaseTextEditor *textEditor,
     TextDocument *textDocument = widget->textDocument();
     const FilePath filePath = loc.fileName();
     const Snapshot snapshot = CppModelManager::instance()->snapshot();
-    const Document::Ptr cppDocument = snapshot.document(filePath.toString());
+    const Document::Ptr cppDocument = snapshot.document(filePath);
     if (!cppDocument) // For non-C++ documents.
         return;
 
@@ -439,5 +419,4 @@ void setValueAnnotations(const Location &loc, const QMap<QString, QString> &valu
     }
 }
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal

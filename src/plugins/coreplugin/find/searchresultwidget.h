@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -61,6 +39,7 @@ public:
 
     void setSupportsReplace(bool replaceSupported, const QString &group);
     bool supportsReplace() const;
+    void triggerReplace() { doReplace(); }
 
     void setTextToReplace(const QString &textToReplace);
     QString textToReplace() const;
@@ -92,7 +71,7 @@ public:
     void setReplaceEnabled(bool enabled);
 
 public slots:
-    void finishSearch(bool canceled);
+    void finishSearch(bool canceled, const QString &reason);
     void sendRequestPopup();
 
 signals:
@@ -100,7 +79,7 @@ signals:
     void replaceButtonClicked(const QString &replaceText, const QList<Core::SearchResultItem> &checkedItems, bool preserveCase);
     void replaceTextChanged(const QString &replaceText);
     void searchAgainRequested();
-    void cancelled();
+    void canceled();
     void paused(bool paused);
     void restarted();
     void visibilityChanged(bool visible);
@@ -113,6 +92,7 @@ signals:
 private:
     void handleJumpToSearchResult(const SearchResultItem &item);
     void handleReplaceButton();
+    void doReplace();
     void cancel();
     void searchAgain();
 
@@ -140,6 +120,7 @@ private:
     QWidget *m_descriptionContainer = nullptr;
     QLabel *m_label = nullptr;
     QLabel *m_searchTerm = nullptr;
+    QLabel *m_messageLabel = nullptr;
     QToolButton *m_cancelButton = nullptr;
     QLabel *m_matchesFoundLabel = nullptr;
     bool m_preserveCaseSupported = true;

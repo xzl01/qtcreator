@@ -1,43 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "variablechooser.h"
 
 #include "fancylineedit.h"
 #include "headerviewstretcher.h" // IconButton
 #include "macroexpander.h"
-#include "treemodel.h"
 #include "qtcassert.h"
+#include "treemodel.h"
 #include "utilsicons.h"
+#include "utilstr.h"
 
 #include <QApplication>
-#include <QAbstractItemModel>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidgetItem>
 #include <QMenu>
 #include <QPlainTextEdit>
 #include <QPointer>
@@ -47,14 +24,14 @@
 #include <QTimer>
 #include <QTreeView>
 #include <QVBoxLayout>
-#include <QVector>
 
 namespace Utils {
 namespace Internal {
 
 enum {
     UnexpandedTextRole = Qt::UserRole,
-    ExpandedTextRole
+    ExpandedTextRole,
+    CurrentValueDisplayRole
 };
 
 class VariableTreeView : public QTreeView
@@ -105,10 +82,10 @@ public:
     void createIconButton()
     {
         m_iconButton = new IconButton;
-        m_iconButton->setIcon(Utils::Icons::REPLACE.icon());
-        m_iconButton->setToolTip(VariableChooser::tr("Insert Variable"));
+        m_iconButton->setIcon(Icons::REPLACE.icon());
+        m_iconButton->setToolTip(Tr::tr("Insert Variable"));
         m_iconButton->hide();
-        connect(m_iconButton.data(), static_cast<void(QAbstractButton::*)(bool)>(&QAbstractButton::clicked),
+        connect(m_iconButton.data(), &QAbstractButton::clicked,
                 this, &VariableChooserPrivate::updatePositionAndShow);
     }
 
@@ -133,7 +110,7 @@ public:
     QPointer<QPlainTextEdit> m_plainTextEdit;
     QPointer<IconButton> m_iconButton;
 
-    Utils::FancyLineEdit *m_variableFilter;
+    FancyLineEdit *m_variableFilter;
     VariableTreeView *m_variableTree;
     QLabel *m_variableDescription;
     QSortFilterProxyModel *m_sortModel;
@@ -197,11 +174,8 @@ public:
         }
 
         if (role == Qt::ToolTipRole) {
-            QString description = m_expander->variableDescription(m_variable);
-            const QString value = m_expander->value(m_variable).toHtmlEscaped();
-            if (!value.isEmpty())
-                description += QLatin1String("<p>") + VariableChooser::tr("Current Value: %1").arg(value);
-            return description;
+            return QString::fromLatin1("<div style=\"white-space:pre\">%1</div>")
+                    .arg(data(column, CurrentValueDisplayRole).toString());
         }
 
         if (role == UnexpandedTextRole)
@@ -209,6 +183,15 @@ public:
 
         if (role == ExpandedTextRole)
             return m_expander->expand(QString::fromUtf8("%{" + m_variable + '}'));
+
+        if (role == CurrentValueDisplayRole) {
+            QString description = m_expander->variableDescription(m_variable);
+            const QString value = m_expander->value(m_variable).toHtmlEscaped();
+            if (!value.isEmpty())
+                description += QLatin1String("<p>")
+                        + Tr::tr("Current Value: %1").arg(value);
+            return description;
+        }
 
         return QVariant();
     }
@@ -230,17 +213,17 @@ void VariableTreeView::contextMenuEvent(QContextMenuEvent *ev)
     QAction *insertExpandedAction = nullptr;
 
     if (unexpandedText.isEmpty()) {
-        insertUnexpandedAction = menu.addAction(VariableChooser::tr("Insert Unexpanded Value"));
+        insertUnexpandedAction = menu.addAction(Tr::tr("Insert Unexpanded Value"));
         insertUnexpandedAction->setEnabled(false);
     } else {
-        insertUnexpandedAction = menu.addAction(VariableChooser::tr("Insert \"%1\"").arg(unexpandedText));
+        insertUnexpandedAction = menu.addAction(Tr::tr("Insert \"%1\"").arg(unexpandedText));
     }
 
     if (expandedText.isEmpty()) {
-        insertExpandedAction = menu.addAction(VariableChooser::tr("Insert Expanded Value"));
+        insertExpandedAction = menu.addAction(Tr::tr("Insert Expanded Value"));
         insertExpandedAction->setEnabled(false);
     } else {
-        insertExpandedAction = menu.addAction(VariableChooser::tr("Insert \"%1\"").arg(expandedText));
+        insertExpandedAction = menu.addAction(Tr::tr("Insert \"%1\"").arg(expandedText));
     }
 
 
@@ -268,9 +251,9 @@ VariableChooserPrivate::VariableChooserPrivate(VariableChooser *parent)
       m_variableTree(nullptr),
       m_variableDescription(nullptr)
 {
-    m_defaultDescription = VariableChooser::tr("Select a variable to insert.");
+    m_defaultDescription = Tr::tr("Select a variable to insert.");
 
-    m_variableFilter = new Utils::FancyLineEdit(q);
+    m_variableFilter = new FancyLineEdit(q);
     m_variableTree = new VariableTreeView(q, this);
     m_variableDescription = new QLabel(q);
 
@@ -309,15 +292,16 @@ void VariableGroupItem::populateGroup(MacroExpander *expander)
 {
     if (!expander)
         return;
-
-    foreach (const QByteArray &variable, expander->visibleVariables()) {
+    const QList<QByteArray> variables = expander->visibleVariables();
+    for (const QByteArray &variable : variables) {
         auto item = new VariableItem;
         item->m_variable = variable;
         item->m_expander = expander;
         appendChild(item);
     }
 
-    foreach (const MacroExpanderProvider &subProvider, expander->subProviders()) {
+    const MacroExpanderProviders subProviders = expander->subProviders();
+    for (const MacroExpanderProvider &subProvider : subProviders) {
         if (!subProvider)
             continue;
         if (expander->isAccumulating()) {
@@ -388,12 +372,12 @@ VariableChooser::VariableChooser(QWidget *parent) :
     QWidget(parent),
     d(new VariableChooserPrivate(this))
 {
-    setWindowTitle(tr("Variables"));
+    setWindowTitle(Tr::tr("Variables"));
     setWindowFlags(Qt::Tool);
     setFocusPolicy(Qt::StrongFocus);
     setFocusProxy(d->m_variableTree);
     setGeometry(QRect(0, 0, 400, 500));
-    addMacroExpanderProvider([]() { return globalMacroExpander(); });
+    addMacroExpanderProvider([] { return globalMacroExpander(); });
 }
 
 /*!
@@ -434,7 +418,8 @@ void VariableChooser::addSupportForChildWidgets(QWidget *parent, MacroExpander *
 {
      auto chooser = new VariableChooser(parent);
      chooser->addMacroExpanderProvider([expander] { return expander; });
-     foreach (QWidget *child, parent->findChildren<QWidget *>()) {
+     const QList<QWidget *> children = parent->findChildren<QWidget *>();
+     for (QWidget *child : children) {
          if (qobject_cast<QLineEdit *>(child)
                  || qobject_cast<QTextEdit *>(child)
                  || qobject_cast<QPlainTextEdit *>(child))
@@ -449,7 +434,7 @@ void VariableChooserPrivate::updateDescription(const QModelIndex &index)
 {
     if (m_variableDescription)
         m_variableDescription->setText(m_model.data(m_sortModel->mapToSource(index),
-                                                    Qt::ToolTipRole).toString());
+                                                    CurrentValueDisplayRole).toString());
 }
 
 /*!
@@ -504,11 +489,12 @@ void VariableChooserPrivate::updateCurrentEditor(QWidget *old, QWidget *widget)
     m_currentVariableName = widget->property(kVariableNameProperty).toByteArray();
     bool supportsVariables = chooser == q;
     if (auto lineEdit = qobject_cast<QLineEdit *>(widget))
-        m_lineEdit = (supportsVariables ? lineEdit : nullptr);
+        m_lineEdit = (supportsVariables && !lineEdit->isReadOnly() ? lineEdit : nullptr);
     else if (auto textEdit = qobject_cast<QTextEdit *>(widget))
-        m_textEdit = (supportsVariables ? textEdit : nullptr);
+        m_textEdit = (supportsVariables && !textEdit->isReadOnly() ? textEdit : nullptr);
     else if (auto plainTextEdit = qobject_cast<QPlainTextEdit *>(widget))
-        m_plainTextEdit = (supportsVariables ? plainTextEdit : nullptr);
+        m_plainTextEdit = (supportsVariables && !plainTextEdit->isReadOnly() ?
+                               plainTextEdit : nullptr);
 
     QWidget *current = currentWidget();
     if (current != previousWidget) {

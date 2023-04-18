@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelineactions.h"
 
 #include "timelineutils.h"
 #include "timelineview.h"
 
+#include <auxiliarydataproperties.h>
 #include <bindingproperty.h>
 #include <designdocument.h>
 #include <designdocumentview.h>
@@ -77,19 +56,20 @@ void TimelineActions::copyAllKeyframesForTarget(const ModelNode &targetNode,
                                                 const QmlTimeline &timeline)
 {
     DesignDocumentView::copyModelNodes(Utils::transform(timeline.keyframeGroupsForTarget(targetNode),
-                                                        &QmlTimelineKeyframeGroup::modelNode));
+                                                        &QmlTimelineKeyframeGroup::modelNode),
+                                       targetNode.view()->externalDependencies());
 }
 
 void TimelineActions::pasteKeyframesToTarget(const ModelNode &targetNode,
                                              const QmlTimeline &timeline)
 {
     if (timeline.isValid()) {
-        QScopedPointer<Model> pasteModel(DesignDocumentView::pasteToModel());
+        auto pasteModel = DesignDocumentView::pasteToModel(targetNode.view()->externalDependencies());
 
         if (!pasteModel)
             return;
 
-        DesignDocumentView view;
+        DesignDocumentView view{targetNode.view()->externalDependencies()};
         pasteModel->attachView(&view);
 
         if (!view.rootModelNode().isValid())
@@ -134,7 +114,8 @@ void TimelineActions::pasteKeyframesToTarget(const ModelNode &targetNode,
     }
 }
 
-void TimelineActions::copyKeyframes(const QList<ModelNode> &keyframes)
+void TimelineActions::copyKeyframes(const QList<ModelNode> &keyframes,
+                                    ExternalDependenciesInterface &externalDependencies)
 {
     QList<ModelNode> nodes;
     for (const auto &node : keyframes) {
@@ -148,31 +129,27 @@ void TimelineActions::copyKeyframes(const QList<ModelNode> &keyframes)
                 BindingProperty bp = property.toBindingProperty();
                 ModelNode bpNode = bp.resolveToModelNode();
                 if (bpNode.isValid())
-                    node.setAuxiliaryData(name, bpNode.id());
+                    node.setAuxiliaryData(AuxiliaryDataType::Document, name, bpNode.id());
             } else if (property.isVariantProperty()) {
                 VariantProperty vp = property.toVariantProperty();
-                node.setAuxiliaryData(name, vp.value());
+                node.setAuxiliaryData(AuxiliaryDataType::Document, name, vp.value());
             }
         }
 
         nodes << node;
     }
 
-    DesignDocumentView::copyModelNodes(nodes);
+    DesignDocumentView::copyModelNodes(nodes, externalDependencies);
 }
 
 bool isKeyframe(const ModelNode &node)
 {
-    return node.isValid() && node.metaInfo().isValid()
-           && node.metaInfo().isSubclassOf("QtQuick.Timeline.Keyframe");
+    return node.metaInfo().isQtQuickTimelineKeyframe();
 }
 
 QVariant getValue(const ModelNode &node)
 {
-    if (node.isValid())
-        return node.variantProperty("value").value();
-
-    return QVariant();
+    return node.variantProperty("value").value();
 }
 
 qreal getTime(const ModelNode &node)
@@ -187,14 +164,14 @@ QmlTimelineKeyframeGroup getFrameGroup(const ModelNode &node,
                                        AbstractView *timelineView,
                                        const QmlTimeline &timeline)
 {
-    QVariant targetId = node.auxiliaryData("target");
-    QVariant property = node.auxiliaryData("property");
+    auto targetId = node.auxiliaryData(targetProperty);
+    auto property = node.auxiliaryData(propertyProperty);
 
-    if (targetId.isValid() && property.isValid()) {
-        ModelNode targetNode = timelineView->modelNodeForId(targetId.toString());
+    if (targetId && property) {
+        ModelNode targetNode = timelineView->modelNodeForId(targetId->toString());
         if (targetNode.isValid()) {
             for (QmlTimelineKeyframeGroup frameGrp : timeline.keyframeGroupsForTarget(targetNode)) {
-                if (frameGrp.propertyName() == property.toByteArray())
+                if (frameGrp.propertyName() == property->toByteArray())
                     return frameGrp;
             }
         }
@@ -254,7 +231,7 @@ std::vector<std::tuple<ModelNode, qreal>> getFramesRelative(const ModelNode &par
 
     if (!sortedByTime.empty()) {
         qreal firstTime = getTime(sortedByTime.first());
-        for (const ModelNode &keyframe : qAsConst(sortedByTime))
+        for (const ModelNode &keyframe : std::as_const(sortedByTime))
             result.emplace_back(keyframe, getTime(keyframe) - firstTime);
     }
 
@@ -263,12 +240,12 @@ std::vector<std::tuple<ModelNode, qreal>> getFramesRelative(const ModelNode &par
 
 void TimelineActions::pasteKeyframes(AbstractView *timelineView, const QmlTimeline &timeline)
 {
-    QScopedPointer<Model> pasteModel(DesignDocumentView::pasteToModel());
+    auto pasteModel = DesignDocumentView::pasteToModel(timelineView->externalDependencies());
 
     if (!pasteModel)
         return;
 
-    DesignDocumentView view;
+    DesignDocumentView view{timelineView->externalDependencies()};
     pasteModel->attachView(&view);
 
     if (!view.rootModelNode().isValid())

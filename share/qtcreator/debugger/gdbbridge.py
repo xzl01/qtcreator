@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 try:
     import __builtin__
@@ -197,24 +175,6 @@ def importPlainDumpers(args):
 registerCommand('importPlainDumpers', importPlainDumpers)
 
 
-class OutputSaver():
-    def __init__(self, d):
-        self.d = d
-
-    def __enter__(self):
-        self.savedOutput = self.d.output
-        self.d.output = ''
-
-    def __exit__(self, exType, exValue, exTraceBack):
-        if self.d.passExceptions and exType is not None:
-            self.d.showException('OUTPUTSAVER', exType, exValue, exTraceBack)
-            self.d.output = self.savedOutput
-        else:
-            self.savedOutput += self.d.output
-            self.d.output = self.savedOutput
-        return False
-
-
 #######################################################################
 #
 # The Dumper Class
@@ -236,7 +196,7 @@ class Dumper(DumperBase):
         self.interpreterBreakpointResolvers = []
 
     def prepare(self, args):
-        self.output = ''
+        self.output = []
         self.setVariableFetchingOptions(args)
 
     def fromFrameValue(self, nativeValue):
@@ -389,9 +349,8 @@ class Dumper(DumperBase):
         typeId = self.nativeTypeId(nativeType)
         res = self.typeData.get(typeId, None)
         if res is None:
-            tdata = self.TypeData(self)
+            tdata = self.TypeData(self, typeId)
             tdata.name = str(nativeType)
-            tdata.typeId = typeId
             tdata.lbitsize = nativeType.sizeof * 8
             tdata.code = {
                 #gdb.TYPE_CODE_TYPEDEF : TypeCode.Typedef, # Handled above.
@@ -421,8 +380,8 @@ class Dumper(DumperBase):
                     self.nativeStructAlignment(nativeType)
                 tdata.lfields = lambda value: \
                     self.listMembers(value, nativeType)
-            tdata.templateArguments = self.listTemplateParameters(nativeType)
-            self.registerType(typeId, tdata)  # Fix up fields and template args
+            tdata.templateArguments = lambda: \
+                    self.listTemplateParameters(nativeType)
         #    warn('CREATE TYPE: %s' % typeId)
         #else:
         #    warn('REUSE TYPE: %s' % typeId)
@@ -713,7 +672,7 @@ class Dumper(DumperBase):
             safePrint(res)
             return
 
-        self.output += 'data=['
+        self.put('data=[')
 
         partialVar = args.get('partialvar', '')
         isPartial = len(partialVar) > 0
@@ -736,27 +695,26 @@ class Dumper(DumperBase):
         self.handleLocals(variables)
         self.handleWatches(args)
 
-        self.output += '],typeinfo=['
+        self.put('],typeinfo=[')
         for name in self.typesToReport.keys():
             typeobj = self.typesToReport[name]
             # Happens e.g. for '(anonymous namespace)::InsertDefOperation'
             #if not typeobj is None:
-            #    self.output.append('{name="%s",size="%s"}'
-            #        % (self.hexencode(name), typeobj.sizeof))
-        self.output += ']'
+            #    self.put('{name="%s",size="%s"}' % (self.hexencode(name), typeobj.sizeof))
+        self.put(']')
         self.typesToReport = {}
 
         if self.forceQtNamespace:
             self.qtNamespaceToReport = self.qtNamespace()
 
         if self.qtNamespaceToReport:
-            self.output += ',qtnamespace="%s"' % self.qtNamespaceToReport
+            self.put(',qtnamespace="%s"' % self.qtNamespaceToReport)
             self.qtNamespaceToReport = None
 
-        self.output += ',partial="%d"' % isPartial
-        self.output += ',counts=%s' % self.counts
-        self.output += ',timings=%s' % self.timings
-        self.reportResult(self.output, args)
+        self.put(',partial="%d"' % isPartial)
+        self.put(',counts=%s' % self.counts)
+        self.put(',timings=%s' % self.timings)
+        self.reportResult(''.join(self.output), args)
 
     def parseAndEvaluate(self, exp):
         val = self.nativeParseAndEvaluate(exp)
@@ -1046,8 +1004,11 @@ class Dumper(DumperBase):
 
     def importPlainDumpersForObj(self, obj):
         for printers in obj.pretty_printers + gdb.pretty_printers:
-            for printer in printers.subprinters:
-                self.importPlainDumper(printer)
+            if hasattr(printers, "subprinters"):
+                for printer in printers.subprinters:
+                    self.importPlainDumper(printer)
+            else:
+                self.warn('Loading a printer without the subprinters attribute not supported.')
 
     def importPlainDumpers(self):
         for obj in gdb.objfiles():
@@ -1344,7 +1305,7 @@ class Dumper(DumperBase):
             limit = 10000
 
         self.prepare(args)
-        self.output = ''
+        self.output = []
 
         i = 0
         if extraQml:
@@ -1398,58 +1359,60 @@ class Dumper(DumperBase):
 
         frame = gdb.newest_frame()
         self.currentCallContext = None
+        self.output = []
+        self.put('stack={frames=[')
         while i < limit and frame:
-            with OutputSaver(self):
-                name = frame.name()
-                functionName = '??' if name is None else name
-                fileName = ''
-                objfile = ''
-                symtab = ''
-                pc = frame.pc()
-                sal = frame.find_sal()
-                line = -1
-                if sal:
-                    line = sal.line
-                    symtab = sal.symtab
-                    if symtab is not None:
-                        objfile = fromNativePath(symtab.objfile.filename)
-                        fullname = symtab.fullname()
-                        if fullname is None:
-                            fileName = ''
-                        else:
-                            fileName = fromNativePath(fullname)
+            name = frame.name()
+            functionName = '??' if name is None else name
+            fileName = ''
+            objfile = ''
+            symtab = ''
+            pc = frame.pc()
+            sal = frame.find_sal()
+            line = -1
+            if sal:
+                line = sal.line
+                symtab = sal.symtab
+                if symtab is not None:
+                    objfile = fromNativePath(symtab.objfile.filename)
+                    fullname = symtab.fullname()
+                    if fullname is None:
+                        fileName = ''
+                    else:
+                        fileName = fromNativePath(fullname)
 
-                if self.nativeMixed and functionName == 'qt_qmlDebugMessageAvailable':
-                    interpreterStack = self.extractInterpreterStack()
-                    #print('EXTRACTED INTEPRETER STACK: %s' % interpreterStack)
-                    for interpreterFrame in interpreterStack.get('frames', []):
-                        function = interpreterFrame.get('function', '')
-                        fileName = interpreterFrame.get('file', '')
-                        language = interpreterFrame.get('language', '')
-                        lineNumber = interpreterFrame.get('line', 0)
-                        context = interpreterFrame.get('context', 0)
+            if self.nativeMixed and functionName == 'qt_qmlDebugMessageAvailable':
+                interpreterStack = self.extractInterpreterStack()
+                #print('EXTRACTED INTEPRETER STACK: %s' % interpreterStack)
+                for interpreterFrame in interpreterStack.get('frames', []):
+                    function = interpreterFrame.get('function', '')
+                    fileName = interpreterFrame.get('file', '')
+                    language = interpreterFrame.get('language', '')
+                    lineNumber = interpreterFrame.get('line', 0)
+                    context = interpreterFrame.get('context', 0)
 
-                        self.put(('frame={function="%s",file="%s",'
-                                  'line="%s",language="%s",context="%s"}')
-                                 % (function, self.hexencode(fileName), lineNumber, language, context))
+                    self.put(('frame={function="%s",file="%s",'
+                              'line="%s",language="%s",context="%s"}')
+                             % (function, self.hexencode(fileName), lineNumber, language, context))
 
-                    if False and self.isInternalInterpreterFrame(functionName):
-                        frame = frame.older()
-                        self.put(('frame={address="0x%x",function="%s",'
-                                  'file="%s",line="%s",'
-                                  'module="%s",language="c",usable="0"}') %
-                                 (pc, functionName, fileName, line, objfile))
-                        i += 1
-                        frame = frame.older()
-                        continue
+                if False and self.isInternalInterpreterFrame(functionName):
+                    frame = frame.older()
+                    self.put(('frame={address="0x%x",function="%s",'
+                              'file="%s",line="%s",'
+                              'module="%s",language="c",usable="0"}') %
+                             (pc, functionName, fileName, line, objfile))
+                    i += 1
+                    frame = frame.older()
+                    continue
 
-                self.put(('frame={level="%s",address="0x%x",function="%s",'
-                          'file="%s",line="%s",module="%s",language="c"}') %
-                         (i, pc, functionName, fileName, line, objfile))
+            self.put(('frame={level="%s",address="0x%x",function="%s",'
+                      'file="%s",line="%s",module="%s",language="c"}') %
+                     (i, pc, functionName, fileName, line, objfile))
 
             frame = frame.older()
             i += 1
-        self.reportResult('stack={frames=[' + self.output + ']}', args)
+        self.put(']}')
+        self.reportResult(self.takeOutput(), args)
 
     def createResolvePendingBreakpointsHookBreakpoint(self, args):
         class Resolver(gdb.Breakpoint):
@@ -1535,6 +1498,7 @@ class Dumper(DumperBase):
             onHit=self.tracepointHit,
             onExpression=lambda tp, expr, val: self.tracepointExpression(tp, expr, val, args))
         self.reportResult("tracepoint=%s" % self.resultToMi(tp.dicts()), args)
+
 class CliDumper(Dumper):
     def __init__(self):
         Dumper.__init__(self)
@@ -1570,7 +1534,10 @@ class CliDumper(Dumper):
         for n in names:
             while n:
                 toExpand.add(n)
-                n = n[0:n.rfind('.')]
+                try:
+                    n = n[0:n.rindex('.')]
+                except ValueError:
+                    break
 
         args = {}
         args['fancy'] = 1
@@ -1582,16 +1549,18 @@ class CliDumper(Dumper):
         self.expandableINames = set()
         self.prepare(args)
 
-        self.output = name + ' = '
+        self.output = []
+        self.put(name + ' = ')
         value = self.parseAndEvaluate(name)
         with TopLevelItem(self, name):
             self.putItem(value)
 
         if not self.expandableINames:
-            return self.output + '\n\nNo drill down available.\n'
+            self.put('\n\nNo drill down available.\n')
+            return self.takeOutput()
 
         pattern = ' pp ' + name + ' ' + '%s'
-        return (self.output
+        return (self.takeOutput()
                 + '\n\nDrill down:\n   '
                 + '\n   '.join(pattern % x for x in self.expandableINames)
                 + '\n')

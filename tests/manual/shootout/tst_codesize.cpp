@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QDir>
 #include <QProcess>
@@ -148,7 +126,7 @@ void tst_CodeSize::cleanup()
 
 void tst_CodeSize::codesize()
 {
-    QFETCH(Suite, suite);
+    QFETCH(const Suite, suite);
     static int suiteCount = 0;
     ++suiteCount;
 
@@ -170,7 +148,7 @@ void tst_CodeSize::codesize()
                "}\n");
     mainCpp.close();
 
-    foreach (const Case &c, suite.cases) {
+    for (const Case &c : suite.cases) {
         QByteArray caseProName = c.file + ".pro";
         bigPro.write("\nSUBDIRS += " + caseProName);
         mainPro.write("\nLIBS += -l" + c.file);
@@ -245,7 +223,7 @@ void tst_CodeSize::codesize()
 
     bool ok = true;
     int i = 0;
-    foreach (const Case &c, suite.cases) {
+    for (const Case &c : std::as_const(suite.cases)) {
         ++i;
         cout << "\n\n===================== VARIANT " << suiteCount << '.' << i << ' '
              << " ================================"
@@ -263,7 +241,7 @@ void tst_CodeSize::codesize()
 #endif
         const int index = suite.cmd.indexOf(' ');
         QString command = suite.cmd.left(index);
-        arguments = QString::fromLatin1(suite.cmd.mid(index + 1)) + arguments;
+        arguments = QString::fromLatin1(suite.cmd.mid(index + 1)) + ' ' + arguments;
         QProcess final;
         final.setWorkingDirectory(t->buildPath);
         final.setProcessEnvironment(m_env);

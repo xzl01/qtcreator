@@ -11,16 +11,20 @@ QtcPlugin {
     Depends { name: "QtSupport" }
 
     files: [
-        "docker_global.h",
-        "dockerbuildstep.h",
-        "dockerbuildstep.cpp",
+        "docker_global.h", "dockertr.h",
+        "dockerapi.cpp",
+        "dockerapi.h",
         "dockerconstants.h",
-        "dockerdevice.h",
         "dockerdevice.cpp",
-        "dockerplugin.h",
+        "dockerdevice.h",
+        "dockerdevicewidget.cpp",
+        "dockerdevicewidget.h",
         "dockerplugin.cpp",
+        "dockerplugin.h",
+        "dockersettings.cpp",
         "dockersettings.h",
-        "dockersettings.cpp"
+        "kitdetector.cpp",
+        "kitdetector.h",
     ]
 }
 

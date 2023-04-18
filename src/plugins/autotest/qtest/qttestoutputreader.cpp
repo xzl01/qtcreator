@@ -1,40 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qttestoutputreader.h"
+
 #include "qttestresult.h"
+#include "../autotesttr.h"
 #include "../testtreeitem.h"
 
 #include <qtsupport/qtoutputformatter.h>
 #include <utils/qtcassert.h>
 
-#include <QDir>
-#include <QFileInfo>
 #include <QRegularExpression>
 
 #include <cctype>
+
+using namespace Utils;
 
 namespace Autotest {
 namespace Internal {
@@ -118,17 +98,17 @@ static QString constructBenchmarkInformation(const QString &metric, double value
         metricsText = "instruction reads";
     else if (metric == "CPUCycles")               // -perf
         metricsText = "CPU cycles";
-    return QtTestOutputReader::tr("%1 %2 per iteration (total: %3, iterations: %4)")
+    return Tr::tr("%1 %2 per iteration (total: %3, iterations: %4)")
             .arg(formatResult(value))
             .arg(metricsText)
             .arg(formatResult(value * double(iterations)))
             .arg(iterations);
 }
 
-QtTestOutputReader::QtTestOutputReader(const QFutureInterface<TestResultPtr> &futureInterface,
-                                       QProcess *testApplication,
-                                       const Utils::FilePath &buildDirectory,
-                                       const Utils::FilePath &projectFile,
+QtTestOutputReader::QtTestOutputReader(const QFutureInterface<TestResult> &futureInterface,
+                                       QtcProcess *testApplication,
+                                       const FilePath &buildDirectory,
+                                       const FilePath &projectFile,
                                        OutputMode mode, TestType type)
     : TestOutputReader(futureInterface, testApplication, buildDirectory)
     , m_projectFile(projectFile)
@@ -152,27 +132,24 @@ void QtTestOutputReader::processOutputLine(const QByteArray &outputLine)
     }
 }
 
-TestResultPtr QtTestOutputReader::createDefaultResult() const
+TestResult QtTestOutputReader::createDefaultResult() const
 {
-    QtTestResult *result = new QtTestResult(id(), m_projectFile, m_testType, m_className);
-    result->setFunctionName(m_testCase);
-    result->setDataTag(m_dataTag);
-    return TestResultPtr(result);
+    return QtTestResult(id(), m_className, m_projectFile, m_testType, m_testCase, m_dataTag);
 }
 
 static QString trQtVersion(const QString &version)
 {
-    return QtTestOutputReader::tr("Qt version: %1").arg(version);
+    return Tr::tr("Qt version: %1").arg(version);
 }
 
 static QString trQtBuild(const QString &build)
 {
-    return QtTestOutputReader::tr("Qt build: %1").arg(build);
+    return Tr::tr("Qt build: %1").arg(build);
 }
 
 static QString trQtestVersion(const QString &test)
 {
-    return QtTestOutputReader::tr("QTest version: %1").arg(test);
+    return Tr::tr("QTest version: %1").arg(test);
 }
 
 void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
@@ -317,7 +294,7 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
             // premature end happens e.g. if not all data has been added to the reader yet
             if (m_xmlReader.error() != QXmlStreamReader::NoError
                     && m_xmlReader.error() != QXmlStreamReader::PrematureEndOfDocumentError) {
-                createAndReportResult(tr("XML parsing failed.")
+                createAndReportResult(Tr::tr("XML parsing failed.")
                                       + QString(" (%1) ").arg(m_xmlReader.error())
                                       + m_xmlReader.errorString(), ResultType::MessageFatal);
             }
@@ -478,73 +455,75 @@ void QtTestOutputReader::processSummaryFinishOutput()
 
 void QtTestOutputReader::sendCompleteInformation()
 {
-    TestResultPtr testResult = createDefaultResult();
-    testResult->setResult(m_result);
+    TestResult testResult = createDefaultResult();
+    testResult.setResult(m_result);
 
     if (m_lineNumber) {
-        testResult->setFileName(m_file);
-        testResult->setLine(m_lineNumber);
+        testResult.setFileName(m_file);
+        testResult.setLine(m_lineNumber);
     } else {
-        const ITestTreeItem *testItem = testResult->findTestTreeItem();
+        const ITestTreeItem *testItem = testResult.findTestTreeItem();
         if (testItem && testItem->line()) {
-            testResult->setFileName(testItem->filePath());
-            testResult->setLine(testItem->line());
+            testResult.setFileName(testItem->filePath());
+            testResult.setLine(testItem->line());
         }
     }
-    testResult->setDescription(m_description);
+    testResult.setDescription(m_description);
     reportResult(testResult);
 }
 
 void QtTestOutputReader::sendMessageCurrentTest()
 {
-    QtTestResult *testResult = new QtTestResult(QString(), m_projectFile, m_testType, QString());
-    testResult->setResult(ResultType::MessageCurrentTest);
-    testResult->setDescription(tr("Entering test function %1::%2").arg(m_className, m_testCase));
-    reportResult(TestResultPtr(testResult));
+    QtTestResult result({}, {}, m_projectFile, m_testType);
+    result.setResult(ResultType::MessageCurrentTest);
+    result.setDescription(Tr::tr("Entering test function %1::%2").arg(m_className, m_testCase));
+    reportResult(result);
 }
 
 void QtTestOutputReader::sendStartMessage(bool isFunction)
 {
-    TestResultPtr testResult = createDefaultResult();
-    testResult->setResult(ResultType::TestStart);
-    testResult->setDescription(isFunction ? tr("Executing test function %1").arg(m_testCase)
-                                          : tr("Executing test case %1").arg(m_className));
-    const ITestTreeItem *testItem = testResult->findTestTreeItem();
+    TestResult result = createDefaultResult();
+    result.setResult(ResultType::TestStart);
+    result.setDescription(isFunction ? Tr::tr("Executing test function %1").arg(m_testCase)
+                                     : Tr::tr("Executing test case %1").arg(m_className));
+    const ITestTreeItem *testItem = result.findTestTreeItem();
     if (testItem && testItem->line()) {
-        testResult->setFileName(testItem->filePath());
-        testResult->setLine(testItem->line());
+        result.setFileName(testItem->filePath());
+        result.setLine(testItem->line());
     }
-    reportResult(testResult);
+    reportResult(result);
 }
 
 void QtTestOutputReader::sendFinishMessage(bool isFunction)
 {
-    TestResultPtr testResult = createDefaultResult();
-    testResult->setResult(ResultType::TestEnd);
+    TestResult result = createDefaultResult();
+    result.setResult(ResultType::TestEnd);
     if (!m_duration.isEmpty()) {
-        testResult->setDescription(isFunction ? tr("Execution took %1 ms.").arg(m_duration)
-                                              : tr("Test execution took %1 ms.").arg(m_duration));
+        result.setDescription(isFunction ? Tr::tr("Execution took %1 ms.").arg(m_duration)
+                                         : Tr::tr("Test execution took %1 ms.").arg(m_duration));
     } else {
-        testResult->setDescription(isFunction ? tr("Test function finished.")
-                                              : tr("Test finished."));
+        result.setDescription(isFunction ? Tr::tr("Test function finished.")
+                                         : Tr::tr("Test finished."));
     }
-    reportResult(testResult);
+    reportResult(result);
 }
 
 void QtTestOutputReader::handleAndSendConfigMessage(const QRegularExpressionMatch &config)
 {
-    TestResultPtr testResult = createDefaultResult();
-    testResult->setResult(ResultType::MessageInternal);
-    testResult->setDescription(trQtVersion(config.captured(3)));
-    reportResult(testResult);
-    testResult = createDefaultResult();
-    testResult->setResult(ResultType::MessageInternal);
-    testResult->setDescription(trQtBuild(config.captured(2)));
-    reportResult(testResult);
-    testResult = createDefaultResult();
-    testResult->setResult(ResultType::MessageInternal);
-    testResult->setDescription(trQtestVersion(config.captured(1)));
-    reportResult(testResult);
+    TestResult result = createDefaultResult();
+    result.setResult(ResultType::MessageInternal);
+    result.setDescription(trQtVersion(config.captured(3)));
+    reportResult(result);
+
+    result = createDefaultResult();
+    result.setResult(ResultType::MessageInternal);
+    result.setDescription(trQtBuild(config.captured(2)));
+    reportResult(result);
+
+    result = createDefaultResult();
+    result.setResult(ResultType::MessageInternal);
+    result.setDescription(trQtestVersion(config.captured(1)));
+    reportResult(result);
 }
 
 } // namespace Internal

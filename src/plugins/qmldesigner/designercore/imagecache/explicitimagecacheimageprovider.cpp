@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "explicitimagecacheimageprovider.h"
 
@@ -30,12 +8,12 @@
 #include <QMetaObject>
 #include <QQuickImageResponse>
 
-namespace QmlDesigner {
+namespace {
 
-class ImageRespose : public QQuickImageResponse
+class ImageResponse : public QQuickImageResponse
 {
 public:
-    ImageRespose(const QImage &defaultImage)
+    ImageResponse(const QImage &defaultImage)
         : m_image(defaultImage)
     {}
 
@@ -57,14 +35,18 @@ private:
     QImage m_image;
 };
 
+} // namespace
+
+namespace QmlDesigner {
+
 QQuickImageResponse *ExplicitImageCacheImageProvider::requestImageResponse(const QString &id,
                                                                            const QSize &)
 {
-    auto response = std::make_unique<ImageRespose>(m_defaultImage);
+    auto response = std::make_unique<::ImageResponse>(m_defaultImage);
 
     m_cache.requestImage(
         id,
-        [response = QPointer<ImageRespose>(response.get())](const QImage &image) {
+        [response = QPointer<::ImageResponse>(response.get())](const QImage &image) {
             QMetaObject::invokeMethod(
                 response,
                 [response, image] {
@@ -73,7 +55,7 @@ QQuickImageResponse *ExplicitImageCacheImageProvider::requestImageResponse(const
                 },
                 Qt::QueuedConnection);
         },
-        [response = QPointer<ImageRespose>(response.get())](ImageCache::AbortReason abortReason) {
+        [response = QPointer<::ImageResponse>(response.get())](ImageCache::AbortReason abortReason) {
             QMetaObject::invokeMethod(
                 response,
                 [response, abortReason] {

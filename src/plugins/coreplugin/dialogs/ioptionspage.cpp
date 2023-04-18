@@ -1,30 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Falko Arps
-** Copyright (C) 2016 Sven Klein
-** Copyright (C) 2016 Giuliano Schneider
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Falko Arps
+// Copyright (C) 2016 Sven Klein
+// Copyright (C) 2016 Giuliano Schneider
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "ioptionspage.h"
 
@@ -111,6 +89,34 @@ QIcon IOptionsPage::categoryIcon() const
 void IOptionsPage::setWidgetCreator(const WidgetCreator &widgetCreator)
 {
     m_widgetCreator = widgetCreator;
+}
+
+/*!
+    \fn QStringList Core::IOptionsPage::keywords() const
+
+    Returns a list of ui strings that are used inside the widget.
+*/
+
+QStringList IOptionsPage::keywords() const
+{
+    if (!m_keywordsInitialized) {
+        auto that = const_cast<IOptionsPage *>(this);
+        QWidget *widget = that->widget();
+        if (!widget)
+            return {};
+        // find common subwidgets
+        for (const QLabel *label : widget->findChildren<QLabel *>())
+            m_keywords << Utils::stripAccelerator(label->text());
+        for (const QCheckBox *checkbox : widget->findChildren<QCheckBox *>())
+            m_keywords << Utils::stripAccelerator(checkbox->text());
+        for (const QPushButton *pushButton : widget->findChildren<QPushButton *>())
+            m_keywords << Utils::stripAccelerator(pushButton->text());
+        for (const QGroupBox *groupBox : widget->findChildren<QGroupBox *>())
+            m_keywords << Utils::stripAccelerator(groupBox->title());
+
+        m_keywordsInitialized = true;
+    }
+    return m_keywords;
 }
 
 /*!
@@ -264,24 +270,7 @@ const QList<IOptionsPage *> IOptionsPage::allOptionsPages()
 */
 bool IOptionsPage::matches(const QRegularExpression &regexp) const
 {
-    if (!m_keywordsInitialized) {
-        auto that = const_cast<IOptionsPage *>(this);
-        QWidget *widget = that->widget();
-        if (!widget)
-            return false;
-        // find common subwidgets
-        foreach (const QLabel *label, widget->findChildren<QLabel *>())
-            m_keywords << Utils::stripAccelerator(label->text());
-        foreach (const QCheckBox *checkbox, widget->findChildren<QCheckBox *>())
-            m_keywords << Utils::stripAccelerator(checkbox->text());
-        foreach (const QPushButton *pushButton, widget->findChildren<QPushButton *>())
-            m_keywords << Utils::stripAccelerator(pushButton->text());
-        foreach (const QGroupBox *groupBox, widget->findChildren<QGroupBox *>())
-            m_keywords << Utils::stripAccelerator(groupBox->title());
-
-        m_keywordsInitialized = true;
-    }
-    foreach (const QString &keyword, m_keywords)
+    for (const QString &keyword : keywords())
         if (keyword.contains(regexp))
             return true;
     return false;

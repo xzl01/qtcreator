@@ -1,33 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "imagecachefontcollector.h"
-
-#ifndef QMLDESIGNER_TEST // Tests don't care about UI, and can't have theme dependency here
-#include <theme.h>
-#endif
 
 #include <QtGui/qrawfont.h>
 #include <QtGui/qpainter.h>
@@ -71,11 +45,7 @@ static int resolveFont(const QString &fontFile, QFont &outFont)
                 outFont.setFamily(fontFamily);
                 outFont.setStyle(rawFont.style());
                 outFont.setStyleName(rawFont.styleName());
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
                 outFont.setWeight(QFont::Weight(rawFont.weight()));
-#else
-                outFont.setWeight(rawFont.weight());
-#endif
             }
         }
     }
@@ -128,7 +98,7 @@ void ImageCacheFontCollector::start(Utils::SmallStringView name,
 {
     QFont font;
     if (resolveFont(QString(name), font) >= 0) {
-        auto &&auxiliaryData = Utils::get<ImageCache::FontCollectorSizeAuxiliaryData>(auxiliaryDataValue);
+        auto &&auxiliaryData = std::get<ImageCache::FontCollectorSizeAuxiliaryData>(auxiliaryDataValue);
         QColor textColor = auxiliaryData.colorName;
         QSize size = auxiliaryData.size;
         QString text = font.family() + "\n" + auxiliaryData.text;
@@ -150,7 +120,7 @@ std::pair<QImage, QImage> ImageCacheFontCollector::createImage(
 {
     QFont font;
     if (resolveFont(QString(name), font) >= 0) {
-        auto &&auxiliaryData = Utils::get<ImageCache::FontCollectorSizeAuxiliaryData>(auxiliaryDataValue);
+        auto &&auxiliaryData = std::get<ImageCache::FontCollectorSizeAuxiliaryData>(auxiliaryDataValue);
         QColor textColor = auxiliaryData.colorName;
         QSize size = auxiliaryData.size;
         QString text = font.family() + "\n\n" + auxiliaryData.text;
@@ -172,7 +142,7 @@ QIcon ImageCacheFontCollector::createIcon(Utils::SmallStringView name,
 
     QFont font;
     if (resolveFont(QString(name), font) >= 0) {
-        auto &&auxiliaryData = Utils::get<ImageCache::FontCollectorSizesAuxiliaryData>(auxiliaryDataValue);
+        auto &&auxiliaryData = std::get<ImageCache::FontCollectorSizesAuxiliaryData>(auxiliaryDataValue);
         QColor textColor = auxiliaryData.colorName;
         const auto sizes = auxiliaryData.sizes;
         QString text = auxiliaryData.text;

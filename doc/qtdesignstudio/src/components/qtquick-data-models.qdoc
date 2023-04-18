@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page quick-data-models.html
@@ -161,7 +139,7 @@
     When you add a \l{GridView}{Grid View}, \l{ListView}{List View}, or
     \l{PathView}{Path View}, the ListModel and the delegate component that
     creates an instance for each item in the model are added automatically.
-    For grid and list views, you can edit the list model in \QC.
+    For grid and list views, you can edit the list model in \QDS.
 
     \image qtquick-designer-listview-preview.png "Preview of a list view"
 
@@ -170,8 +148,8 @@
     \list 1
         \li Drag-and-drop a \uicontrol {Grid View} or \uicontrol {List View}
             from \uicontrol Components >
-            \uicontrol {Default Components} > \uicontrol Views to
-            \uicontrol Navigator or \uicontrol {Form Editor}.
+            \uicontrol {Default Components} > \uicontrol Views to the
+            \uicontrol Navigator or \uicontrol {2D} view.
         \li Right-click the view in \uicontrol Navigator, and select
             \uicontrol {Edit List Model} in the context-menu to open
             the list model editor:
@@ -183,7 +161,7 @@
     \endlist
 
     You can replace the default model and delegate with other,
-    more complex models and delegates in \l {Text Editor}.
+    more complex models and delegates in the \l {Code} view.
     \l{ItemDelegate}{Item Delegate} and \l{SwipeDelegate}{Swipe Delegate}
     components are also available in \uicontrol Components
     > \uicontrol {Qt Quick Controls}.

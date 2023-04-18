@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "../cplusplus_global.h"
 #include <cplusplus/pp.h>
@@ -174,12 +152,12 @@ public:
     virtual void stopSkippingBlocks(int utf16charsOffset)
     { m_skippedBlocks.last().end = utf16charsOffset; }
 
-    virtual void sourceNeeded(int line, const QString &includedFileName, IncludeType mode,
-                              const QStringList &initialIncludes = QStringList())
+    virtual void sourceNeeded(int line, const Utils::FilePath &includedFileName, IncludeType mode,
+                              const Utils::FilePaths &initialIncludes = {})
     {
         Q_UNUSED(initialIncludes)
 #if 1
-        m_recordedIncludes.append(Include(includedFileName, mode, line));
+        m_recordedIncludes.append(Include(includedFileName.toString(), mode, line));
         Q_UNUSED(m_env)
         Q_UNUSED(m_includeDepth)
 #else
@@ -225,7 +203,7 @@ public:
 
     QString resolveGlobally(const QString &currentFileName) const
     {
-        foreach (const QDir &dir, m_includePaths) {
+        for (const QDir &dir : m_includePaths) {
             QFileInfo f(dir, currentFileName);
             if (f.exists())
                 return f.filePath();
@@ -236,7 +214,7 @@ public:
 
     void setIncludePaths(const QStringList &includePaths)
     {
-        foreach (const QString &path, includePaths) {
+        for (const QString &path : includePaths) {
             QDir dir(path);
             if (dir.exists())
                 m_includePaths.append(dir);
@@ -314,7 +292,7 @@ namespace QTest {
     template<> char *toString(const QList<int> &list)
     {
         QByteArray ba = "QList<int>(";
-        foreach (const int& item, list) {
+        for (const int &item : list) {
             ba += QTest::toString(item);
             ba += ',';
         }
@@ -325,7 +303,7 @@ namespace QTest {
     template<> char *toString(const QList<QByteArray> &list)
     {
         QByteArray ba = "QList<QByteArray>(";
-        foreach (const QByteArray& item, list) {
+        for (const QByteArray &item : list) {
             ba += QTest::toString(item);
             ba += ',';
         }
@@ -414,8 +392,8 @@ private slots:
 QByteArray tst_Preprocessor::simplified(const QByteArray &buf)
 {
     QString out;
-    QList<QByteArray> lines = buf.split('\n');
-    foreach (const QByteArray &line, lines) {
+    const QList<QByteArray> lines = buf.split('\n');
+    for (const QByteArray &line : lines) {
         if (!line.startsWith('#')) {
             out.append(" ");
             out.append(QString::fromUtf8(line));
@@ -1841,7 +1819,7 @@ void tst_Preprocessor::include_guard()
     MockClient client(&env, &output);
     Preprocessor preprocess(&client, &env);
     preprocess.setKeepComments(true);
-    /*QByteArray prep =*/ preprocess.run(QLatin1String("<test-case>"), input);
+    /*QByteArray prep =*/ preprocess.run(QLatin1String("<test-case>"), input.toUtf8());
     QCOMPARE(QString::fromUtf8(client.includeGuard()), includeGuard);
 }
 

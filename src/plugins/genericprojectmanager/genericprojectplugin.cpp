@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "genericprojectplugin.h"
 
 #include "genericbuildconfiguration.h"
-#include "genericprojectwizard.h"
-#include "genericprojectconstants.h"
-#include "genericprojectfileseditor.h"
 #include "genericmakestep.h"
 #include "genericproject.h"
+#include "genericprojectconstants.h"
+#include "genericprojectfileseditor.h"
+#include "genericprojectmanagertr.h"
+#include "genericprojectwizard.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -42,7 +21,6 @@
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/projecttree.h>
 #include <projectexplorer/selectablefilesmodel.h>
-#include <projectexplorer/taskhub.h>
 
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
@@ -67,7 +45,7 @@ public:
     GenericMakeStepFactory makeStepFactory;
     GenericBuildConfigurationFactory buildConfigFactory;
 
-    QAction editFilesAction{GenericProjectPlugin::tr("Edit Files..."), nullptr};
+    QAction editFilesAction{Tr::tr("Edit Files..."), nullptr};
 };
 
 GenericProjectPlugin::~GenericProjectPlugin()
@@ -75,17 +53,16 @@ GenericProjectPlugin::~GenericProjectPlugin()
     delete d;
 }
 
-bool GenericProjectPlugin::initialize(const QStringList &, QString *)
+void GenericProjectPlugin::initialize()
 {
     d = new GenericProjectPluginPrivate;
-    return true;
 }
 
 GenericProjectPluginPrivate::GenericProjectPluginPrivate()
 {
     ProjectManager::registerProjectType<GenericProject>(Constants::GENERICMIMETYPE);
 
-    IWizardFactory::registerFactoryCreator([] { return QList<IWizardFactory *>{new GenericProjectWizard}; });
+    IWizardFactory::registerFactoryCreator([] { return new GenericProjectWizard; });
 
     ActionContainer *mproject = ActionManager::actionContainer(PEC::M_PROJECTCONTEXT);
 
@@ -99,7 +76,7 @@ GenericProjectPluginPrivate::GenericProjectPluginPrivate()
             genericProject->editFilesTriggered();
     });
 
-    const auto removeDirAction = new QAction(GenericProjectPlugin::tr("Remove Directory"), this);
+    const auto removeDirAction = new QAction(Tr::tr("Remove Directory"), this);
     Command * const cmd = ActionManager::registerAction(removeDirAction, "GenericProject.RemoveDir",
                                                         Context(PEC::C_PROJECT_TREE));
     ActionManager::actionContainer(PEC::M_FOLDERCONTEXT)->addAction(cmd, PEC::G_FOLDER_OTHER);

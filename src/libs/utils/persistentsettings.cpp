@@ -1,47 +1,26 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "persistentsettings.h"
 
+#include "fileutils.h"
+#include "qtcassert.h"
+#include "utilstr.h"
+
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QRect>
+#include <QRegularExpression>
 #include <QStack>
+#include <QTextStream>
 #include <QXmlStreamAttributes>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
-#include <QDateTime>
-#include <QTextStream>
-#include <QRegularExpression>
-#include <QRect>
 
 #ifdef QT_GUI_LIB
 #include <QMessageBox>
 #endif
-
-#include <utils/porting.h>
-#include <utils/qtcassert.h>
 
 // Read and write rectangle in X11 resource syntax "12x12+4+3"
 static QString rectangleToString(const QRect &r)
@@ -189,13 +168,13 @@ private:
     enum Element { QtCreatorElement, DataElement, VariableElement,
                    SimpleValueElement, ListValueElement, MapValueElement, UnknownElement };
 
-    Element element(const StringView &r) const;
+    Element element(const QStringView &r) const;
     static inline bool isValueElement(Element e)
         { return e == SimpleValueElement || e == ListValueElement || e == MapValueElement; }
     QVariant readSimpleValue(QXmlStreamReader &r, const QXmlStreamAttributes &attributes) const;
 
     bool handleStartElement(QXmlStreamReader &r);
-    bool handleEndElement(const StringView &name);
+    bool handleEndElement(const QStringView &name);
 
     static QString formatWarning(const QXmlStreamReader &r, const QString &message);
 
@@ -206,7 +185,7 @@ private:
 
 QVariantMap ParseContext::parse(const FilePath &file)
 {
-    QXmlStreamReader r(file.fileContents());
+    QXmlStreamReader r(file.fileContents().value_or(QByteArray()));
 
     m_result.clear();
     m_currentVariableName.clear();
@@ -234,7 +213,7 @@ QVariantMap ParseContext::parse(const FilePath &file)
 
 bool ParseContext::handleStartElement(QXmlStreamReader &r)
 {
-    const StringView name = r.name();
+    const QStringView name = r.name();
     const Element e = element(name);
     if (e == VariableElement) {
         m_currentVariableName = r.readElementText();
@@ -269,7 +248,7 @@ bool ParseContext::handleStartElement(QXmlStreamReader &r)
     return false;
 }
 
-bool ParseContext::handleEndElement(const StringView &name)
+bool ParseContext::handleEndElement(const QStringView &name)
 {
     const Element e = element(name);
     if (ParseContext::isValueElement(e)) {
@@ -298,7 +277,7 @@ QString ParseContext::formatWarning(const QXmlStreamReader &r, const QString &me
     return result;
 }
 
-ParseContext::Element ParseContext::element(const StringView &r) const
+ParseContext::Element ParseContext::element(const QStringView &r) const
 {
     if (r == valueElement)
         return SimpleValueElement;
@@ -318,7 +297,7 @@ ParseContext::Element ParseContext::element(const StringView &r) const
 QVariant ParseContext::readSimpleValue(QXmlStreamReader &r, const QXmlStreamAttributes &attributes) const
 {
     // Simple value
-    const StringView type = attributes.value(typeAttribute);
+    const QStringView type = attributes.value(typeAttribute);
     const QString text = r.readElementText();
     if (type == QLatin1String("QChar")) { // Workaround: QTBUG-12345
         QTC_ASSERT(text.size() == 1, return QVariant());
@@ -436,9 +415,7 @@ bool PersistentSettingsWriter::save(const QVariantMap &data, QWidget *parent) co
     QString errorString;
     const bool success = save(data, &errorString);
     if (!success)
-        QMessageBox::critical(parent,
-                              QCoreApplication::translate("Utils::FileSaverBase", "File Error"),
-                              errorString);
+        QMessageBox::critical(parent, Tr::tr("File Error"), errorString);
     return success;
 }
 #endif // QT_GUI_LIB

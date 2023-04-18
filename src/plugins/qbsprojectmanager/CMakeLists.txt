@@ -1,16 +1,15 @@
 add_qtc_plugin(QbsProjectManager
-  DEPENDS Qt5::Qml Qt5::Widgets QmlJS
+  DEPENDS Qt::Qml Qt::Widgets QmlJS
   DEFINES
     IDE_LIBRARY_BASENAME="${IDE_LIBRARY_BASE_PATH}"
   PLUGIN_DEPENDS Core ProjectExplorer CppEditor QtSupport QmlJSTools
   SOURCES
-    customqbspropertiesdialog.cpp customqbspropertiesdialog.h customqbspropertiesdialog.ui
+    customqbspropertiesdialog.cpp customqbspropertiesdialog.h
     defaultpropertyprovider.cpp defaultpropertyprovider.h
     propertyprovider.h
     qbsbuildconfiguration.cpp qbsbuildconfiguration.h
     qbsbuildstep.cpp qbsbuildstep.h
     qbscleanstep.cpp qbscleanstep.h
-    qbscleanstepconfigwidget.ui
     qbsinstallstep.cpp qbsinstallstep.h
     qbskitinformation.cpp qbskitinformation.h
     qbsnodes.cpp qbsnodes.h
@@ -18,11 +17,11 @@ add_qtc_plugin(QbsProjectManager
     qbspmlogging.cpp qbspmlogging.h
     qbsprofilemanager.cpp qbsprofilemanager.h
     qbsprofilessettingspage.cpp qbsprofilessettingspage.h
-    qbsprofilessettingswidget.ui
     qbsproject.cpp qbsproject.h
     qbsprojectimporter.cpp qbsprojectimporter.h
     qbsprojectmanager.qrc
     qbsprojectmanager_global.h
+    qbsprojectmanagertr.h
     qbsprojectmanagerconstants.h
     qbsprojectmanagerplugin.cpp qbsprojectmanagerplugin.h
     qbsprojectparser.cpp qbsprojectparser.h

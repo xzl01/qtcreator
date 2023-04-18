@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,6 +7,7 @@
 #include <QPointer>
 #include <QSet>
 #include <QUrl>
+#include <QVector3D>
 
 #include "modelnode.h"
 #include "abstractview.h"
@@ -46,6 +25,7 @@ namespace QmlDesigner {
 class AbstractProperty;
 class RewriterView;
 class NodeInstanceView;
+class NodeMetaInfoPrivate;
 
 namespace Internal {
 
@@ -53,14 +33,16 @@ class InternalNode;
 class InternalProperty;
 class InternalBindingProperty;
 class InternalSignalHandlerProperty;
+class InternalSignalDeclarationProperty;
 class InternalVariantProperty;
 class InternalNodeAbstractProperty;
 class InternalNodeListProperty;
 
-using InternalNodePointer = QSharedPointer<InternalNode>;
+using InternalNodePointer = std::shared_ptr<InternalNode>;
 using InternalPropertyPointer = QSharedPointer<InternalProperty>;
 using InternalBindingPropertyPointer = QSharedPointer<InternalBindingProperty>;
 using InternalSignalHandlerPropertyPointer = QSharedPointer<InternalSignalHandlerProperty>;
+using InternalSignalDeclarationPropertyPointer = QSharedPointer<InternalSignalDeclarationProperty>;
 using InternalVariantPropertyPointer = QSharedPointer<InternalVariantProperty>;
 using InternalNodeAbstractPropertyPointer = QSharedPointer<InternalNodeAbstractProperty>;
 using InternalNodeListPropertyPointer = QSharedPointer<InternalNodeListProperty>;
@@ -75,23 +57,30 @@ public:
     WriteLocker(ModelPrivate *model);
     ~WriteLocker();
 
+    static void unlock(Model *model);
+    static void lock(Model *model);
+
 private:
     QPointer<ModelPrivate> m_model;
 };
 
 class ModelPrivate : public QObject {
     Q_OBJECT
-    Q_DISABLE_COPY(ModelPrivate)
 
     friend Model;
     friend Internal::WriteLocker;
-    friend Internal::NodeMetaInfoPrivate;
+    friend NodeMetaInfoPrivate;
 
 public:
-     ModelPrivate(Model *model);
-    ~ModelPrivate() override;
+    ModelPrivate(Model *model,
+                 ProjectStorage<Sqlite::Database> &projectStorage,
+                 const TypeName &type,
+                 int major,
+                 int minor,
+                 Model *metaInfoProxyModel);
+    ModelPrivate(Model *model, const TypeName &type, int major, int minor, Model *metaInfoProxyModel);
 
-    static Model *create(const TypeName &type, int major, int minor, Model *metaInfoPropxyModel);
+    ~ModelPrivate() override;
 
     QUrl fileUrl() const;
     void setFileUrl(const QUrl &url);
@@ -99,12 +88,12 @@ public:
     InternalNodePointer createNode(const TypeName &typeName,
                                    int majorVersion,
                                    int minorVersion,
-                                   const QList<QPair<PropertyName, QVariant> > &propertyList,
-                                   const QList<QPair<PropertyName, QVariant> > &auxPropertyList,
+                                   const QList<QPair<PropertyName, QVariant>> &propertyList,
+                                   const AuxiliaryDatas &auxPropertyList,
                                    const QString &nodeSource,
                                    ModelNode::NodeSourceType nodeSourceType,
+                                   const QString &behaviorPropertyName,
                                    bool isRootNode = false);
-
 
     /*factory methods for internal use in model and rewriter*/
     void removeNode(const InternalNodePointer &node);
@@ -153,6 +142,7 @@ public:
         const QList<InternalBindingPropertyPointer> &internalPropertyList);
     void notifyBindingPropertiesChanged(const QList<InternalBindingPropertyPointer> &internalPropertyList, AbstractView::PropertyChangeFlags propertyChange);
     void notifySignalHandlerPropertiesChanged(const QVector<InternalSignalHandlerPropertyPointer> &propertyList, AbstractView::PropertyChangeFlags propertyChange);
+    void notifySignalDeclarationPropertiesChanged(const QVector<InternalSignalDeclarationPropertyPointer> &propertyList, AbstractView::PropertyChangeFlags propertyChange);
     void notifyVariantPropertiesChanged(const InternalNodePointer &node, const PropertyNameList &propertyNameList, AbstractView::PropertyChangeFlags propertyChange);
     void notifyScriptFunctionsChanged(const InternalNodePointer &node, const QStringList &scriptFunctionList);
 
@@ -160,7 +150,9 @@ public:
                                 const InternalNodePointer &node,
                                 int oldIndex);
     void notifyNodeOrderChanged(const InternalNodeListPropertyPointer &internalListProperty);
-    void notifyAuxiliaryDataChanged(const InternalNodePointer &node, const PropertyName &name, const QVariant &data);
+    void notifyAuxiliaryDataChanged(const InternalNodePointer &node,
+                                    AuxiliaryDataKeyView key,
+                                    const QVariant &data);
     void notifyNodeSourceChanged(const InternalNodePointer &node, const QString &newNodeSource);
 
     void notifyRootNodeTypeChanged(const QString &type, int majorVersion, int minorVersion);
@@ -182,6 +174,13 @@ public:
     void notifyUpdateActiveScene3D(const QVariantMap &sceneState);
     void notifyModelNodePreviewPixmapChanged(const ModelNode &node, const QPixmap &pixmap);
     void notifyImport3DSupportChanged(const QVariantMap &supportMap);
+    void notifyNodeAtPosResult(const ModelNode &modelNode, const QVector3D &pos3d);
+    void notifyView3DAction(View3DActionType type, const QVariant &value);
+
+    void notifyActive3DSceneIdChanged(qint32 sceneId);
+
+    void notifyDragStarted(QMimeData *mimeData);
+    void notifyDragEnded();
 
     void setDocumentMessages(const QList<DocumentMessage> &errors, const QList<DocumentMessage> &warnings);
 
@@ -196,9 +195,11 @@ public:
     void changeSelectedNodes(const QList<InternalNodePointer> &newSelectedNodeList,
                              const QList<InternalNodePointer> &oldSelectedNodeList);
 
-    void setAuxiliaryData(const InternalNodePointer &node, const PropertyName &name, const QVariant &data);
-    void removeAuxiliaryData(const InternalNodePointer &node, const PropertyName &name);
-    [[noreturn]] void resetModelByRewriter(const QString &description);
+    void setAuxiliaryData(const InternalNodePointer &node,
+                          const AuxiliaryDataKeyView &key,
+                          const QVariant &data);
+    void removeAuxiliaryData(const InternalNodePointer &node, const AuxiliaryDataKeyView &key);
+    void resetModelByRewriter(const QString &description);
 
     // Imports:
     const QList<Import> &imports() const { return m_imports; }
@@ -216,13 +217,14 @@ public:
 
     void setBindingProperty(const InternalNodePointer &node, const PropertyName &name, const QString &expression);
     void setSignalHandlerProperty(const InternalNodePointer &node, const PropertyName &name, const QString &source);
+    void setSignalDeclarationProperty(const InternalNodePointer &node, const PropertyName &name, const QString &signature);
     void setVariantProperty(const InternalNodePointer &node, const PropertyName &name, const QVariant &value);
     void setDynamicVariantProperty(const InternalNodePointer &node, const PropertyName &name, const TypeName &propertyType, const QVariant &value);
     void setDynamicBindingProperty(const InternalNodePointer &node, const PropertyName &name, const TypeName &dynamicPropertyType, const QString &expression);
     void reparentNode(const InternalNodePointer &parentNode, const PropertyName &name, const InternalNodePointer &childNode,
                       bool list = true, const TypeName &dynamicTypeName = TypeName());
     void changeNodeOrder(const InternalNodePointer &parentNode, const PropertyName &listPropertyName, int from, int to);
-    void checkPropertyName(const PropertyName &propertyName);
+    bool propertyNameIsValid(const PropertyName &propertyName) const;
     void clearParent(const InternalNodePointer &node);
     void changeRootNodeType(const TypeName &type, int majorVersion, int minorVersion);
     void setScriptFunctions(const InternalNodePointer &node, const QStringList &scriptFunctionList);
@@ -251,6 +253,9 @@ public:
 
     void updateEnabledViews();
 
+public:
+    NotNullPointer<ProjectStorage<Sqlite::Database>> projectStorage = nullptr;
+
 private:
     void removePropertyWithoutNotification(const InternalPropertyPointer &property);
     void removeAllSubNodes(const InternalNodePointer &node);
@@ -261,6 +266,7 @@ private:
     QVector<InternalNodePointer> toInternalNodeVector(const QVector<ModelNode> &modelNodeVector) const;
     const QList<QPointer<AbstractView>> enabledViews() const;
 
+private:
     Model *m_model = nullptr;
     MetaInfo m_metaInfo;
     QList<Import> m_imports;

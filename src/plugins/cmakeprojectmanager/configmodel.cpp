@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "configmodel.h"
+
+#include "cmakeprojectmanagertr.h"
 
 #include <utils/algorithm.h>
 #include <utils/macroexpander.h>
@@ -33,8 +13,7 @@
 #include <QFont>
 #include <QSortFilterProxyModel>
 
-namespace CMakeProjectManager {
-namespace Internal {
+namespace CMakeProjectManager::Internal {
 
 // DataItem
 
@@ -122,11 +101,16 @@ CMakeConfigItem ConfigModel::DataItem::toCMakeConfigItem() const
     return cmi;
 }
 
+QString ConfigModel::DataItem::expandedValue(Utils::MacroExpander *expander)
+{
+    return toCMakeConfigItem().expandedValue(expander);
+}
+
 // ConfigModel
 
 ConfigModel::ConfigModel(QObject *parent) : Utils::TreeModel<>(parent)
 {
-    setHeader({tr("Key"), tr("Value")});
+    setHeader({Tr::tr("Key"), Tr::tr("Value")});
 }
 
 ConfigModel::~ConfigModel() = default;
@@ -186,7 +170,7 @@ void ConfigModel::appendConfiguration(const QString &key,
     if (m_kitConfiguration.contains(key))
         internalItem.kitValue = QString::fromUtf8(
             isInitial ? m_kitConfiguration.value(key).value
-                      : m_macroExpander->expand(m_kitConfiguration.value(key).value));
+                      : m_kitConfiguration.value(key).expandedValue(m_macroExpander).toUtf8());
     m_configuration.append(internalItem);
     setConfiguration(m_configuration);
 }
@@ -525,7 +509,7 @@ void ConfigModel::generateTree()
     for (InternalDataItem &di : m_configuration) {
         auto it = initialHash.find(di.key);
         if (it != initialHash.end())
-            di.initialValue = macroExpander()->expand(it->value);
+            di.initialValue = it->expandedValue(macroExpander());
 
         root->appendChild(new Internal::ConfigModelTreeItem(&di));
     }
@@ -567,8 +551,11 @@ QVariant ConfigModelTreeItem::data(int column, int role) const
     if (role == ConfigModel::ItemIsInitialRole) {
         return dataItem->isInitial ? "1" : "0";
     }
+    if (role == ConfigModel::ItemIsUserNew) {
+        return dataItem->isUserNew ? "1" : "0";
+    }
 
-    auto fontRole = [this]() -> QFont {
+    auto fontRole = [this] {
         QFont font;
         font.setBold((dataItem->isUserChanged || dataItem->isUserNew) && !dataItem->isUnset);
         font.setStrikeOut((!dataItem->inCMakeCache && !dataItem->isUserNew) || dataItem->isUnset);
@@ -600,9 +587,7 @@ QVariant ConfigModelTreeItem::data(int column, int role) const
                    : QVariant();
     case Qt::DisplayRole:
         if (column == 0)
-            return dataItem->key.isEmpty()
-                       ? ConfigModel::tr("<UNSET>")
-                       : dataItem->key;
+            return dataItem->key.isEmpty() ? Tr::tr("<UNSET>") : dataItem->key;
         return value;
     case Qt::EditRole:
         if (column == 0)
@@ -687,28 +672,27 @@ QString ConfigModelTreeItem::toolTip() const
     if (!dataItem->description.isEmpty())
         tooltip << dataItem->description;
 
-    const QString pattern = "<p><b>%1</b> %2</p>";
+    const QString pattern = "<dt style=\"font-weight:bold\">%1</dt><dd>%2</dd>";
     if (dataItem->isInitial) {
         if (!dataItem->kitValue.isEmpty())
-            tooltip << pattern.arg(ConfigModel::tr("Kit:")).arg(dataItem->kitValue);
+            tooltip << pattern.arg(Tr::tr("Kit:")).arg(dataItem->kitValue);
 
-        tooltip << pattern.arg(ConfigModel::tr("Initial Configuration:")).arg(dataItem->currentValue());
+        tooltip << pattern.arg(Tr::tr("Initial Configuration:")).arg(dataItem->currentValue());
     } else {
         if (!dataItem->initialValue.isEmpty()) {
-            tooltip << pattern.arg(ConfigModel::tr("Initial Configuration:"))
+            tooltip << pattern.arg(Tr::tr("Initial Configuration:"))
                           .arg(dataItem->initialValue);
         }
 
         if (dataItem->inCMakeCache) {
-            tooltip << pattern.arg(ConfigModel::tr("Current Configuration:"))
-                          .arg(dataItem->currentValue());
+            tooltip << pattern.arg(Tr::tr("Current Configuration:")).arg(dataItem->currentValue());
         } else {
-            tooltip << pattern.arg(ConfigModel::tr("Not in CMakeCache.txt")).arg(QString());
+            tooltip << pattern.arg(Tr::tr("Not in CMakeCache.txt")).arg(QString());
         }
     }
-    tooltip << pattern.arg(ConfigModel::tr("Type:")).arg(dataItem->typeDisplay());
+    tooltip << pattern.arg(Tr::tr("Type:")).arg(dataItem->typeDisplay());
 
-    return tooltip.join(QString());
+    return "<dl style=\"white-space:pre\">" + tooltip.join(QString()) + "</dl>";
 }
 
 QString ConfigModelTreeItem::currentValue() const
@@ -717,5 +701,4 @@ QString ConfigModelTreeItem::currentValue() const
     return dataItem->isUserChanged ? dataItem->newValue : dataItem->value;
 }
 
-} // namespace Internal
-} // namespace CMakeProjectManager
+} // CMakeProjectManager::Internal

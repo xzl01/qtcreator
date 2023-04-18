@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Studio documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \previouspage studio-javascript.html
@@ -162,14 +140,14 @@
     To communicate with a specific model in Simulink, you need to create
     properties matching the send and receive properties in the root of the
     application you are building. Select the root item in \uicontrol
-    Navigator to add the properties in \l {Connection View} >
-    \uicontrol Properties.
+    Navigator to add the properties on the \uicontrol Properties tab in the
+    \l Connections view.
 
-    See \l {Specifying Dynamic Properties} for a detailed description of how
+    See \l {Specifying Custom Properties} for a detailed description of how
     to add a custom property. The name of the property and the data type
     need to match those of the send or receive property of the Simulink model.
 
-    \image studio-connection-view-properties.png "The Properties tab in Connection View"
+    \image studio-connection-view-properties.png "The Properties tab in the Connections view"
 
     \section2 Creating Bindings
 

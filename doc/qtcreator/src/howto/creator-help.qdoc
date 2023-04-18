@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page creator-help.html
@@ -57,19 +35,19 @@
             space, in the fullscreen \uicontrol Help mode.
 
         \li To select and configure how the documentation is displayed in the
-            \uicontrol Help mode, select \uicontrol Tools > \uicontrol Options > \uicontrol Help.
+            \uicontrol Help mode, select \uicontrol Edit > \uicontrol Preferences > \uicontrol Help.
     \endlist
 
     The following image displays the context sensitive help in the \uicontrol Edit
     mode.
 
-    \image qtcreator-context-sensitive-help.png
+    \image qtcreator-context-sensitive-help.png "Context-sensitive help in Edit mode"
 
     If the help HTML file does not use a style sheet, you can change the font
-    family, style, and size in \uicontrol Tools > \uicontrol Options >
+    family, style, and size in \uicontrol Edit > \uicontrol Preferences >
     \uicontrol Help > \uicontrol General.
 
-    \image qtcreator-help-options.png
+    \image qtcreator-help-options.png "General tab in Help preferences"
 
     You can set the default zoom level in the \uicontrol Zoom field. When
     viewing help pages, you can use the mouse scroll wheel to zoom them. To
@@ -87,8 +65,8 @@
 
     \section1 Viewing Function Tooltips
 
-    To hide function tooltips by default, select \uicontrol Tools >
-    \uicontrol Options > \uicontrol {Text Editor} > \uicontrol Behavior >
+    To hide function tooltips by default, select \uicontrol Edit >
+    \uicontrol Preferences > \uicontrol {Text Editor} > \uicontrol Behavior >
     \uicontrol {Show help tooltips using the mouse} >
     \uicontrol {On Shift+Mouseover}. You can still view the tooltips by pressing
     and holding down the \key Shift key.
@@ -98,12 +76,12 @@
 
     \section1 Finding Information in Qt Documentation
 
-    \QC, \QSDK and other Qt deliverables contain documentation
+    \QC, \QSDK and other Qt deliverables have documentation
     as .qch files. All the documentation is accessible in the \uicontrol Help mode.
 
     By default, \QC registers only the latest available version of the
     documentation for each installed Qt module. To register all installed
-    documentation, select \uicontrol Tools > \uicontrol Options >
+    documentation, select \uicontrol Edit > \uicontrol Preferences >
     \uicontrol Kits > \uicontrol {Qt Versions} >
     \uicontrol {Register documentation}.
 
@@ -148,7 +126,7 @@
 
     \endlist
 
-    To import and export bookmarks, select \uicontrol Tools > \uicontrol Options
+    To import and export bookmarks, select \uicontrol Edit > \uicontrol Preferences
      > \uicontrol Help > \uicontrol General > \uicontrol {Import Bookmarks} or
      \uicontrol {Export Bookmarks}.
 
@@ -157,9 +135,9 @@
     In the \uicontrol Search pane, you can use full-text search for finding a
     particular word in all the installed documents. Enter the term you are
     looking for, and select the \uicontrol Search button. All documents that
-    contain the specified term are listed. The list is sorted by document
+    have the specified term are listed. The list is sorted by document
     version (if you have installed several Qt versions, for example) and
-    the number of search hits that the documents contain. Select a document in
+    the number of search hits that the documents have. Select a document in
     the list to open it.
 
     \image qtcreator-help-search.png "Search pane"
@@ -168,16 +146,16 @@
 
     \list
 
-        \li \c deep lists all the documents that contain the word \c deep.
+        \li \c deep lists all the documents that have the word \c deep.
             The search is not case sensitive.
 
-        \li \c{deep*} lists all the documents that contain a word beginning
+        \li \c{deep*} lists all the documents that have a word beginning
             with \c deep
 
-        \li \c{deep copy} lists all documents that contain both \c deep and
+        \li \c{deep copy} lists all documents that have both \c deep and
             \c copy
 
-        \li \c{"deep copy"} lists all documents that contain the phrase
+        \li \c{"deep copy"} lists all documents that have the phrase
             \c{deep copy}
 
     \endlist
@@ -191,7 +169,7 @@
     \inlineimage icons/reload_gray.png
     (\uicontrol {Regenerate Index}).
 
-    Punctuation is not included in indexed terms. To find terms that contain
+    Punctuation is not included in indexed terms. To find terms that have
     punctuation, such as domain names, use the asterisk as a wild card. For
     example, to find \c {Pastebin.Com}, enter the search term \c {Pastebin*}.
 
@@ -207,7 +185,7 @@
             For information on how to prepare your documentation and create a
             .qch file, see \l{The Qt Help Framework}.
 
-        \li To add the .qch file to \QC, select \uicontrol Tools > \uicontrol Options >
+        \li To add the .qch file to \QC, select \uicontrol Edit > \uicontrol Preferences >
             \uicontrol Help > \uicontrol Documentation > \uicontrol Add.
 
     \endlist
@@ -219,8 +197,8 @@
     space, the help opens in the full-screen help mode.
 
     You can specify that the help always opens in full-screen mode or
-    is detached to an external window. Select \uicontrol Tools >
-    \uicontrol Options > \uicontrol Help > \uicontrol General and specify
+    is detached to an external window. Select \uicontrol Edit >
+    \uicontrol Preferences > \uicontrol Help > \uicontrol General and specify
     settings for displaying context-sensitive help
     in the \uicontrol {On context help} field. To detach the help window, select
     \uicontrol {Always Show in External Window}.
@@ -231,11 +209,11 @@
     \section1 Selecting the Start Page
 
     You can select the page to display when you open the \uicontrol Help mode in the
-    \uicontrol Tools > \uicontrol Options > \uicontrol Help > \uicontrol General
+    \uicontrol Edit > \uicontrol Preferences > \uicontrol Help > \uicontrol General
     > \uicontrol {On help start} field.
     To display the page and help views that were open when you exited the mode,
     select the \uicontrol {Show My Tabs from Last Session} option. However, Web pages
-    are not opened, because loading them would slow down opening the \uicontrol Help
+    are not opened because loading them would slow down opening the \uicontrol Help
     mode.
 
     To display a particular page, select \uicontrol {Show My Home Page}, and specify
@@ -261,10 +239,10 @@
 
     \list 1
 
-        \li Select \uicontrol Tools > \uicontrol Options > \uicontrol Help >
+        \li Select \uicontrol Edit > \uicontrol Preferences > \uicontrol Help >
             \uicontrol Filters.
 
-            \image qtcreator-help-filter-attributes.png "Filters tab in Help options"
+            \image qtcreator-help-filter-attributes.png "Filters tab in Help preferences"
 
         \li Select \inlineimage icons/plus.png
             to add a new filter in the \uicontrol {Add Filter} dialog.

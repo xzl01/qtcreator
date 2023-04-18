@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "metainfo.h"
 
@@ -29,9 +7,12 @@
 #include "metainforeader.h"
 #include "iwidgetplugin.h"
 
+#include <invalidmetainfoexception.h>
+
 #include <coreplugin/messagebox.h>
 #include <coreplugin/icore.h>
 
+#include <utils/environment.h>
 #include <utils/filepath.h>
 
 #include "pluginmanager/widgetpluginmanager.h"
@@ -53,7 +34,7 @@ namespace Internal {
 static QString globalMetaInfoPath()
 {
 #ifdef SHARE_QML_PATH
-    if (qEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
+    if (Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
         return QLatin1String(SHARE_QML_PATH) + "/globalMetaInfo";
 #endif
     return Core::ICore::resourcePath("qmldesigner/globalMetaInfo").toString();
@@ -90,10 +71,10 @@ public:
     bool m_isInitialized;
 };
 
-MetaInfoPrivate::MetaInfoPrivate(MetaInfo *q) :
-        m_itemLibraryInfo(new ItemLibraryInfo()),
-        m_q(q),
-        m_isInitialized(false)
+MetaInfoPrivate::MetaInfoPrivate(MetaInfo *q)
+    : m_itemLibraryInfo(new ItemLibraryInfo())
+    , m_q(q)
+    , m_isInitialized(false)
 {
     if (!m_q->isGlobal())
         m_itemLibraryInfo->setBaseInfo(MetaInfo::global().itemLibraryInfo());
@@ -105,28 +86,35 @@ void MetaInfoPrivate::clear()
     m_isInitialized = false;
 }
 
+namespace {
+bool enableParseItemLibraryDescriptions = true;
+}
+
 void MetaInfoPrivate::initialize()
 {
-    parseItemLibraryDescriptions();
+    if (enableParseItemLibraryDescriptions)
+        parseItemLibraryDescriptions();
     m_isInitialized = true;
 }
 
 void MetaInfoPrivate::parseItemLibraryDescriptions()
 {
-#ifndef QMLDESIGNER_TEST
     Internal::WidgetPluginManager pluginManager;
-    foreach (const QString &pluginDir, m_q->s_pluginDirs)
+    for (const QString &pluginDir : std::as_const(m_q->s_pluginDirs))
         pluginManager.addPath(pluginDir);
-    QList<IWidgetPlugin *> widgetPluginList = pluginManager.instances();
-    foreach (IWidgetPlugin *plugin, widgetPluginList) {
+    const QList<IWidgetPlugin *> widgetPluginList = pluginManager.instances();
+    for (IWidgetPlugin *plugin : widgetPluginList) {
         Internal::MetaInfoReader reader(*m_q);
         try {
             reader.readMetaInfoFile(plugin->metaInfo());
         } catch (const InvalidMetaInfoException &e) {
             qWarning() << e.description();
-            const QString errorMessage = plugin->metaInfo() + QLatin1Char('\n') + QLatin1Char('\n') + reader.errors().join(QLatin1Char('\n'));
-            Core::AsynchronousMessageBox::warning(QCoreApplication::translate("QmlDesigner::Internal::MetaInfoPrivate", "Invalid meta info"),
-                                  errorMessage);
+            const QString errorMessage = plugin->metaInfo() + QLatin1Char('\n') + QLatin1Char('\n')
+                                         + reader.errors().join(QLatin1Char('\n'));
+            Core::AsynchronousMessageBox::warning(
+                QCoreApplication::translate("QmlDesigner::Internal::MetaInfoPrivate",
+                                            "Invalid meta info"),
+                errorMessage);
         }
     }
 
@@ -137,15 +125,22 @@ void MetaInfoPrivate::parseItemLibraryDescriptions()
             reader.readMetaInfoFile(path.toString());
         } catch (const InvalidMetaInfoException &e) {
             qWarning() << e.description();
-            const QString errorMessage = path.toString() + QLatin1Char('\n') + QLatin1Char('\n') + reader.errors().join(QLatin1Char('\n'));
-            Core::AsynchronousMessageBox::warning(QCoreApplication::translate("QmlDesigner::Internal::MetaInfoPrivate", "Invalid meta info"),
-                                  errorMessage);
+            const QString errorMessage = path.toString() + QLatin1Char('\n') + QLatin1Char('\n')
+                                         + reader.errors().join(QLatin1Char('\n'));
+            Core::AsynchronousMessageBox::warning(
+                QCoreApplication::translate("QmlDesigner::Internal::MetaInfoPrivate",
+                                            "Invalid meta info"),
+                errorMessage);
         }
     }
-#endif
 }
 
 } // namespace Internal
+
+void MetaInfo::disableParseItemLibraryDescriptionsUgly()
+{
+    Internal::enableParseItemLibraryDescriptions = false;
+}
 
 using QmlDesigner::Internal::MetaInfoPrivate;
 
@@ -176,8 +171,7 @@ MetaInfo::MetaInfo(const MetaInfo &metaInfo) = default;
   */
 MetaInfo::MetaInfo() :
         m_p(new MetaInfoPrivate(this))
-{
-}
+{}
 
 MetaInfo::~MetaInfo() = default;
 

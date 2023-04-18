@@ -1,31 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangbatchfileprocessor.h"
-
-#include "clangautomationutils.h"
 
 #include <clangcodemodel/clangeditordocumentprocessor.h>
 
@@ -46,6 +22,7 @@
 #include <texteditor/textdocument.h>
 #include <texteditor/texteditor.h>
 
+#include <utils/environment.h>
 #include <utils/executeondestruction.h>
 #include <utils/qtcassert.h>
 
@@ -57,7 +34,6 @@
 #include <QString>
 #include <QThread>
 
-using namespace ClangBackEnd;
 using namespace ProjectExplorer;
 
 namespace ClangCodeModel {
@@ -67,10 +43,9 @@ static Q_LOGGING_CATEGORY(debug, "qtc.clangcodemodel.batch", QtWarningMsg);
 
 static int timeOutFromEnvironmentVariable()
 {
-    const QByteArray timeoutAsByteArray = qgetenv("QTC_CLANG_BATCH_TIMEOUT");
-
     bool isConversionOk = false;
-    const int intervalAsInt = timeoutAsByteArray.toInt(&isConversionOk);
+    const int intervalAsInt = Utils::qtcEnvironmentVariableIntValue("QTC_CLANG_BATCH_TIMEOUT",
+                                                                    &isConversionOk);
     if (!isConversionOk) {
         qCDebug(debug, "Environment variable QTC_CLANG_BATCH_TIMEOUT is not set, assuming 30000.");
         return 30000;
@@ -268,13 +243,13 @@ public:
     static Command::Ptr parse(BatchFileLineTokenizer &arguments, const CommandContext &context);
 
 private:
-    QString m_documentFilePath;
+    Utils::FilePath m_documentFilePath;
 };
 
 OpenDocumentCommand::OpenDocumentCommand(const CommandContext &context,
                                          const QString &documentFilePath)
     : Command(context)
-    , m_documentFilePath(documentFilePath)
+    , m_documentFilePath(Utils::FilePath::fromString(documentFilePath))
 {
 }
 
@@ -323,8 +298,7 @@ bool OpenDocumentCommand::run()
 {
     qCDebug(debug) << "line" << context().lineNumber << "OpenDocumentCommand" << m_documentFilePath;
 
-    const bool openEditorSucceeded = Core::EditorManager::openEditor(
-        Utils::FilePath::fromString(m_documentFilePath));
+    const bool openEditorSucceeded = Core::EditorManager::openEditor(m_documentFilePath);
     QTC_ASSERT(openEditorSucceeded, return false);
 
     auto *processor = ClangEditorDocumentProcessor::get(m_documentFilePath);
@@ -418,8 +392,8 @@ bool InsertTextCommand::run()
 
     TextEditor::BaseTextEditor *editor = currentTextEditor();
     QTC_ASSERT(editor, return false);
-    const QString documentFilePath = editor->document()->filePath().toString();
-    auto *processor = ClangEditorDocumentProcessor::get(documentFilePath);
+    const Utils::FilePath documentFilePath = editor->document()->filePath();
+    auto processor = ClangEditorDocumentProcessor::get(documentFilePath);
     QTC_ASSERT(processor, return false);
 
     editor->insert(m_textToInsert);
@@ -440,45 +414,6 @@ Command::Ptr InsertTextCommand::parse(BatchFileLineTokenizer &arguments,
     }
 
     return Command::Ptr(new InsertTextCommand(context, textToInsert));
-}
-
-class CompleteCommand : public Command
-{
-public:
-    CompleteCommand(const CommandContext &context);
-
-    bool run() override;
-
-    static Command::Ptr parse(BatchFileLineTokenizer &arguments,
-                              const CommandContext &context);
-};
-
-CompleteCommand::CompleteCommand(const CommandContext &context)
-    : Command(context)
-{
-}
-
-bool CompleteCommand::run()
-{
-    qCDebug(debug) << "line" << context().lineNumber << "CompleteCommand";
-
-    TextEditor::BaseTextEditor *editor = currentTextEditor();
-    QTC_ASSERT(editor, return false);
-
-    const QString documentFilePath = editor->document()->filePath().toString();
-    auto *processor = ClangEditorDocumentProcessor::get(documentFilePath);
-    QTC_ASSERT(processor, return false);
-
-    return !completionResults(editor, QStringList(), timeOutInMs()).isNull();
-}
-
-Command::Ptr CompleteCommand::parse(BatchFileLineTokenizer &arguments,
-                                    const CommandContext &context)
-{
-    Q_UNUSED(arguments)
-    Q_UNUSED(context)
-
-    return Command::Ptr(new CompleteCommand(context));
 }
 
 class SetCursorCommand : public Command
@@ -687,7 +622,6 @@ BatchFileParser::BatchFileParser(const QString &filePath,
     m_commandParsers.insert("closeAllDocuments", &CloseAllDocuments::parse);
     m_commandParsers.insert("setCursor", &SetCursorCommand::parse);
     m_commandParsers.insert("insertText", &InsertTextCommand::parse);
-    m_commandParsers.insert("complete", &CompleteCommand::parse);
     m_commandParsers.insert("processEvents", &ProcessEventsCommand::parse);
 }
 
@@ -770,12 +704,12 @@ bool runClangBatchFile(const QString &filePath)
     QTC_ASSERT(parser.parse(), return false);
     const QVector<Command::Ptr> commands = parser.commands();
 
-    Utils::ExecuteOnDestruction closeAllEditors([](){
+    Utils::ExecuteOnDestruction closeAllEditors([] {
         qWarning("ClangBatchFileProcessor: Finished, closing all documents.");
         QTC_CHECK(Core::EditorManager::closeAllEditors(/*askAboutModifiedEditors=*/ false));
     });
 
-    foreach (const Command::Ptr &command, commands) {
+    for (const Command::Ptr &command : commands) {
         const bool runSucceeded = command->run();
         QCoreApplication::processEvents(); // Update GUI
 

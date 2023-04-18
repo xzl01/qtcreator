@@ -1,36 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "cmake_global.h"
 #include "cmakeconfigitem.h"
-#include "configmodel.h"
 
 #include <projectexplorer/buildaspects.h>
 #include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/environmentaspect.h>
 
 namespace CMakeProjectManager {
 class CMakeProject;
@@ -51,20 +29,11 @@ public:
     CMakeBuildConfiguration(ProjectExplorer::Target *target, Utils::Id id);
     ~CMakeBuildConfiguration() override;
 
-    CMakeConfig configurationFromCMake() const;
-    CMakeConfig configurationChanges() const;
-
-    QStringList configurationChangesArguments(bool initialParameters = false) const;
-
-    QStringList initialCMakeArguments() const;
-    CMakeConfig initialCMakeConfiguration() const;
-
-    QString error() const;
-    QString warning() const;
-
     static Utils::FilePath
     shadowBuildDirectory(const Utils::FilePath &projectFilePath, const ProjectExplorer::Kit *k,
                          const QString &bcName, BuildConfiguration::BuildType buildType);
+    static bool isIos(const ProjectExplorer::Kit *k);
+    static bool hasQmlDebugging(const CMakeConfig &config);
 
     // Context menu action:
     void buildTarget(const QString &buildTarget);
@@ -73,21 +42,13 @@ public:
     void setSourceDirectory(const Utils::FilePath& path);
     Utils::FilePath sourceDirectory() const;
 
-    QString cmakeBuildType() const;
-    void setCMakeBuildType(const QString &cmakeBuildType, bool quiet = false);
+    void addToEnvironment(Utils::Environment &env) const override;
 
-    bool isMultiConfig() const;
-    void setIsMultiConfig(bool isMultiConfig);
-
-    QStringList additionalCMakeArguments() const;
-    void setAdditionalCMakeArguments(const QStringList &args);
-    void filterConfigArgumentsFromAdditionalCMakeArguments();
+    Utils::Environment configureEnvironment() const;
 
 signals:
-    void errorOccurred(const QString &message);
-    void warningOccurred(const QString &message);
     void signingFlagsChanged();
-    void configurationChanged(const CMakeConfig &config);
+    void configureEnvironmentChanged();
 
 protected:
     bool fromMap(const QVariantMap &map) override;
@@ -100,25 +61,10 @@ private:
 
     virtual CMakeConfig signingFlags() const;
 
-    enum ForceEnabledChanged { False, True };
-    void clearError(ForceEnabledChanged fec = ForceEnabledChanged::False);
+    void setInitialBuildAndCleanSteps(const ProjectExplorer::Target *target);
+    void setBuildPresetToBuildSteps(const ProjectExplorer::Target *target);
 
-    void setConfigurationFromCMake(const CMakeConfig &config);
-    void setConfigurationChanges(const CMakeConfig &config);
-
-    void setInitialCMakeArguments(const QStringList &args);
-
-    void setError(const QString &message);
-    void setWarning(const QString &message);
-
-    QString m_error;
-    QString m_warning;
-
-    CMakeConfig m_configurationFromCMake;
-    CMakeConfig m_configurationChanges;
     Internal::CMakeBuildSystem *m_buildSystem = nullptr;
-
-    bool m_isMultiConfig = false;
 
     friend class Internal::CMakeBuildSettingsWidget;
     friend class Internal::CMakeBuildSystem;
@@ -130,12 +76,15 @@ class CMAKE_EXPORT CMakeBuildConfigurationFactory
 public:
     CMakeBuildConfigurationFactory();
 
-    enum BuildType { BuildTypeNone = 0,
-                     BuildTypeDebug = 1,
-                     BuildTypeRelease = 2,
-                     BuildTypeRelWithDebInfo = 3,
-                     BuildTypeMinSizeRel = 4,
-                     BuildTypeLast = 5 };
+    enum BuildType {
+        BuildTypeNone = 0,
+        BuildTypeDebug = 1,
+        BuildTypeRelease = 2,
+        BuildTypeRelWithDebInfo = 3,
+        BuildTypeProfile = 4,
+        BuildTypeMinSizeRel = 5,
+        BuildTypeLast = 6
+    };
     static BuildType buildTypeFromByteArray(const QByteArray &in);
     static ProjectExplorer::BuildConfiguration::BuildType cmakeBuildTypeToBuildType(const BuildType &in);
 
@@ -187,6 +136,17 @@ class BuildTypeAspect final : public Utils::StringAspect
 public:
     BuildTypeAspect();
     using Utils::StringAspect::update;
+};
+
+class ConfigureEnvironmentAspect final: public ProjectExplorer::EnvironmentAspect
+{
+    Q_OBJECT
+
+public:
+    ConfigureEnvironmentAspect(ProjectExplorer::Target *target);
+
+    void fromMap(const QVariantMap &map);
+    void toMap(QVariantMap &map) const;
 };
 
 } // namespace Internal

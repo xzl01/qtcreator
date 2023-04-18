@@ -9,7 +9,6 @@ QtcPlugin {
     Depends { name: "Debugger" }
     Depends { name: "ProjectExplorer" }
     Depends { name: "QtSupport"; condition: qtc.testsEnabled }
-    Depends { name: "QtcSsh" }
     Depends { name: "TextEditor" }
     Depends { name: "Utils" }
 
@@ -29,16 +28,13 @@ QtcPlugin {
         "clangfixitsrefactoringchanges.h",
         "clangselectablefilesdialog.cpp",
         "clangselectablefilesdialog.h",
-        "clangselectablefilesdialog.ui",
-        "clangtidyclazyrunner.cpp",
-        "clangtidyclazyrunner.h",
         "clangtool.cpp",
         "clangtool.h",
         "clangtoolruncontrol.cpp",
         "clangtoolruncontrol.h",
         "clangtoolrunner.cpp",
         "clangtoolrunner.h",
-        "clangtools_global.h",
+        "clangtools_global.h", "clangtoolstr.h",
         "clangtoolsconstants.h",
         "clangtoolsdiagnostic.cpp",
         "clangtoolsdiagnostic.h",
@@ -58,7 +54,6 @@ QtcPlugin {
         "clangtoolssettings.h",
         "clangtoolsutils.cpp",
         "clangtoolsutils.h",
-        "clazychecks.ui",
         "diagnosticconfigswidget.cpp",
         "diagnosticconfigswidget.h",
         "diagnosticmark.cpp",
@@ -71,14 +66,10 @@ QtcPlugin {
         "executableinfo.h",
         "filterdialog.cpp",
         "filterdialog.h",
-        "filterdialog.ui",
         "runsettingswidget.cpp",
         "runsettingswidget.h",
-        "runsettingswidget.ui",
         "settingswidget.cpp",
         "settingswidget.h",
-        "settingswidget.ui",
-        "tidychecks.ui",
         "virtualfilesystemoverlay.cpp",
         "virtualfilesystemoverlay.h",
     ]
@@ -92,6 +83,8 @@ QtcPlugin {
             "clangtoolsunittests.cpp",
             "clangtoolsunittests.h",
             "clangtoolsunittests.qrc",
+            "readexporteddiagnosticstest.cpp",
+            "readexporteddiagnosticstest.h",
         ]
     }
 

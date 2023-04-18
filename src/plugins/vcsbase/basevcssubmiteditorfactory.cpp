@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "basevcssubmiteditorfactory.h"
 
 #include "vcsbaseplugin.h"
+#include "vcsbasetr.h"
 #include "vcsbasesubmiteditor.h"
 
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -55,10 +34,10 @@ VcsSubmitEditorFactory::VcsSubmitEditorFactory
     });
 
     Context context(parameters.id);
-    m_undoAction.setText(tr("&Undo"));
+    m_undoAction.setText(Tr::tr("&Undo"));
     ActionManager::registerAction(&m_undoAction, Core::Constants::UNDO, context);
 
-    m_redoAction.setText(tr("&Redo"));
+    m_redoAction.setText(Tr::tr("&Redo"));
     ActionManager::registerAction(&m_redoAction, Core::Constants::REDO, context);
 
     QTC_ASSERT(plugin, return);
@@ -70,8 +49,10 @@ VcsSubmitEditorFactory::VcsSubmitEditorFactory
     QObject::connect(&m_submitAction, &QAction::triggered, plugin, &VcsBasePluginPrivate::commitFromEditor);
 
     m_diffAction.setIcon(VcsBaseSubmitEditor::diffIcon());
-    m_diffAction.setText(tr("Diff &Selected Files"));
+    m_diffAction.setText(Tr::tr("Diff &Selected Files"));
     ActionManager::registerAction(&m_diffAction, DIFF_SELECTED, context);
 }
+
+VcsSubmitEditorFactory::~VcsSubmitEditorFactory() = default;
 
 } // namespace VcsBase

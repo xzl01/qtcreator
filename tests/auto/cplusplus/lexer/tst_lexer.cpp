@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "../cplusplus_global.h"
 
@@ -103,7 +81,7 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(tst_SimpleLexer::TokenCompareFlags)
 Tokens tst_SimpleLexer::toTokens(const TokenKindList &tokenKinds)
 {
     Tokens tokens;
-    foreach (unsigned tokenKind, tokenKinds) {
+    for (unsigned tokenKind : tokenKinds) {
         Token token;
         token.f.kind = tokenKind;
         tokens << token;
@@ -464,6 +442,7 @@ void tst_SimpleLexer::ppOpOrPunc()
     const QByteArray source = QTest::currentDataTag();
     LanguageFeatures languageFeatures;
     languageFeatures.cxxEnabled = true;
+    languageFeatures.cxx20Enabled = true;
     run(source, toTokens({unsigned(expectedTokenKind)}), false, CompareKind, true, languageFeatures);
 }
 
@@ -514,6 +493,7 @@ void tst_SimpleLexer::ppOpOrPunc_data()
     QTest::newRow("==") << T_EQUAL_EQUAL;
     QTest::newRow("!=") << T_EXCLAIM_EQUAL;
     QTest::newRow("<=") << T_LESS_EQUAL;
+    QTest::newRow("<=>") << T_LESS_EQUAL_GREATER;
     QTest::newRow(">=") << T_GREATER_EQUAL;
     QTest::newRow("&&") << T_AMPER_AMPER;
     QTest::newRow("||") << T_PIPE_PIPE;

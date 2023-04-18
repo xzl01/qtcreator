@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangtoolspreconfiguredsessiontests.h"
 
@@ -39,8 +17,10 @@
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/toolchain.h>
+
 #include <utils/algorithm.h>
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
+#include <utils/qtcassert.h>
 
 #include <QSignalSpy>
 #include <QElapsedTimer>
@@ -51,6 +31,7 @@
 
 using namespace CppEditor;
 using namespace ProjectExplorer;
+using namespace Utils;
 
 static bool processEventsUntil(const std::function<bool()> condition, int timeOutInMs = 30000)
 {
@@ -71,7 +52,7 @@ static bool processEventsUntil(const std::function<bool()> condition, int timeOu
 class WaitForParsedProjects : public QObject
 {
 public:
-    WaitForParsedProjects(const QStringList &projects)
+    WaitForParsedProjects(const FilePaths &projects)
         : m_projectsToWaitFor(projects)
     {
         connect(SessionManager::instance(),
@@ -81,18 +62,16 @@ public:
 
     void onProjectFinishedParsing(ProjectExplorer::Project *project)
     {
-        m_projectsToWaitFor.removeOne(project->projectFilePath().toString());
+        m_projectsToWaitFor.removeOne(project->projectFilePath());
     }
 
     bool wait()
     {
-        return processEventsUntil([this]() {
-            return m_projectsToWaitFor.isEmpty();
-        });
+        return processEventsUntil([this] { return m_projectsToWaitFor.isEmpty(); });
     }
 
 private:
-    QStringList m_projectsToWaitFor;
+    FilePaths m_projectsToWaitFor;
 };
 
 namespace ClangTools {
@@ -108,7 +87,7 @@ void PreconfiguredSessionTests::initTestCase()
         QSKIP("Session must not be already active.");
 
     // Load session
-    const QStringList projects = SessionManager::projectsForSessionName(preconfiguredSessionName);
+    const FilePaths projects = SessionManager::projectsForSessionName(preconfiguredSessionName);
     WaitForParsedProjects waitForParsedProjects(projects);
     QVERIFY(SessionManager::loadSession(preconfiguredSessionName));
     QVERIFY(waitForParsedProjects.wait());
@@ -121,21 +100,22 @@ void PreconfiguredSessionTests::testPreconfiguredSession()
 
     QVERIFY(switchToProjectAndTarget(project, target));
 
-    ClangTool::instance()->startTool(ClangTool::FileSelectionType::AllFiles);
-    QSignalSpy waitUntilAnalyzerFinished(ClangTool::instance(), SIGNAL(finished(bool)));
-    QVERIFY(waitUntilAnalyzerFinished.wait(30000));
-    const QList<QVariant> arguments = waitUntilAnalyzerFinished.takeFirst();
-    const bool analyzerFinishedSuccessfully = arguments.first().toBool();
-    QVERIFY(analyzerFinishedSuccessfully);
-    QCOMPARE(ClangTool::instance()->diagnostics().count(), 0);
+    for (ClangTool * const tool : {ClangTidyTool::instance(), ClazyTool::instance()}) {
+        tool->startTool(ClangTool::FileSelectionType::AllFiles);
+        QSignalSpy waitUntilAnalyzerFinished(tool, SIGNAL(finished(bool)));
+        QVERIFY(waitUntilAnalyzerFinished.wait(30000));
+        const QList<QVariant> arguments = waitUntilAnalyzerFinished.takeFirst();
+        const bool analyzerFinishedSuccessfully = arguments.first().toBool();
+        QVERIFY(analyzerFinishedSuccessfully);
+        QCOMPARE(tool->diagnostics().count(), 0);
+    }
 }
 
-static QList<Project *> validProjects(const QList<Project *> projectsOfSession)
+static const QList<Project *> validProjects(const QList<Project *> projectsOfSession)
 {
-    QList<Project *> sortedProjects = projectsOfSession;
-    Utils::sort(sortedProjects, [](Project *lhs, Project *rhs){
-        return lhs->displayName() < rhs->displayName();
-    });
+    const QList<Project *> sortedProjects = Utils::sorted(projectsOfSession,
+                [](Project *lhs, Project *rhs) {  return lhs->displayName() < rhs->displayName(); }
+    );
 
     const auto isValidProject = [](Project *project) {
         const QList <Target *> targets = project->targets();
@@ -151,10 +131,9 @@ static QList<Project *> validProjects(const QList<Project *> projectsOfSession)
 
 static QList<Target *> validTargets(Project *project)
 {
-    QList<Target *> sortedTargets = project->targets();
-    Utils::sort(sortedTargets, [](Target *lhs, Target *rhs){
-        return lhs->displayName() < rhs->displayName();
-    });
+    const QList<Target *> sortedTargets = Utils::sorted(project->targets(),
+                [](Target *lhs, Target *rhs) { return lhs->displayName() < rhs->displayName(); }
+    );
 
     const QString projectFileName = project->projectFilePath().fileName();
     const auto isValidTarget = [projectFileName](Target *target) {
@@ -196,8 +175,8 @@ void PreconfiguredSessionTests::testPreconfiguredSession_data()
 
     bool hasAddedTestData = false;
 
-    foreach (Project *project, validProjects(SessionManager::projects())) {
-        foreach (Target *target, validTargets(project)) {
+    for (Project *project : validProjects(SessionManager::projects())) {
+        for (Target *target : validTargets(project)) {
             hasAddedTestData = true;
             QTest::newRow(dataTagName(project, target)) << project << target;
         }

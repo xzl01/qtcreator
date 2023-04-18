@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jochen Becher
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Jochen Becher
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "modelindexer.h"
 
@@ -43,10 +21,8 @@
 #include <projectexplorer/session.h>
 #include <projectexplorer/projectnodes.h>
 
-#include <utils/mimetypes/mimetype.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
-#include <utils/porting.h>
 
 #include <QQueue>
 #include <QMutex>
@@ -63,7 +39,7 @@ namespace Internal {
 
 class ModelIndexer::QueuedFile
 {
-    friend Utils::QHashValueType qHash(const ModelIndexer::QueuedFile &queuedFile);
+    friend size_t qHash(const ModelIndexer::QueuedFile &queuedFile);
     friend bool operator==(const ModelIndexer::QueuedFile &lhs,
                            const ModelIndexer::QueuedFile &rhs);
 
@@ -100,7 +76,7 @@ bool operator==(const ModelIndexer::QueuedFile &lhs, const ModelIndexer::QueuedF
     return lhs.m_file == rhs.m_file && lhs.m_project == rhs.m_project;
 }
 
-Utils::QHashValueType qHash(const ModelIndexer::QueuedFile &queuedFile)
+size_t qHash(const ModelIndexer::QueuedFile &queuedFile)
 {
     return qHash(queuedFile.m_project) + qHash(queuedFile.m_project);
 }
@@ -432,13 +408,15 @@ void ModelIndexer::scanProject(ProjectExplorer::Project *project)
         }
 
         // remove deleted files from indexed models
-        foreach (const QString &file, d->indexedModels.keys()) {
+        const QStringList files = d->indexedModels.keys();
+        for (const QString &file : files) {
             if (!filesSet.contains(QueuedFile(file, project)))
                 removeModelFile(file, project);
         }
 
         // remove deleted files from indexed diagrams
-        foreach (const QString &file, d->indexedDiagramReferences.keys()) {
+        const QStringList deletedFiles = d->indexedDiagramReferences.keys();
+        for (const QString &file : deletedFiles) {
             if (!filesSet.contains(QueuedFile(file, project)))
                 removeDiagramReferenceFile(file, project);
         }
@@ -469,11 +447,13 @@ QString ModelIndexer::findFirstModel(ProjectExplorer::FolderNode *folderNode,
 {
     if (!mimeType.isValid())
         return QString();
-    foreach (ProjectExplorer::FileNode *fileNode, folderNode->fileNodes()) {
+    const QList<ProjectExplorer::FileNode *> fileNodes = folderNode->fileNodes();
+    for (const ProjectExplorer::FileNode *fileNode : fileNodes) {
         if (mimeType.suffixes().contains(fileNode->filePath().completeSuffix()))
             return fileNode->filePath().toString();
     }
-    foreach (ProjectExplorer::FolderNode *subFolderNode, folderNode->folderNodes()) {
+    const QList<ProjectExplorer::FolderNode *> subFolderNodes = folderNode->folderNodes();
+    for (ProjectExplorer::FolderNode *subFolderNode : subFolderNodes) {
         QString modelFileName = findFirstModel(subFolderNode, mimeType);
         if (!modelFileName.isEmpty())
             return modelFileName;

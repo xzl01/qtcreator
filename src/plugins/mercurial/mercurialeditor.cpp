@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Brian McGillion
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Brian McGillion
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mercurialeditor.h"
+
 #include "annotationhighlighter.h"
 #include "constants.h"
-#include "mercurialplugin.h"
 #include "mercurialclient.h"
+#include "mercurialtr.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <vcsbase/diffandloghighlighter.h>
@@ -35,14 +14,11 @@
 #include <QString>
 #include <QTextCursor>
 #include <QTextBlock>
-#include <QDir>
-#include <QFileInfo>
 #include <QDebug>
 
 using namespace Utils;
 
-namespace Mercurial {
-namespace Internal  {
+namespace Mercurial::Internal {
 
 // use QRegularExpression::anchoredPattern() when minimum Qt is raised to 5.12+
 MercurialEditorWidget::MercurialEditorWidget(MercurialClient *client) :
@@ -53,8 +29,8 @@ MercurialEditorWidget::MercurialEditorWidget(MercurialClient *client) :
 {
     setDiffFilePattern(Constants::DIFFIDENTIFIER);
     setLogEntryPattern("^changeset:\\s+(\\S+)$");
-    setAnnotateRevisionTextFormat(tr("&Annotate %1"));
-    setAnnotatePreviousRevisionTextFormat(tr("Annotate &parent revision %1"));
+    setAnnotateRevisionTextFormat(Tr::tr("&Annotate %1"));
+    setAnnotatePreviousRevisionTextFormat(Tr::tr("Annotate &parent revision %1"));
     setAnnotationEntryPattern(Constants::CHANGESETID12);
 }
 
@@ -79,19 +55,17 @@ VcsBase::BaseAnnotationHighlighter *MercurialEditorWidget::createAnnotationHighl
 
 QString MercurialEditorWidget::decorateVersion(const QString &revision) const
 {
-    const QFileInfo fi(source());
-    const QString workingDirectory = fi.absolutePath();
+    const FilePath workingDirectory = source().absolutePath();
     // Format with short summary
-    return m_client->shortDescriptionSync(FilePath::fromString(workingDirectory), revision);
+    return m_client->shortDescriptionSync(workingDirectory, revision);
 }
 
 QStringList MercurialEditorWidget::annotationPreviousVersions(const QString &revision) const
 {
-    const QFileInfo fi(source());
-    const QString workingDirectory = fi.absolutePath();
+    const FilePath filePath = source();
+    const FilePath workingDirectory = filePath.absolutePath();
     // Retrieve parent revisions
-    return m_client->parentRevisionsSync(FilePath::fromString(workingDirectory), fi.fileName(), revision);
+    return m_client->parentRevisionsSync(workingDirectory, filePath.fileName(), revision);
 }
 
-} // namespace Internal
-} // namespace Mercurial
+} // Mercurial::Internal

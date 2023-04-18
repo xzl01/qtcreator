@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "fileandtokenactions_test.h"
 
@@ -46,6 +24,7 @@
 #include <cplusplus/CppDocument.h>
 #include <cplusplus/TranslationUnit.h>
 #include <utils/algorithm.h>
+#include <utils/environment.h>
 
 #include <QApplication>
 #include <QDebug>
@@ -72,6 +51,7 @@
 using namespace Core;
 using namespace CPlusPlus;
 using namespace TextEditor;
+using namespace Utils;
 
 namespace CppEditor::Internal::Tests {
 
@@ -145,28 +125,29 @@ TestActionsTestCase::TestActionsTestCase(const Actions &tokenActions, const Acti
 {
     QVERIFY(succeededSoFar());
 
-    if (qgetenv("QTC_TEST_WAIT_FOR_LOADED_PROJECT") != "1")
+    if (Utils::qtcEnvironmentVariable("QTC_TEST_WAIT_FOR_LOADED_PROJECT") != "1")
         QSKIP("Environment variable QTC_TEST_WAIT_FOR_LOADED_PROJECT=1 not set.");
     QVERIFY(waitUntilAProjectIsLoaded());
 
     // Collect files to process
-    QStringList filesToOpen;
+    FilePaths filesToOpen;
     QList<QPointer<ProjectExplorer::Project> > projects;
     const QList<ProjectInfo::ConstPtr> projectInfos = m_modelManager->projectInfos();
 
-    foreach (const ProjectInfo::ConstPtr &info, projectInfos) {
+   for (const ProjectInfo::ConstPtr &info : projectInfos) {
         qDebug() << "Project" << info->projectFilePath().toUserOutput() << "- files to process:"
                  << info->sourceFiles().size();
-        foreach (const QString &sourceFile, info->sourceFiles())
+       const QSet<FilePath> sourceFiles = info->sourceFiles();
+       for (const FilePath &sourceFile : sourceFiles)
             filesToOpen << sourceFile;
     }
 
     Utils::sort(filesToOpen);
 
     // Process all files from the projects
-    foreach (const QString filePath, filesToOpen) {
+    for (const FilePath &filePath : std::as_const(filesToOpen)) {
         // Skip e.g. "<configuration>"
-        if (!QFileInfo::exists(filePath))
+        if (!filePath.exists())
             continue;
 
         qDebug() << " --" << filePath;
@@ -195,7 +176,7 @@ TestActionsTestCase::TestActionsTestCase(const Actions &tokenActions, const Acti
 
         const Snapshot snapshot = globalSnapshot();
         Document::Ptr document = snapshot.preprocessedDocument(
-            editorWidget->document()->toPlainText().toUtf8(), Utils::FilePath::fromString(filePath));
+            editorWidget->document()->toPlainText().toUtf8(), filePath);
         QVERIFY(document);
         document->parse();
         TranslationUnit *translationUnit = document->translationUnit();
@@ -260,16 +241,17 @@ void TestActionsTestCase::undoChangesInDocument(TextDocument *editorDocument)
 
 void TestActionsTestCase::undoChangesInAllEditorWidgets()
 {
-    foreach (IDocument *document, DocumentModel::openedDocuments()) {
+   const QList<IDocument *> documents = DocumentModel::openedDocuments();
+   for (IDocument *document : documents) {
         TextDocument *baseTextDocument = qobject_cast<TextDocument *>(document);
         undoChangesInDocument(baseTextDocument);
     }
 }
 
 void TestActionsTestCase::executeActionsOnEditorWidget(CppEditorWidget *editorWidget,
-                                                        TestActionsTestCase::Actions actions)
+                                                       TestActionsTestCase::Actions actions)
 {
-    foreach (const ActionPointer &action, actions)
+    for (const ActionPointer &action : std::as_const(actions))
         action->run(editorWidget);
     QApplication::processEvents();
 }
@@ -461,7 +443,7 @@ void RunAllQuickFixesTokenAction::run(CppEditorWidget *editorWidget)
             cppQuickFixFactory->match(qfi, operations);
         }
 
-        foreach (QuickFixOperation::Ptr operation, operations) {
+        for (QuickFixOperation::Ptr operation : std::as_const(operations)) {
             qDebug() << "    -- Performing Quick Fix" << operation->description();
             operation->perform();
             TestActionsTestCase::escape();
@@ -481,7 +463,7 @@ void SwitchHeaderSourceFileAction::run(CppEditorWidget *)
 {
     // Switch Header/Source
     IEditor *editorBefore = EditorManager::currentEditor();
-    switchHeaderSource();
+    CppModelManager::switchHeaderSource(false);
     QApplication::processEvents();
 
     // Go back

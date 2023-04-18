@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -143,7 +121,7 @@
 
     \section1 Forwarding Flags to Clang Code Model
 
-    The \c {.cxxflags} and \c {.cflags} files contain command line flags for the
+    The \c {.cxxflags} and \c {.cflags} files have command line flags for the
     Clang code model on a single line.
 
     For example, specify the \c {-std=c++11} to set the language version
@@ -151,11 +129,11 @@
 
     \section1 Providing Deployment Information
 
-    If you want to run your application on a generic remote Linux device,
+    If you want to run your application on a remote Linux device,
     you first need to deploy your executable and possibly other files.
-    \QC does that for you automatically if you provide the necessary
+    \QC does that for you automatically if you enter the necessary
     information. This works the same way as explained for CMake in
-    \l {Deploying Applications to Generic Remote Linux Devices},
+    \l {Deploying to Remote Linux},
     except that you also need to include your application binary in the list.
 
     \section1 Creating a Run Configuration

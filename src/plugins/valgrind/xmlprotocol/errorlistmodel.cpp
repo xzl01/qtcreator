@@ -1,34 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Author: Frank Osterfeld, KDAB (frank.osterfeld@kdab.com)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "errorlistmodel.h"
 #include "error.h"
 #include "frame.h"
 #include "stack.h"
 #include "modelhelpers.h"
+#include "../valgrindtr.h"
 
 #include <debugger/analyzer/diagnosticlocation.h>
 #include <utils/qtcassert.h>
@@ -87,7 +65,7 @@ private:
 ErrorListModel::ErrorListModel(QObject *parent)
     : Utils::TreeModel<>(parent)
 {
-    setHeader(QStringList() << tr("Issue") << tr("Location"));
+    setHeader({Tr::tr("Issue"), Tr::tr("Location")});
 }
 
 Frame ErrorListModel::findRelevantFrame(const Error &error) const
@@ -126,7 +104,7 @@ static QString makeFrameName(const Frame &frame, bool withLocation)
     if (!fn.isEmpty()) {
         const QString location = withLocation || path == frame.object()
                 ? QString::fromLatin1(" in %2").arg(path) : QString();
-        return QCoreApplication::translate("Valgrind::Internal", "%1%2").arg(fn, location);
+        return Tr::tr("%1%2").arg(fn, location);
     }
     if (!path.isEmpty())
         return path;
@@ -135,8 +113,7 @@ static QString makeFrameName(const Frame &frame, bool withLocation)
 
 QString ErrorListModel::errorLocation(const Error &error) const
 {
-    return QCoreApplication::translate("Valgrind::Internal", "in %1").
-            arg(makeFrameName(findRelevantFrame(error), true));
+    return Tr::tr("in %1").arg(makeFrameName(findRelevantFrame(error), true));
 }
 
 void ErrorListModel::addError(const Error &error)
@@ -165,10 +142,12 @@ ErrorItem::ErrorItem(const ErrorListModel *model, const Error &error)
     // just annoy the user.
     // The same goes for the frame level.
     if (m_error.stacks().count() > 1) {
-        foreach (const Stack &s, m_error.stacks())
+        const QVector<Stack> stacks = m_error.stacks();
+        for (const Stack &s : stacks)
             appendChild(new StackItem(s));
     } else if (m_error.stacks().constFirst().frames().count() > 1) {
-        foreach (const Frame &f, m_error.stacks().constFirst().frames())
+        const QVector<Frame> frames = m_error.stacks().constFirst().frames();
+        for (const Frame &f : frames)
             appendChild(new FrameItem(f));
     }
 }
@@ -197,11 +176,13 @@ QVariant ErrorItem::data(int column, int role) const
                << m_model->errorLocation(m_error)
                << "\n";
 
-        foreach (const Stack &stack, m_error.stacks()) {
+        const QVector<Stack> stacks = m_error.stacks();
+        for (const Stack &stack : stacks) {
             if (!stack.auxWhat().isEmpty())
                 stream << stack.auxWhat();
             int i = 1;
-            foreach (const Frame &frame, stack.frames())
+            const QVector<Frame> frames = stack.frames();
+            for (const Frame &frame : frames)
                 stream << "  " << i++ << ": " << makeFrameName(frame, true) << "\n";
         }
 
@@ -217,7 +198,7 @@ QVariant ErrorItem::data(int column, int role) const
                 || m_error.stacks().constFirst().frames().constFirst().functionName().isEmpty()) {
             return m_error.what();
         }
-        return ErrorListModel::tr("%1 in function %2")
+        return Tr::tr("%1 in function %2")
                 .arg(m_error.what(), m_error.stacks().constFirst().frames().constFirst().functionName());
     case Qt::ToolTipRole:
         return toolTipForFrame(m_model->findRelevantFrame(m_error));
@@ -229,7 +210,8 @@ QVariant ErrorItem::data(int column, int role) const
 
 StackItem::StackItem(const Stack &stack) : m_stack(stack)
 {
-    foreach (const Frame &f, m_stack.frames())
+    const QVector<Frame> frames = m_stack.frames();
+    for (const Frame &f : frames)
         appendChild(new FrameItem(f));
 }
 

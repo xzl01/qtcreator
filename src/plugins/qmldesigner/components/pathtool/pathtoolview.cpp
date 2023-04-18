@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "pathtoolview.h"
 
@@ -36,20 +14,20 @@
 
 namespace QmlDesigner {
 
-PathToolView::PathToolView(PathTool *pathTool)
-    : m_pathTool(pathTool)
+PathToolView::PathToolView(PathTool *pathTool, ExternalDependenciesInterface &externalDependencies)
+    : AbstractView{externalDependencies}
+    , m_pathTool(pathTool)
 {
 }
 
 static bool isInEditedPath(const NodeAbstractProperty &propertyParent, const ModelNode &editingPathViewModelNode)
 {
-    if (editingPathViewModelNode.isValid()) {
-        if (editingPathViewModelNode.hasNodeProperty("path")) {
-            ModelNode pathModelNode = editingPathViewModelNode.nodeProperty("path").modelNode();
-            if (pathModelNode.metaInfo().isSubclassOf("QtQuick.Path")) {
-                if (propertyParent.name() == "pathElements" && propertyParent.parentModelNode() == pathModelNode)
-                    return true;
-            }
+    if (editingPathViewModelNode.hasNodeProperty("path")) {
+        ModelNode pathModelNode = editingPathViewModelNode.nodeProperty("path").modelNode();
+        if (pathModelNode.metaInfo().isQtQuickPath()) {
+            if (propertyParent.name() == "pathElements"
+                && propertyParent.parentModelNode() == pathModelNode)
+                return true;
         }
     }
 
@@ -78,7 +56,7 @@ bool variantPropertyInEditedPath(const VariantProperty &variantProperty, const M
 
 bool changesEditedPath(const QList<VariantProperty> &propertyList, const ModelNode &editingPathViewModelNode)
 {
-    foreach (const VariantProperty variantProperty, propertyList) {
+    for (const VariantProperty &variantProperty : propertyList) {
         if (variantPropertyInEditedPath(variantProperty, editingPathViewModelNode))
             return true;
     }

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -50,7 +28,8 @@ class PropertyEditorQmlBackend
 
 
 public:
-    PropertyEditorQmlBackend(PropertyEditorView *propertyEditor);
+    PropertyEditorQmlBackend(PropertyEditorView *propertyEditor,
+                             class AsynchronousImageCache &imageCache);
     ~PropertyEditorQmlBackend();
 
     void setup(const QmlObjectNode &fxObjectNode, const QString &stateName, const QUrl &qmlSpecificsFile, PropertyEditorView *propertyEditor);
@@ -70,7 +49,7 @@ public:
     static QString propertyEditorResourcesPath();
     static QString templateGeneration(const NodeMetaInfo &type, const NodeMetaInfo &superType, const QmlObjectNode &node);
 
-    static QUrl getQmlFileUrl(const TypeName &relativeTypeName, const NodeMetaInfo &info = NodeMetaInfo());
+    static QUrl getQmlFileUrl(const TypeName &relativeTypeName, const NodeMetaInfo &info);
     static QUrl getQmlUrlForMetaInfo(const NodeMetaInfo &modelNode, TypeName &className);
 
     static bool checkIfUrlExists(const QUrl &url);
@@ -78,10 +57,16 @@ public:
     void emitSelectionToBeChanged();
     void emitSelectionChanged();
 
-    void setValueforLayoutAttachedProperties(const QmlObjectNode &qmlObjectNode, const PropertyName &name);
-    void setValueforAuxiliaryProperties(const QmlObjectNode &qmlObjectNode, const PropertyName &name);
+    void setValueforLayoutAttachedProperties(const QmlObjectNode &qmlObjectNode,
+                                             const PropertyName &name);
+    void setValueforInsightAttachedProperties(const QmlObjectNode &qmlObjectNode,
+                                              const PropertyName &name);
+    void setValueforAuxiliaryProperties(const QmlObjectNode &qmlObjectNode, AuxiliaryDataKeyView key);
 
-    void setupLayoutAttachedProperties(const QmlObjectNode &qmlObjectNode, PropertyEditorView *propertyEditor);
+    void setupLayoutAttachedProperties(const QmlObjectNode &qmlObjectNode,
+                                       PropertyEditorView *propertyEditor);
+    void setupInsightAttachedProperties(const QmlObjectNode &qmlObjectNode,
+                                        PropertyEditorView *propertyEditor);
     void setupAuxiliaryProperties(const QmlObjectNode &qmlObjectNode, PropertyEditorView *propertyEditor);
 
     static NodeMetaInfo findCommonAncestor(const ModelNode &node);

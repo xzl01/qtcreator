@@ -1,31 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "getoperation.h"
 
 #include <iostream>
+
+#ifdef WITH_TESTS
+#include <QTest>
+#endif
+
+#include <QLoggingCategory>
+
+Q_LOGGING_CATEGORY(getlog, "qtc.sdktool.operations.get", QtWarningMsg)
 
 QString GetOperation::name() const
 {
@@ -52,9 +38,9 @@ bool GetOperation::setArguments(const QStringList &args)
     m_file = m_keys.takeFirst();
 
     if (m_file.isEmpty())
-        std::cerr << "No file given." << std::endl << std::endl;
+        qCCritical(getlog) << "No file given.";
     if (m_keys.isEmpty())
-        std::cerr << "No keys given." << std::endl << std::endl;
+        qCCritical(getlog) << "No keys given.";
 
     return !m_file.isEmpty() && !m_keys.isEmpty();
 }
@@ -83,10 +69,10 @@ static QString toString(const QVariant &variant, int indentation = 0)
         return res;
     }
     case QVariant::List: {
-        QVariantList list = variant.toList();
+        const QVariantList list = variant.toList();
         QString res;
         int counter = 0;
-        foreach (const QVariant &item, list)
+        for (const QVariant &item : list)
             res += indent + QString::number(counter++) + QLatin1String(":\n") + toString(item, indentation + 1);
         return res;
     }
@@ -100,7 +86,7 @@ int GetOperation::execute() const
     Q_ASSERT(!m_keys.isEmpty());
     QVariantMap map = load(m_file);
 
-    foreach (const QString &key, m_keys) {
+    for (const QString &key : std::as_const(m_keys)) {
         const QVariant result = get(map, key);
         if (!result.isValid())
             std::cout << "<invalid>" << std::endl;
@@ -112,7 +98,7 @@ int GetOperation::execute() const
 }
 
 #ifdef WITH_TESTS
-bool GetOperation::test() const
+void GetOperation::unittest()
 {
     QVariantMap testMap;
     QVariantMap subKeys;
@@ -127,22 +113,16 @@ bool GetOperation::test() const
 
     QVariant result;
     result = get(testMap, QLatin1String("testint"));
-    if (result.toString() != QLatin1String("23"))
-        return false;
+    QCOMPARE(result.toString(), QLatin1String("23"));
 
     result = get(testMap, QLatin1String("subkeys/testbool"));
-    if (result.toString() != QLatin1String("true"))
-        return false;
+    QCOMPARE(result.toString(), QLatin1String("true"));
 
     result = get(testMap, QLatin1String("subkeys/subsubkeys"));
-    if (result.type() != QVariant::Map)
-        return false;
+    QCOMPARE(result.type(), QVariant::Map);
 
     result = get(testMap, QLatin1String("nonexistant"));
-    if (result.isValid())
-        return false;
-
-    return true;
+    QVERIFY(!result.isValid());
 }
 #endif
 

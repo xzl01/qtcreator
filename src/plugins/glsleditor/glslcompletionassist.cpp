@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "glslcompletionassist.h"
 #include "glsleditorconstants.h"
@@ -51,7 +29,6 @@
 #include <QPainter>
 #include <QLabel>
 #include <QToolButton>
-#include <QHBoxLayout>
 #include <QApplication>
 #include <QDebug>
 
@@ -68,7 +45,7 @@ Document::~Document()
 
 GLSL::Scope *Document::scopeAt(int position) const
 {
-    foreach (const Range &c, _cursors) {
+    for (const Range &c : _cursors) {
         if (position >= c.cursor.selectionStart() && position <= c.cursor.selectionEnd())
             return c.scope;
     }
@@ -312,17 +289,17 @@ static AssistProposalItem *createCompletionItem(const QString &text, const QIcon
     return item;
 }
 
-IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *interface)
+IAssistProposal *GlslCompletionAssistProcessor::performAsync()
 {
-    m_interface.reset(static_cast<const GlslCompletionAssistInterface *>(interface));
+    auto interface = static_cast<const GlslCompletionAssistInterface *>(this->interface());
 
     if (interface->reason() == IdleEditor && !acceptsIdleEditor())
         return nullptr;
 
-    int pos = m_interface->position() - 1;
-    QChar ch = m_interface->characterAt(pos);
+    int pos = interface->position() - 1;
+    QChar ch = interface->characterAt(pos);
     while (ch.isLetterOrNumber() || ch == QLatin1Char('_'))
-        ch = m_interface->characterAt(--pos);
+        ch = interface->characterAt(--pos);
 
     CPlusPlus::ExpressionUnderCursor expressionUnderCursor(
                 CPlusPlus::LanguageFeatures::defaultFeatures());
@@ -332,16 +309,16 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
     QStringList specialMembers;
     QList<AssistProposalItemInterface *> m_completions;
 
-    bool functionCall = (ch == QLatin1Char('(') && pos == m_interface->position() - 1);
+    bool functionCall = (ch == QLatin1Char('(') && pos == interface->position() - 1);
 
     if (ch == QLatin1Char(',')) {
-        QTextCursor tc(m_interface->textDocument());
+        QTextCursor tc(interface->textDocument());
         tc.setPosition(pos);
         const int start = expressionUnderCursor.startOfFunctionCall(tc);
         if (start == -1)
             return nullptr;
 
-        if (m_interface->characterAt(start) == QLatin1Char('(')) {
+        if (interface->characterAt(start) == QLatin1Char('(')) {
             pos = start;
             ch = QLatin1Char('(');
             functionCall = true;
@@ -350,7 +327,7 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
 
     if (ch == QLatin1Char('.') || functionCall) {
         const bool memberCompletion = ! functionCall;
-        QTextCursor tc(m_interface->textDocument());
+        QTextCursor tc(interface->textDocument());
         tc.setPosition(pos);
 
         // get the expression under cursor
@@ -359,7 +336,7 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
 
         // parse the expression
         GLSL::Engine engine;
-        GLSL::Parser parser(&engine, code, code.size(), languageVariant(m_interface->mimeType()));
+        GLSL::Parser parser(&engine, code, code.size(), languageVariant(interface->mimeType()));
         GLSL::ExpressionAST *expr = parser.parseExpression();
 
 #if 0
@@ -369,7 +346,7 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
         dump(expr);
 #endif
 
-        if (Document::Ptr doc = m_interface->glslDocument()) {
+        if (Document::Ptr doc = interface->glslDocument()) {
             GLSL::Scope *currentScope = doc->scopeAt(pos);
 
             GLSL::Semantic sem;
@@ -418,7 +395,7 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
 
     } else {
         // it's a global completion
-        if (Document::Ptr doc = m_interface->glslDocument()) {
+        if (Document::Ptr doc = interface->glslDocument()) {
             GLSL::Scope *currentScope = doc->scopeAt(pos);
             bool isGlobal = !currentScope || !currentScope->scope();
 
@@ -457,18 +434,18 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
             }
         }
 
- //       if (m_keywordVariant != languageVariant(m_interface->mimeType())) {
-            QStringList keywords = GLSL::Lexer::keywords(languageVariant(m_interface->mimeType()));
+ //       if (m_keywordVariant != languageVariant(interface->mimeType())) {
+            QStringList keywords = GLSL::Lexer::keywords(languageVariant(interface->mimeType()));
 //            m_keywordCompletions.clear();
             for (int index = 0; index < keywords.size(); ++index)
                 m_completions << createCompletionItem(keywords.at(index), glslIcon(IconTypeKeyword));
-//            m_keywordVariant = languageVariant(m_interface->mimeType());
+//            m_keywordVariant = languageVariant(interface->mimeType());
 //        }
 
   //      m_completions += m_keywordCompletions;
     }
 
-    foreach (GLSL::Symbol *s, members) {
+    for (GLSL::Symbol *s : std::as_const(members)) {
         QIcon icon;
         GLSL::Variable *var = s->asVariable();
         if (var) {
@@ -513,22 +490,22 @@ IAssistProposal *GlslCompletionAssistProcessor::createHintProposal(
 
 bool GlslCompletionAssistProcessor::acceptsIdleEditor() const
 {
-    const int cursorPosition = m_interface->position();
-    const QChar ch = m_interface->characterAt(cursorPosition - 1);
+    const int cursorPosition = interface()->position();
+    const QChar ch = interface()->characterAt(cursorPosition - 1);
 
-    const QChar characterUnderCursor = m_interface->characterAt(cursorPosition);
+    const QChar characterUnderCursor = interface()->characterAt(cursorPosition);
 
     if (isIdentifierChar(ch) && (characterUnderCursor.isSpace() ||
                                  characterUnderCursor.isNull() ||
                                  isDelimiter(characterUnderCursor))) {
-        int pos = m_interface->position() - 1;
+        int pos = interface()->position() - 1;
         for (; pos != -1; --pos) {
-            if (! isIdentifierChar(m_interface->characterAt(pos)))
+            if (! isIdentifierChar(interface()->characterAt(pos)))
                 break;
         }
         ++pos;
 
-        const QString word = m_interface->textAt(pos, cursorPosition - pos);
+        const QString word = interface()->textAt(pos, cursorPosition - pos);
         if (word.length() >= TextEditorSettings::completionSettings().m_characterThreshold
                 && checkStartOfIdentifier(word)) {
             for (auto character : word) {
@@ -545,13 +522,12 @@ bool GlslCompletionAssistProcessor::acceptsIdleEditor() const
 // -----------------------------
 // GlslCompletionAssistInterface
 // -----------------------------
-GlslCompletionAssistInterface::GlslCompletionAssistInterface(QTextDocument *textDocument,
-                                                             int position,
+GlslCompletionAssistInterface::GlslCompletionAssistInterface(const QTextCursor &cursor,
                                                              const Utils::FilePath &fileName,
                                                              AssistReason reason,
                                                              const QString &mimeType,
                                                              const Document::Ptr &glslDoc)
-    : AssistInterface(textDocument, position, fileName, reason)
+    : AssistInterface(cursor, fileName, reason)
     , m_mimeType(mimeType)
     , m_glslDoc(glslDoc)
 {

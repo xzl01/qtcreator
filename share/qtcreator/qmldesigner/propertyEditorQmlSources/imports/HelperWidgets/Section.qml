@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 import QtQuick.Controls 2.15 as Controls
@@ -51,6 +29,7 @@ Item {
     property int level: 0
     property int levelShift: 10
     property bool hideHeader: false
+    property bool collapsible: true
     property bool expandOnClick: true // if false, toggleExpand signal will be emitted instead
     property bool addTopPadding: true
     property bool addBottomPadding: true
@@ -70,8 +49,20 @@ Item {
 
     Connections {
         target: Controller
-        function onCollapseAll() { section.expanded = false }
-        function onExpandAll() { section.expanded = true }
+        function onCollapseAll() {
+            if (collapsible) {
+                if (section.expandOnClick)
+                    section.expanded = false
+                else
+                    section.collapse()
+            }
+        }
+        function onExpandAll() {
+            if (section.expandOnClick)
+                section.expanded = true
+            else
+                section.expand()
+        }
     }
 
     signal drop(var drag)
@@ -79,6 +70,8 @@ Item {
     signal dropExit()
     signal showContextMenu()
     signal toggleExpand()
+    signal expand()
+    signal collapse()
 
     DropArea {
         id: dropArea
@@ -142,6 +135,9 @@ Item {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onClicked: function(mouse) {
                 if (mouse.button === Qt.LeftButton) {
+                    if (!section.collapsible && section.expanded)
+                        return
+
                     transition.enabled = true
                     if (section.expandOnClick)
                         section.expanded = !section.expanded

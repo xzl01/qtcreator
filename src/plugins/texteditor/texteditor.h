@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -41,12 +19,13 @@
 #include <utils/elidinglabel.h>
 #include <utils/link.h>
 #include <utils/multitextcursor.h>
-#include <utils/porting.h>
 #include <utils/uncommentselection.h>
 
 #include <QPlainTextEdit>
 #include <QSharedPointer>
+
 #include <functional>
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 class QToolBar;
@@ -282,8 +261,8 @@ public:
 
     void invokeAssist(AssistKind assistKind, IAssistProvider *provider = nullptr);
 
-    virtual TextEditor::AssistInterface *createAssistInterface(AssistKind assistKind,
-                                                    AssistReason assistReason) const;
+    virtual std::unique_ptr<AssistInterface> createAssistInterface(AssistKind assistKind,
+                                                                   AssistReason assistReason) const;
     static QMimeData *duplicateMimeData(const QMimeData *source);
 
     static QString msgTextTooLarge(quint64 size);
@@ -333,6 +312,8 @@ public:
 
     enum Side { Left, Right };
     QAction *insertExtraToolBarWidget(Side side, QWidget *widget);
+    void setToolbarOutline(QWidget* widget);
+    const QWidget *toolbarOutlineWidget();
 
     // keep the auto completion even if the focus is lost
     void keepAutoCompletionHighlight(bool keepHighlight);
@@ -368,6 +349,7 @@ public:
 
     void cutLine();
     void copyLine();
+    void copyWithHtml();
     void duplicateSelection();
     void duplicateSelectionAndComment();
     void deleteLine();
@@ -384,6 +366,8 @@ public:
     void updateTextCodecLabel();
     void selectLineEnding(int index);
     void updateTextLineEndingLabel();
+    void addSelectionNextFindMatch();
+    void addCursorsToLineEnds();
 
     void gotoBlockStart();
     void gotoBlockEnd();
@@ -457,7 +441,11 @@ public:
     /// Abort code assistant if it is running.
     void abortAssist();
 
+    /// Overwrite the current highlighter with a new generic highlighter based on the mimetype of
+    /// the current document
     void configureGenericHighlighter();
+    /// Overwrite the current highlighter with a new generic highlighter based on the given mimetype
+    void configureGenericHighlighter(const Utils::MimeType &mimeType);
 
     Q_INVOKABLE void inSnippetMode(bool *active); // Used by FakeVim.
 
@@ -491,11 +479,12 @@ signals:
 
     void requestBlockUpdate(const QTextBlock &);
 
-    void requestLinkAt(const QTextCursor &cursor, Utils::ProcessLinkCallback &callback,
+    void requestLinkAt(const QTextCursor &cursor, const Utils::LinkHandler &callback,
                        bool resolveTarget, bool inNextSplit);
     void requestUsages(const QTextCursor &cursor);
     void requestRename(const QTextCursor &cursor);
     void optionalActionMaskChanged();
+    void toolbarOutlineChanged(QWidget *newOutline);
 
 protected:
     QTextBlock blockForVisibleRow(int row) const;
@@ -526,6 +515,7 @@ protected:
     void dragEnterEvent(QDragEnterEvent *e) override;
 
     QMimeData *createMimeDataFromSelection() const override;
+    QMimeData *createMimeDataFromSelection(bool withHtml) const;
     bool canInsertFromMimeData(const QMimeData *source) const override;
     void insertFromMimeData(const QMimeData *source) override;
     void dragLeaveEvent(QDragLeaveEvent *e) override;
@@ -534,7 +524,6 @@ protected:
 
     virtual QString plainTextFromSelection(const QTextCursor &cursor) const;
     virtual QString plainTextFromSelection(const Utils::MultiTextCursor &cursor) const;
-    static QString convertToPlainText(const QString &txt);
 
     virtual QString lineNumber(int blockNumber) const;
     virtual int lineNumberDigits() const;
@@ -549,6 +538,8 @@ protected:
     virtual void finalizeInitialization() {}
     virtual void finalizeInitializationAfterDuplication(TextEditorWidget *) {}
     static QTextCursor flippedCursor(const QTextCursor &cursor);
+
+    void setVisualIndentOffset(int offset);
 
 public:
     QString selectedText() const;
@@ -577,7 +568,7 @@ protected:
        (it isn't until the link is used).
      */
     virtual void findLinkAt(const QTextCursor &,
-                            Utils::ProcessLinkCallback &&processLinkCallback,
+                            const Utils::LinkHandler &processLinkCallback,
                             bool resolveTarget = true,
                             bool inNextSplit = false);
 
@@ -685,6 +676,6 @@ private:
 
 QT_BEGIN_NAMESPACE
 
-Utils::QHashValueType qHash(const QColor &color);
+size_t qHash(const QColor &color);
 
 QT_END_NAMESPACE

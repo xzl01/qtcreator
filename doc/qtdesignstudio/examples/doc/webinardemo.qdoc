@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Studio documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example WebinarDemo
@@ -112,7 +90,8 @@
 
     \image webinardemo-qb-fastblur.png "Settings for exporting blurEffect layer"
 
-    We want to apply the \l {FastBlur} effect to the \e smallPopup UI control.
+    We want to apply the \l {https://doc.qt.io/qt-5/qml-qtgraphicaleffects-fastblur.html}
+    {Fast Blur} effect to the \e smallPopup UI control.
     In the artboard, we have a \e blurEffect layer that we want to export as a
     \e FastBlurItem component. In the \uicontrol Component field, we enter
     \e FastBlurItem.
@@ -170,16 +149,16 @@
     the UI we will create. We use the imported components to create the
     UI in the \e {MainApp.ui.qml} file. The imported components are
     listed in \uicontrol Components > \uicontrol {My Components},
-    and we can drag-and-drop them to \l {Form Editor}.
+    and we can drag-and-drop them to the \l {2D} view.
 
     \image webinardemo-mainappui.png "Main app UI in Design mode"
 
     To view the structure of a particular component, we right-click it in the
-    \uicontrol {Form Editor} and select \uicontrol {Go into Component} in the
+    \uicontrol {2D} view and select \uicontrol {Go into Component} in the
     context menu. Any changes we make to a component are immediately visible in
     all the other components where it appears.
 
-    We can view the code for each component in \l{Text Editor}.
+    We can view the code for each component in the \l{Code} view.
 
     We can now use states and the timeline to animate the components in the UI.
 

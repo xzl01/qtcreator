@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "projectexplorer_export.h"
 
-#include "panelswidget.h"
-#include "projectwindow.h"
+#include "projectsettingswidget.h"
 
 #include <utils/id.h>
 #include <utils/treemodel.h>
@@ -57,7 +34,7 @@ public:
     // interface for users of ProjectPanelFactory
     bool supports(Project *project);
 
-    using WidgetCreator = std::function<QWidget *(Project *)>;
+    using WidgetCreator = std::function<ProjectSettingsWidget *(Project *)>;
 
     // interface for "implementations" of ProjectPanelFactory
     // by default all projects are supported, only set a custom supports function
@@ -73,7 +50,7 @@ public:
     Utils::TreeItem *createPanelItem(Project *project);
 
     void setCreateWidgetFunction(const WidgetCreator &createWidgetFunction);
-    QWidget *createWidget(Project *project) const;
+    ProjectSettingsWidget *createWidget(Project *project) const;
 
 private:
     friend class ProjectExplorerPlugin;

@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qtwizard.h"
 
 #include <qmakeprojectmanager/qmakeproject.h>
 #include <qmakeprojectmanager/qmakeprojectmanagerconstants.h>
+#include <qmakeprojectmanager/qmakeprojectmanagertr.h>
 
 #include <coreplugin/icore.h>
 
@@ -92,7 +71,7 @@ bool QtWizard::qt4ProjectPostGenerateFiles(const QWizard *w,
     // Generate user settings
     for (const Core::GeneratedFile &file : generatedFiles)
         if (file.attributes() & Core::GeneratedFile::OpenProjectAttribute) {
-            dialog->writeUserFile(file.path());
+            dialog->writeUserFile(file.filePath());
             break;
         }
 
@@ -180,17 +159,17 @@ int BaseQmakeProjectWizardDialog::addTargetSetupPage(int id)
     m_targetSetupPage->setTasksGenerator([this](const Kit *k) -> Tasks {
         if (!QtKitAspect::qtVersionPredicate(requiredFeatures())(k))
             return {
-                ProjectExplorer::CompileTask(Task::Error, tr("Required Qt features not present."))};
+                ProjectExplorer::CompileTask(Task::Error, Tr::tr("Required Qt features not present."))};
 
         const Utils::Id platform = selectedPlatform();
         if (platform.isValid() && !QtKitAspect::platformPredicate(platform)(k))
             return {ProjectExplorer::CompileTask(
                 ProjectExplorer::Task::Warning,
-                tr("Qt version does not target the expected platform."))};
+                Tr::tr("Qt version does not target the expected platform."))};
         QSet<Utils::Id> features = {QtSupport::Constants::FEATURE_DESKTOP};
         if (!QtKitAspect::qtVersionPredicate(features)(k))
             return {ProjectExplorer::CompileTask(ProjectExplorer::Task::Unknown,
-                                                 tr("Qt version does not provide all features."))};
+                                                 Tr::tr("Qt version does not provide all features."))};
         return {};
     });
 
@@ -203,12 +182,12 @@ int BaseQmakeProjectWizardDialog::addTargetSetupPage(int id)
     return id;
 }
 
-bool BaseQmakeProjectWizardDialog::writeUserFile(const QString &proFileName) const
+bool BaseQmakeProjectWizardDialog::writeUserFile(const Utils::FilePath &proFile) const
 {
     if (!m_targetSetupPage)
         return false;
 
-    QmakeProject *pro = new QmakeProject(Utils::FilePath::fromString(proFileName));
+    QmakeProject *pro = new QmakeProject(proFile);
     bool success = m_targetSetupPage->setupProject(pro);
     if (success)
         pro->saveSettings();
@@ -223,14 +202,15 @@ QList<Utils::Id> BaseQmakeProjectWizardDialog::selectedKits() const
     return m_targetSetupPage->selectedKits();
 }
 
-void BaseQmakeProjectWizardDialog::generateProfileName(const QString &name, const QString &path)
+void BaseQmakeProjectWizardDialog::generateProfileName(const QString &name,
+                                                       const Utils::FilePath &path)
 {
     if (!m_targetSetupPage)
         return;
 
-    const QString proFile = QDir::cleanPath(path + '/' + name + '/' + name + ".pro");
+    const Utils::FilePath proFile = path / name / (name + ".pro");
 
-    m_targetSetupPage->setProjectPath(Utils::FilePath::fromString(proFile));
+    m_targetSetupPage->setProjectPath(proFile);
 }
 
 } // Internal

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "transitioneditorview.h"
 
@@ -31,6 +9,7 @@
 #include "transitioneditorgraphicsscene.h"
 #include "transitioneditorsettingsdialog.h"
 
+#include <auxiliarydataproperties.h>
 #include <bindingproperty.h>
 #include <exception.h>
 #include <modelnodecontextmenu_helper.h>
@@ -61,8 +40,8 @@
 
 namespace QmlDesigner {
 
-TransitionEditorView::TransitionEditorView(QObject *parent)
-    : AbstractView(parent)
+TransitionEditorView::TransitionEditorView(ExternalDependenciesInterface &externalDependencies)
+    : AbstractView{externalDependencies}
     , m_transitionEditorWidget(nullptr)
 {
 
@@ -100,7 +79,7 @@ void TransitionEditorView::nodeRemoved(const ModelNode & removedNode,
         widget()->updateData(removedNode);
 
     const ModelNode parent = parentProperty.parentModelNode();
-    if (parent.isValid() && parent.metaInfo().isSubclassOf("QtQuick.Transition"))
+    if (parent.metaInfo().isQtQuickTransition())
         asyncUpdate(parent);
 }
 
@@ -114,8 +93,7 @@ void TransitionEditorView::nodeReparented(const ModelNode &node,
 
     const ModelNode parent = newPropertyParent.parentModelNode();
 
-    if (parent.isValid() && parent.metaInfo().isValid()
-        && parent.metaInfo().isSubclassOf("QtQuick.Transition")) {
+    if (parent.metaInfo().isQtQuickTransition()) {
         asyncUpdate(parent);
     }
 }
@@ -147,12 +125,12 @@ void TransitionEditorView::selectedNodesChanged(const QList<ModelNode> & /*selec
 }
 
 void TransitionEditorView::auxiliaryDataChanged(const ModelNode &modelNode,
-                                                const PropertyName &name,
+                                                AuxiliaryDataKeyView key,
                                                 const QVariant &data)
 {
-    if (name == QmlDesigner::lockedProperty && data.toBool() && modelNode.isValid()) {
+    if (key == lockedProperty && data.toBool() && modelNode.isValid()) {
         for (const auto &node : modelNode.allSubModelNodesAndThisNode()) {
-            if (node.hasAuxiliaryData("transition_expanded"))
+            if (node.hasAuxiliaryData(transitionExpandedPropery))
                 m_transitionEditorWidget->graphicsScene()->invalidateHeightForTarget(node);
         }
     }
@@ -179,7 +157,7 @@ bool TransitionEditorView::hasWidget() const
 
 void TransitionEditorView::nodeIdChanged(const ModelNode &node, const QString &, const QString &)
 {
-    if (node.metaInfo().isValid() && node.metaInfo().isSubclassOf("QtQuick.Transition"))
+    if (node.metaInfo().isValid() && node.metaInfo().isQtQuickTransition())
         widget()->init();
 }
 
@@ -217,20 +195,16 @@ ModelNode TransitionEditorView::addNewTransition()
 
     QHash<QString, QStringList> idPropertyList;
 
-    const QVector<TypeName> validProperties = {"int", "real", "double", "qreal", "color", "QColor", "float"};
-
-    for (const QmlModelState &state : qAsConst(states)) {
+    for (const QmlModelState &state : std::as_const(states)) {
         for (const QmlPropertyChanges & change : state.propertyChanges()) {
             QStringList locList;
             const ModelNode target = change.target();
-            if (target.isValid() && target.hasMetaInfo()) {
+            if (auto targetMetaInfo = target.metaInfo()) {
                 const QString targetId = target.id();
                 for (const VariantProperty &property : change.modelNode().variantProperties()) {
-                    TypeName typeName = target.metaInfo().propertyTypeName(property.name());
-                    if (typeName.startsWith("<cpp>."))
-                        typeName.remove(0, 6);
+                    auto type = targetMetaInfo.property(property.name()).propertyType();
 
-                    if (validProperties.contains(typeName))
+                    if (type.isInteger() || type.isColor() || type.isFloat())
                         locList.append(QString::fromUtf8(property.name()));
                 }
                 if (idPropertyList.contains(targetId)) {
@@ -251,53 +225,59 @@ ModelNode TransitionEditorView::addNewTransition()
 
     if (!idPropertyList.isEmpty()) {
         executeInTransaction(
-            " TransitionEditorView::addNewTransition", [&transition, idPropertyList, root, this]() {
-                transition = createModelNode("QtQuick.Transition",
-                                             2,
-                                             0,
-                                             {{
-                                                  "from",
-                                                  "*",
-                                              },
-                                              {
-                                                  "to",
-                                                  "*",
-                                              }});
-                transition.setAuxiliaryData("transitionDuration", 2000);
-                transition.validId();
-                root.nodeListProperty("transitions").reparentHere(transition);
+                    " TransitionEditorView::addNewTransition", [&transition, idPropertyList, root, this]() {
 
-                for (auto it = idPropertyList.cbegin(); it != idPropertyList.cend(); ++it) {
-                    ModelNode parallelAnimation = createModelNode("QtQuick.ParallelAnimation",
-                                                                  2,
-                                                                  12);
-                    transition.defaultNodeAbstractProperty().reparentHere(parallelAnimation);
-                    for (const QString &property : it.value()) {
-                        ModelNode sequentialAnimation
-                            = createModelNode("QtQuick.SequentialAnimation", 2, 12);
-                        parallelAnimation.defaultNodeAbstractProperty().reparentHere(
-                            sequentialAnimation);
+            const NodeMetaInfo transitionMetaInfo = model()->metaInfo("QtQuick.Transition");
+            transition = createModelNode("QtQuick.Transition",
+                                         transitionMetaInfo.majorVersion(),
+                                         transitionMetaInfo.minorVersion(),
+                                         {{
+                                              "from",
+                                              "*",
+                                          },
+                                          {
+                                              "to",
+                                              "*",
+                                          }});
+            transition.setAuxiliaryData(transitionDurationProperty, 2000);
+            transition.validId();
+            root.nodeListProperty("transitions").reparentHere(transition);
 
-                        ModelNode pauseAnimation = createModelNode("QtQuick.PauseAnimation",
-                                                                   2,
-                                                                   12,
-                                                                   {{"duration", 50}});
-                        sequentialAnimation.defaultNodeAbstractProperty().reparentHere(
-                            pauseAnimation);
+            for (auto it = idPropertyList.cbegin(); it != idPropertyList.cend(); ++it) {
+                ModelNode parallelAnimation = createModelNode("QtQuick.ParallelAnimation");
+                transition.defaultNodeAbstractProperty().reparentHere(parallelAnimation);
+                for (const QString &property : it.value()) {
+                    ModelNode sequentialAnimation
+                            = createModelNode("QtQuick.SequentialAnimation");
+                    parallelAnimation.defaultNodeAbstractProperty().reparentHere(
+                                sequentialAnimation);
 
-                        ModelNode propertyAnimation = createModelNode("QtQuick.PropertyAnimation",
-                                                                      2,
-                                                                      12,
-                                                                      {{"property", property},
-                                                                       {"duration", 150}});
-                        propertyAnimation.bindingProperty("target").setExpression(it.key());
-                        sequentialAnimation.defaultNodeAbstractProperty().reparentHere(
-                            propertyAnimation);
-                    }
+                    const NodeMetaInfo pauseMetaInfo = model()->metaInfo("QtQuick.PauseAnimation");
+
+                    ModelNode pauseAnimation = createModelNode("QtQuick.PauseAnimation",
+                                                               pauseMetaInfo.majorVersion(),
+                                                               pauseMetaInfo.minorVersion(),
+                                                               {{"duration", 50}});
+                    sequentialAnimation.defaultNodeAbstractProperty().reparentHere(
+                                pauseAnimation);
+
+                    const NodeMetaInfo propertyMetaInfo = model()->metaInfo("QtQuick.PauseAnimation");
+
+                    ModelNode propertyAnimation = createModelNode("QtQuick.PropertyAnimation",
+                                                                  propertyMetaInfo.majorVersion(),
+                                                                  propertyMetaInfo.minorVersion(),
+                                                                  {{"property", property},
+                                                                   {"duration", 150}});
+                    propertyAnimation.bindingProperty("target").setExpression(it.key());
+                    sequentialAnimation.defaultNodeAbstractProperty().reparentHere(
+                                propertyAnimation);
                 }
+            }
             });
     } else {
         QString properties;
+        const QVector<TypeName> validProperties = {
+            "int", "real", "double", "qreal", "color", "QColor", "float"};
         for (const PropertyName &property : validProperties)
             properties.append(QString::fromUtf8(property) + ", ");
         if (!properties.isEmpty())
@@ -328,11 +308,10 @@ TransitionEditorWidget *TransitionEditorView::createWidget()
 WidgetInfo TransitionEditorView::widgetInfo()
 {
     return createWidgetInfo(createWidget(),
-                            nullptr,
                             "TransitionEditor",
                             WidgetInfo::BottomPane,
                             0,
-                            tr("Transition Editor"));
+                            tr("Transitions"));
 }
 
 void TransitionEditorView::openSettingsDialog()
@@ -358,12 +337,7 @@ void TransitionEditorView::openSettingsDialog()
 
 QList<ModelNode> TransitionEditorView::allTransitions() const
 {
-    if (rootModelNode().isValid() && rootModelNode().hasProperty("transitions")) {
-        NodeAbstractProperty transitions = rootModelNode().nodeAbstractProperty("transitions");
-        if (transitions.isValid())
-            return transitions.directSubNodes();
-    }
-    return {};
+    return rootModelNode().nodeAbstractProperty("transitions").directSubNodes();
 }
 
 void TransitionEditorView::asyncUpdate(const ModelNode &transition)

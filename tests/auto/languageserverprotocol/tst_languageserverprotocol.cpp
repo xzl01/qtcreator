@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <languageserverprotocol/basemessage.h>
 #include <languageserverprotocol/jsonobject.h>
 #include <languageserverprotocol/jsonrpcmessages.h>
-#include <utils/mimetypes/mimetype.h>
-#include <utils/mimetypes/mimedatabase.h>
+
+#include <utils/hostosinfo.h>
 
 #include <QTextCodec>
 #include <QtTest>
@@ -36,7 +14,6 @@ using namespace LanguageServerProtocol;
 
 Q_DECLARE_METATYPE(QTextCodec *)
 Q_DECLARE_METATYPE(BaseMessage)
-Q_DECLARE_METATYPE(JsonRpcMessage)
 Q_DECLARE_METATYPE(DocumentUri)
 Q_DECLARE_METATYPE(Range)
 
@@ -74,7 +51,7 @@ private:
 
 void tst_LanguageServerProtocol::initTestCase()
 {
-    defaultMimeType = JsonRpcMessageHandler::jsonRpcMimeType();
+    defaultMimeType = JsonRpcMessage::jsonRpcMimeType();
     defaultCodec = QTextCodec::codecForName("utf-8");
 }
 
@@ -360,7 +337,7 @@ void tst_LanguageServerProtocol::baseMessageToData()
     QFETCH(BaseMessage, message);
     QFETCH(QByteArray, data);
 
-    QCOMPARE(message.toData(), data);
+    QCOMPARE(message.header() + message.content, data);
 }
 
 void tst_LanguageServerProtocol::fromJsonValue()
@@ -449,13 +426,13 @@ void tst_LanguageServerProtocol::toJsonObject()
     QFETCH(bool, error);
     QFETCH(QJsonObject, expected);
 
-    QString parseError;
-    const QJsonObject object = JsonRpcMessageHandler::toJsonObject(content, codec, parseError);
+    BaseMessage baseMessage(JsonRpcMessage::jsonRpcMimeType(), content, content.length(), codec);
+    JsonRpcMessage jsonRpcMessage(baseMessage);
 
-    if (!error && !parseError.isEmpty())
-        QFAIL(parseError.toLocal8Bit().data());
-    QCOMPARE(object, expected);
-    QCOMPARE(!parseError.isEmpty(), error);
+    if (!error && !jsonRpcMessage.parseError().isEmpty())
+        QFAIL(jsonRpcMessage.parseError().toLocal8Bit().data());
+    QCOMPARE(jsonRpcMessage.toJsonObject(), expected);
+    QCOMPARE(!jsonRpcMessage.parseError().isEmpty(), error);
 }
 
 void tst_LanguageServerProtocol::jsonMessageToBaseMessage_data()
@@ -464,11 +441,11 @@ void tst_LanguageServerProtocol::jsonMessageToBaseMessage_data()
     QTest::addColumn<BaseMessage>("baseMessage");
 
     QTest::newRow("empty object") << JsonRpcMessage(QJsonObject())
-                                  << BaseMessage(JsonRpcMessageHandler::jsonRpcMimeType(),
+                                  << BaseMessage(JsonRpcMessage::jsonRpcMimeType(),
                                                  "{}");
 
-    QTest::newRow("key value pair") << JsonRpcMessage({{"key", "value"}})
-                                    << BaseMessage(JsonRpcMessageHandler::jsonRpcMimeType(),
+    QTest::newRow("key value pair") << JsonRpcMessage(QJsonObject{{"key", "value"}})
+                                    << BaseMessage(JsonRpcMessage::jsonRpcMimeType(),
                                                    R"({"key":"value"})");
 }
 
@@ -499,7 +476,7 @@ void tst_LanguageServerProtocol::documentUri_data()
 
 
     QTest::newRow("home dir")
-            << DocumentUri::fromFilePath(Utils::FilePath::fromString(QDir::homePath()))
+            << DocumentUri::fromFilePath(Utils::FilePath::fromString(QDir::homePath()), [](auto in){ return in;})
             << true
             << Utils::FilePath::fromUserInput(QDir::homePath())
             << QString(filePrefix + QDir::homePath());
@@ -507,7 +484,7 @@ void tst_LanguageServerProtocol::documentUri_data()
     const QString argv0 = QFileInfo(qApp->arguments().first()).absoluteFilePath();
     const auto argv0FileName = Utils::FilePath::fromUserInput(argv0);
     QTest::newRow("argv0 file name")
-            << DocumentUri::fromFilePath(argv0FileName)
+            << DocumentUri::fromFilePath(argv0FileName, [](auto in){ return in;})
             << true
             << argv0FileName
             << QString(filePrefix + QDir::fromNativeSeparators(argv0));
@@ -537,7 +514,7 @@ void tst_LanguageServerProtocol::documentUri()
     QFETCH(QString, string);
 
     QCOMPARE(uri.isValid(), isValid);
-    QCOMPARE(uri.toFilePath(), fileName);
+    QCOMPARE(uri.toFilePath([](auto in){ return in;}), fileName);
     QCOMPARE(uri.toString(), string);
 }
 
@@ -597,6 +574,6 @@ void tst_LanguageServerProtocol::range()
     QCOMPARE(r2.contains(r1), r2Containsr1);
 }
 
-QTEST_MAIN(tst_LanguageServerProtocol)
+QTEST_GUILESS_MAIN(tst_LanguageServerProtocol)
 
 #include "tst_languageserverprotocol.moc"

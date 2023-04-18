@@ -1,32 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gtestframework.h"
+
+#include "../autotesttr.h"
 #include "gtesttreeitem.h"
 #include "gtestparser.h"
-#include "../testframeworkmanager.h"
+
+#include <QRegularExpression>
 
 namespace Autotest {
 namespace Internal {
@@ -46,16 +27,17 @@ ITestParser *GTestFramework::createTestParser()
 
 ITestTreeItem *GTestFramework::createRootNode()
 {
-    return new GTestTreeItem(
-                this,
-                QCoreApplication::translate("GTestFramework",
-                                            GTest::Constants::FRAMEWORK_SETTINGS_CATEGORY),
-                Utils::FilePath(), ITestTreeItem::Root);
+    return new GTestTreeItem(this, displayName(), {}, ITestTreeItem::Root);
 }
 
 const char *GTestFramework::name() const
 {
     return GTest::Constants::FRAMEWORK_NAME;
+}
+
+QString GTestFramework:: displayName() const
+{
+    return Tr::tr(GTest::Constants::FRAMEWORK_SETTINGS_CATEGORY);
 }
 
 unsigned GTestFramework::priority() const
@@ -70,14 +52,23 @@ QString GTestFramework::currentGTestFilter()
 
 QString GTestFramework::groupingToolTip() const
 {
-    return QCoreApplication::translate("GTestFramework",
-                                       "Enable or disable grouping of test cases by folder or "
-                                       "GTest filter.\nSee also Google Test settings.");
+    return Tr::tr("Enable or disable grouping of test cases by folder or "
+                  "GTest filter.\nSee also Google Test settings.");
 }
 
 GTest::Constants::GroupMode GTestFramework::groupMode()
 {
     return GTest::Constants::GroupMode(g_settings->groupMode.itemValue().toInt());
+}
+
+QStringList GTestFramework::testNameForSymbolName(const QString &symbolName) const
+{
+    static const QRegularExpression r("^(.+::)?((DISABLED_)?.+?)_((DISABLED_)?.+)_Test::TestBody$");
+    const QRegularExpressionMatch match = r.match(symbolName);
+    if (!match.hasMatch())
+        return {};
+
+    return { match.captured(2), match.captured(4) };
 }
 
 } // namespace Internal

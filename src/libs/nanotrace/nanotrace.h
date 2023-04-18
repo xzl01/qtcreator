@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -33,12 +11,10 @@
 #  define NANOTRACESHARED_EXPORT Q_DECL_IMPORT
 #endif
 
-#include <utils/variant.h> // revert when macos minimum target is >= 10.14
-
 #include <chrono>
 #include <string>
+#include <variant>
 #include <vector>
-
 
 #ifdef NANOTRACE_ENABLED
 
@@ -81,7 +57,7 @@ using TimePoint = std::chrono::time_point< Clock >;
 class NANOTRACESHARED_EXPORT Arg
 {
 public:
-    using SupportedType = Utils::variant<int, int64_t, double, std::string>;
+    using SupportedType = std::variant<int, int64_t, double, std::string>;
 
     Arg(const std::string &name, const SupportedType &val);
     std::string name() const;

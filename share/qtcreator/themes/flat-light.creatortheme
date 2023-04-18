@@ -94,6 +94,9 @@ DSstateSeparatorColor=ffadadad
 DSstateBackgroundColor=ffe0e0e0
 DSstatePreviewOutline=ff363636
 
+DSstatePanelBackground=ffdadada
+DSstateHighlight=ff8d8d8d
+
 DSchangedStateText=ff99ccff
 
 DS3DAxisXColor=ffd00000
@@ -375,8 +378,3 @@ FlatMenuBar=false
 ToolBarIconShadow=false
 WindowColorAsBase=false
 DarkUserInterface=false
-
-[Gradients]
-DetailsWidgetHeaderGradient\1\color=00000000
-DetailsWidgetHeaderGradient\1\pos=1
-DetailsWidgetHeaderGradient\size=1

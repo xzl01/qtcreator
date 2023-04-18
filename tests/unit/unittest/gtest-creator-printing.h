@@ -1,45 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <utils/cpplanguage_details.h>
-#include <utils/optional.h>
 #include <utils/smallstringio.h>
-#include <utils/variant.h>
-
-#include <clangsupport_global.h>
 
 #include <QtGlobal>
 
 #include <iosfwd>
+#include <optional>
+#include <variant>
 
 #include <gtest/gtest-printers.h>
-
-class Utf8String;
-void PrintTo(const Utf8String &text, ::std::ostream *os);
 
 namespace Sqlite {
 class Value;
@@ -48,6 +21,8 @@ class SessionChangeSet;
 enum class Operation : char;
 enum class LockingMode : char;
 class TimeStamp;
+template<auto Type, typename InternalIntegerType>
+class BasicId;
 
 std::ostream &operator<<(std::ostream &out, const Value &value);
 std::ostream &operator<<(std::ostream &out, const ValueView &value);
@@ -55,6 +30,12 @@ std::ostream &operator<<(std::ostream &out, Operation operation);
 std::ostream &operator<<(std::ostream &out, const SessionChangeSet &changeset);
 std::ostream &operator<<(std::ostream &out, LockingMode lockingMode);
 std::ostream &operator<<(std::ostream &out, TimeStamp timeStamp);
+
+template<auto Type, typename InternalIntegerType>
+std::ostream &operator<<(std::ostream &out, const BasicId<Type, InternalIntegerType> &id)
+{
+    return out << "id=" << id.internalId();
+}
 
 namespace SessionChangeSetInternal {
 class ConstIterator;
@@ -74,6 +55,18 @@ std::ostream &operator<<(std::ostream &out, const ValueViews &valueViews);
 } // namespace SessionChangeSetInternal
 } // namespace Sqlite
 
+namespace std {
+
+template<typename Type, typename... Types>
+std::ostream &operator<<(std::ostream &out, const variant<Type, Types...> &v)
+{
+    return visit([&](auto &&value) -> std::ostream & { return out << value; }, v);
+}
+
+std::ostream &operator<<(std::ostream &out, const monostate &);
+
+} // namespace std
+
 namespace Utils {
 class LineColumn;
 class SmallStringView;
@@ -86,7 +79,7 @@ std::ostream &operator<<(std::ostream &out, const Utils::LanguageExtension &lang
 std::ostream &operator<<(std::ostream &out, const FilePath &filePath);
 
 template<typename Type>
-std::ostream &operator<<(std::ostream &out, const optional<Type> &optional)
+std::ostream &operator<<(std::ostream &out, const std::optional<Type> &optional)
 {
     if (optional)
         return out << "optional " << optional.value();
@@ -95,15 +88,9 @@ std::ostream &operator<<(std::ostream &out, const optional<Type> &optional)
 }
 
 template<typename Type>
-void PrintTo(const optional<Type> &optional, ::std::ostream *os)
+void PrintTo(const std::optional<Type> &optional, ::std::ostream *os)
 {
     *os << optional;
-}
-
-template<typename... Type>
-std::ostream &operator<<(std::ostream &out, const variant<Type...> &variant)
-{
-    return Utils::visit([&](auto &&value) -> std::ostream & { return out << value; }, variant);
 }
 
 void PrintTo(Utils::SmallStringView text, ::std::ostream *os);
@@ -111,93 +98,6 @@ void PrintTo(const Utils::SmallString &text, ::std::ostream *os);
 void PrintTo(const Utils::PathString &text, ::std::ostream *os);
 
 } // namespace Utils
-
-namespace ClangBackEnd {
-class AliveMessage;
-class CompletionsMessage;
-class EchoMessage;
-class AnnotationsMessage;
-class ReferencesMessage;
-class ToolTipMessage;
-class FollowSymbolResult;
-class FollowSymbolMessage;
-class RequestCompletionsMessage;
-class EndMessage;
-class DocumentsOpenedMessage;
-class DocumentsClosedMessage;
-class CodeCompletion;
-class CodeCompletionChunk;
-class DiagnosticContainer;
-class FileContainer;
-class FixItContainer;
-class FullTokenInfo;
-class HighlightingMarkContainer;
-class UnsavedFilesUpdatedMessage;
-class RequestAnnotationsMessage;
-class RequestFollowSymbolMessage;
-class RequestReferencesMessage;
-class RequestToolTipMessage;
-class SourceLocationContainer;
-class SourceRangeContainer;
-class TokenInfo;
-template<class T>
-class TokenProcessor;
-class DocumentsChangedMessage;
-class DocumentVisibilityChangedMessage;
-class ToolTipInfo;
-class SuspendResumeJobsEntry;
-class ReferencesResult;
-struct ExtraInfo;
-class TokenInfoContainer;
-class UnsavedFilesRemovedMessage;
-
-std::ostream &operator<<(std::ostream &out, const AliveMessage &message);
-std::ostream &operator<<(std::ostream &out, const CompletionsMessage &message);
-std::ostream &operator<<(std::ostream &out, const EchoMessage &message);
-std::ostream &operator<<(std::ostream &out, const AnnotationsMessage &message);
-std::ostream &operator<<(std::ostream &out, const ReferencesMessage &message);
-std::ostream &operator<<(std::ostream &out, const ToolTipMessage &message);
-std::ostream &operator<<(std::ostream &out, const FollowSymbolResult &result);
-std::ostream &operator<<(std::ostream &out, const FollowSymbolMessage &message);
-std::ostream &operator<<(std::ostream &out, const RequestCompletionsMessage &message);
-std::ostream &operator<<(std::ostream &out, const EndMessage &message);
-std::ostream &operator<<(std::ostream &out, const DocumentsOpenedMessage &message);
-std::ostream &operator<<(std::ostream &out, const DocumentsClosedMessage &message);
-std::ostream &operator<<(std::ostream &out, const CodeCompletion &message);
-std::ostream &operator<<(std::ostream &out, const CodeCompletionChunk &chunk);
-std::ostream &operator<<(std::ostream &out, const DiagnosticContainer &container);
-std::ostream &operator<<(std::ostream &out, const FileContainer &container);
-std::ostream &operator<<(std::ostream &out, const FixItContainer &container);
-std::ostream &operator<<(std::ostream &out, HighlightingType highlightingType);
-std::ostream &operator<<(std::ostream &out, HighlightingTypes types);
-std::ostream &operator<<(std::ostream &out, const HighlightingMarkContainer &container);
-std::ostream &operator<<(std::ostream &out, const UnsavedFilesUpdatedMessage &message);
-std::ostream &operator<<(std::ostream &out, const RequestAnnotationsMessage &message);
-std::ostream &operator<<(std::ostream &out, const RequestFollowSymbolMessage &message);
-std::ostream &operator<<(std::ostream &out, const RequestReferencesMessage &message);
-std::ostream &operator<<(std::ostream &out, const RequestToolTipMessage &message);
-std::ostream &operator<<(std::ostream &out, const ToolTipInfo &info);
-std::ostream &operator<<(std::ostream &out, const SourceLocationContainer &container);
-std::ostream &operator<<(std::ostream &out, const SourceRangeContainer &container);
-std::ostream &operator<<(std::ostream &out, const DocumentsChangedMessage &message);
-std::ostream &operator<<(std::ostream &out, const DocumentVisibilityChangedMessage &message);
-std::ostream &operator<<(std::ostream &out, const TokenInfo& tokenInfo);
-template<class T>
-std::ostream &operator<<(std::ostream &out, const TokenProcessor<T> &tokenInfos);
-extern template
-std::ostream &operator<<(std::ostream &out, const TokenProcessor<TokenInfo> &tokenInfos);
-extern template std::ostream &operator<<(std::ostream &out,
-                                         const TokenProcessor<FullTokenInfo> &tokenInfos);
-std::ostream &operator<<(std::ostream &out, SymbolKind symbolKind);
-std::ostream &operator<<(std::ostream &out, SymbolTag symbolTag);
-std::ostream &operator<<(std::ostream &out, SymbolTags symbolTags);
-std::ostream &operator<<(std::ostream &os, const SuspendResumeJobsEntry &entry);
-std::ostream &operator<<(std::ostream &os, const ReferencesResult &value);
-std::ostream &operator<<(std::ostream &os, const ExtraInfo &extraInfo);
-std::ostream &operator<<(std::ostream &os, const TokenInfoContainer &container);
-std::ostream &operator<<(std::ostream &os, const UnsavedFilesRemovedMessage &message);
-
-} // namespace ClangBackEnd
 
 namespace Debugger {
 class DiagnosticLocation;
@@ -216,8 +116,6 @@ std::ostream &operator<<(std::ostream &out, const Diagnostic &diag);
 namespace QmlDesigner {
 class ModelNode;
 class VariantProperty;
-template<auto Type, typename InternalIntergerType>
-class BasicId;
 class WatcherEntry;
 class IdPaths;
 class ProjectChunkId;
@@ -226,13 +124,6 @@ class FileStatus;
 
 std::ostream &operator<<(std::ostream &out, const ModelNode &node);
 std::ostream &operator<<(std::ostream &out, const VariantProperty &property);
-
-template<auto Type, typename InternalIntergerType>
-std::ostream &operator<<(std::ostream &out, const BasicId<Type, InternalIntergerType> &id)
-{
-    return out << "id=" << &id;
-}
-
 std::ostream &operator<<(std::ostream &out, const WatcherEntry &entry);
 std::ostream &operator<<(std::ostream &out, const IdPaths &idPaths);
 std::ostream &operator<<(std::ostream &out, const ProjectChunkId &id);
@@ -245,17 +136,41 @@ class SourceContext;
 std::ostream &operator<<(std::ostream &out, const SourceContext &sourceContext);
 } // namespace Cache
 
+namespace ImageCache {
+class LibraryIconAuxiliaryData;
+class FontCollectorSizeAuxiliaryData;
+class FontCollectorSizesAuxiliaryData;
+
+std::ostream &operator<<(std::ostream &out, const LibraryIconAuxiliaryData &date);
+std::ostream &operator<<(std::ostream &out, const FontCollectorSizeAuxiliaryData &sourceContext);
+std::ostream &operator<<(std::ostream &out, const FontCollectorSizesAuxiliaryData &sourceContext);
+} // namespace ImageCache
+
 namespace Storage {
+enum class PropertyDeclarationTraits : int;
+enum class TypeTraits : int;
+
+std::ostream &operator<<(std::ostream &out, PropertyDeclarationTraits traits);
+std::ostream &operator<<(std::ostream &out, TypeTraits traits);
+
+} // namespace Storage
+
+namespace Storage::Info {
+class ProjectDeclaration;
+class Type;
+
+std::ostream &operator<<(std::ostream &out, const ProjectDeclaration &declaration);
+std::ostream &operator<<(std::ostream &out, const Type &type);
+
+} // namespace Storage::Info
+
+namespace Storage::Synchronization {
 class Type;
 class ExportedType;
-class NativeType;
 class ImportedType;
 class QualifiedImportedType;
-using TypeName = Utils::variant<NativeType, ExportedType>;
 class Version;
 class VersionNumber;
-enum class TypeAccessSemantics : int;
-enum class PropertyDeclarationTraits : unsigned int;
 class PropertyDeclaration;
 class FunctionDeclaration;
 class ParameterDeclaration;
@@ -263,23 +178,22 @@ class SignalDeclaration;
 class EnumerationDeclaration;
 class EnumeratorDeclaration;
 enum class ImportKind : char;
+enum class IsAutoVersion : char;
 class Import;
 enum class IsQualified : int;
 class ProjectData;
 class SynchronizationPackage;
 enum class FileType : char;
 enum class ChangeLevel : char;
+class ModuleExportedImport;
 
-std::ostream &operator<<(std::ostream &out, TypeAccessSemantics accessSemantics);
 std::ostream &operator<<(std::ostream &out, VersionNumber versionNumber);
 std::ostream &operator<<(std::ostream &out, Version version);
 std::ostream &operator<<(std::ostream &out, const Type &type);
 std::ostream &operator<<(std::ostream &out, const ExportedType &exportedType);
-std::ostream &operator<<(std::ostream &out, const NativeType &nativeType);
 std::ostream &operator<<(std::ostream &out, const ImportedType &importedType);
 std::ostream &operator<<(std::ostream &out, const QualifiedImportedType &importedType);
 std::ostream &operator<<(std::ostream &out, const PropertyDeclaration &propertyDeclaration);
-std::ostream &operator<<(std::ostream &out, PropertyDeclarationTraits traits);
 std::ostream &operator<<(std::ostream &out, const FunctionDeclaration &functionDeclaration);
 std::ostream &operator<<(std::ostream &out, const ParameterDeclaration &parameter);
 std::ostream &operator<<(std::ostream &out, const SignalDeclaration &signalDeclaration);
@@ -292,7 +206,8 @@ std::ostream &operator<<(std::ostream &out, const ProjectData &data);
 std::ostream &operator<<(std::ostream &out, const SynchronizationPackage &package);
 std::ostream &operator<<(std::ostream &out, FileType fileType);
 std::ostream &operator<<(std::ostream &out, ChangeLevel changeLevel);
+std::ostream &operator<<(std::ostream &out, const ModuleExportedImport &import);
 
-} // namespace Storage
+} // namespace Storage::Synchronization
 
 } // namespace QmlDesigner

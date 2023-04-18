@@ -18,10 +18,10 @@ x-default-service: &linux
       - SYS_PTRACE
 
 services:
-  focal:
+  focal-qt5: &focal-qt5
     << : *linux
-    hostname: focal
-    image: ${DOCKER_USER:-qbsbuild}/qbsdev:focal-5.15.2_1.20.1-1
+    hostname: focal-qt5
+    image: ${DOCKER_USER:-qbsbuild}/qbsdev:focal-5.15.2_1.20.1-2
     build:
       dockerfile: docker/focal/Dockerfile
       context: .
@@ -32,23 +32,26 @@ services:
   focal-qt6:
     << : *linux
     hostname: focal-qt6
-    image: ${DOCKER_USER:-qbsbuild}/qbsdev:focal-qt6-6.2.0_1.20.1-1
+    image: ${DOCKER_USER:-qbsbuild}/qbsdev:focal-qt6-6.2.4_1.20.1-1
     build:
       dockerfile: docker/focal/Dockerfile
       context: .
       args:
-        QT_VERSION: 6.2.0
+        QT_VERSION: 6.2.4
         QTCREATOR_VERSION: 5.0.3
+
+  focal:
+    << : *focal-qt5
 
   focal-qt6-static:
     << : *linux
     hostname: focal-qt6-static
-    image: ${DOCKER_USER:-qbsbuild}/qbsdev:focal-qt6-static-6.2.0_1.20.1-1
+    image: ${DOCKER_USER:-qbsbuild}/qbsdev:focal-qt6-static-6.3.1_1.20.1-0
     build:
       dockerfile: docker/focal/test-qt6-static.Dockerfile
       context: .
       args:
-        QT_VERSION: 6.2.0
+        QT_VERSION: 6.3.1
         QTCREATOR_VERSION: 5.0.3
 
   focal-android-513:
@@ -158,7 +161,7 @@ services:
   focal-qt4:
     << : *linux
     hostname: focal-qt4
-    image: ${DOCKER_USER:-qbsbuild}/qbsdev:focal-qt4-0
+    image: ${DOCKER_USER:-qbsbuild}/qbsdev:focal-qt4-1
     build:
       dockerfile: docker/focal/test-qt4.Dockerfile
       context: .
@@ -175,13 +178,13 @@ services:
         QTCREATOR_VERSION: 5.0.3
 
   windows:
-    image: ${DOCKER_USER:-qbsbuild}/qbsdev:windowsservercore-5.15.0_1.18.2-0
+    image: ${DOCKER_USER:-qbsbuild}/qbsdev:windowsservercore-6.2.4_1.24.0-0
     build:
       dockerfile: docker/windowsservercore/Dockerfile
       context: .
       args:
-        QT_VERSION: 5.15.0
-        QBS_VERSION: 1.18.2
+        QT_VERSION: 6.2.4
+        QTCREATOR_VERSION: 9.0.1
     working_dir: 'C:/qbs'
     environment:
       - BUILD_OPTIONS

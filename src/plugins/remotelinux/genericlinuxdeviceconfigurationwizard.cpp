@@ -1,39 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "genericlinuxdeviceconfigurationwizard.h"
 
 #include "genericlinuxdeviceconfigurationwizardpages.h"
 #include "linuxdevice.h"
 #include "remotelinux_constants.h"
+#include "remotelinuxtr.h"
+
+#include <projectexplorer/devicesupport/idevice.h>
+#include <projectexplorer/devicesupport/sshparameters.h>
 
 #include <utils/portlist.h>
 #include <utils/fileutils.h>
 
 using namespace ProjectExplorer;
-using namespace QSsh;
 
 namespace RemoteLinux {
 namespace Internal {
@@ -58,7 +39,7 @@ GenericLinuxDeviceConfigurationWizard::GenericLinuxDeviceConfigurationWizard(QWi
     : Utils::Wizard(parent),
       d(new Internal::GenericLinuxDeviceConfigurationWizardPrivate(this))
 {
-    setWindowTitle(tr("New Generic Linux Device Configuration Setup"));
+    setWindowTitle(Tr::tr("New Remote Linux Device Configuration Setup"));
     setPage(Internal::SetupPageId, &d->setupPage);
     setPage(Internal::KeyDeploymentPageId, &d->keyDeploymentPage);
     setPage(Internal::FinalPageId, &d->finalPage);
@@ -68,7 +49,7 @@ GenericLinuxDeviceConfigurationWizard::GenericLinuxDeviceConfigurationWizard(QWi
     d->device->setType(Constants::GenericLinuxOsType);
     d->device->setMachineType(IDevice::Hardware);
     d->device->setFreePorts(Utils::PortList::fromString(QLatin1String("10000-10100")));
-    SshConnectionParameters sshParams;
+    SshParameters sshParams;
     sshParams.timeout = 10;
     d->device->setSshParameters(sshParams);
     d->setupPage.setDevice(d->device);

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -37,9 +15,9 @@
 
     \section1 Credits
 
-    We would like to thank our contributors, who are listed in the \QC
-    \l{https://code.qt.io/cgit/qt-creator/qt-creator.git/tree/dist}{change logs}
-    for each release.
+    We would like to thank our contributors, who are listed in the \QC change
+    logs for each release. To view the change logs, select \uicontrol Help >
+    \uicontrol {Change Log}.
 
     \section1 Qbs
 
@@ -382,46 +360,6 @@
             With backported/additional patches from
             \list
             \li \l{https://code.qt.io/cgit/clang/llvm-project.git}
-            \endlist
-
-        \li \b{Optional}
-
-            A single-header header-only library for representing optional
-            (nullable) objects for C++14 (and C++11 to some extent) and passing
-            them by value.
-
-            Copyright (C) 2011-2012 Andrzej Krzemienski
-
-            Distributed under the \l {http://boost.org/LICENSE_1_0.txt}
-            {Boost Software License, Version 1.0}.
-            (See accompanying file LICENSE_1_0.txt)
-
-            The idea and interface is based on Boost.Optional library
-            authored by Fernando Luis Cacciola Carballal
-
-            The source code of std::experimental::optional can be found
-            here:
-            \list
-            \li \l{https://github.com/akrzemi1/Optional}
-            \li QtCreator/src/libs/3rdparty/optional
-            \li \l{https://code.qt.io/cgit/qt-creator/qt-creator.git/tree/src/libs/3rdparty/optional}
-            \endlist
-
-        \li \b{MPark.Variant}
-
-            MPark.Variant is an implementation of C++17 std::variant for C++11/14/17.
-
-            Copyright Michael Park, 2015-2017
-
-            Distributed under the \l {http://boost.org/LICENSE_1_0.txt}
-            {Boost Software License, Version 1.0}.
-            (See accompanying file LICENSE.md.)
-
-            The source code can be found here:
-            \list
-            \li \l{https://github.com/mpark/variant}
-            \li QtCreator/src/libs/3rdparty/variant
-            \li \l{https://code.qt.io/cgit/qt-creator/qt-creator.git/tree/src/libs/3rdparty/variant}
             \endlist
 
         \li \b{std::span implementation for C++11 and later}
@@ -1049,6 +987,20 @@
         OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
         SOFTWARE.
         \endcode
+
+        \li \b TartanLlama/expected
+
+        Implementation of std::expected compatible with C++11/C++14/C++17.
+
+        The sources can be found in:
+        \list
+            \li \c QtCreator/src/libs/3rdparty/tl_expected
+            \li \l https://github.com/TartanLlama/expected
+        \endlist
+
+        CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
+
+        https://creativecommons.org/publicdomain/zero/1.0/
 
      \endlist
 */

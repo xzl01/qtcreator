@@ -3,7 +3,7 @@ add_subdirectory(frontend)
 add_qtc_plugin(CodePaster
   PLUGIN_DEPENDS Core TextEditor
   DEFINES CPASTER_PLUGIN_GUI
-  DEPENDS Qt5::Network
+  DEPENDS Qt::Network
   INCLUDES ../../shared/cpaster
   SOURCES
     codepasterservice.h
@@ -17,10 +17,8 @@ add_qtc_plugin(CodePaster
     frontend/argumentscollector.cpp frontend/argumentscollector.h
     frontend/main.cpp
     pastebindotcomprotocol.cpp pastebindotcomprotocol.h
-    pastebindotcomsettings.ui
-    pasteselect.ui
     pasteselectdialog.cpp pasteselectdialog.h
-    pasteview.cpp pasteview.h pasteview.ui
+    pasteview.cpp pasteview.h
     protocol.cpp protocol.h
     settings.cpp settings.h
     stickynotespasteprotocol.cpp stickynotespasteprotocol.h

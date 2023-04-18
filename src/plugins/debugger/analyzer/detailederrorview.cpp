@@ -1,41 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "detailederrorview.h"
 
+#include "../debuggertr.h"
 #include "diagnosticlocation.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 
 #include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 #include <utils/utilsicons.h>
 
+#include <QApplication>
 #include <QAbstractTextDocumentLayout>
 #include <QAction>
-#include <QApplication>
-#include <QClipboard>
 #include <QContextMenuEvent>
 #include <QFileInfo>
 #include <QHeaderView>
@@ -50,16 +29,16 @@ DetailedErrorView::DetailedErrorView(QWidget *parent) :
 {
     header()->setSectionResizeMode(QHeaderView::ResizeToContents);
 
-    m_copyAction->setText(tr("Copy"));
+    m_copyAction->setText(Tr::tr("Copy"));
     m_copyAction->setIcon(Utils::Icons::COPY.icon());
     m_copyAction->setShortcut(QKeySequence::Copy);
     m_copyAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
-    connect(m_copyAction, &QAction::triggered, [this] {
+    connect(m_copyAction, &QAction::triggered, this, [this] {
         const QModelIndexList selectedRows = selectionModel()->selectedRows();
         QStringList data;
         for (const QModelIndex &index : selectedRows)
             data << model()->data(index, FullTextRole).toString();
-        QApplication::clipboard()->setText(data.join('\n'));
+        Utils::setClipboardAndSelection(data.join('\n'));
     });
     connect(this, &QAbstractItemView::clicked, [](const QModelIndex &index) {
         if (index.column() == LocationColumn) {
@@ -169,4 +148,4 @@ void DetailedErrorView::setCurrentRow(int row)
     selectIndex(model()->index(row, 0));
 }
 
-} // namespace Debugger
+} // Debugger

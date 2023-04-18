@@ -1,48 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cmaketoolsettingsaccessor.h"
 
+#include "cmakeprojectmanagertr.h"
 #include "cmaketool.h"
-#include "cmaketoolmanager.h"
 
 #include <coreplugin/icore.h>
 
 #include <app/app_version.h>
-#include <utils/environment.h>
 
 #include <utils/algorithm.h>
+#include <utils/environment.h>
 
 #include <QDebug>
-#include <QDir>
-#include <QFileInfo>
 
 using namespace Utils;
 
-namespace CMakeProjectManager {
-namespace Internal {
+namespace CMakeProjectManager::Internal {
 
 // --------------------------------------------------------------------
 // CMakeToolSettingsUpgraders:
@@ -75,9 +50,9 @@ static std::vector<std::unique_ptr<CMakeTool>> autoDetectCMakeTools()
     path = Utils::filteredUnique(path);
 
     if (HostOsInfo::isWindowsHost()) {
-        for (auto envVar : {"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"}) {
-            if (qEnvironmentVariableIsSet(envVar)) {
-                const QString progFiles = qEnvironmentVariable(envVar);
+        for (const auto &envVar : QStringList{"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"}) {
+            if (qtcEnvironmentVariableIsSet(envVar)) {
+                const QString progFiles = qtcEnvironmentVariable(envVar);
                 path.append(FilePath::fromUserInput(progFiles + "/CMake"));
                 path.append(FilePath::fromUserInput(progFiles + "/CMake/bin"));
             }
@@ -86,30 +61,25 @@ static std::vector<std::unique_ptr<CMakeTool>> autoDetectCMakeTools()
 
     if (HostOsInfo::isMacHost()) {
         path.append("/Applications/CMake.app/Contents/bin");
-        path.append("/usr/local/bin");
-        path.append("/opt/local/bin");
+        path.append("/usr/local/bin");    // homebrew intel
+        path.append("/opt/homebrew/bin"); // homebrew arm
+        path.append("/opt/local/bin");    // macports
     }
 
-    const QStringList execs = env.appendExeExtensions(QLatin1String("cmake"));
-
     FilePaths suspects;
-    foreach (const FilePath &base, path) {
+    for (const FilePath &base : std::as_const(path)) {
         if (base.isEmpty())
             continue;
-
-        QFileInfo fi;
-        for (const QString &exec : execs) {
-            fi.setFile(QDir(base.toString()), exec);
-            if (fi.exists() && fi.isFile() && fi.isExecutable())
-                suspects << FilePath::fromString(fi.absoluteFilePath());
-        }
+        const FilePath suspect = base / "cmake";
+        if (std::optional<FilePath> foundExe = suspect.refersToExecutableFile(FilePath::WithAnySuffix))
+            suspects << *foundExe;
     }
 
     std::vector<std::unique_ptr<CMakeTool>> found;
-    foreach (const FilePath &command, suspects) {
+    for (const FilePath &command : std::as_const(suspects)) {
         auto item = std::make_unique<CMakeTool>(CMakeTool::AutoDetection, CMakeTool::createId());
         item->setFilePath(command);
-        item->setDisplayName(CMakeToolManager::tr("System CMake at %1").arg(command.toUserOutput()));
+        item->setDisplayName(Tr::tr("System CMake at %1").arg(command.toUserOutput()));
 
         found.emplace_back(std::move(item));
     }
@@ -170,7 +140,7 @@ mergeTools(std::vector<std::unique_ptr<CMakeTool>> &sdkTools,
 
 CMakeToolSettingsAccessor::CMakeToolSettingsAccessor() :
     UpgradingSettingsAccessor("QtCreatorCMakeTools",
-                              QCoreApplication::translate("CMakeProjectManager::CMakeToolManager", "CMake"),
+                              Tr::tr("CMake"),
                               Core::Constants::IDE_DISPLAY_NAME)
 {
     setBaseFilePath(Core::ICore::userResourcePath(CMAKE_TOOL_FILENAME));
@@ -259,5 +229,4 @@ CMakeToolSettingsAccessor::cmakeTools(const QVariantMap &data, bool fromSdk) con
     return result;
 }
 
-} // namespace Internal
-} // namespace CMakeProjectManager
+} // CMakeProjectManager::Internal

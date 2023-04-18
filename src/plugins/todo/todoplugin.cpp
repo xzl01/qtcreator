@@ -1,36 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Dmitry Savchenko
-** Copyright (C) 2016 Vasiliy Sorokin
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Dmitry Savchenko
+// Copyright (C) 2016 Vasiliy Sorokin
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "todoplugin.h"
-#include "constants.h"
+
 #include "optionsdialog.h"
-#include "keyword.h"
 #include "todooutputpane.h"
 #include "todoitemsprovider.h"
 #include "todoprojectsettingswidget.h"
+#include "todotr.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/editormanager.h>
@@ -39,7 +17,6 @@
 #include <projectexplorer/projectpanelfactory.h>
 #include <utils/link.h>
 
-#include <QFileInfo>
 #include <QSettings>
 
 namespace Todo {
@@ -47,8 +24,6 @@ namespace Internal {
 
 class TodoPluginPrivate : public QObject
 {
-    Q_DECLARE_TR_FUNCTIONS(Todo::Internal::TodoPlugin)
-
 public:
     TodoPluginPrivate();
 
@@ -73,7 +48,7 @@ TodoPluginPrivate::TodoPluginPrivate()
 
     auto panelFactory = new ProjectExplorer::ProjectPanelFactory;
     panelFactory->setPriority(100);
-    panelFactory->setDisplayName(TodoProjectSettingsWidget::tr("To-Do"));
+    panelFactory->setDisplayName(Tr::tr("To-Do"));
     panelFactory->setCreateWidgetFunction([this](ProjectExplorer::Project *project) {
         auto widget = new TodoProjectSettingsWidget(project);
         connect(widget, &TodoProjectSettingsWidget::projectSettingsChanged,
@@ -132,14 +107,9 @@ TodoPlugin::~TodoPlugin()
     delete d;
 }
 
-bool TodoPlugin::initialize(const QStringList& args, QString *errMsg)
+void TodoPlugin::initialize()
 {
-    Q_UNUSED(args)
-    Q_UNUSED(errMsg)
-
     d = new TodoPluginPrivate;
-
-    return true;
 }
 
 } // namespace Internal

@@ -1,30 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gtestconfiguration.h"
-#include "gtestconstants.h"
+
 #include "gtestoutputreader.h"
 #include "gtestsettings.h"
 #include "../autotestplugin.h"
@@ -34,11 +12,13 @@
 #include <utils/algorithm.h>
 #include <utils/stringutils.h>
 
+using namespace Utils;
+
 namespace Autotest {
 namespace Internal {
 
-TestOutputReader *GTestConfiguration::outputReader(const QFutureInterface<TestResultPtr> &fi,
-                                                   QProcess *app) const
+TestOutputReader *GTestConfiguration::createOutputReader(const QFutureInterface<TestResult> &fi,
+                                                         QtcProcess *app) const
 {
     return new GTestOutputReader(fi, app, buildDirectory(), projectFile());
 }
@@ -59,8 +39,8 @@ QStringList filterInterfering(const QStringList &provided, QStringList *omitted)
                                                          "--gtest_print_time="
                                                          };
 
-    QStringList allowed = Utils::filtered(provided, [] (const QString &arg) {
-        return Utils::allOf(knownInterferingOptions, [&arg] (const QString &interfering) {
+    QStringList allowed = Utils::filtered(provided, [](const QString &arg) {
+        return Utils::allOf(knownInterferingOptions, [&arg](const QString &interfering) {
             return !arg.startsWith(interfering);
         });
     });
@@ -82,8 +62,12 @@ QStringList GTestConfiguration::argumentsForTestRunner(QStringList *omitted) con
     }
 
     const QStringList &testSets = testCases();
-    if (!testSets.isEmpty())
-        arguments << "--gtest_filter=" + testSets.join(':');
+    if (!testSets.isEmpty()) {
+        if (isDebugRunMode()) // debugger does its own special quoting
+            arguments << "--gtest_filter=" + testSets.join(':');
+        else
+            arguments << "--gtest_filter=\"" + testSets.join(':') + '"';
+    }
 
     auto gSettings = static_cast<GTestSettings *>(framework()->testSettings());
     if (!gSettings)
@@ -106,13 +90,13 @@ QStringList GTestConfiguration::argumentsForTestRunner(QStringList *omitted) con
     return arguments;
 }
 
-Utils::Environment GTestConfiguration::filteredEnvironment(const Utils::Environment &original) const
+Environment GTestConfiguration::filteredEnvironment(const Environment &original) const
 {
     const QStringList interfering{"GTEST_FILTER", "GTEST_ALSO_RUN_DISABLED_TESTS",
                                   "GTEST_REPEAT", "GTEST_SHUFFLE", "GTEST_RANDOM_SEED",
                                   "GTEST_OUTPUT", "GTEST_BREAK_ON_FAILURE", "GTEST_PRINT_TIME",
                                   "GTEST_CATCH_EXCEPTIONS"};
-    Utils::Environment result = original;
+    Environment result = original;
     if (!result.hasKey("GTEST_COLOR"))
         result.set("GTEST_COLOR", "1");  // use colored output by default
     for (const QString &key : interfering)

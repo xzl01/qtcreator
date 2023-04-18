@@ -1,38 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "selectabletexteditorwidget.h"
 #include "diffeditorwidgetcontroller.h"
+#include "selectabletexteditorwidget.h"
+
+#include <QFutureInterface>
 
 namespace Core { class IContext; }
 
-namespace TextEditor {
-class DisplaySettings;
-class FontSettings;
+namespace TextEditor { class FontSettings; }
+
+namespace Utils {
+template <typename R>
+class AsyncTask;
 }
 
 namespace DiffEditor {
@@ -44,12 +26,49 @@ class ChunkSelection;
 namespace Internal {
 
 class DiffEditorDocument;
+class UnifiedDiffOutput;
+
+class UnifiedDiffData
+{
+public:
+    static UnifiedDiffOutput diffOutput(QFutureInterface<void> &fi, int progressMin, int progressMax,
+                                        const DiffEditorInput &input);
+
+    DiffChunkInfo m_chunkInfo;
+    // block number, visual line number.
+    QMap<int, DiffFileInfoArray> m_fileInfo;
+    // block number, visual line number, chunk row number
+    using LineNumbers = QMap<int, QPair<int, int>>;
+    std::array<LineNumbers, SideCount> m_lineNumbers{};
+    std::array<int, SideCount> m_lineNumberDigits{1, 1};
+
+    int blockNumberForFileIndex(int fileIndex) const;
+    int fileIndexForBlockNumber(int blockNumber) const;
+
+private:
+    void setLineNumber(DiffSide side, int blockNumber, int lineNumber, int rowNumberInChunk);
+    QString setChunk(const DiffEditorInput &input, const ChunkData &chunkData,
+                     bool lastChunk, int *blockNumber, DiffSelections *selections);
+};
+
+class UnifiedDiffOutput
+{
+public:
+    UnifiedDiffData diffData;
+    QString diffText;
+    // 'foldingIndent' is populated with <block number> and folding indentation
+    // value where 1 indicates start of new file and 2 indicates a diff chunk.
+    // Remaining lines (diff contents) are assigned 3.
+    QHash<int, int> foldingIndent;
+    DiffSelections selections;
+};
 
 class UnifiedDiffEditorWidget final : public SelectableTextEditorWidget
 {
     Q_OBJECT
 public:
     UnifiedDiffEditorWidget(QWidget *parent = nullptr);
+    ~UnifiedDiffEditorWidget();
 
     void setDocument(DiffEditorDocument *document);
     DiffEditorDocument *diffDocument() const;
@@ -62,8 +81,7 @@ public:
     using TextEditor::TextEditorWidget::restoreState;
     void restoreState();
 
-    void clear(const QString &message = QString());
-    void setDisplaySettings(const TextEditor::DisplaySettings &ds) override;
+    void clear(const QString &message = {});
 
 signals:
     void currentDiffFileIndexChanged(int index);
@@ -77,44 +95,24 @@ protected:
 
 private:
     void setFontSettings(const TextEditor::FontSettings &fontSettings);
-
     void slotCursorPositionChangedInEditor();
-
-    void setLeftLineNumber(int blockNumber, int lineNumber, int rowNumberInChunk);
-    void setRightLineNumber(int blockNumber, int lineNumber, int rowNumberInChunk);
-    void setFileInfo(int blockNumber,
-                     const DiffFileInfo &leftFileInfo,
-                     const DiffFileInfo &rightFileInfo);
-    void setChunkIndex(int startBlockNumber, int blockCount, int chunkIndex);
     void showDiff();
-    QString showChunk(const ChunkData &chunkData,
-                      bool lastChunk,
-                      int *blockNumber,
-                      int *charNumber,
-                      QMap<int, QList<DiffSelection> > *selections);
-    int blockNumberForFileIndex(int fileIndex) const;
-    int fileIndexForBlockNumber(int blockNumber) const;
-    int chunkIndexForBlockNumber(int blockNumber) const;
     void jumpToOriginalFile(const QTextCursor &cursor);
-    void addContextMenuActions(QMenu *menu,
-                               int fileIndex,
-                               int chunkIndex,
+    void addContextMenuActions(QMenu *menu, int fileIndex, int chunkIndex,
                                const ChunkSelection &selection);
 
-    // block number, visual line number, chunk row number
-    QMap<int, QPair<int, int> > m_leftLineNumbers;
-    QMap<int, QPair<int, int> > m_rightLineNumbers;
-
+    UnifiedDiffData m_data;
     DiffEditorWidgetController m_controller;
-
-    int m_leftLineNumberDigits = 1;
-    int m_rightLineNumberDigits = 1;
-    // block number, visual line number.
-    QMap<int, QPair<DiffFileInfo, DiffFileInfo> > m_fileInfo;
-    // start block number, block count of a chunk, chunk index inside a file.
-    QMap<int, QPair<int, int> > m_chunkInfo;
-
     QByteArray m_state;
+
+    struct ShowResult
+    {
+        QSharedPointer<TextEditor::TextDocument> textDocument;
+        UnifiedDiffData diffData;
+        DiffSelections selections;
+    };
+
+    std::unique_ptr<Utils::AsyncTask<ShowResult>> m_asyncTask;
 };
 
 } // namespace Internal

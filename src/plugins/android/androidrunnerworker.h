@@ -1,36 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 BogDan Vatra <bog_dan_ro@yahoo.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 BogDan Vatra <bog_dan_ro@yahoo.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #pragma once
 
-#include <projectexplorer/runcontrol.h>
-
 #include <qmldebug/qmldebugcommandlinearguments.h>
 
+#include <utils/environment.h>
+#include <utils/port.h>
+
 #include <QFuture>
+
+QT_BEGIN_NAMESPACE
+class QProcess;
+QT_END_NAMESPACE
+
+namespace Utils { class FilePath; }
+namespace ProjectExplorer { class RunWorker; }
 
 namespace Android {
 
@@ -115,7 +101,7 @@ private:
     int m_apiLevel = -1;
     QString m_extraAppParams;
     Utils::Environment m_extraEnvVars;
-    QString m_debugServerPath;
+    Utils::FilePath m_debugServerPath; // On build device, typically as part of ndk
     bool m_useAppParamsForQmlDebugger = false;
 };
 

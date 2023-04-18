@@ -1,36 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cpptoolsreuse.h"
 
+#include "clangdiagnosticconfigsmodel.h"
 #include "cppautocompleter.h"
 #include "cppcodemodelsettings.h"
+#include "cppcompletionassist.h"
 #include "cppeditorconstants.h"
 #include "cppeditorplugin.h"
+#include "cppeditortr.h"
+#include "cppfilesettingspage.h"
 #include "cpphighlighter.h"
 #include "cppqtstyleindenter.h"
+#include "cppquickfixassistant.h"
 #include "cpprefactoringchanges.h"
 #include "projectinfo.h"
 
@@ -47,7 +30,6 @@
 #include <cplusplus/Overview.h>
 #include <cplusplus/SimpleLexer.h>
 #include <utils/algorithm.h>
-#include <utils/porting.h>
 #include <utils/textutils.h>
 #include <utils/qtcassert.h>
 
@@ -58,6 +40,7 @@
 #include <QTextDocument>
 
 using namespace CPlusPlus;
+using namespace Utils;
 
 namespace CppEditor {
 
@@ -176,7 +159,7 @@ bool isOwnershipRAIIType(Symbol *symbol, const LookupContext &context)
 
     // This is not a "real" comparison of types. What we do is to resolve the symbol
     // in question and then try to match its name with already known ones.
-    if (symbol->isDeclaration()) {
+    if (symbol->asDeclaration()) {
         Declaration *declaration = symbol->asDeclaration();
         const NamedType *namedType = declaration->type()->asNamedType();
         if (namedType) {
@@ -269,16 +252,6 @@ bool isQtKeyword(QStringView text)
     return false;
 }
 
-void switchHeaderSource()
-{
-    const Core::IDocument *currentDocument = Core::EditorManager::currentDocument();
-    QTC_ASSERT(currentDocument, return);
-    const auto otherFile = Utils::FilePath::fromString(
-        correspondingHeaderOrSource(currentDocument->filePath().toString()));
-    if (!otherFile.isEmpty())
-        Core::EditorManager::openEditor(otherFile);
-}
-
 QString identifierUnderCursor(QTextCursor *cursor)
 {
     cursor->movePosition(QTextCursor::StartOfWord);
@@ -328,8 +301,8 @@ bool isInCommentOrString(const TextEditor::AssistInterface *interface,
             && tokens.at(1).kind() == T_IDENTIFIER) {
         const QString &line = tc.block().text();
         const Token &idToken = tokens.at(1);
-        QStringView identifier = Utils::midView(line, idToken.utf16charsBegin(),
-                                                idToken.utf16chars());
+        QStringView identifier = QStringView(line).mid(idToken.utf16charsBegin(),
+                                                       idToken.utf16chars());
         if (identifier == QLatin1String("include")
                 || identifier == QLatin1String("include_next")
                 || (features.objCEnabled && identifier == QLatin1String("import"))) {
@@ -337,6 +310,16 @@ bool isInCommentOrString(const TextEditor::AssistInterface *interface,
         }
     }
     return true;
+}
+
+TextEditor::QuickFixOperations quickFixOperations(const TextEditor::AssistInterface *interface)
+{
+    return Internal::quickFixOperations(interface);
+}
+
+CppCompletionAssistProcessor *getCppCompletionAssistProcessor()
+{
+    return new Internal::InternalCppCompletionAssistProcessor();
 }
 
 CppCodeModelSettings *codeModelSettings()
@@ -355,18 +338,15 @@ int indexerFileSizeLimitInMb()
     return -1;
 }
 
-bool fileSizeExceedsLimit(const QFileInfo &fileInfo, int sizeLimitInMb)
+bool fileSizeExceedsLimit(const FilePath &filePath, int sizeLimitInMb)
 {
     if (sizeLimitInMb <= 0)
         return false;
 
-    const qint64 fileSizeInMB = fileInfo.size() / (1000 * 1000);
+    const qint64 fileSizeInMB = filePath.fileSize() / (1000 * 1000);
     if (fileSizeInMB > sizeLimitInMb) {
-        const QString absoluteFilePath = fileInfo.absoluteFilePath();
-        const QString msg = QCoreApplication::translate(
-                    "CppIndexer",
-                    "C++ Indexer: Skipping file \"%1\" because it is too big.")
-                        .arg(absoluteFilePath);
+        const QString msg = Tr::tr("C++ Indexer: Skipping file \"%1\" because it is too big.")
+                        .arg(filePath.displayName());
 
         QMetaObject::invokeMethod(Core::MessageManager::instance(),
                                   [msg]() { Core::MessageManager::writeSilently(msg); });
@@ -392,9 +372,7 @@ static void addBuiltinConfigs(ClangDiagnosticConfigsModel &model)
     // Questionable constructs
     config = ClangDiagnosticConfig();
     config.setId(Constants::CPP_CLANG_DIAG_CONFIG_QUESTIONABLE);
-    config.setDisplayName(QCoreApplication::translate(
-                              "ClangDiagnosticConfigsModel",
-                              "Checks for questionable constructs"));
+    config.setDisplayName(Tr::tr("Checks for questionable constructs"));
     config.setIsReadOnly(true);
     config.setClangOptions({
         "-Wall",
@@ -407,8 +385,7 @@ static void addBuiltinConfigs(ClangDiagnosticConfigsModel &model)
     // Warning flags from build system
     config = ClangDiagnosticConfig();
     config.setId(Constants::CPP_CLANG_DIAG_CONFIG_BUILDSYSTEM);
-    config.setDisplayName(QCoreApplication::translate("ClangDiagnosticConfigsModel",
-                                                      "Build-system warnings"));
+    config.setDisplayName(Tr::tr("Build-system warnings"));
     config.setIsReadOnly(true);
     config.setClazyMode(ClangDiagnosticConfig::ClazyMode::UseCustomChecks);
     config.setClangTidyMode(ClangDiagnosticConfig::TidyMode::UseCustomChecks);
@@ -427,7 +404,7 @@ ClangDiagnosticConfigsModel diagnosticConfigsModel(const ClangDiagnosticConfigs 
 
 ClangDiagnosticConfigsModel diagnosticConfigsModel()
 {
-    return diagnosticConfigsModel(codeModelSettings()->clangCustomDiagnosticConfigs());
+    return diagnosticConfigsModel(ClangdSettings::instance().customDiagnosticConfigs());
 }
 
 NSVisitor::NSVisitor(const CppRefactoringFile *file, const QStringList &namespaces, int symbolPos)
@@ -625,6 +602,18 @@ ProjectExplorer::Project *projectForProjectPart(const ProjectPart &part)
 ProjectExplorer::Project *projectForProjectInfo(const ProjectInfo &info)
 {
     return ProjectExplorer::SessionManager::projectWithProjectFilePath(info.projectFilePath());
+}
+
+void openEditor(const Utils::FilePath &filePath, bool inNextSplit, Utils::Id editorId)
+{
+    using Core::EditorManager;
+    EditorManager::openEditor(filePath, editorId, inNextSplit ? EditorManager::OpenInOtherSplit
+                                                              : EditorManager::NoFlags);
+}
+
+bool preferLowerCaseFileNames()
+{
+    return Internal::CppEditorPlugin::fileSettings()->lowerCaseFiles;
 }
 
 namespace Internal {

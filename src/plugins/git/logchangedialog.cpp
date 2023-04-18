@@ -1,33 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "logchangedialog.h"
-#include "gitclient.h"
 
-#include <vcsbase/vcsoutputwindow.h>
+#include "gitclient.h"
+#include "gittr.h"
+
 #include <vcsbase/vcscommand.h>
+#include <vcsbase/vcsoutputwindow.h>
 
 #include <utils/qtcassert.h>
 
@@ -39,14 +19,14 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QStandardItemModel>
+#include <QTimer>
 #include <QTreeView>
 #include <QVBoxLayout>
 
 using namespace Utils;
 using namespace VcsBase;
 
-namespace Git {
-namespace Internal {
+namespace Git::Internal {
 
 enum Columns
 {
@@ -67,9 +47,8 @@ public:
             const auto it = m_descriptions.constFind(revision);
             if (it != m_descriptions.constEnd())
                 return *it;
-            const QString desc = QString::fromUtf8(
-                        GitClient::instance()->synchronousShow(
-                            m_workingDirectory, revision, VcsCommand::NoOutput));
+            const QString desc = QString::fromUtf8(GitClient::instance()->synchronousShow(
+                                 m_workingDirectory, revision, RunFlags::NoOutput));
             m_descriptions[revision] = desc;
             return desc;
         }
@@ -88,7 +67,7 @@ LogChangeWidget::LogChangeWidget(QWidget *parent)
     , m_hasCustomDelegate(false)
 {
     QStringList headers;
-    headers << tr("Sha1")<< tr("Subject");
+    headers << Tr::tr("Sha1")<< Tr::tr("Subject");
     m_model->setHorizontalHeaderLabels(headers);
     setModel(m_model);
     setMinimumWidth(300);
@@ -97,7 +76,7 @@ LogChangeWidget::LogChangeWidget(QWidget *parent)
     setSelectionBehavior(QAbstractItemView::SelectRows);
     setActivationMode(Utils::DoubleClickActivation);
     connect(this, &LogChangeWidget::activated, this, &LogChangeWidget::emitCommitActivated);
-    setFocus();
+    QTimer::singleShot(0, this, [this] { setFocus(); });
 }
 
 bool LogChangeWidget::init(const FilePath &repository, const QString &commit, LogFlags flags)
@@ -146,7 +125,7 @@ void LogChangeWidget::setItemDelegate(QAbstractItemDelegate *delegate)
 void LogChangeWidget::emitCommitActivated(const QModelIndex &index)
 {
     if (index.isValid()) {
-        QString commit = index.sibling(index.row(), Sha1Column).data().toString();
+        const QString commit = index.sibling(index.row(), Sha1Column).data().toString();
         if (!commit.isEmpty())
             emit commitActivated(commit);
     }
@@ -192,7 +171,7 @@ bool LogChangeWidget::populateLog(const FilePath &repository, const QString &com
     arguments << "--";
     QString output;
     if (!GitClient::instance()->synchronousLog(
-                repository, arguments, &output, nullptr, VcsCommand::NoOutput)) {
+                repository, arguments, &output, nullptr, RunFlags::NoOutput)) {
         return false;
     }
     const QStringList lines = output.split('\n');
@@ -233,27 +212,25 @@ const QStandardItem *LogChangeWidget::currentItem(int column) const
 LogChangeDialog::LogChangeDialog(bool isReset, QWidget *parent) :
     QDialog(parent)
     , m_widget(new LogChangeWidget)
-
-    , m_dialogButtonBox(new QDialogButtonBox(this))
+    , m_dialogButtonBox(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this))
 {
     auto layout = new QVBoxLayout(this);
-    layout->addWidget(new QLabel(isReset ? tr("Reset to:") : tr("Select change:"), this));
+    layout->addWidget(new QLabel(isReset ? Tr::tr("Reset to:") : Tr::tr("Select change:"), this));
     layout->addWidget(m_widget);
     auto popUpLayout = new QHBoxLayout;
     if (isReset) {
-        popUpLayout->addWidget(new QLabel(tr("Reset type:"), this));
-        m_resetTypeComboBox = new QComboBox(this);
-        m_resetTypeComboBox->addItem(tr("Hard"), "--hard");
-        m_resetTypeComboBox->addItem(tr("Mixed"), "--mixed");
-        m_resetTypeComboBox->addItem(tr("Soft"), "--soft");
+        popUpLayout->addWidget(new QLabel(Tr::tr("Reset type:")));
+        m_resetTypeComboBox = new QComboBox;
+        m_resetTypeComboBox->addItem(Tr::tr("Hard"), "--hard");
+        m_resetTypeComboBox->addItem(Tr::tr("Mixed"), "--mixed");
+        m_resetTypeComboBox->addItem(Tr::tr("Soft"), "--soft");
         m_resetTypeComboBox->setCurrentIndex(GitClient::settings().lastResetIndex.value());
         popUpLayout->addWidget(m_resetTypeComboBox);
         popUpLayout->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Ignored));
     }
 
     popUpLayout->addWidget(m_dialogButtonBox);
-    m_dialogButtonBox->addButton(QDialogButtonBox::Cancel);
-    QPushButton *okButton = m_dialogButtonBox->addButton(QDialogButtonBox::Ok);
+    QPushButton *okButton = m_dialogButtonBox->button(QDialogButtonBox::Ok);
     layout->addLayout(popUpLayout);
 
     connect(m_dialogButtonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -329,5 +306,4 @@ void IconItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     QStyledItemDelegate::paint(painter, o, index);
 }
 
-} // namespace Internal
-} // namespace Git
+} // Git::Internal

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page creator-views.html
@@ -44,7 +22,11 @@
     {mode} you are working in. Only views that are relevant to a mode are
     available in it.
 
-    The following views are related to managing projects and files:
+    \note Usually, \l{Searching with the Locator}{searching with the locator}
+    is the fastest way to find a particular project, file, class, or function,
+    or almost anything else in your project.
+
+    Manage projects and files in the following views:
 
     \list
         \li \l Projects shows a list of projects open in the current
@@ -55,7 +37,7 @@
         \li \l{Using Bookmarks}{Bookmarks} shows all bookmarks for the current
             session.
         \li \l{Working with Branches}{Git Branches} shows the local and remote
-            brances for the project in the Git version control system.
+            branches for the project in the Git version control system.
         \li \l{Viewing Defined Types and Symbols}{Outline} shows an overview of
             defined types and other symbols, as well as their properties and
             hierarchy in a source file.
@@ -71,8 +53,8 @@
             tests in the project.
         \li \l{Viewing Type Hierarchy}{Type Hierarchy} shows the base
             classes of a class.
-        \li \l{Viewing Include Hierarchy}{Include Hierarchy} shows which
-            files are included in the current file and which files include
+        \li \l{Viewing Include Hierarchy}{Include Hierarchy} shows the
+            files that the current file includes and those that include
             the current file.
     \endlist
     \else
@@ -80,10 +62,9 @@
     files in the \uicontrol Design mode, see \l{Design Views}.
     \endif
 
-    The additional options in a particular view are described in the following
-    sections.
+    The following sections describe the additional options in a particular view.
 
-    In some views, right-clicking opens a context menu that contains functions
+    In some views, right-clicking opens a context menu that has functions
     for managing the objects listed in the view.
 
     \section1 Viewing Defined Types and Symbols
@@ -121,6 +102,21 @@
     To visit all parts of a namespace, double-click on the namespace item
     multiple times.
 
+    \section1 Viewing Call Hierarchy
+
+    The \uicontrol {Call Hierarchy} view shows information about incoming and
+    outgoing function calls from a \l{Using Language Servers}{language server}.
+    Place the cursor on a function definition in the code editor to see lists
+    of functions that call it and the functions it calls. This works recursively,
+    so you can also see the caller of the caller. However, Clangd only lists
+    incoming calls.
+
+    Select the \inlineimage icons/languageclient.png
+    button on the \l{Managing Language Servers}{editor toolbar}, and then select
+    \uicontrol {Restart} to collect call hierarchy information for the function.
+
+    \image qtcreator-call-hierarchy-view.png {Call Hierarchy view}
+
     \section1 Viewing Type Hierarchy
 
     To view the base classes and derived classes of a class, right-click the
@@ -131,21 +127,21 @@
 
     To navigate in the type hierarchy, double-click a class or select it,
     and then select \uicontrol {Open Type Hierarchy} in the context menu.
-    The previous class is highlighted in the view.
+    The view highlights the previous class.
 
-    The definition of the selected class is opened in the code editor. You
+    The definition of the selected class opens in the code editor. You
     can also select \uicontrol {Open in Editor} in the context menu to open
     it.
 
     \section1 Viewing Include Hierarchy
 
-    To view which files are included in the current file and which files include
+    To view the files that the current file includes and those that include
     the current file, right-click in the editor and select
     \uicontrol {Open Include Hierarchy} or press \key {Ctrl+Shift+I}.
 
     \image qtcreator-include-hierarchy-view.png "Include Hierarchy view"
 
-    To keep the view synchronized with the file currently opened in the editor,
+    To keep the view synchronized with the file currently open in the editor,
     select \inlineimage icons/linkicon.png
     (\uicontrol {Synchronize with Editor}).
 */

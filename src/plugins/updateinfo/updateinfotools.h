@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 the Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 the Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <utils/algorithm.h>
-#include <utils/optional.h>
 
 #include <QDomDocument>
 #include <QList>
@@ -34,22 +11,9 @@
 #include <QRegularExpression>
 #include <QVersionNumber>
 
-#include <memory>
+#include <optional>
 
-Q_DECLARE_LOGGING_CATEGORY(log)
-
-std::unique_ptr<QDomDocument> documentForResponse(const QString &response)
-{
-    // since the output can contain two toplevel items from the two separate MaintenanceTool runs,
-    // clean up any <?xml version="1.0"?> and surround with a toplevel element
-    QString responseWithoutHeader = response;
-    responseWithoutHeader.remove(QRegularExpression("<\\?xml.*\\?>"));
-    const QString xml = response.isEmpty() ? QString()
-                                           : ("<doc>" + responseWithoutHeader + "</doc>");
-    std::unique_ptr<QDomDocument> doc(new QDomDocument);
-    doc->setContent(xml);
-    return doc;
-}
+Q_DECLARE_LOGGING_CATEGORY(updateLog)
 
 struct Update
 {
@@ -62,8 +26,10 @@ struct Update
     };
 };
 
-QList<Update> availableUpdates(const QDomDocument &document)
+QList<Update> availableUpdates(const QString &updateXml)
 {
+    QDomDocument document;
+    document.setContent(updateXml);
     if (document.isNull() || !document.firstChildElement().hasChildNodes())
         return {};
     QList<Update> result;
@@ -93,8 +59,10 @@ struct QtPackage
     }
 };
 
-QList<QtPackage> availableQtPackages(const QDomDocument &document)
+QList<QtPackage> availableQtPackages(const QString &packageXml)
 {
+    QDomDocument document;
+    document.setContent(packageXml);
     if (document.isNull() || !document.firstChildElement().hasChildNodes())
         return {};
     QList<QtPackage> result;
@@ -123,7 +91,7 @@ QList<QtPackage> availableQtPackages(const QDomDocument &document)
 }
 
 // Expects packages to be sorted, high version first.
-Utils::optional<QtPackage> highestInstalledQt(const QList<QtPackage> &packages)
+std::optional<QtPackage> highestInstalledQt(const QList<QtPackage> &packages)
 {
     const auto highestInstalledIt = std::find_if(packages.cbegin(),
                                                  packages.cend(),
@@ -134,7 +102,7 @@ Utils::optional<QtPackage> highestInstalledQt(const QList<QtPackage> &packages)
 }
 
 // Expects packages to be sorted, high version first.
-Utils::optional<QtPackage> qtToNagAbout(const QList<QtPackage> &allPackages,
+std::optional<QtPackage> qtToNagAbout(const QList<QtPackage> &allPackages,
                                         QVersionNumber *highestSeen)
 {
     // Filter out any Qt prereleases
@@ -144,18 +112,18 @@ Utils::optional<QtPackage> qtToNagAbout(const QList<QtPackage> &allPackages,
     if (packages.isEmpty())
         return {};
     const QtPackage highest = packages.constFirst();
-    qCDebug(log) << "Highest available (non-prerelease) Qt:" << highest.version;
-    qCDebug(log) << "Highest previously seen (non-prerelease) Qt:" << *highestSeen;
+    qCDebug(updateLog) << "Highest available (non-prerelease) Qt:" << highest.version;
+    qCDebug(updateLog) << "Highest previously seen (non-prerelease) Qt:" << *highestSeen;
     // if the highestSeen version is null, we don't know if the Qt version is new, and better don't nag
     const bool isNew = !highestSeen->isNull() && highest.version > *highestSeen;
     if (highestSeen->isNull() || isNew)
         *highestSeen = highest.version;
     if (!isNew)
         return {};
-    const Utils::optional<QtPackage> highestInstalled = highestInstalledQt(packages);
-    qCDebug(log) << "Highest installed Qt:"
-                 << qPrintable(highestInstalled ? highestInstalled->version.toString()
-                                                : QString("none"));
+    const std::optional<QtPackage> highestInstalled = highestInstalledQt(packages);
+    qCDebug(updateLog) << "Highest installed Qt:"
+                       << qPrintable(highestInstalled ? highestInstalled->version.toString()
+                                                      : QString("none"));
     if (!highestInstalled) // don't nag if no Qt is installed at all
         return {};
     if (highestInstalled->version == highest.version)

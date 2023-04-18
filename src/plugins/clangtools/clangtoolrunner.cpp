@@ -1,33 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangtoolrunner.h"
 
-#include "clangtoolsconstants.h"
+#include "clangtoolstr.h"
+#include "clangtoolsutils.h"
 
-#include <utils/environment.h>
+#include <coreplugin/icore.h>
+
+#include <cppeditor/clangdiagnosticconfigsmodel.h>
+#include <cppeditor/cpptoolsreuse.h>
+
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 #include <utils/temporaryfile.h>
@@ -39,82 +22,72 @@
 
 static Q_LOGGING_CATEGORY(LOG, "qtc.clangtools.runner", QtWarningMsg)
 
+using namespace CppEditor;
 using namespace Utils;
+using namespace Tasking;
 
 namespace ClangTools {
 namespace Internal {
 
-static QString generalProcessError(const QString &name)
+AnalyzeUnit::AnalyzeUnit(const FileInfo &fileInfo,
+                         const FilePath &clangIncludeDir,
+                         const QString &clangVersion)
 {
-    return ClangToolRunner::tr("An error occurred with the %1 process.").arg(name);
+    const FilePath actualClangIncludeDir = Core::ICore::clangIncludeDirectory(
+        clangVersion, clangIncludeDir);
+    CompilerOptionsBuilder optionsBuilder(*fileInfo.projectPart,
+                                          UseSystemHeader::No,
+                                          UseTweakedHeaderPaths::Tools,
+                                          UseLanguageDefines::No,
+                                          UseBuildSystemWarnings::No,
+                                          actualClangIncludeDir);
+    file = fileInfo.file;
+    arguments = extraClangToolsPrependOptions();
+    arguments.append(optionsBuilder.build(fileInfo.kind, CppEditor::getPchUsage()));
+    arguments.append(extraClangToolsAppendOptions());
 }
 
-static QString finishedDueToCrash(const QString &name)
+static bool isClMode(const QStringList &options)
 {
-    return ClangToolRunner::tr("%1 crashed.").arg(name);
+    return options.contains("--driver-mode=cl");
 }
 
-static QString finishedWithBadExitCode(const QString &name, int exitCode)
+static QStringList checksArguments(ClangToolType tool,
+                                   const ClangDiagnosticConfig &diagnosticConfig)
 {
-    return ClangToolRunner::tr("%1 finished with exit code: %2.").arg(name).arg(exitCode);
-}
-
-ClangToolRunner::ClangToolRunner(QObject *parent)
-    : QObject(parent), m_process(new Utils::QtcProcess)
-{}
-
-ClangToolRunner::~ClangToolRunner()
-{
-    if (m_process->state() != QProcess::NotRunning) {
-        // asking politly to terminate costs ~300 ms on windows so skip the courtasy and direct kill the process
-        if (Utils::HostOsInfo::isWindowsHost()) {
-            m_process->kill();
-            m_process->waitForFinished(100);
-        } else {
-            m_process->stopProcess();
-        }
+    if (tool == ClangToolType::Tidy) {
+        const ClangDiagnosticConfig::TidyMode tidyMode = diagnosticConfig.clangTidyMode();
+        // The argument "-config={}" stops stating/evaluating the .clang-tidy file.
+        if (tidyMode == ClangDiagnosticConfig::TidyMode::UseDefaultChecks)
+            return {"-config={}", "-checks=-clang-diagnostic-*"};
+        if (tidyMode == ClangDiagnosticConfig::TidyMode::UseCustomChecks)
+            return {"-config=" + diagnosticConfig.clangTidyChecksAsJson()};
+        return {"--warnings-as-errors=-*", "-checks=-clang-diagnostic-*"};
     }
-
-    m_process->deleteLater();
+    const QString clazyChecks = diagnosticConfig.checks(ClangToolType::Clazy);
+    if (!clazyChecks.isEmpty())
+        return {"-checks=" + diagnosticConfig.checks(ClangToolType::Clazy)};
+    return {};
 }
 
-void ClangToolRunner::init(const FilePath &outputDirPath, const Environment &environment)
+static QStringList clangArguments(const ClangDiagnosticConfig &diagnosticConfig,
+                                  const QStringList &baseOptions)
 {
-    m_outputDirPath = outputDirPath;
-    QTC_CHECK(!m_outputDirPath.isEmpty());
+    QStringList arguments;
+    arguments << ClangDiagnosticConfigsModel::globalDiagnosticOptions()
+              << (isClMode(baseOptions) ? clangArgsForCl(diagnosticConfig.clangOptions())
+                                        : diagnosticConfig.clangOptions())
+              << baseOptions;
 
-    m_process->setEnvironment(environment);
-    m_process->setWorkingDirectory(m_outputDirPath); // Current clang-cl puts log file into working dir.
-    connect(m_process, &QtcProcess::finished, this, &ClangToolRunner::onProcessFinished);
-    connect(m_process, &QtcProcess::errorOccurred, this, &ClangToolRunner::onProcessError);
+    if (LOG().isDebugEnabled())
+        arguments << QLatin1String("-v");
+
+    return arguments;
 }
 
-QStringList ClangToolRunner::mainToolArguments() const
+static FilePath createOutputFilePath(const FilePath &dirPath, const FilePath &fileToAnalyze)
 {
-    QStringList result;
-    result << "-export-fixes=" + m_outputFilePath;
-    if (!m_overlayFilePath.isEmpty() && supportsVFSOverlay())
-        result << "--vfsoverlay=" + m_overlayFilePath;
-    result << QDir::toNativeSeparators(m_fileToAnalyze);
-    return result;
-}
-
-bool ClangToolRunner::supportsVFSOverlay() const
-{
-    static QMap<FilePath, bool> vfsCapabilities;
-    auto it = vfsCapabilities.find(m_executable);
-    if (it == vfsCapabilities.end()) {
-        QtcProcess p;
-        p.setCommand({m_executable, {"--help"}});
-        p.runBlocking();
-        it = vfsCapabilities.insert(m_executable, p.allOutput().contains("vfsoverlay"));
-    }
-    return it.value();
-}
-
-static QString createOutputFilePath(const FilePath &dirPath, const QString &fileToAnalyze)
-{
-    const QString fileName = QFileInfo(fileToAnalyze).fileName();
+    const QString fileName = fileToAnalyze.fileName();
     const FilePath fileTemplate = dirPath.pathAppended("report-" + fileName + "-XXXXXX");
 
     TemporaryFile temporaryFile("clangtools");
@@ -122,58 +95,103 @@ static QString createOutputFilePath(const FilePath &dirPath, const QString &file
     temporaryFile.setFileTemplate(fileTemplate.path());
     if (temporaryFile.open()) {
         temporaryFile.close();
-        return temporaryFile.fileName();
+        return FilePath::fromString(temporaryFile.fileName());
     }
-    return QString();
+    return {};
 }
 
-bool ClangToolRunner::run(const QString &fileToAnalyze, const QStringList &compilerOptions)
+TaskItem clangToolTask(const AnalyzeInputData &input,
+                       const AnalyzeSetupHandler &setupHandler,
+                       const AnalyzeOutputHandler &outputHandler)
 {
-    QTC_ASSERT(!m_executable.isEmpty(), return false);
-    QTC_CHECK(!compilerOptions.contains(QLatin1String("-o")));
-    QTC_CHECK(!compilerOptions.contains(fileToAnalyze));
+    struct ClangToolStorage {
+        QString name;
+        FilePath executable;
+        FilePath outputFilePath;
+    };
+    const TreeStorage<ClangToolStorage> storage;
 
-    m_fileToAnalyze = fileToAnalyze;
+    const auto mainToolArguments = [=](const ClangToolStorage *data)
+    {
+        QStringList result;
+        result << "-export-fixes=" + data->outputFilePath.nativePath();
+        if (!input.overlayFilePath.isEmpty() && isVFSOverlaySupported(data->executable))
+            result << "--vfsoverlay=" + input.overlayFilePath;
+        result << input.unit.file.nativePath();
+        return result;
+    };
 
-    m_outputFilePath = createOutputFilePath(m_outputDirPath, fileToAnalyze);
-    QTC_ASSERT(!m_outputFilePath.isEmpty(), return false);
-    m_commandLine = {m_executable, m_argsCreator(compilerOptions)};
+    const auto onGroupSetup = [=] {
+        if (setupHandler && !setupHandler())
+            return TaskAction::StopWithError;
 
-    qCDebug(LOG).noquote() << "Starting" << m_commandLine.toUserOutput();
-    m_process->setCommand(m_commandLine);
-    m_process->start();
-    return true;
-}
+        ClangToolStorage *data = storage.activeStorage();
+        data->name = clangToolName(input.tool);
+        data->executable = toolExecutable(input.tool);
+        if (!data->executable.isExecutableFile()) {
+            qWarning() << "Can't start:" << data->executable << "as" << data->name;
+            return TaskAction::StopWithError;
+        }
 
-void ClangToolRunner::onProcessFinished()
-{
-    if (m_process->result() == QtcProcess::FinishedWithSuccess) {
-        qCDebug(LOG).noquote() << "Output:\n" << m_process->stdOut();
-        emit finishedWithSuccess(m_fileToAnalyze);
-    } else if (m_process->result() == QtcProcess::FinishedWithError) {
-        emit finishedWithFailure(finishedWithBadExitCode(m_name, m_process->exitCode()),
-                                 commandlineAndOutput());
-    } else { // == QProcess::CrashExit
-        emit finishedWithFailure(finishedDueToCrash(m_name), commandlineAndOutput());
-    }
-}
+        QTC_CHECK(!input.unit.arguments.contains(QLatin1String("-o")));
+        QTC_CHECK(!input.unit.arguments.contains(input.unit.file.nativePath()));
+        QTC_ASSERT(input.unit.file.exists(), return TaskAction::StopWithError);
+        data->outputFilePath = createOutputFilePath(input.outputDirPath, input.unit.file);
+        QTC_ASSERT(!data->outputFilePath.isEmpty(), return TaskAction::StopWithError);
 
-void ClangToolRunner::onProcessError(QProcess::ProcessError error)
-{
-    if (error == QProcess::Crashed)
-        return; // handled by slot of finished()
+        return TaskAction::Continue;
+    };
+    const auto onProcessSetup = [=](QtcProcess &process) {
+        process.setEnvironment(input.environment);
+        process.setUseCtrlCStub(true);
+        process.setLowPriority();
+        process.setWorkingDirectory(input.outputDirPath); // Current clang-cl puts log file into working dir.
 
-    emit finishedWithFailure(generalProcessError(m_name), commandlineAndOutput());
-}
+        const ClangToolStorage *data = storage.activeStorage();
 
-QString ClangToolRunner::commandlineAndOutput() const
-{
-    return tr("Command line: %1\n"
-              "Process Error: %2\n"
-              "Output:\n%3")
-        .arg(m_commandLine.toUserOutput())
-        .arg(m_process->error())
-        .arg(m_process->stdOut());
+        const QStringList args = checksArguments(input.tool, input.config)
+                                 + mainToolArguments(data)
+                                 + QStringList{"--"}
+                                 + clangArguments(input.config, input.unit.arguments);
+        const CommandLine commandLine = {data->executable, args};
+
+        qCDebug(LOG).noquote() << "Starting" << commandLine.toUserOutput();
+        process.setCommand(commandLine);
+    };
+    const auto onProcessDone = [=](const QtcProcess &process) {
+        qCDebug(LOG).noquote() << "Output:\n" << process.cleanedStdOut();
+        if (!outputHandler)
+            return;
+        const ClangToolStorage *data = storage.activeStorage();
+        outputHandler({true, input.unit.file, data->outputFilePath, input.tool});
+    };
+    const auto onProcessError = [=](const QtcProcess &process) {
+        if (!outputHandler)
+            return;
+        const QString details = Tr::tr("Command line: %1\nProcess Error: %2\nOutput:\n%3")
+                                    .arg(process.commandLine().toUserOutput())
+                                    .arg(process.error())
+                                    .arg(process.cleanedStdOut());
+        const ClangToolStorage *data = storage.activeStorage();
+        QString message;
+        if (process.result() == ProcessResult::StartFailed)
+            message = Tr::tr("An error occurred with the %1 process.").arg(data->name);
+        else if (process.result() == ProcessResult::FinishedWithError)
+            message = Tr::tr("%1 finished with exit code: %2.").arg(data->name).arg(process.exitCode());
+        else
+            message = Tr::tr("%1 crashed.").arg(data->name);
+        outputHandler({false, input.unit.file, data->outputFilePath, input.tool, message, details});
+    };
+
+    const Group group {
+        Storage(storage),
+        OnGroupSetup(onGroupSetup),
+        Group {
+            optional,
+            Process(onProcessSetup, onProcessDone, onProcessError)
+        }
+    };
+    return group;
 }
 
 } // namespace Internal

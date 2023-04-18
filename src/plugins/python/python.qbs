@@ -17,6 +17,14 @@ QtcPlugin {
     Group {
         name: "General"
         files: [
+            "pipsupport.cpp",
+            "pipsupport.h",
+            "pyside.cpp",
+            "pyside.h",
+            "pysidebuildconfiguration.cpp",
+            "pysidebuildconfiguration.h",
+            "pysideuicextracompiler.cpp",
+            "pysideuicextracompiler.h",
             "python.qrc",
             "pythonconstants.h",
             "pythoneditor.cpp",
@@ -38,6 +46,7 @@ QtcPlugin {
             "pythonscanner.h",
             "pythonsettings.cpp",
             "pythonsettings.h",
+            "pythontr.h",
             "pythonutils.cpp",
             "pythonutils.h",
         ]

@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Jochen Seemann
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Jochen Seemann
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "catchoutputreader.h"
 #include "catchresult.h"
 
-#include "../testtreeitem.h"
+#include "../autotesttr.h"
 
 #include <utils/fileutils.h>
 #include <utils/qtcassert.h>
 
-#include <QFileInfo>
+using namespace Utils;
 
 namespace Autotest {
 namespace Internal {
@@ -39,6 +18,10 @@ namespace CatchXml {
     const char GroupElement[]          = "Group";
     const char TestCaseElement[]       = "TestCase";
     const char SectionElement[]        = "Section";
+    const char ExceptionElement[]      = "Exception";
+    const char InfoElement[]           = "Info";
+    const char WarningElement[]        = "Warning";
+    const char FailureElement[]        = "Failure";
     const char ExpressionElement[]     = "Expression";
     const char ExpandedElement[]       = "Expanded";
     const char BenchmarkResults[]      = "BenchmarkResults";
@@ -48,9 +31,10 @@ namespace CatchXml {
     const char TestCaseResultElement[] = "OverallResult";
 }
 
-CatchOutputReader::CatchOutputReader(const QFutureInterface<TestResultPtr> &futureInterface,
-                                     QProcess *testApplication, const Utils::FilePath &buildDirectory,
-                                     const Utils::FilePath &projectFile)
+CatchOutputReader::CatchOutputReader(const QFutureInterface<TestResult> &futureInterface,
+                                     QtcProcess *testApplication,
+                                     const FilePath &buildDirectory,
+                                     const FilePath &projectFile)
     : TestOutputReader (futureInterface, testApplication, buildDirectory)
     , m_projectFile(projectFile)
 {
@@ -112,12 +96,23 @@ void CatchOutputReader::processOutputLine(const QByteArray &outputLineWithNewLin
                 if (attributes.value("failures").toInt() == 0)
                     if (!m_reportedSectionResult)
                       sendResult(ResultType::Pass);
+            } else if (m_currentTagName == CatchXml::ExceptionElement) {
+                recordTestInformation(m_xmlReader.attributes());
+                m_currentExpression = m_currentExpression.prepend(Tr::tr("Exception:"));
+                m_currentResult = ResultType::MessageFatal;
             } else if (m_currentTagName == CatchXml::ExpressionElement) {
                 recordTestInformation(m_xmlReader.attributes());
                 if (m_xmlReader.attributes().value("success").toString() == QStringLiteral("true"))
                     m_currentResult = m_shouldFail ? ResultType::UnexpectedPass : ResultType::Pass;
                 else
                     m_currentResult = m_mayFail || m_shouldFail ? ResultType::ExpectedFail : ResultType::Fail;
+            } else if (m_currentTagName == CatchXml::WarningElement) {
+                m_currentResult = ResultType::MessageWarn;
+            } else if (m_currentTagName == CatchXml::InfoElement) {
+                m_currentResult = ResultType::MessageInfo;
+            } else if (m_currentTagName == CatchXml::FailureElement) {
+                m_currentResult = ResultType::Fail;
+                recordTestInformation(m_xmlReader.attributes());
             } else if (m_currentTagName == CatchXml::BenchmarkResults) {
                 recordBenchmarkInformation(m_xmlReader.attributes());
                 m_currentResult = ResultType::Benchmark;
@@ -137,6 +132,11 @@ void CatchOutputReader::processOutputLine(const QByteArray &outputLineWithNewLin
             const auto text = m_xmlReader.text();
             if (m_currentTagName == CatchXml::ExpandedElement) {
                 m_currentExpression.append(text);
+            } else if (m_currentTagName == CatchXml::ExceptionElement
+                       || m_currentTagName == CatchXml::InfoElement
+                       || m_currentTagName == CatchXml::WarningElement
+                       || m_currentTagName == CatchXml::FailureElement) {
+                m_currentExpression.append('\n').append(text.trimmed());
             }
             break;
         }
@@ -152,10 +152,15 @@ void CatchOutputReader::processOutputLine(const QByteArray &outputLineWithNewLin
             } else if (currentTag == QLatin1String(CatchXml::GroupElement)) {
                 testOutputNodeFinished(GroupNode);
             } else if (currentTag == QLatin1String(CatchXml::ExpressionElement)
+                       || currentTag == QLatin1String(CatchXml::FailureElement)
                        || currentTag == QLatin1String(CatchXml::BenchmarkResults)) {
                 sendResult(m_currentResult);
                 m_currentExpression.clear();
                 m_testCaseInfo.pop();
+            } else if (currentTag == QLatin1String(CatchXml::WarningElement)
+                       || currentTag == QLatin1String(CatchXml::InfoElement)) {
+                sendResult(m_currentResult);
+                m_currentExpression.clear();
             }
             break;
         }
@@ -166,23 +171,17 @@ void CatchOutputReader::processOutputLine(const QByteArray &outputLineWithNewLin
     }
 }
 
-TestResultPtr CatchOutputReader::createDefaultResult() const
+TestResult CatchOutputReader::createDefaultResult() const
 {
-    CatchResult *result = nullptr;
-    if (m_testCaseInfo.size() > 0) {
-        result = new CatchResult(id(), m_testCaseInfo.first().name);
-        result->setDescription(m_testCaseInfo.last().name);
-        result->setLine(m_testCaseInfo.last().line);
-        const QString givenPath = m_testCaseInfo.last().filename;
-        if (!givenPath.isEmpty()) {
-            result->setFileName(constructSourceFilePath(m_buildDir, givenPath));
-        }
-    } else {
-        result = new CatchResult(id(), QString());
-    }
-    result->setSectionDepth(m_sectionDepth);
-
-    return TestResultPtr(result);
+    if (m_testCaseInfo.size() == 0)
+        return CatchResult(id(), {}, m_sectionDepth);
+    CatchResult result = CatchResult(id(), m_testCaseInfo.first().name, m_sectionDepth);
+    result.setDescription(m_testCaseInfo.last().name);
+    result.setLine(m_testCaseInfo.last().line);
+    const QString givenPath = m_testCaseInfo.last().filename;
+    if (!givenPath.isEmpty())
+        result.setFileName(constructSourceFilePath(m_buildDir, givenPath));
+    return result;
 }
 
 void CatchOutputReader::recordTestInformation(const QXmlStreamAttributes &attributes)
@@ -240,35 +239,38 @@ void CatchOutputReader::recordBenchmarkDetails(
 
 void CatchOutputReader::sendResult(const ResultType result)
 {
-    TestResultPtr catchResult = createDefaultResult();
-    catchResult->setResult(result);
+    TestResult catchResult = createDefaultResult();
+    catchResult.setResult(result);
 
     if (result == ResultType::TestStart && m_testCaseInfo.size() > 0) {
-        catchResult->setDescription(tr("Executing %1 \"%2\"").arg(testOutputNodeToString().toLower())
-                                    .arg(catchResult->description()));
+        catchResult.setDescription(Tr::tr("Executing %1 \"%2\"")
+                   .arg(testOutputNodeToString().toLower(), catchResult.description()));
     } else if (result == ResultType::Pass || result == ResultType::UnexpectedPass) {
         if (result == ResultType::UnexpectedPass)
             ++m_xpassCount;
 
         if (m_currentExpression.isEmpty()) {
-            catchResult->setDescription(tr("%1 \"%2\" passed").arg(testOutputNodeToString())
-                                        .arg(catchResult->description()));
+            catchResult.setDescription(Tr::tr("%1 \"%2\" passed")
+                       .arg(testOutputNodeToString(), catchResult.description()));
         } else {
-            catchResult->setDescription(tr("Expression passed")
+            catchResult.setDescription(Tr::tr("Expression passed")
                                         .append('\n').append(m_currentExpression));
         }
         m_reportedSectionResult = true;
         m_reportedResult = true;
     } else if (result == ResultType::Fail || result == ResultType::ExpectedFail) {
-        catchResult->setDescription(tr("Expression failed: %1").arg(m_currentExpression.trimmed()));
+        catchResult.setDescription(Tr::tr("Expression failed: %1")
+                   .arg(m_currentExpression.trimmed()));
         if (!m_reportedSectionResult)
             m_reportedSectionResult = true;
         m_reportedResult = true;
     } else if (result == ResultType::TestEnd) {
-        catchResult->setDescription(tr("Finished executing %1 \"%2\"").arg(testOutputNodeToString().toLower())
-                                    .arg(catchResult->description()));
-    } else if (result == ResultType::Benchmark) {
-        catchResult->setDescription(m_currentExpression);
+        catchResult.setDescription(Tr::tr("Finished executing %1 \"%2\"")
+                   .arg(testOutputNodeToString().toLower(), catchResult.description()));
+    } else if (result == ResultType::Benchmark || result == ResultType::MessageFatal) {
+        catchResult.setDescription(m_currentExpression);
+    } else if (result == ResultType::MessageWarn || result == ResultType::MessageInfo) {
+        catchResult.setDescription(m_currentExpression.trimmed());
     }
 
     reportResult(catchResult);
@@ -315,8 +317,7 @@ QString CatchOutputReader::testOutputNodeToString() const
     case SectionNode:
         return QStringLiteral("Section");
     }
-
-    return QString();
+    return {};
 }
 
 } // namespace Internal

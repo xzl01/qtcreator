@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "genericproject.h"
 
 #include "genericbuildconfiguration.h"
 #include "genericmakestep.h"
 #include "genericprojectconstants.h"
+#include "genericprojectmanagertr.h"
 
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/icontext.h>
@@ -179,7 +158,7 @@ private:
 
     CppEditor::CppProjectUpdaterInterface *m_cppCodeModelUpdater = nullptr;
 
-    Utils::FileSystemWatcher m_deployFileWatcher;
+    FileSystemWatcher m_deployFileWatcher;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -438,7 +417,7 @@ void GenericBuildSystem::parse(RefreshOptions options)
         QStringList normalPaths;
         QStringList frameworkPaths;
         const auto baseDir = Utils::FilePath::fromString(m_includesFileName).parentDir();
-        for (const QString &rawPath : qAsConst(m_rawProjectIncludePaths)) {
+        for (const QString &rawPath : std::as_const(m_rawProjectIncludePaths)) {
             if (rawPath.startsWith("-F"))
                 frameworkPaths << rawPath.mid(2);
             else
@@ -462,7 +441,7 @@ FilePath GenericBuildSystem::findCommonSourceRoot()
         return FilePath::fromFileInfo(QFileInfo(m_filesFileName));
 
     QString root = m_files.front().first.toString();
-    for (const SourceFile &sourceFile : qAsConst(m_files)) {
+    for (const SourceFile &sourceFile : std::as_const(m_files)) {
         const QString item = sourceFile.first.toString();
         if (root.length() > item.length())
             root.truncate(item.length());
@@ -490,7 +469,7 @@ void GenericBuildSystem::refresh(RefreshOptions options)
         FilePath baseDir = findCommonSourceRoot();
 
         std::vector<std::unique_ptr<FileNode>> fileNodes;
-        for (const SourceFile &f : qAsConst(m_files)) {
+        for (const SourceFile &f : std::as_const(m_files)) {
             FileType fileType = FileType::Source; // ### FIXME
             if (f.first.endsWith(".qrc"))
                 fileType = FileType::Resource;
@@ -535,11 +514,8 @@ GenericBuildSystem::SourceFiles GenericBuildSystem::processEntries(
     const Utils::Environment buildEnv = buildConfig ? buildConfig->environment()
                                                     : Utils::Environment::systemEnvironment();
 
-    const Utils::MacroExpander *expander = project()->macroExpander();
-    if (buildConfig)
-        expander = buildConfig->macroExpander();
-    else
-        expander = target()->macroExpander();
+    const Utils::MacroExpander *expander = buildConfig ? buildConfig->macroExpander()
+                                                       : target()->macroExpander();
 
     const QDir projectDir(projectDirectory().toString());
 
@@ -616,19 +592,18 @@ void GenericBuildSystem::updateDeploymentData()
     if (bc)
         deploymentFilePath = bc->buildDirectory().pathAppended(fileName);
 
-    bool hasDeploymentData = QFileInfo::exists(deploymentFilePath.toString());
+    bool hasDeploymentData = deploymentFilePath.exists();
     if (!hasDeploymentData) {
         deploymentFilePath = projectDirectory().pathAppended(fileName);
-        hasDeploymentData = QFileInfo::exists(deploymentFilePath.toString());
+        hasDeploymentData = deploymentFilePath.exists();
     }
     if (hasDeploymentData) {
         DeploymentData deploymentData;
-        deploymentData.addFilesFromDeploymentFile(deploymentFilePath.toString(),
-                                                  projectDirectory().toString());
+        deploymentData.addFilesFromDeploymentFile(deploymentFilePath, projectDirectory());
         setDeploymentData(deploymentData);
-        if (m_deployFileWatcher.files() != QStringList(deploymentFilePath.toString())) {
+        if (m_deployFileWatcher.filePaths() != FilePaths{deploymentFilePath}) {
             m_deployFileWatcher.clear();
-            m_deployFileWatcher.addFile(deploymentFilePath.toString(),
+            m_deployFileWatcher.addFile(deploymentFilePath,
                                         FileSystemWatcher::WatchModifiedDate);
         }
     }
@@ -638,7 +613,7 @@ void GenericBuildSystem::removeFiles(const FilePaths &filesToRemove)
 {
     if (removeFiles(nullptr, filesToRemove, nullptr) == RemovedFilesFromProject::Error) {
         TaskHub::addTask(BuildSystemTask(Task::Error,
-                                         GenericProject::tr("Project files list update failed."),
+                                         Tr::tr("Project files list update failed."),
                                          filesFilePath()));
     }
 }
@@ -685,7 +660,7 @@ void GenericProject::configureAsExampleProject(ProjectExplorer::Kit *kit)
         if (auto factory = BuildConfigurationFactory::find(k, projectFilePath())) {
             for (int i = 0; i < 5; ++i) {
                 BuildInfo buildInfo;
-                buildInfo.displayName = tr("Build %1").arg(i + 1);
+                buildInfo.displayName = Tr::tr("Build %1").arg(i + 1);
                 buildInfo.factory = factory;
                 buildInfo.kitId = kit->id();
                 buildInfo.buildDirectory = projectFilePath();

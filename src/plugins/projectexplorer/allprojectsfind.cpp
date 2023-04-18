@@ -1,38 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "allprojectsfind.h"
 
-#include "project.h"
-#include "session.h"
-#include "projectexplorer.h"
 #include "editorconfiguration.h"
+#include "project.h"
+#include "projectexplorer.h"
+#include "projectexplorertr.h"
+#include "session.h"
+
+#include <coreplugin/editormanager/editormanager.h>
 
 #include <texteditor/texteditor.h>
 #include <texteditor/textdocument.h>
-#include <coreplugin/editormanager/editormanager.h>
+
 #include <utils/filesearch.h>
 #include <utils/algorithm.h>
 
@@ -43,6 +24,7 @@
 using namespace ProjectExplorer;
 using namespace ProjectExplorer::Internal;
 using namespace TextEditor;
+using namespace Utils;
 
 AllProjectsFind::AllProjectsFind() :  m_configWidget(nullptr)
 {
@@ -57,7 +39,7 @@ QString AllProjectsFind::id() const
 
 QString AllProjectsFind::displayName() const
 {
-    return tr("All Projects");
+    return Tr::tr("All Projects");
 }
 
 bool AllProjectsFind::isEnabled() const
@@ -65,37 +47,37 @@ bool AllProjectsFind::isEnabled() const
     return BaseFileFind::isEnabled() && SessionManager::hasProjects();
 }
 
-Utils::FileIterator *AllProjectsFind::files(const QStringList &nameFilters,
-                                            const QStringList &exclusionFilters,
-                                            const QVariant &additionalParameters) const
+FileIterator *AllProjectsFind::files(const QStringList &nameFilters,
+                                     const QStringList &exclusionFilters,
+                                     const QVariant &additionalParameters) const
 {
     Q_UNUSED(additionalParameters)
     return filesForProjects(nameFilters, exclusionFilters, SessionManager::projects());
 }
 
-Utils::FileIterator *AllProjectsFind::filesForProjects(const QStringList &nameFilters,
-                                                       const QStringList &exclusionFilters,
-                                                       const QList<Project *> &projects) const
+FileIterator *AllProjectsFind::filesForProjects(const QStringList &nameFilters,
+                                                const QStringList &exclusionFilters,
+                                                const QList<Project *> &projects) const
 {
-    std::function<QStringList(const QStringList &)> filterFiles =
-            Utils::filterFilesFunction(nameFilters, exclusionFilters);
-    const QMap<QString, QTextCodec *> openEditorEncodings = TextDocument::openedTextDocumentEncodings();
-    QMap<QString, QTextCodec *> encodings;
-    foreach (const Project *project, projects) {
+    std::function<FilePaths(const FilePaths &)> filterFiles
+        = Utils::filterFilesFunction(nameFilters, exclusionFilters);
+    const QMap<FilePath, QTextCodec *> openEditorEncodings
+        = TextDocument::openedTextDocumentEncodings();
+    QMap<FilePath, QTextCodec *> encodings;
+    for (const Project *project : projects) {
         const EditorConfiguration *config = project->editorConfiguration();
         QTextCodec *projectCodec = config->useGlobalSettings()
             ? Core::EditorManager::defaultTextCodec()
             : config->textCodec();
-        const QStringList filteredFiles = filterFiles(
-            Utils::transform(project->files(Project::SourceFiles), &Utils::FilePath::toString));
-        for (const QString &fileName : filteredFiles) {
+        const FilePaths filteredFiles = filterFiles(project->files(Project::SourceFiles));
+        for (const FilePath &fileName : filteredFiles) {
             QTextCodec *codec = openEditorEncodings.value(fileName);
             if (!codec)
                 codec = projectCodec;
             encodings.insert(fileName, codec);
         }
     }
-    return new Utils::FileListIterator(encodings.keys(), encodings.values());
+    return new FileListIterator(encodings.keys(), encodings.values());
 }
 
 QVariant AllProjectsFind::additionalParameters() const
@@ -105,13 +87,13 @@ QVariant AllProjectsFind::additionalParameters() const
 
 QString AllProjectsFind::label() const
 {
-    return tr("All Projects:");
+    return Tr::tr("All Projects:");
 }
 
 QString AllProjectsFind::toolTip() const
 {
     // last arg is filled by BaseFileFind::runNewSearch
-    return tr("Filter: %1\nExcluding: %2\n%3")
+    return Tr::tr("Filter: %1\nExcluding: %2\n%3")
             .arg(fileNameFilters().join(','))
             .arg(fileExclusionFilters().join(','));
 }

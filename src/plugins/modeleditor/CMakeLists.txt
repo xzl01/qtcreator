@@ -1,6 +1,5 @@
 add_qtc_plugin(ModelEditor
-  DEFINES MODELEDITOR_LIBRARY
-  DEPENDS Modeling Qt5::Core Qt5::Gui Qt5::Widgets
+  DEPENDS Modeling Qt::Core Qt::Gui Qt::Widgets
   PLUGIN_DEPENDS Core CppEditor ProjectExplorer
   SOURCES
     actionhandler.cpp actionhandler.h
@@ -17,6 +16,7 @@ add_qtc_plugin(ModelEditor
     modeleditor.cpp modeleditor.h
     modeleditor_constants.h
     modeleditor_global.h
+    modeleditortr.h
     modeleditor_plugin.cpp modeleditor_plugin.h
     modeleditorfactory.cpp modeleditorfactory.h
     modelindexer.cpp modelindexer.h

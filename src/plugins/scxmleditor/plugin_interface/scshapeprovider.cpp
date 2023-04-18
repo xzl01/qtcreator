@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "scshapeprovider.h"
+#include "scxmleditortr.h"
 #include "scxmltag.h"
 
 #include <QDebug>
@@ -54,24 +33,24 @@ void SCShapeProvider::initGroups()
 
 void SCShapeProvider::init()
 {
-    ShapeGroup *group = addGroup(tr("Common States"));
-    group->addShape(createShape(tr("Initial"), QIcon(":/scxmleditor/images/initial.png"), QStringList() << "scxml"
+    ShapeGroup *group = addGroup(Tr::tr("Common States"));
+    group->addShape(createShape(Tr::tr("Initial"), QIcon(":/scxmleditor/images/initial.png"), QStringList() << "scxml"
                                                                                                         << "state"
                                                                                                         << "parallel",
         "<initial/>"));
-    group->addShape(createShape(tr("Final"), QIcon(":/scxmleditor/images/final.png"), QStringList() << "scxml"
+    group->addShape(createShape(Tr::tr("Final"), QIcon(":/scxmleditor/images/final.png"), QStringList() << "scxml"
                                                                                                     << "state"
                                                                                                     << "parallel",
         "<final/>"));
-    group->addShape(createShape(tr("State"), QIcon(":/scxmleditor/images/state.png"), QStringList() << "scxml"
+    group->addShape(createShape(Tr::tr("State"), QIcon(":/scxmleditor/images/state.png"), QStringList() << "scxml"
                                                                                                     << "state"
                                                                                                     << "parallel",
         "<state/>"));
-    group->addShape(createShape(tr("Parallel"), QIcon(":/scxmleditor/images/parallel.png"), QStringList() << "scxml"
+    group->addShape(createShape(Tr::tr("Parallel"), QIcon(":/scxmleditor/images/parallel.png"), QStringList() << "scxml"
                                                                                                           << "state"
                                                                                                           << "parallel",
         "<parallel/>"));
-    group->addShape(createShape(tr("History"), QIcon(":/scxmleditor/images/history.png"), QStringList() << "state"
+    group->addShape(createShape(Tr::tr("History"), QIcon(":/scxmleditor/images/history.png"), QStringList() << "state"
                                                                                                         << "parallel",
         "<history/>"));
 }

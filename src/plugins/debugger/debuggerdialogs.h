@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -38,8 +16,7 @@ class QLineEdit;
 class QDialogButtonBox;
 QT_END_NAMESPACE
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 class AttachToQmlPortDialogPrivate;
 class DebuggerRunParameters;
@@ -49,8 +26,6 @@ class StartRemoteEngineDialogPrivate;
 
 class StartApplicationDialog : public QDialog
 {
-    Q_OBJECT
-
 public:
     explicit StartApplicationDialog(QWidget *parent);
     ~StartApplicationDialog() override;
@@ -72,8 +47,6 @@ private:
 
 class AttachToQmlPortDialog : public QDialog
 {
-    Q_OBJECT
-
 public:
     explicit AttachToQmlPortDialog(QWidget *parent);
     ~AttachToQmlPortDialog() override;
@@ -90,8 +63,6 @@ private:
 
 class StartRemoteCdbDialog : public QDialog
 {
-    Q_OBJECT
-
 public:
     explicit StartRemoteCdbDialog(QWidget *parent);
     ~StartRemoteCdbDialog() override;
@@ -109,8 +80,6 @@ private:
 
 class AddressDialog : public QDialog
 {
-    Q_OBJECT
-
 public:
      explicit AddressDialog(QWidget *parent = nullptr);
 
@@ -132,8 +101,6 @@ private:
 
 class StartRemoteEngineDialog : public QDialog
 {
-    Q_OBJECT
-
 public:
     explicit StartRemoteEngineDialog(QWidget *parent);
     ~StartRemoteEngineDialog() override;
@@ -151,8 +118,6 @@ class TypeFormatsDialogUi;
 
 class TypeFormatsDialog : public QDialog
 {
-    Q_OBJECT
-
 public:
     explicit TypeFormatsDialog(QWidget *parent);
     ~TypeFormatsDialog() override;
@@ -164,5 +129,4 @@ private:
     TypeFormatsDialogUi *m_ui;
 };
 
-} // namespace Debugger
-} // namespace Internal
+} // Debugger::Internal

@@ -1,53 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 AudioCodes Ltd.
-** Author: Orgad Shaneh <orgad.shaneh@audiocodes.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 AudioCodes Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clearcasesettings.h"
 
 #include <utils/environment.h>
-#include <utils/hostosinfo.h>
 
 #include <QSettings>
 
-static const char groupC[] = "ClearCase";
-static const char commandKeyC[] = "Command";
+namespace ClearCase::Internal {
 
-static const char historyCountKeyC[] = "HistoryCount";
-static const char timeOutKeyC[] = "TimeOut";
-static const char autoCheckOutKeyC[] = "AutoCheckOut";
-static const char noCommentKeyC[] = "NoComment";
-static const char keepFileUndoCheckoutKeyC[] = "KeepFileUnDoCheckout";
-static const char diffTypeKeyC[] = "DiffType";
-static const char diffArgsKeyC[] = "DiffArgs";
-static const char autoAssignActivityKeyC[] = "AutoAssignActivityName";
-static const char promptToCheckInKeyC[] = "PromptToCheckIn";
-static const char disableIndexerKeyC[] = "DisableIndexer";
-static const char totalFilesKeyC[] = "TotalFiles";
-static const char indexOnlyVOBsC[] = "IndexOnlyVOBs";
+const char groupC[] = "ClearCase";
+const char commandKeyC[] = "Command";
 
-static const char defaultDiffArgs[] = "-ubp";
+const char historyCountKeyC[] = "HistoryCount";
+const char timeOutKeyC[] = "TimeOut";
+const char autoCheckOutKeyC[] = "AutoCheckOut";
+const char noCommentKeyC[] = "NoComment";
+const char keepFileUndoCheckoutKeyC[] = "KeepFileUnDoCheckout";
+const char diffTypeKeyC[] = "DiffType";
+const char diffArgsKeyC[] = "DiffArgs";
+const char autoAssignActivityKeyC[] = "AutoAssignActivityName";
+const char disableIndexerKeyC[] = "DisableIndexer";
+const char totalFilesKeyC[] = "TotalFiles";
+const char indexOnlyVOBsC[] = "IndexOnlyVOBs";
+
+const char defaultDiffArgs[] = "-ubp";
 
 enum { defaultTimeOutS = 30, defaultHistoryCount = 50 };
 
@@ -55,8 +32,6 @@ static QString defaultCommand()
 {
     return QLatin1String("cleartool" QTC_HOST_EXE_SUFFIX);
 }
-
-using namespace ClearCase::Internal;
 
 ClearCaseSettings::ClearCaseSettings() :
     ccCommand(defaultCommand()),
@@ -69,12 +44,13 @@ void ClearCaseSettings::fromSettings(QSettings *settings)
 {
     settings->beginGroup(QLatin1String(groupC));
     ccCommand = settings->value(QLatin1String(commandKeyC), defaultCommand()).toString();
-    ccBinaryPath = Utils::Environment::systemEnvironment().searchInPath(ccCommand).toString();
+    ccBinaryPath = Utils::Environment::systemEnvironment().searchInPath(ccCommand);
     timeOutS = settings->value(QLatin1String(timeOutKeyC), defaultTimeOutS).toInt();
     autoCheckOut = settings->value(QLatin1String(autoCheckOutKeyC), false).toBool();
     noComment = settings->value(QLatin1String(noCommentKeyC), false).toBool();
     keepFileUndoCheckout = settings->value(QLatin1String(keepFileUndoCheckoutKeyC), true).toBool();
-    QString sDiffType = settings->value(QLatin1String(diffTypeKeyC), QLatin1String("Graphical")).toString();
+    const QString sDiffType = settings->value(QLatin1String(diffTypeKeyC),
+                                              QLatin1String("Graphical")).toString();
     switch (sDiffType[0].toUpper().toLatin1()) {
         case 'G': diffType = GraphicalDiff; break;
         case 'E': diffType = ExternalDiff; break;
@@ -83,12 +59,12 @@ void ClearCaseSettings::fromSettings(QSettings *settings)
     diffArgs = settings->value(QLatin1String(diffArgsKeyC), QLatin1String(defaultDiffArgs)).toString();
     autoAssignActivityName = settings->value(QLatin1String(autoAssignActivityKeyC), true).toBool();
     historyCount = settings->value(QLatin1String(historyCountKeyC), int(defaultHistoryCount)).toInt();
-    promptToCheckIn = settings->value(QLatin1String(promptToCheckInKeyC), false).toBool();
     disableIndexer = settings->value(QLatin1String(disableIndexerKeyC), false).toBool();
     indexOnlyVOBs = settings->value(QLatin1String(indexOnlyVOBsC), QString()).toString();
     extDiffAvailable = !Utils::Environment::systemEnvironment().searchInPath(QLatin1String("diff")).isEmpty();
     settings->beginGroup(QLatin1String(totalFilesKeyC));
-    foreach (const QString &view, settings->childKeys())
+    const QStringList views = settings->childKeys();
+    for (const QString &view : views)
         totalFiles[view] = settings->value(view).toInt();
     settings->endGroup();
     settings->endGroup();
@@ -114,7 +90,6 @@ void ClearCaseSettings::toSettings(QSettings *settings) const
     settings->setValue(QLatin1String(diffTypeKeyC), sDiffType);
     settings->setValue(QLatin1String(autoAssignActivityKeyC), autoAssignActivityName);
     settings->setValue(QLatin1String(historyCountKeyC), historyCount);
-    settings->setValue(QLatin1String(promptToCheckInKeyC), promptToCheckIn);
     settings->setValue(QLatin1String(disableIndexerKeyC), disableIndexer);
     settings->setValue(QLatin1String(indexOnlyVOBsC), indexOnlyVOBs);
     settings->beginGroup(QLatin1String(totalFilesKeyC));
@@ -136,8 +111,9 @@ bool ClearCaseSettings::equals(const ClearCaseSettings &s) const
         && diffType               == s.diffType
         && diffArgs               == s.diffArgs
         && autoAssignActivityName == s.autoAssignActivityName
-        && promptToCheckIn        == s.promptToCheckIn
         && disableIndexer         == s.disableIndexer
         && indexOnlyVOBs          == s.indexOnlyVOBs
         && totalFiles             == s.totalFiles;
 }
+
+} // ClearCase::Internal

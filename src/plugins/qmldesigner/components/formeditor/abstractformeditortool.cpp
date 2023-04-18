@@ -1,35 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "abstractformeditortool.h"
+#include "assetslibrarywidget.h"
+#include "formeditorscene.h"
 #include "formeditorview.h"
 #include "formeditorwidget.h"
-#include "formeditorscene.h"
-#include "assetslibrarywidget.h"
-
-#include <modelnodecontextmenu.h>
+#include "modelnodecontextmenu.h"
+#include "qmldesignerconstants.h"
 
 #include <QDebug>
 #include <QGraphicsSceneDragDropEvent>
@@ -75,7 +53,7 @@ QList<FormEditorItem *> AbstractFormEditorTool::toFormEditorItemList(const QList
 {
     QList<FormEditorItem *> formEditorItemList;
 
-    foreach (QGraphicsItem *graphicsItem, itemList) {
+    for (QGraphicsItem *graphicsItem : itemList) {
         auto formEditorItem = qgraphicsitem_cast<FormEditorItem*>(graphicsItem);
         if (formEditorItem)
             formEditorItemList.append(formEditorItem);
@@ -105,7 +83,7 @@ bool AbstractFormEditorTool::topSelectedItemIsMovable(const QList<QGraphicsItem*
 {
     QList<ModelNode> selectedNodes = view()->selectedModelNodes();
 
-    foreach (QGraphicsItem *item, itemList) {
+    for (QGraphicsItem *item : itemList) {
         FormEditorItem *formEditorItem = FormEditorItem::fromQGraphicsItem(item);
         if (formEditorItem
             && selectedNodes.contains(formEditorItem->qmlItemNode())
@@ -116,7 +94,7 @@ bool AbstractFormEditorTool::topSelectedItemIsMovable(const QList<QGraphicsItem*
             return true;
     }
 
-    foreach (QGraphicsItem *item, itemList) {
+    for (QGraphicsItem *item : itemList) {
         FormEditorItem *formEditorItem = FormEditorItem::fromQGraphicsItem(item);
         if (formEditorItem
             && formEditorItem->qmlItemNode().isValid()
@@ -163,7 +141,7 @@ bool AbstractFormEditorTool::topItemIsResizeHandle(const QList<QGraphicsItem*> &
 
 QGraphicsItem *AbstractFormEditorTool::topMovableGraphicsItem(const QList<QGraphicsItem*> &itemList)
 {
-    foreach (QGraphicsItem *item, itemList) {
+    for (QGraphicsItem *item : itemList) {
         if (item->flags().testFlag(QGraphicsItem::ItemIsMovable))
             return item;
     }
@@ -173,7 +151,7 @@ QGraphicsItem *AbstractFormEditorTool::topMovableGraphicsItem(const QList<QGraph
 
 FormEditorItem *AbstractFormEditorTool::topMovableFormEditorItem(const QList<QGraphicsItem*> &itemList, bool selectOnlyContentItems)
 {
-    foreach (QGraphicsItem *item, itemList) {
+    for (QGraphicsItem *item : itemList) {
         FormEditorItem *formEditorItem = FormEditorItem::fromQGraphicsItem(item);
         if (formEditorItem
                 && formEditorItem->qmlItemNode().isValid()
@@ -221,7 +199,7 @@ QList<FormEditorItem *> AbstractFormEditorTool::filterSelectedModelNodes(const Q
 {
     QList<FormEditorItem *> filteredItemList;
 
-    foreach (FormEditorItem *item, itemList) {
+    for (FormEditorItem *item : itemList) {
         if (view()->isSelectedModelNode(item->qmlItemNode()))
             filteredItemList.append(item);
     }
@@ -236,20 +214,21 @@ void AbstractFormEditorTool::dropEvent(const QList<QGraphicsItem*> &/*itemList*/
 void AbstractFormEditorTool::dragEnterEvent(const QList<QGraphicsItem*> &itemList, QGraphicsSceneDragDropEvent *event)
 {
     bool hasValidAssets = false;
-    if (event->mimeData()->hasFormat("application/vnd.bauhaus.libraryresource")) {
+    if (event->mimeData()->hasFormat(Constants::MIME_TYPE_ASSETS)) {
         const QStringList assetPaths = QString::fromUtf8(event->mimeData()
-                                ->data("application/vnd.bauhaus.libraryresource")).split(",");
+                                ->data(Constants::MIME_TYPE_ASSETS)).split(',');
         for (const QString &assetPath : assetPaths) {
             QString assetType = AssetsLibraryWidget::getAssetTypeAndData(assetPath).first;
-            if (assetType == "application/vnd.bauhaus.libraryresource.image"
-                || assetType == "application/vnd.bauhaus.libraryresource.font") {
+            if (assetType == Constants::MIME_TYPE_ASSET_IMAGE
+             || assetType == Constants::MIME_TYPE_ASSET_FONT
+             || assetType == Constants::MIME_TYPE_ASSET_EFFECT) {
                 hasValidAssets = true;
                 break;
             }
         }
     }
 
-    if (event->mimeData()->hasFormat(QLatin1String("application/vnd.bauhaus.itemlibraryinfo")) || hasValidAssets) {
+    if (event->mimeData()->hasFormat(Constants::MIME_TYPE_ITEM_LIBRARY_INFO) || hasValidAssets) {
         event->accept();
         view()->changeToDragTool();
         view()->currentTool()->dragEnterEvent(itemList, event);
@@ -266,7 +245,7 @@ void AbstractFormEditorTool::mousePressEvent(const QList<QGraphicsItem*> & /*ite
 
 static bool containsItemNode(const QList<QGraphicsItem*> & itemList, const QmlItemNode &itemNode)
 {
-    foreach (QGraphicsItem *item, itemList) {
+    for (QGraphicsItem *item : itemList) {
         FormEditorItem *formEditorItem = FormEditorItem::fromQGraphicsItem(item);
         if (formEditorItem && formEditorItem->qmlItemNode() == itemNode)
             return true;
@@ -340,7 +319,7 @@ Snapper::Snapping AbstractFormEditorTool::generateUseSnapping(Qt::KeyboardModifi
 
 static bool isNotAncestorOfItemInList(FormEditorItem *formEditorItem, const QList<FormEditorItem*> &itemList)
 {
-    foreach (FormEditorItem *item, itemList) {
+    for (FormEditorItem *item : itemList) {
         if (item
             && item->qmlItemNode().isValid()
             && item->qmlItemNode().isAncestorOf(formEditorItem->qmlItemNode()))
@@ -352,7 +331,7 @@ static bool isNotAncestorOfItemInList(FormEditorItem *formEditorItem, const QLis
 
 FormEditorItem *AbstractFormEditorTool::containerFormEditorItem(const QList<QGraphicsItem *> &itemUnderMouseList, const QList<FormEditorItem *> &selectedItemList) const
 {
-    foreach (QGraphicsItem* item, itemUnderMouseList) {
+    for (QGraphicsItem* item : itemUnderMouseList) {
         FormEditorItem *formEditorItem = FormEditorItem::fromQGraphicsItem(item);
         if (formEditorItem
                 && !selectedItemList.contains(formEditorItem)

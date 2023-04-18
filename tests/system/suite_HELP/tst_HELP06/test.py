@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 source("../../shared/qtcreator.py")
 
@@ -33,11 +11,10 @@ def renameBookmarkFolder(view, item, newName):
     return
 
 def invokeContextMenuItemOnBookmarkFolder(view, item, menuItem):
-    aboveWidget = "{name='line' type='QFrame' visible='1' window=':Add Bookmark_BookmarkDialog'}"
     mouseClick(waitForObjectItem(view, item))
     openItemContextMenu(view, item, 5, 5, 0)
-    activateItem(waitForObject("{aboveWidget=%s type='QMenu' unnamed='1' visible='1' "
-                               "window=':Add Bookmark_BookmarkDialog'}" % aboveWidget), menuItem)
+    activateItem(waitForObjectItem("{type='QMenu' unnamed='1' visible='1' "
+                                   "window=':Add Bookmark_BookmarkDialog'}", menuItem))
 
 def textForQtVersion(text):
     suffix = "Qt Creator Manual"
@@ -73,6 +50,8 @@ def main():
     # create root bookmark directory
     clickButton(waitForObject(":Add Bookmark.New Folder_QPushButton"))
     # rename root bookmark directory
+    bookmarkDialog = waitForObject(":Add Bookmark_BookmarkDialog")
+    waitFor("bookmarkDialog.isActiveWindow")
     bookmarkView = waitForObject(":Add Bookmark.treeView_QTreeView")
     renameBookmarkFolder(bookmarkView, "New Folder*", "Sample")
     # create two more subfolders

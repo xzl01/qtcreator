@@ -1,43 +1,29 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Jochen Seemann
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Jochen Seemann
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "catchtreeitem.h"
-#include "catchtestparser.h"
+
 #include "catchconfiguration.h"
-#include "catchframework.h"
+#include "../autotesttr.h"
+#include "../testtreeitem.h"
+#include "../itestparser.h"
+#include "../itestframework.h"
 
 #include <cppeditor/cppmodelmanager.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/session.h>
 #include <utils/qtcassert.h>
 
+using namespace Utils;
+
 namespace Autotest {
 namespace Internal {
 
 QString CatchTreeItem::testCasesString() const
 {
-    return m_state & CatchTreeItem::Parameterized ? QString(name() + " -*") : name();
+    QString testcase = m_state & CatchTreeItem::Parameterized ? QString(name() + " -*") : name();
+    // mask comma if it is part of the test case name
+    return testcase.replace(',', "\\,");
 }
 
 static QString nonRootDisplayName(const CatchTreeItem *it)
@@ -88,7 +74,7 @@ TestTreeItem *CatchTreeItem::find(const TestParseResult *result)
     switch (type()) {
     case Root:
         if (result->framework->grouping()) {
-            const Utils::FilePath path = result->fileName.absolutePath();
+            const FilePath path = result->fileName.absolutePath();
             for (int row = 0; row < childCount(); ++row) {
                 TestTreeItem *group = childItem(row);
                 if (group->filePath() != path)
@@ -139,7 +125,7 @@ bool CatchTreeItem::modify(const TestParseResult *result)
 
 TestTreeItem *CatchTreeItem::createParentGroupNode() const
 {
-    const Utils::FilePath absPath = filePath().absolutePath();
+    const FilePath absPath = filePath().absolutePath();
     return new CatchTreeItem(framework(), absPath.baseName(), absPath, TestTreeItem::GroupNode);
 }
 
@@ -188,7 +174,7 @@ struct CatchTestCases
 };
 
 static void collectTestInfo(const TestTreeItem *item,
-                            QHash<Utils::FilePath, CatchTestCases> &testCasesForProfile,
+                            QHash<FilePath, CatchTestCases> &testCasesForProfile,
                             bool ignoreCheckState)
 {
     QTC_ASSERT(item, return);
@@ -205,7 +191,7 @@ static void collectTestInfo(const TestTreeItem *item,
     QTC_ASSERT(childCount != 0, return);
     QTC_ASSERT(item->type() == TestTreeItem::TestSuite, return);
     if (ignoreCheckState || item->checked() == Qt::Checked) {
-        const Utils::FilePath &projectFile = item->childItem(0)->proFile();
+        const FilePath &projectFile = item->childItem(0)->proFile();
         item->forAllChildItems([&testCasesForProfile, &projectFile](TestTreeItem *it) {
             CatchTreeItem *current = static_cast<CatchTreeItem *>(it);
             testCasesForProfile[projectFile].names.append(current->testCasesString());
@@ -226,7 +212,7 @@ static void collectTestInfo(const TestTreeItem *item,
 }
 
 static void collectFailedTestInfo(const CatchTreeItem *item,
-                                  QHash<Utils::FilePath, CatchTestCases> &testCasesForProfile)
+                                  QHash<FilePath, CatchTestCases> &testCasesForProfile)
 {
     QTC_ASSERT(item, return);
     QTC_ASSERT(item->type() == TestTreeItem::Root, return);
@@ -262,11 +248,11 @@ QList<ITestConfiguration *> CatchTreeItem::getFailedTestConfigurations() const
     if (!project || type() != Root)
         return result;
 
-    QHash<Utils::FilePath, CatchTestCases> testCasesForProFile;
+    QHash<FilePath, CatchTestCases> testCasesForProFile;
     collectFailedTestInfo(this, testCasesForProFile);
 
     for (auto it = testCasesForProFile.begin(), end = testCasesForProFile.end(); it != end; ++it) {
-        for (const QString &target : qAsConst(it.value().internalTargets)) {
+        for (const QString &target : std::as_const(it.value().internalTargets)) {
             CatchConfiguration *tc = new CatchConfiguration(framework());
             tc->setTestCases(it.value().names);
             tc->setProjectFile(it.key());
@@ -279,7 +265,7 @@ QList<ITestConfiguration *> CatchTreeItem::getFailedTestConfigurations() const
     return result;
 }
 
-QList<ITestConfiguration *> CatchTreeItem::getTestConfigurationsForFile(const Utils::FilePath &fileName) const
+QList<ITestConfiguration *> CatchTreeItem::getTestConfigurationsForFile(const FilePath &fileName) const
 {
     QList<ITestConfiguration *> result;
     const auto cppMM = CppEditor::CppModelManager::instance();
@@ -319,9 +305,9 @@ QString CatchTreeItem::stateSuffix() const
 {
     QStringList types;
     if (m_state & CatchTreeItem::Parameterized)
-        types.append(QCoreApplication::translate("CatchTreeItem", "parameterized"));
+        types.append(Tr::tr("parameterized"));
     if (m_state & CatchTreeItem::Fixture)
-        types.append(QCoreApplication::translate("CatchTreeItem", "fixture"));
+        types.append(Tr::tr("fixture"));
     return types.isEmpty() ? QString() : QString(" [" + types.join(", ") + ']');
 }
 
@@ -332,12 +318,12 @@ QList<ITestConfiguration *> CatchTreeItem::getTestConfigurations(bool ignoreChec
     if (!project || type() != Root)
         return result;
 
-    QHash<Utils::FilePath, CatchTestCases> testCasesForProfile;
+    QHash<FilePath, CatchTestCases> testCasesForProfile;
     for (int row = 0, end = childCount(); row < end; ++row)
         collectTestInfo(childItem(row), testCasesForProfile, ignoreCheckState);
 
     for (auto it = testCasesForProfile.begin(), end = testCasesForProfile.end(); it != end; ++it) {
-        for (const QString &target : qAsConst(it.value().internalTargets)) {
+        for (const QString &target : std::as_const(it.value().internalTargets)) {
             CatchConfiguration *tc = new CatchConfiguration(framework());
             tc->setTestCases(it.value().names);
             if (ignoreCheckState)

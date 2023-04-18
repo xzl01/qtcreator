@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -39,6 +17,7 @@ class QmlItemNode;
 class QmlPropertyChanges;
 class MoveManipulator;
 class QmlVisualNode;
+class DesignerSettings;
 
 class QMLDESIGNERCORE_EXPORT QmlObjectNode : public QmlModelNodeFacade
 {
@@ -46,11 +25,14 @@ class QMLDESIGNERCORE_EXPORT QmlObjectNode : public QmlModelNodeFacade
     friend MoveManipulator;
 
 public:
-    QmlObjectNode();
-    QmlObjectNode(const ModelNode &modelNode);
+    QmlObjectNode() = default;
+    QmlObjectNode(const ModelNode &modelNode)
+        : QmlModelNodeFacade(modelNode)
+    {}
 
     static bool isValidQmlObjectNode(const ModelNode &modelNode);
     bool isValid() const override;
+    explicit operator bool() const { return isValid(); }
 
     bool hasError() const;
     QString error() const;
@@ -87,6 +69,7 @@ public:
     QVariant modelValue(const PropertyName &name) const;
     bool isTranslatableText(const PropertyName &name) const;
     QString stripedTranslatableText(const PropertyName &name) const;
+    BindingProperty bindingProperty(const PropertyName &name) const;
     QString expression(const PropertyName &name) const;
     bool isInBaseState() const;
     bool timelineIsActive() const;
@@ -118,7 +101,14 @@ public:
 
     static  QVariant instanceValue(const ModelNode &modelNode, const PropertyName &name);
 
-    static QString generateTranslatableText(const QString& text);
+    static QString generateTranslatableText(const QString &text,
+                                            const DesignerSettings &designerSettings);
+
+    static QString stripedTranslatableTextFunction(const QString &text);
+
+    static QString convertToCorrectTranslatableFunction(const QString &text,
+                                                        const DesignerSettings &designerSettings);
+
     QString simplifiedTypeName() const;
 
     QStringList allStateNames() const;
@@ -130,6 +120,12 @@ public:
     friend auto qHash(const QmlObjectNode &node) { return qHash(node.modelNode()); }
     QList<QmlModelState> allDefinedStates() const;
     QList<QmlModelStateOperation> allInvalidStateOperations() const;
+
+    QmlModelStateGroup states() const;
+
+    QList<ModelNode> allTimelines() const;
+
+    QList<ModelNode> getAllConnections() const;
 
 protected:
     NodeInstance nodeInstance() const;

@@ -1,41 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Hugues Delorme
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Hugues Delorme
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <QDialog>
 
-namespace Bazaar {
-namespace Internal {
+#include <utils/pathchooser.h>
 
-namespace Ui { class PullOrPushDialog; }
+QT_BEGIN_NAMESPACE
+class QCheckBox;
+class QLineEdit;
+class QRadioButton;
+QT_END_NAMESPACE
+
+namespace Bazaar::Internal {
 
 class PullOrPushDialog : public QDialog
 {
-    Q_OBJECT
-
 public:
     enum Mode {
         PullMode,
@@ -58,13 +39,19 @@ public:
     bool isUseExistingDirectoryOptionEnabled() const;
     bool isCreatePrefixOptionEnabled() const;
 
-protected:
-    void changeEvent(QEvent *e) override;
-
 private:
     Mode m_mode;
-    Ui::PullOrPushDialog *m_ui;
+
+    QRadioButton *m_defaultButton;
+    QRadioButton *m_localButton;
+    Utils::PathChooser *m_localPathChooser;
+    QLineEdit *m_urlLineEdit;
+    QCheckBox *m_rememberCheckBox;
+    QCheckBox *m_overwriteCheckBox;
+    QCheckBox *m_useExistingDirCheckBox;
+    QCheckBox *m_createPrefixCheckBox;
+    QLineEdit *m_revisionLineEdit;
+    QCheckBox *m_localCheckBox;
 };
 
-} // namespace Internal
-} // namespace Bazaar
+} // Bazaar::Internal

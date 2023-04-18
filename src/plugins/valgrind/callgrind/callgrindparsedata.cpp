@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "callgrindparsedata.h"
 
 #include "callgrindfunction.h"
 #include "callgrindcycledetection.h"
 #include "callgrindfunctioncycle.h"
+#include "../valgrindtr.h"
 
 #include <utils/qtcassert.h>
 
@@ -39,10 +18,8 @@
 namespace Valgrind {
 namespace Callgrind {
 
-//BEGIN ParseData::Private
-
-class ParseData::Private {
-    Q_DECLARE_TR_FUNCTIONS(Valgrind::Callgrind::ParseData)
+class ParseData::Private
+{
 public:
     Private(ParseData *q, const QString &fileName)
         : m_fileName(fileName)
@@ -92,7 +69,7 @@ ParseData::Private::~Private()
 void ParseData::Private::cleanupFunctionCycles()
 {
     m_cycleCacheValid = false;
-    foreach (const Function *func, m_cycleCache) {
+    for (const Function *func : std::as_const(m_cycleCache)) {
         if (dynamic_cast<const FunctionCycle *>(func))
             delete func;
     }
@@ -177,27 +154,27 @@ QString ParseData::prettyStringForEvent(const QString &event)
 
     QString type;
     if (event.contains('L'))
-        type = ParseData::Private::tr("Last-level"); // first, "L" overwrites the others
+        type = Tr::tr("Last-level"); // first, "L" overwrites the others
     else if (event.at(0) == 'I')
-        type = ParseData::Private::tr("Instruction");
+        type = Tr::tr("Instruction");
     else if (event.at(0) == 'D')
-        type = ParseData::Private::tr("Cache");
+        type = Tr::tr("Cache");
     else if (event.left(2) == "Bc")
-        type = ParseData::Private::tr("Conditional branches");
+        type = Tr::tr("Conditional branches");
     else if (event.left(2) == "Bi")
-        type = ParseData::Private::tr("Indirect branches");
+        type = Tr::tr("Indirect branches");
 
     QStringList prettyString;
     prettyString << type;
 
     if (event.at(1).isNumber())
-        prettyString << ParseData::Private::tr("level %1").arg(event.at(1));
-    prettyString << (isRead ? ParseData::Private::tr("read") : ParseData::Private::tr("write"));
+        prettyString << Tr::tr("level %1").arg(event.at(1));
+    prettyString << (isRead ? Tr::tr("read") : Tr::tr("write"));
 
     if (event.at(0) == 'B')
-        prettyString << (isMiss ? ParseData::Private::tr("mispredicted") : ParseData::Private::tr("executed"));
+        prettyString << (isMiss ? Tr::tr("mispredicted") : Tr::tr("executed"));
     else
-        prettyString << (isMiss ? ParseData::Private::tr("miss") : ParseData::Private::tr("access"));
+        prettyString << (isMiss ? Tr::tr("miss") : Tr::tr("access"));
 
     // add original abbreviation
     prettyString << '(' + event + ')';
@@ -218,10 +195,10 @@ void ParseData::setEvents(const QStringList &events)
 QString ParseData::prettyStringForPosition(const QString &position)
 {
     if (position == "line")
-        return ParseData::Private::tr("Line:"); // as in: "line number"
-    else if (position == "instr")
-        return ParseData::Private::tr("Instruction"); // as in: "instruction address"
-    return ParseData::Private::tr("Position:"); // never reached, in theory
+        return Tr::tr("Line:"); // as in: "line number"
+    if (position == "instr")
+        return Tr::tr("Instruction"); // as in: "instruction address"
+    return Tr::tr("Position:"); // never reached, in theory
 }
 
 QStringList ParseData::positions() const

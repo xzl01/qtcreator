@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -30,7 +8,7 @@
 // **********************************************************************
 
 /*!
-    \previouspage creator-autotest.html
+    \previouspage creator-squish.html
     \page creator-advanced.html
     \nextpage creator-os-supported-platforms.html
 
@@ -71,7 +49,7 @@
 
         \li \l{Keyboard Shortcuts}
 
-            \QC provides various keyboard shortcuts to speed up your development
+            \QC has keyboard shortcuts that speed up your development
             process. You can change the keyboard shortcuts, as well as import
             and export keyboard shortcut mapping schemes.
 
@@ -88,12 +66,11 @@
 
     \list
 
-        \li \l{Showing Task List Files in Issues Pane}
+        \li \l{Showing Task List Files in Issues}
 
             You can load report files created by code scanning and analysis
-            tools to the \uicontrol Issues output pane. You can navigate to the
-            corresponding source code by clicking the error message or by using
-            keyboard shortcuts.
+            tools to \l Issues. You can navigate to the corresponding source
+            code by clicking the error message or by using keyboard shortcuts.
 
         \li \l{Inspecting Internal Logs}
 

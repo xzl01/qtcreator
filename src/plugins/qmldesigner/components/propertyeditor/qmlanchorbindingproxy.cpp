@@ -1,57 +1,46 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlanchorbindingproxy.h"
 
-#include <exception.h>
 #include <abstractview.h>
-#include <qmlanchors.h>
+#include <exception.h>
 #include <nodeabstractproperty.h>
-#include <variantproperty.h>
 #include <utils/qtcassert.h>
+#include <utils/smallstring.h>
+#include <variantproperty.h>
+#include <qmlanchors.h>
 
-
-#include <QtQml>
 #include <QDebug>
+#include <QtQml>
 
 namespace QmlDesigner {
 
 class ModelNode;
 class NodeState;
 
-const PropertyName auxDataString("anchors_");
+namespace {
+const Utils::SmallString auxDataString("anchors_");
+
+Utils::SmallString auxPropertyString(Utils::SmallStringView name)
+{
+    return auxDataString + name;
+}
+} // namespace
 
 static inline void backupPropertyAndRemove(const ModelNode &node, const PropertyName &propertyName)
 {
     if (node.hasVariantProperty(propertyName)) {
-        node.setAuxiliaryData(auxDataString + propertyName, node.variantProperty(propertyName).value());
+        node.setAuxiliaryData(AuxiliaryDataType::Document,
+                              auxPropertyString(propertyName),
+                              node.variantProperty(propertyName).value());
         node.removeProperty(propertyName);
 
     }
     if (node.hasBindingProperty(propertyName)) {
-        node.setAuxiliaryData(auxDataString + propertyName, QmlItemNode(node).instanceValue(propertyName));
+        node.setAuxiliaryData(AuxiliaryDataType::Document,
+                              auxPropertyString(propertyName),
+                              QmlItemNode(node).instanceValue(propertyName));
         node.removeProperty(propertyName);
     }
 }
@@ -59,8 +48,8 @@ static inline void backupPropertyAndRemove(const ModelNode &node, const Property
 
 static inline void restoreProperty(const ModelNode &node, const PropertyName &propertyName)
 {
-    if (node.hasAuxiliaryData(auxDataString + propertyName))
-        node.variantProperty(propertyName).setValue(node.auxiliaryData(auxDataString + propertyName));
+    if (auto value = node.auxiliaryData(AuxiliaryDataType::Document, auxPropertyString(propertyName)))
+        node.variantProperty(propertyName).setValue(*value);
 }
 
 namespace Internal {
@@ -592,11 +581,11 @@ QStringList QmlAnchorBindingProxy::possibleTargetItems() const
     itemList.removeOne(m_qmlItemNode);
     //We currently have no instanceChildren().
     //So we double check here if the instanceParents are equal.
-    foreach (const QmlItemNode &node, itemList)
+    for (const QmlItemNode &node : std::as_const(itemList))
         if (node.isValid() && (node.instanceParent().modelNode() != m_qmlItemNode.instanceParent().modelNode()))
             itemList.removeAll(node);
 
-    foreach (const QmlItemNode &itemNode, itemList) {
+    for (const QmlItemNode &itemNode : std::as_const(itemList)) {
         if (itemNode.isValid() && !itemNode.id().isEmpty())
             stringList.append(itemNode.id());
     }

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "functionutils.h"
 
@@ -128,13 +106,13 @@ static bool isVirtualFunction_helper(const Function *function,
     if (!firstVirtuals && res != Unknown)
         return res == True;
 
-    QList<LookupItem> results = context.lookup(function->name(), function->enclosingScope());
+    const QList<LookupItem> results = context.lookup(function->name(), function->enclosingScope());
     if (!results.isEmpty()) {
-        const bool isDestructor = function->name()->isDestructorNameId();
-        foreach (const LookupItem &item, results) {
+        const bool isDestructor = function->name()->asDestructorNameId();
+        for (const LookupItem &item : results) {
             if (Symbol *symbol = item.declaration()) {
                 if (Function *functionType = symbol->type()->asFunctionType()) {
-                    if (functionType->name()->isDestructorNameId() != isDestructor)
+                    if ((functionType->name()->asDestructorNameId() != nullptr) != isDestructor)
                         continue;
                     if (functionType == function) // already tested
                         continue;
@@ -197,7 +175,7 @@ QList<Function *> FunctionUtils::overrides(Function *function, Class *functionsC
         Class *c = hierarchy.symbol()->asClass();
         QTC_ASSERT(c, continue);
 
-        foreach (const TypeHierarchy &t, hierarchy.hierarchy()) {
+        for (const TypeHierarchy &t : hierarchy.hierarchy()) {
             if (!l.contains(t))
                 l << t;
         }
@@ -242,7 +220,7 @@ void FunctionUtilsTest::testVirtualFunctions()
     QFETCH(QByteArray, source);
     QFETCH(VirtualityList, virtualityList);
     QFETCH(QList<int>, firstVirtualList);
-    Document::Ptr document = Document::create(QLatin1String("virtuals"));
+    Document::Ptr document = Document::create(Utils::FilePath::fromPathPart(u"virtuals"));
     document->setUtf8Source(source);
     document->check(); // calls parse();
     QCOMPARE(document->diagnosticMessages().size(), 0);

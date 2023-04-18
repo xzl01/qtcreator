@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import inspect
 import os
@@ -140,6 +118,7 @@ class Dumper(DumperBase):
         val.isBaseClass = val.name == val._type.name
         val.nativeValue = nativeValue
         val.laddress = nativeValue.address()
+        val.lbitsize = nativeValue.bitsize()
         return val
 
     def nativeTypeId(self, nativeType):
@@ -184,13 +163,11 @@ class Dumper(DumperBase):
                     return self.createArrayType(targetType, nativeType.arrayElements())
             code = TypeCode.Struct
 
-        tdata = self.TypeData(self)
+        tdata = self.TypeData(self, typeId)
         tdata.name = nativeType.name()
-        tdata.typeId = typeId
         tdata.lbitsize = nativeType.bitsize()
         tdata.code = code
         tdata.moduleName = nativeType.module()
-        self.registerType(typeId, tdata)  # Prevent recursion in fields.
         if code == TypeCode.Struct:
             tdata.lfields = lambda value: \
                 self.listFields(nativeType, value)
@@ -199,14 +176,16 @@ class Dumper(DumperBase):
         if code == TypeCode.Enum:
             tdata.enumDisplay = lambda intval, addr, form: \
                 self.nativeTypeEnumDisplay(nativeType, intval, form)
-        tdata.templateArguments = self.listTemplateParameters(nativeType.name())
-        self.registerType(typeId, tdata)  # Fix up fields and template args
+        tdata.templateArguments = lambda: \
+            self.listTemplateParameters(nativeType.name())
         return self.Type(self, typeId)
 
     def listFields(self, nativeType, value):
         if value.address() is None or value.address() == 0:
             raise Exception("")
-        nativeValue = cdbext.createValue(value.address(), nativeType)
+        nativeValue = value.nativeValue
+        if nativeValue is None:
+            nativeValue = cdbext.createValue(value.address(), nativeType)
         index = 0
         nativeMember = nativeValue.childFromIndex(index)
         while nativeMember is not None:
@@ -320,16 +299,16 @@ class Dumper(DumperBase):
         coreModuleName = self.qtCoreModuleName()
         if coreModuleName is not None:
             qstrdupSymbolName = '%s!%s' % (coreModuleName, qstrdupSymbolName)
-        resolved = cdbext.resolveSymbol(qstrdupSymbolName)
-        if resolved:
-            name = resolved[0].split('!')[1]
-            namespaceIndex = name.find('::')
-            if namespaceIndex > 0:
-                namespace = name[:namespaceIndex + 2]
+            resolved = cdbext.resolveSymbol(qstrdupSymbolName)
+            if resolved:
+                name = resolved[0].split('!')[1]
+                namespaceIndex = name.find('::')
+                if namespaceIndex > 0:
+                    namespace = name[:namespaceIndex + 2]
+            self.qtCustomEventFunc = self.parseAndEvaluate(
+                '%s!%sQObject::customEvent' %
+                (self.qtCoreModuleName(), namespace)).address()
         self.qtNamespace = lambda: namespace
-        self.qtCustomEventFunc = self.parseAndEvaluate(
-            '%s!%sQObject::customEvent' %
-            (self.qtCoreModuleName(), namespace)).address()
         return namespace
 
     def qtVersion(self):
@@ -377,9 +356,6 @@ class Dumper(DumperBase):
         self.ptrSize = lambda: size
         return size
 
-    def put(self, stuff):
-        self.output += stuff
-
     def stripQintTypedefs(self, typeName):
         if typeName.startswith('qint'):
             prefix = ''
@@ -409,8 +385,8 @@ class Dumper(DumperBase):
             if nativeType is None:
                 return None
             _type = self.fromNativeType(nativeType)
-            if _type.name != typeName:
-                self.registerType(typeName, _type.typeData())
+            if _type.typeId != typeName:
+                self.registerTypeAlias(_type.typeId, typeName)
             return _type
         return self.Type(self, typeName)
 
@@ -447,7 +423,7 @@ class Dumper(DumperBase):
 
         self.setVariableFetchingOptions(args)
 
-        self.output = ''
+        self.output = []
 
         self.currentIName = 'local'
         self.put('data=[')
@@ -469,10 +445,11 @@ class Dumper(DumperBase):
             self.qtNamespaceToReport = self.qtNamespace()
 
         if self.qtNamespaceToReport:
-            self.output += ',qtnamespace="%s"' % self.qtNamespaceToReport
+            self.put(',qtnamespace="%s"' % self.qtNamespaceToReport)
             self.qtNamespaceToReport = None
 
-        self.reportResult(self.output, args)
+        self.reportResult(''.join(self.output), args)
+        self.output = []
 
     def report(self, stuff):
         sys.stdout.write(stuff + "\n")
@@ -503,6 +480,10 @@ class Dumper(DumperBase):
             return None
 
         nativeValue = value.nativeValue
+        if nativeValue is None:
+            if not self.isExpanded():
+                raise Exception("Casting not expanded values is to expensive")
+            nativeValue = self.nativeParseAndEvaluate('(%s)0x%x' % (value.type.name, value.pointer()))
         castVal = nativeVtCastValue(nativeValue)
         if castVal is not None:
             val = self.fromNativeValue(castVal)
@@ -510,6 +491,7 @@ class Dumper(DumperBase):
             val = self.Value(self)
             val.laddress = value.pointer()
             val._type = value.type.dereference()
+            val.nativeValue = value.nativeValue
 
         return val
 
@@ -517,7 +499,7 @@ class Dumper(DumperBase):
         raise Exception("cdb does not support calling functions")
 
     def nameForCoreId(self, id):
-        for dll in ['Utilsd4', 'Utils4']:
+        for dll in ['Utilsd', 'Utils']:
             idName = cdbext.call('%s!Utils::nameForId(%d)' % (dll, id))
             if idName is not None:
                 break

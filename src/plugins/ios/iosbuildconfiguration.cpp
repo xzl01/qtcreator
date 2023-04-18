@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "iosbuildconfiguration.h"
 
 #include "iosconfigurations.h"
 #include "iosconstants.h"
+#include "iostr.h"
 
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/namedwidget.h>
@@ -104,7 +83,7 @@ private:
 IosSigningSettingsWidget::IosSigningSettingsWidget(BuildConfiguration *buildConfiguration,
                                                    BoolAspect *autoManagedSigning,
                                                    StringAspect *signingIdentifier)
-    : NamedWidget(IosQmakeBuildConfiguration::tr("iOS Settings"))
+    : NamedWidget(Tr::tr("iOS Settings"))
     , m_autoManagedSigning(autoManagedSigning)
     , m_signingIdentifier(signingIdentifier)
     , m_isDevice(DeviceTypeKitAspect::deviceTypeId(buildConfiguration->kit())
@@ -118,7 +97,7 @@ IosSigningSettingsWidget::IosSigningSettingsWidget(BuildConfiguration *buildConf
     sizePolicy.setHorizontalStretch(0);
     sizePolicy.setVerticalStretch(0);
     m_qmakeDefaults->setSizePolicy(sizePolicy);
-    m_qmakeDefaults->setText(IosQmakeBuildConfiguration::tr("Reset"));
+    m_qmakeDefaults->setText(Tr::tr("Reset"));
     m_qmakeDefaults->setEnabled(m_isDevice);
 
     m_signEntityCombo = new QComboBox(container);
@@ -133,7 +112,7 @@ IosSigningSettingsWidget::IosSigningSettingsWidget(BuildConfiguration *buildConf
     sizePolicy2.setVerticalStretch(0);
     m_autoSignCheckbox->setSizePolicy(sizePolicy2);
     m_autoSignCheckbox->setChecked(true);
-    m_autoSignCheckbox->setText(IosQmakeBuildConfiguration::tr("Automatically manage signing"));
+    m_autoSignCheckbox->setText(Tr::tr("Automatically manage signing"));
     m_autoSignCheckbox->setChecked(m_autoManagedSigning->value());
     m_autoSignCheckbox->setEnabled(m_isDevice);
 
@@ -143,7 +122,7 @@ IosSigningSettingsWidget::IosSigningSettingsWidget(BuildConfiguration *buildConf
 
     m_warningLabel = new Utils::InfoLabel({}, Utils::InfoLabel::Warning, container);
 
-    m_signEntityLabel->setText(IosQmakeBuildConfiguration::tr("Development team:"));
+    m_signEntityLabel->setText(Tr::tr("Development team:"));
 
     connect(m_qmakeDefaults, &QPushButton::clicked, this, &IosSigningSettingsWidget::onReset);
 
@@ -155,18 +134,12 @@ IosSigningSettingsWidget::IosSigningSettingsWidget(BuildConfiguration *buildConf
     detailsWidget->setWidget(container);
 
     if (m_isDevice) {
-        connect(IosConfigurations::instance(),
-                &IosConfigurations::provisioningDataChanged,
-                this,
-                &IosSigningSettingsWidget::populateDevelopmentTeams);
-        connect(m_signEntityCombo,
-                QOverload<int>::of(&QComboBox::currentIndexChanged),
-                this,
-                &IosSigningSettingsWidget::onSigningEntityComboIndexChanged);
-        connect(m_autoSignCheckbox,
-                &QCheckBox::toggled,
-                this,
-                &IosSigningSettingsWidget::configureSigningUi);
+        connect(IosConfigurations::instance(), &IosConfigurations::provisioningDataChanged,
+                this, &IosSigningSettingsWidget::populateDevelopmentTeams);
+        connect(m_signEntityCombo, &QComboBox::currentIndexChanged,
+                this, &IosSigningSettingsWidget::onSigningEntityComboIndexChanged);
+        connect(m_autoSignCheckbox, &QCheckBox::toggled,
+                this, &IosSigningSettingsWidget::configureSigningUi);
         const QString signingIdentifier = m_signingIdentifier->value();
         configureSigningUi(m_autoSignCheckbox->isChecked());
         setDefaultSigningIdentfier(signingIdentifier);
@@ -244,8 +217,8 @@ void IosSigningSettingsWidget::onReset()
 void IosSigningSettingsWidget::configureSigningUi(bool autoManageSigning)
 {
     m_signEntityLabel->setText(autoManageSigning
-                                   ? IosQmakeBuildConfiguration::tr("Development team:")
-                                   : IosQmakeBuildConfiguration::tr("Provisioning profile:"));
+                                   ? Tr::tr("Development team:")
+                                   : Tr::tr("Provisioning profile:"));
     if (autoManageSigning)
         populateDevelopmentTeams();
     else
@@ -270,8 +243,9 @@ void IosSigningSettingsWidget::populateDevelopmentTeams()
         QSignalBlocker blocker(m_signEntityCombo);
         // Populate Team id's
         m_signEntityCombo->clear();
-        m_signEntityCombo->addItem(IosQmakeBuildConfiguration::tr("Default"));
-        foreach (auto team, IosConfigurations::developmentTeams()) {
+        m_signEntityCombo->addItem(Tr::tr("Default"));
+        const auto teams = IosConfigurations::developmentTeams();
+        for (auto team : teams) {
             m_signEntityCombo->addItem(team->displayName());
             const int index = m_signEntityCombo->count() - 1;
             m_signEntityCombo->setItemData(index, team->identifier(), IdentifierRole);
@@ -298,7 +272,7 @@ void IosSigningSettingsWidget::populateProvisioningProfiles()
                 m_signEntityCombo->setItemData(index, profile->details(), Qt::ToolTipRole);
             }
         } else {
-            m_signEntityCombo->addItem(IosQmakeBuildConfiguration::tr("None"));
+            m_signEntityCombo->addItem(Tr::tr("None"));
         }
     }
     // Maintain previous selection.
@@ -329,12 +303,11 @@ void IosSigningSettingsWidget::updateInfoText()
     if (identifier.isEmpty()) {
         // No signing entity selection.
         if (configuringTeams)
-            addMessage(IosQmakeBuildConfiguration::tr("Development team is not selected."));
+            addMessage(Tr::tr("Development team is not selected."));
         else
-            addMessage(IosQmakeBuildConfiguration::tr("Provisioning profile is not selected."));
+            addMessage(Tr::tr("Provisioning profile is not selected."));
 
-        addMessage(IosQmakeBuildConfiguration::tr(
-            "Using default development team and provisioning profile."));
+        addMessage(Tr::tr("Using default development team and provisioning profile."));
     } else {
         if (!configuringTeams) {
             ProvisioningProfilePtr profile =  IosConfigurations::provisioningProfile(identifier);
@@ -342,17 +315,15 @@ void IosSigningSettingsWidget::updateInfoText()
             auto team = profile->developmentTeam();
             if (team) {
                 // Display corresponding team information.
-                addMessage(IosQmakeBuildConfiguration::tr("Development team: %1 (%2)")
+                addMessage(Tr::tr("Development team: %1 (%2)")
                                .arg(team->displayName())
                                .arg(team->identifier()));
-                addMessage(IosQmakeBuildConfiguration::tr(
-                    "Settings defined here override the QMake environment."));
+                addMessage(Tr::tr("Settings defined here override the QMake environment."));
             } else {
                 qCDebug(iosSettingsLog) << "Development team not found for profile" << profile;
             }
         } else {
-            addMessage(IosQmakeBuildConfiguration::tr(
-                "Settings defined here override the QMake environment."));
+            addMessage(Tr::tr("Settings defined here override the QMake environment."));
         }
     }
 
@@ -368,24 +339,23 @@ void IosSigningSettingsWidget::updateWarningText()
     QString warningText;
     bool configuringTeams = m_autoSignCheckbox->isChecked();
     if (m_signEntityCombo->count() < 2) {
-        warningText = IosQmakeBuildConfiguration::tr("%1 not configured. Use Xcode and Apple "
-                                                     "developer account to configure the "
-                                                     "provisioning profiles and teams.")
+        warningText = Tr::tr("%1 not configured. Use Xcode and Apple "
+                             "developer account to configure the "
+                             "provisioning profiles and teams.")
                           .arg(configuringTeams
-                                   ? IosQmakeBuildConfiguration::tr("Development teams")
-                                   : IosQmakeBuildConfiguration::tr("Provisioning profiles"));
+                                   ? Tr::tr("Development teams")
+                                   : Tr::tr("Provisioning profiles"));
     } else {
         QString identifier = selectedIdentifier();
         if (configuringTeams) {
             auto team = IosConfigurations::developmentTeam(identifier);
             if (team && !team->hasProvisioningProfile())
-                warningText = IosQmakeBuildConfiguration::tr(
-                    "No provisioning profile found for the selected team.");
+                warningText = Tr::tr("No provisioning profile found for the selected team.");
         } else {
             auto profile = IosConfigurations::provisioningProfile(identifier);
             if (profile && QDateTime::currentDateTimeUtc() > profile->expirationDate()) {
                 warningText
-                    = IosQmakeBuildConfiguration::tr(
+                    = Tr::tr(
                           "Provisioning profile expired. Expiration date: %1")
                           .arg(QLocale::system().toString(profile->expirationDate().toLocalTime(),
                                                           QLocale::LongFormat));

@@ -2,6 +2,7 @@
 ThemeName=Dark
 PreferredStyles=
 DefaultTextEditorColorScheme=dark.xml
+EnforceAccentColorOnMacOS=selectedBackground
 
 [Palette]
 shadowBackground=ff232323
@@ -10,14 +11,13 @@ textDisabled=7fffffff
 textHighlighted=ffe7e7e7
 hoverBackground=18ffffff
 selectedBackground=aa1f75cc
-selectedBackgroundText=aa1f75cc
 normalBackground=ff333333
 alternateBackground=ff515151
 error=ffd84044
 warning=ffe0b716
 splitterColor=ff313131
-textColorLink=ff007af4
-textColorLinkVisited=ffa57aff
+textColorLink=ff8ab4f8
+textColorLinkVisited=ffc58af9
 backgroundColorDisabled=ff444444
 qmlDesignerButtonColor=ff3c3e40
 
@@ -84,8 +84,8 @@ DSsliderHandleHover=ff606060
 DSsliderHandleFocus=ff0492c9
 DSsliderHandleInteraction=ff2aafd3
 
-DSscrollBarTrack=ff404040
-DSscrollBarHandle=ff505050
+DSscrollBarTrack=ff3E3E3E
+DSscrollBarHandle=ff4C4C4C
 
 DSsectionHeadBackground=ff1f1f1f
 
@@ -93,6 +93,9 @@ DSstateDefaultHighlight=ffffe400
 DSstateSeparatorColor=ff7c7b7b
 DSstateBackgroundColor=ff383838
 DSstatePreviewOutline=ffaaaaaa
+
+DSstatePanelBackground=ff252525
+DSstateHighlight=ff727272
 
 DSchangedStateText=ff99ccff
 
@@ -355,7 +358,7 @@ PaletteText=text
 PaletteButtonText=text
 PaletteButtonTextDisabled=textDisabled
 PaletteToolTipBase=66000000
-PaletteHighlight=selectedBackgroundText
+PaletteHighlight=selectedBackground
 PaletteDark=shadowBackground
 PaletteHighlightedText=textHighlighted
 PaletteToolTipText=text
@@ -398,11 +401,6 @@ FlatMenuBar=true
 ToolBarIconShadow=true
 WindowColorAsBase=false
 DarkUserInterface=true
-
-[Gradients]
-DetailsWidgetHeaderGradient\1\color=00000000
-DetailsWidgetHeaderGradient\1\pos=1
-DetailsWidgetHeaderGradient\size=1
 
 [ImageFiles]
 IconOverlayCSource=:/cppeditor/images/dark_qt_c.png

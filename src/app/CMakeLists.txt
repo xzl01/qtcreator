@@ -12,7 +12,7 @@ install(
 
 add_qtc_executable(qtcreator
   DEFINES IDE_LIBRARY_BASENAME=\"${IDE_LIBRARY_BASE_PATH}\"
-  DEPENDS Aggregation ExtensionSystem Qt5::Core Qt5::Widgets Utils shared_qtsingleapplication app_version
+  DEPENDS Aggregation ExtensionSystem Qt::Core Qt::Widgets Utils shared_qtsingleapplication app_version
   SOURCES
     main.cpp
     ../tools/qtcreatorcrashhandler/crashhandlersetup.cpp ../tools/qtcreatorcrashhandler/crashhandlersetup.h
@@ -33,6 +33,43 @@ extend_qtc_executable(qtcreator
 
 if (NOT TARGET qtcreator)
   return()
+endif()
+
+if (QTC_STATIC_BUILD)
+  set(plugins_to_import "")
+  set(source_file_content "#include <QtPlugin>\n")
+  foreach(plugin IN LISTS __QTC_PLUGINS)
+    if(TARGET ${plugin})
+      list(APPEND plugins_to_import "${plugin}")
+      # TODO ${plugin}Plugin is not correct for all plugins as the class name
+      get_target_property(plugin_class ${plugin} QTC_PLUGIN_CLASS_NAME)
+      string(APPEND source_file_content "Q_IMPORT_PLUGIN(${plugin_class})\n")
+    endif()
+  endforeach()
+
+  string(APPEND source_file_content
+    "struct ResourcesInitializer {\n"
+    "  ResourcesInitializer() {\n")
+  foreach(resource_file IN LISTS __QTC_RESOURCE_FILES)
+     string(APPEND source_file_content "    Q_INIT_RESOURCE(${resource_file});\n")
+  endforeach()
+  string(APPEND source_file_content
+    "  }\n"
+    "} g_resources_initializer;\n")
+
+  file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/plugin_imports.cpp"
+    CONTENT "${source_file_content}"
+  )
+  extend_qtc_target(qtcreator
+    DEPENDS ${plugins_to_import}
+    SOURCES "${CMAKE_CURRENT_BINARY_DIR}/plugin_imports.cpp"
+  )
+
+  if (TARGET QmlDesigner)
+    qt6_import_qml_plugins(qtcreator
+      PATH_TO_SCAN "${CMAKE_CURRENT_SOURCE_DIR}/../../share/qtcreator/qmldesigner")
+  endif()
 endif()
 
 if (WIN32)

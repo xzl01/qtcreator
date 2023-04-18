@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jochen Becher
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Jochen Becher
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -40,7 +18,7 @@ template<class Archive, class T>
 inline void save(Archive &archive, const QList<T> &list, const Parameters &)
 {
     archive << tag("qlist");
-    foreach (const T &t, list)
+    for (const T &t : list)
         archive << attr("item", t);
     archive << end;
 }
@@ -50,10 +28,10 @@ inline void save(Archive &archive, const QList<T *> &list, const Parameters &par
 {
     archive << tag("qlist");
     if (parameters.hasFlag(ENFORCE_REFERENCED_ITEMS)) {
-        foreach (const T *t, list)
+        for (const T *t : list)
             archive << ref("item", t);
     } else {
-        foreach (const T *t, list)
+        for (const T *t : list)
             archive << attr("item", t);
     }
     archive << end;
@@ -77,11 +55,7 @@ inline void load(Archive &archive, QList<T *> &list, const Parameters &parameter
         //archive >> ref<QList<T *>, T * const &>("item", list, &QList<T *>::append);
         archive >> ref("item", list, &QList<T *>::append);
     } else {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         using ParameterType = typename QList<T *>::parameter_type;
-#else
-        using ParameterType = T * const &;
-#endif
         void (QList<T *>::*appendMethod)(ParameterType) = &QList<T *>::append;
         archive >> attr("item", list, appendMethod);
     }
@@ -94,7 +68,7 @@ template<class Archive, class T>
 inline void save(Archive &archive, const QSet<T> &set, const Parameters &)
 {
     archive << tag("qset");
-    foreach (const T &t, set)
+    for (const T &t : set)
         archive << attr("item", t);
     archive << end;
 }
@@ -104,10 +78,10 @@ inline void save(Archive &archive, const QSet<T *> &set, const Parameters &param
 {
     archive << tag("qset");
     if (parameters.hasFlag(ENFORCE_REFERENCED_ITEMS)) {
-        foreach (const T *t, set)
+        for (const T *t : set)
             archive << ref("item", t);
     } else {
-        foreach (const T *t, set)
+        for (const T *t : set)
             archive << attr("item", t);
     }
     archive << end;

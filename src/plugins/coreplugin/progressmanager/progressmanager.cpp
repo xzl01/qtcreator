@@ -1,41 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "progressmanager_p.h"
 
 #include "futureprogress.h"
-#include "progressmanager_p.h"
 #include "progressbar.h"
 #include "progressview.h"
 #include "../actionmanager/actionmanager.h"
 #include "../actionmanager/command.h"
+#include "../coreplugintr.h"
 #include "../icontext.h"
-#include "../coreconstants.h"
 #include "../icore.h"
 #include "../statusbarmanager.h"
 
 #include <extensionsystem/pluginmanager.h>
+
 #include <utils/hostosinfo.h>
+#include <utils/mathutils.h>
 #include <utils/qtcassert.h>
 #include <utils/stylehelper.h>
 #include <utils/theme/theme.h>
@@ -52,17 +33,15 @@
 #include <QTimer>
 #include <QVariant>
 
-#include <math.h>
-
 static const char kSettingsGroup[] = "Progress";
 static const char kDetailsPinned[] = "DetailsPinned";
 static const bool kDetailsPinnedDefault = true;
 static const int TimerInterval = 100; // 100 ms
 
-using namespace Core;
 using namespace Core::Internal;
 using namespace Utils;
 
+namespace Core {
 /*!
     \class Core::ProgressManager
     \inheaderfile coreplugin/progressmanager/progressmanager.h
@@ -155,7 +134,7 @@ using namespace Utils;
     in a different thread, looks like this:
     \code
     QFuture<void> task = Utils::map(filters, &ILocatorFilter::refresh);
-    Core::FutureProgress *progress = Core::ProgressManager::addTask(task, tr("Indexing"),
+    Core::FutureProgress *progress = Core::ProgressManager::addTask(task, ::Core::Tr::tr("Indexing"),
                                                                     Locator::Constants::TASK_INDEX);
     \endcode
     First, we to start an asynchronous operation which calls all the filters'
@@ -171,7 +150,7 @@ using namespace Utils;
     // We are already running in a different thread here
     QFutureInterface<void> *progressObject = new QFutureInterface<void>;
     progressObject->setProgressRange(0, MAX);
-    Core::ProgressManager::addTask(progressObject->future(), tr("DoIt"), MYTASKTYPE);
+    Core::ProgressManager::addTask(progressObject->future(), ::Core::Tr::tr("DoIt"), MYTASKTYPE);
     progressObject->reportStarted();
     // Do something
     ...
@@ -226,6 +205,27 @@ using namespace Utils;
 
 static ProgressManagerPrivate *m_instance = nullptr;
 
+const int RASTER = 20;
+
+class StatusDetailsWidgetContainer : public QWidget
+{
+public:
+    StatusDetailsWidgetContainer(QWidget *parent)
+        : QWidget(parent)
+    {}
+
+    QSize sizeHint() const override
+    {
+        // make size fit on raster, to avoid flickering in status bar
+        // because the output pane buttons resize, if the widget changes a lot (like it is the case for
+        // the language server indexing)
+        const QSize preferredSize = layout()->sizeHint();
+        const int preferredWidth = preferredSize.width();
+        const int width = preferredWidth + (RASTER - preferredWidth % RASTER);
+        return {width, preferredSize.height()};
+    }
+};
+
 ProgressManagerPrivate::ProgressManagerPrivate()
     : m_opacityEffect(new QGraphicsOpacityEffect(this))
 {
@@ -273,13 +273,13 @@ void ProgressManagerPrivate::init()
     summaryProgressLayout->setContentsMargins(0, 0, 0, 2);
     summaryProgressLayout->setSpacing(0);
     m_summaryProgressWidget->setLayout(summaryProgressLayout);
-    m_statusDetailsWidgetContainer = new QWidget(m_summaryProgressWidget);
-    m_statusDetailsWidgetLayout = new QHBoxLayout(m_statusDetailsWidgetContainer);
+    auto statusDetailsWidgetContainer = new StatusDetailsWidgetContainer(m_summaryProgressWidget);
+    m_statusDetailsWidgetLayout = new QHBoxLayout(statusDetailsWidgetContainer);
     m_statusDetailsWidgetLayout->setContentsMargins(0, 0, 0, 0);
     m_statusDetailsWidgetLayout->setSpacing(0);
     m_statusDetailsWidgetLayout->addStretch(1);
-    m_statusDetailsWidgetContainer->setLayout(m_statusDetailsWidgetLayout);
-    summaryProgressLayout->addWidget(m_statusDetailsWidgetContainer);
+    statusDetailsWidgetContainer->setLayout(m_statusDetailsWidgetLayout);
+    summaryProgressLayout->addWidget(statusDetailsWidgetContainer);
     m_summaryProgressBar = new ProgressBar(m_summaryProgressWidget);
     m_summaryProgressBar->setMinimumWidth(70);
     m_summaryProgressBar->setTitleVisible(false);
@@ -292,7 +292,7 @@ void ProgressManagerPrivate::init()
     m_statusBarWidget->installEventFilter(this);
     StatusBarManager::addStatusBarWidget(m_statusBarWidget, StatusBarManager::RightCorner);
 
-    QAction *toggleProgressView = new QAction(tr("Toggle Progress Details"), this);
+    QAction *toggleProgressView = new QAction(::Core::Tr::tr("Toggle Progress Details"), this);
     toggleProgressView->setCheckable(true);
     toggleProgressView->setChecked(m_progressViewPinned);
     toggleProgressView->setIcon(Utils::Icons::TOGGLE_PROGRESSDETAILS_TOOLBAR.icon());
@@ -319,9 +319,9 @@ void ProgressManagerPrivate::doCancelTasks(Id type)
             continue;
         }
         found = true;
-        disconnect(task.key(), &QFutureWatcherBase::finished, this, &ProgressManagerPrivate::taskFinished);
         if (m_applicationTask == task.key())
             disconnectApplicationTask();
+        task.key()->disconnect();
         task.key()->cancel();
         delete task.key();
         task = m_runningTasks.erase(task);
@@ -362,9 +362,9 @@ void ProgressManagerPrivate::cancelAllRunningTasks()
 {
     QMap<QFutureWatcher<void> *, Id>::const_iterator task = m_runningTasks.constBegin();
     while (task != m_runningTasks.constEnd()) {
-        disconnect(task.key(), &QFutureWatcherBase::finished, this, &ProgressManagerPrivate::taskFinished);
         if (m_applicationTask == task.key())
             disconnectApplicationTask();
+        task.key()->disconnect();
         task.key()->cancel();
         delete task.key();
         ++task;
@@ -383,12 +383,13 @@ FutureProgress *ProgressManagerPrivate::doAddTask(const QFuture<void> &future, c
             this, &ProgressManagerPrivate::updateSummaryProgressBar);
     connect(watcher, &QFutureWatcherBase::progressValueChanged,
             this, &ProgressManagerPrivate::updateSummaryProgressBar);
-    connect(watcher, &QFutureWatcherBase::finished, this, &ProgressManagerPrivate::taskFinished);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+        taskFinished(watcher);
+    });
 
     // handle application task
     if (flags & ShowInApplicationIcon) {
-        if (m_applicationTask)
-            disconnectApplicationTask();
+        disconnectApplicationTask();
         m_applicationTask = watcher;
         setApplicationProgressRange(future.progressMinimum(), future.progressMaximum());
         setApplicationProgressValue(future.progressValue());
@@ -418,7 +419,11 @@ FutureProgress *ProgressManagerPrivate::doAddTask(const QFuture<void> &future, c
         progress->setKeepOnFinish(FutureProgress::HideOnFinish);
     connect(progress, &FutureProgress::hasErrorChanged,
             this, &ProgressManagerPrivate::updateSummaryProgressBar);
-    connect(progress, &FutureProgress::removeMe, this, &ProgressManagerPrivate::slotRemoveTask);
+    connect(progress, &FutureProgress::removeMe, this, [this, progress] {
+        const Id type = progress->type();
+        removeTask(progress);
+        removeOldTasks(type, true);
+    });
     connect(progress, &FutureProgress::fadeStarted,
             this, &ProgressManagerPrivate::updateSummaryProgressBar);
     connect(progress, &FutureProgress::statusBarWidgetChanged,
@@ -436,16 +441,14 @@ ProgressView *ProgressManagerPrivate::progressView()
     return m_progressView;
 }
 
-void ProgressManagerPrivate::taskFinished()
+void ProgressManagerPrivate::taskFinished(QFutureWatcher<void> *task)
 {
-    QObject *taskObject = sender();
-    QTC_ASSERT(taskObject, return);
-    auto task = static_cast<QFutureWatcher<void> *>(taskObject);
+    const Id type = m_runningTasks.value(task);
     if (m_applicationTask == task)
         disconnectApplicationTask();
-    Id type = m_runningTasks.value(task);
+    task->disconnect();
+    task->deleteLater();
     m_runningTasks.remove(task);
-    delete task;
     updateSummaryProgressBar();
 
     if (!m_runningTasks.key(type, 0))
@@ -454,6 +457,9 @@ void ProgressManagerPrivate::taskFinished()
 
 void ProgressManagerPrivate::disconnectApplicationTask()
 {
+    if (!m_applicationTask)
+        return;
+
     disconnect(m_applicationTask, &QFutureWatcherBase::progressRangeChanged,
                this, &ProgressManagerPrivate::setApplicationProgressRange);
     disconnect(m_applicationTask, &QFutureWatcherBase::progressValueChanged,
@@ -510,7 +516,7 @@ void ProgressManagerPrivate::stopFadeOfSummaryProgress()
 
 bool ProgressManagerPrivate::hasError() const
 {
-    foreach (FutureProgress *progress, m_taskList)
+    for (const FutureProgress *progress : std::as_const(m_taskList))
         if (progress->hasError())
             return true;
     return false;
@@ -520,20 +526,11 @@ bool ProgressManagerPrivate::isLastFading() const
 {
     if (m_taskList.isEmpty())
         return false;
-    foreach (FutureProgress *progress, m_taskList) {
+    for (const FutureProgress *progress : std::as_const(m_taskList)) {
         if (!progress->isFading()) // we still have progress bars that are not fading
             return false;
     }
     return true;
-}
-
-void ProgressManagerPrivate::slotRemoveTask()
-{
-    auto progress = qobject_cast<FutureProgress *>(sender());
-    QTC_ASSERT(progress, return);
-    Id type = progress->type();
-    removeTask(progress);
-    removeOldTasks(type, true);
 }
 
 void ProgressManagerPrivate::removeOldTasks(const Id type, bool keepOne)
@@ -571,7 +568,7 @@ void ProgressManagerPrivate::removeOneOldTask()
         Id type = (*i)->type();
 
         int taskCount = 0;
-        foreach (FutureProgress *p, m_taskList)
+        for (const FutureProgress *p : std::as_const(m_taskList))
             if (p->type() == type)
                 ++taskCount;
 
@@ -616,8 +613,6 @@ void ProgressManagerPrivate::updateVisibilityWithDelay()
     QTimer::singleShot(150, this, &ProgressManagerPrivate::updateVisibility);
 }
 
-const int RASTER = 20;
-
 void ProgressManagerPrivate::updateStatusDetailsWidget()
 {
     QWidget *candidateWidget = nullptr;
@@ -645,15 +640,6 @@ void ProgressManagerPrivate::updateStatusDetailsWidget()
         }
     }
 
-    // make size fit on raster, to avoid flickering in status bar
-    // because the output pane buttons resize, if the widget changes a lot (like it is the case for
-    // the language server indexing)
-    if (candidateWidget) {
-        const int preferredWidth = candidateWidget->sizeHint().width();
-        const int width = preferredWidth + (RASTER - preferredWidth % RASTER);
-        m_statusDetailsWidgetContainer->setFixedWidth(width);
-    }
-
     if (candidateWidget == m_currentStatusDetailsWidget)
         return;
 
@@ -679,6 +665,8 @@ void ProgressManagerPrivate::summaryProgressFinishedFading()
 void ProgressManagerPrivate::progressDetailsToggled(bool checked)
 {
     m_progressViewPinned = checked;
+    if (!checked)
+        m_hovered = false; // make it take effect immediately even though the mouse is on the button
     updateVisibility();
 
     QtcSettings *settings = ICore::settings();
@@ -794,13 +782,9 @@ ProgressTimer::ProgressTimer(const QFutureInterfaceBase &futureInterface,
 void ProgressTimer::handleTimeout()
 {
     ++m_currentTime;
-
-    // This maps expectation to atan(1) to Pi/4 ~= 0.78, i.e. snaps
-    // from 78% to 100% when expectations are met at the time the
-    // future finishes. That's not bad for a random choice.
-    const double mapped = atan2(double(m_currentTime) * TimerInterval / 1000.0,
-                                double(m_expectedTime));
-    const double progress = 100 * 2 * mapped / 3.14;
-    m_futureInterface.setProgressValue(int(progress));
+    const int halfLife = qRound(1000.0 * m_expectedTime / TimerInterval);
+    const int progress = MathUtils::interpolateTangential(m_currentTime, halfLife, 0, 100);
+    m_futureInterface.setProgressValue(progress);
 }
 
+} // Core

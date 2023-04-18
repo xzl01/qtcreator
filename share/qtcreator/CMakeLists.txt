@@ -1,11 +1,9 @@
 set(resource_directories
   android
   cplusplus
-  debugger
   glsl
   indexer_preincludes
   modeleditor
-  qml
   qmldesigner
   qmlicons
   qml-type-descriptions
@@ -14,6 +12,29 @@ set(resource_directories
   styles
   templates
   themes
+)
+
+set(resource_files
+  debugger/.pylintrc
+  debugger/boosttypes.py
+  debugger/cdbbridge.py
+  debugger/creatortypes.py
+  debugger/dumper.py
+  debugger/gdbbridge.py
+  debugger/gdbtracepoint.py
+  debugger/LICENSE.GPL3-EXCEPT
+  debugger/lldbbridge.py
+  debugger/misctypes.py
+  debugger/opencvtypes.py
+  debugger/pdbbridge.py
+  debugger/personaltypes.py
+  debugger/qttypes.py
+  debugger/README.txt
+  debugger/setup.cfg
+  debugger/android_stdtypes.py
+  debugger/libcpp_stdtypes.py
+  debugger/stdtypes.py
+  debugger/utils.py
 )
 
 if (APPLE)
@@ -27,11 +48,27 @@ qtc_copy_to_builddir(copy_share_to_builddir
   CREATE_SUBDIRS
 )
 
+# copy resource files during build
+qtc_copy_to_builddir(copy_share_files_to_builddir
+  FILES ${resource_files}
+  DESTINATION ${IDE_DATA_PATH}
+)
+
 # create install rule for resource directories
 install(
   DIRECTORY ${resource_directories}
   DESTINATION "${IDE_DATA_PATH}"
   USE_SOURCE_PERMISSIONS
 )
+
+# create install rule for resource files
+foreach(file ${resource_files})
+  get_filename_component(path "${file}" DIRECTORY)
+  install(
+    FILES "${file}"
+    DESTINATION "${IDE_DATA_PATH}/${path}"
+  )
+endforeach()
+
 
 add_subdirectory(translations)

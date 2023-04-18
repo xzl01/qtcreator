@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,6 +7,7 @@
 #include <qmljs/parser/qmljsastfwd_p.h>
 #include <qmljs/qmljsdocument.h>
 #include <qmljstools/qmljsrefactoringchanges.h>
+#include <qmljstools/qmljssemanticinfo.h>
 
 #include <QSharedPointer>
 
@@ -36,7 +15,6 @@ namespace QmlJSEditor {
 
 namespace Internal { class QmlJSQuickFixAssistInterface; }
 
-using QmlJSQuickFixInterface = QSharedPointer<const Internal::QmlJSQuickFixAssistInterface>;
 using TextEditor::QuickFixOperation;
 using TextEditor::QuickFixOperations;
 using TextEditor::QuickFixInterface;
@@ -53,7 +31,8 @@ public:
         \param interface The interface on which the operation is performed.
         \param priority The priority for this operation.
      */
-    explicit QmlJSQuickFixOperation(const QmlJSQuickFixInterface &interface, int priority = -1);
+    explicit QmlJSQuickFixOperation(const Internal::QmlJSQuickFixAssistInterface *interface,
+                                    int priority = -1);
 
     void perform() override;
 
@@ -63,13 +42,13 @@ protected:
     virtual void performChanges(QmlJSTools::QmlJSRefactoringFilePtr currentFile,
                                 const QmlJSTools::QmlJSRefactoringChanges &refactoring) = 0;
 
-    const Internal::QmlJSQuickFixAssistInterface *assistInterface() const;
+    const QmlJSTools::SemanticInfo &semanticInfo() const;
 
     /// \returns The name of the file for for which this operation is invoked.
-    QString fileName() const;
+    Utils::FilePath fileName() const;
 
 private:
-    QmlJSQuickFixInterface m_interface;
+    const QmlJSTools::SemanticInfo m_semanticInfo;
 };
 
 TextEditor::QuickFixOperations findQmlJSQuickFixes(const TextEditor::AssistInterface *interface);

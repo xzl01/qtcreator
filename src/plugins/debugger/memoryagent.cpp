@@ -1,34 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "memoryagent.h"
 
 #include "breakhandler.h"
 #include "debuggerengine.h"
-#include "debuggercore.h"
 #include "debuggerinternalconstants.h"
+#include "debuggertr.h"
 #include "registerhandler.h"
 
 #include <bineditor/bineditorservice.h>
@@ -51,8 +29,7 @@
 using namespace Core;
 using namespace ProjectExplorer;
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 enum { BinBlockSize = 1024 };
 enum { DataRange = 1024 * 1024 };
@@ -155,13 +132,12 @@ private:
 
 QString registerViewTitle(const QString &registerName, quint64 addr)
 {
-    return MemoryAgent::tr("Memory at Register \"%1\" (0x%2)").arg(registerName).arg(addr, 0, 16);
+    return Tr::tr("Memory at Register \"%1\" (0x%2)").arg(registerName).arg(addr, 0, 16);
 }
 
 QList<MemoryMarkup> registerViewMarkup(quint64 a, const QString &regName)
 {
-    return {MemoryMarkup(a, 1, QColor(Qt::blue).lighter(),
-                         MemoryAgent::tr("Register \"%1\"").arg(regName))};
+    return {MemoryMarkup(a, 1, QColor(Qt::blue).lighter(), Tr::tr("Register \"%1\"").arg(regName))};
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -213,7 +189,7 @@ MemoryAgent::MemoryAgent(const MemoryViewSetupData &data, DebuggerEngine *engine
     if (!factory)
         return;
 
-    QString title = data.title.isEmpty() ? tr("Memory at 0x%1").arg(data.startAddress, 0, 16) : data.title;
+    QString title = data.title.isEmpty() ? Tr::tr("Memory at 0x%1").arg(data.startAddress, 0, 16) : data.title;
     if (!data.separateView && !title.endsWith('$'))
         title.append(" $");
 
@@ -314,6 +290,5 @@ bool MemoryAgent::isUsable()
     return m_service != nullptr;
 }
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal
 

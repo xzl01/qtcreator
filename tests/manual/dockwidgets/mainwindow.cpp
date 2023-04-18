@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdockarrows.h"
 #include "mainwindow.h"
@@ -51,7 +29,7 @@ protected:
         QStyleOptionTabV2 opt;
         opt.initFrom(this);
         opt.shape = QTabBar::RoundedWest;
-        opt.text = tr("Hello");
+        opt.text = "Hello";
 
         QStylePainter p(this);
         p.drawControl(QStyle::CE_TabBarTab, opt);
@@ -71,7 +49,7 @@ private:
 
 MainWindow::MainWindow()
 {
-    centralWidget = new QLabel(tr("Central Widget"));
+    centralWidget = new QLabel("Central Widget");
     setCentralWidget(centralWidget);
 
     QToolBar *tb = this->addToolBar("Normal Toolbar");
@@ -84,7 +62,7 @@ MainWindow::MainWindow()
 
     createDockWindows();
 
-    setWindowTitle(tr("Dock Widgets"));
+    setWindowTitle("Dock Widgets");
 }
 
 void MainWindow::createDockWindows()
@@ -93,10 +71,10 @@ void MainWindow::createDockWindows()
 
     for (int i=0; i<5; ++i) {
         QArrowManagedDockWidget *dock = new QArrowManagedDockWidget(manager);
-        QLabel *label = new QLabel(tr("Widget %1").arg(i), dock);
-        label->setWindowTitle(tr("Widget %1").arg(i));
-        label->setObjectName(tr("widget_%1").arg(i));
-        dock->setObjectName(tr("dock_%1").arg(i));
+        QLabel *label = new QLabel(QString("Widget %1").arg(i), dock);
+        label->setWindowTitle(QString("Widget %1").arg(i));
+        label->setObjectName(QString("widget_%1").arg(i));
+        dock->setObjectName(QString("dock_%1").arg(i));
         dock->setWidget(label);
         addDockWidget(Qt::RightDockWidgetArea, dock);
     }

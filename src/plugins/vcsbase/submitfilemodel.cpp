@@ -1,38 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "submitfilemodel.h"
 
-#include <coreplugin/fileiconprovider.h>
-#include <utils/fileutils.h>
+#include "vcsbasetr.h"
+
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/qtcassert.h>
 #include <utils/theme/theme.h>
 
 #include <QStandardItem>
-#include <QFileInfo>
 #include <QDebug>
+
+using namespace Utils;
 
 namespace VcsBase {
 
@@ -44,7 +24,6 @@ enum { StateColumn = 0, FileColumn = 1 };
 
 static QBrush fileStatusTextForeground(SubmitFileModel::FileStatusHint statusHint)
 {
-    using Utils::Theme;
     Theme::Color statusTextColor = Theme::VcsBase_FileStatusUnknown_TextColor;
     switch (statusHint) {
     case SubmitFileModel::FileStatusUnknown:
@@ -69,7 +48,7 @@ static QBrush fileStatusTextForeground(SubmitFileModel::FileStatusHint statusHin
     return QBrush(Utils::creatorTheme()->color(statusTextColor));
 }
 
-static QList<QStandardItem *> createFileRow(const QString &repositoryRoot,
+static QList<QStandardItem *> createFileRow(const FilePath &repositoryRoot,
                                             const QString &fileName,
                                             const QString &status,
                                             SubmitFileModel::FileStatusHint statusHint,
@@ -88,9 +67,8 @@ static QList<QStandardItem *> createFileRow(const QString &repositoryRoot,
     fileItem->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
     // For some reason, Windows (at least) requires a valid (existing) file path to the icon, so
     // the repository root is needed here.
-    // Note: for "overlaid" icons in Core::FileIconProvider a valid file path is not required
-    fileItem->setIcon(Core::FileIconProvider::icon(
-        Utils::FilePath::fromString(repositoryRoot).pathAppended(fileName)));
+    // Note: for "overlaid" icons in Utils::FileIconProvider a valid file path is not required
+    fileItem->setIcon(FileIconProvider::icon(repositoryRoot.pathAppended(fileName)));
     const QList<QStandardItem *> row{statusItem, fileItem};
     if (statusHint != SubmitFileModel::FileStatusUnknown) {
         const QBrush textForeground = fileStatusTextForeground(statusHint);
@@ -116,15 +94,15 @@ static QList<QStandardItem *> createFileRow(const QString &repositoryRoot,
 SubmitFileModel::SubmitFileModel(QObject *parent) :
     QStandardItemModel(0, 2, parent)
 {
-    setHorizontalHeaderLabels({tr("State"), tr("File")});
+    setHorizontalHeaderLabels({Tr::tr("State"), Tr::tr("File")});
 }
 
-const QString &SubmitFileModel::repositoryRoot() const
+const FilePath &SubmitFileModel::repositoryRoot() const
 {
     return m_repositoryRoot;
 }
 
-void SubmitFileModel::setRepositoryRoot(const QString &repoRoot)
+void SubmitFileModel::setRepositoryRoot(const FilePath &repoRoot)
 {
     m_repositoryRoot = repoRoot;
 }

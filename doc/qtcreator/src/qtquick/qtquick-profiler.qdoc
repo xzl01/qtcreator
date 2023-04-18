@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -36,7 +14,7 @@
     \nextpage studio-advanced.html
     \else
     \previouspage creator-analyze-mode.html
-    \nextpage creator-valgrind-overview.html
+    \nextpage creator-coco.html
     \endif
 
     \title Profiling QML Applications
@@ -53,7 +31,7 @@
     \if defined(qtcreator)
     Triggering long-running C++ functions, such as paint methods and signal
     handlers, also takes time in the GUI thread, but is more difficult to see in
-    the QML Profiler, because it does not profile C++ code.
+    the QML Profiler because it does not profile C++ code.
     \endif
 
     To find excessive use of JavaScript, check the frame rate in animations and
@@ -65,7 +43,7 @@
     frames and check that you are not using too many short bindings or signal
     handlers that are updated per frame. You can also \l{Visualizing Overdraw}
     {visualize Scene Graph overdraw} to check scene layout and find items that
-    are never visible to the users, because they are located outside the screen
+    are never visible to the users because they are located outside the screen
     or hidden beneath other, visible elements.
 
     \if defined(qtcreator)
@@ -127,7 +105,7 @@
     takes time, and therefore, there might be a delay
     before the data is displayed.
 
-    Do not use application commands to exit the application, because data is
+    Do not use application commands to exit the application because data is
     sent to the QML Profiler when you select the \uicontrol {Enable Profiling} button.
     The application continues to run for some seconds, after which it is stopped
     automatically. If you exit the application, the data is not sent.
@@ -146,7 +124,7 @@
 
     You can specify flushing settings for the QML Profiler either globally for
     all projects or separately for each project. To specify global settings,
-    select \uicontrol Tools > \uicontrol Options > \uicontrol Analyzer.
+    select \uicontrol Edit > \uicontrol Preferences > \uicontrol Analyzer.
 
     To specify custom QML Profiler settings for a particular project, select
     \uicontrol Projects > \uicontrol Run and then select \uicontrol Custom in
@@ -681,7 +659,7 @@
     To view the total amount of memory allocated by the functions, select
     \uicontrol Memory in the drop-down menu.
 
-    To view the the number of memory allocations performed by the functions,
+    To view the number of memory allocations performed by the functions,
     select \uicontrol Allocations.
 
     Double-click an item in a view to zoom into it. Double-click an empty

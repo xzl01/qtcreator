@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "stateseditormodel.h"
 #include "stateseditorview.h"
@@ -65,7 +43,7 @@ QModelIndex StatesEditorModel::index(int row, int column, const QModelIndex &par
 
     int internalNodeId = 0;
     if (row > 0 && row < rowCount() - 1) // first and last rows are base state, add state
-        internalNodeId = m_statesEditorView->rootModelNode().nodeListProperty("states").at(row - 1).internalId();
+        internalNodeId = m_statesEditorView->acitveStatesGroupNode().nodeListProperty("states").at(row - 1).internalId();
 
     return hasIndex(row, column, parent) ? createIndex(row, column,  internalNodeId) : QModelIndex();
 }
@@ -75,10 +53,10 @@ int StatesEditorModel::rowCount(const QModelIndex &parent) const
     if (parent.isValid() || m_statesEditorView.isNull() || !m_statesEditorView->model())
         return 0;
 
-    if (!m_statesEditorView->rootModelNode().hasNodeListProperty("states"))
+    if (!m_statesEditorView->acitveStatesGroupNode().hasNodeListProperty("states"))
         return 2; // base state + add new state
 
-    return m_statesEditorView->rootModelNode().nodeListProperty("states").count() + 2; // 2 = base state + add new state
+    return m_statesEditorView->acitveStatesGroupNode().nodeListProperty("states").count() + 2; // 2 = base state + add new state
 }
 
 void StatesEditorModel::reset()
@@ -122,20 +100,13 @@ QVariant StatesEditorModel::data(const QModelIndex &index, int role) const
         return index.internalId();
 
     case HasWhenCondition:
-        return stateNode.isValid() && stateNode.hasProperty("when");
+        return stateNode.hasProperty("when");
 
-    case WhenConditionString: {
-        if (stateNode.isValid() && stateNode.hasBindingProperty("when"))
-            return stateNode.bindingProperty("when").expression();
-        else
-            return QString();
-    }
+    case WhenConditionString:
+        return stateNode.bindingProperty("when").expression();
 
     case IsDefault: {
-        QmlModelState modelState(stateNode);
-        if (modelState.isValid())
-            return modelState.isDefault();
-        return false;
+        return QmlModelState(stateNode).isDefault();
     }
 
     case ModelHasDefaultState:
@@ -199,10 +170,10 @@ void StatesEditorModel::renameState(int internalNodeId, const QString &newName)
     if (newName.isEmpty() ||! m_statesEditorView->validStateName(newName)) {
         QTimer::singleShot(0, [newName]{
             Core::AsynchronousMessageBox::warning(
-                        tr("Invalid state name"),
+                        tr("Invalid State Name"),
                         newName.isEmpty() ?
                             tr("The empty string as a name is reserved for the base state.") :
-                            tr("Name already used in another state"));
+                            tr("Name already used in another state."));
         });
         reset();
     } else {

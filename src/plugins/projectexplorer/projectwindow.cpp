@@ -1,40 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectwindow.h"
 
 #include "buildinfo.h"
-#include "projectexplorerconstants.h"
 #include "kit.h"
 #include "kitmanager.h"
 #include "kitoptionspage.h"
 #include "panelswidget.h"
 #include "project.h"
-#include "projectexplorer.h"
+#include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "projectimporter.h"
 #include "projectpanelfactory.h"
+#include "projectsettingswidget.h"
 #include "session.h"
 #include "target.h"
 #include "targetsettingspanel.h"
@@ -43,6 +22,7 @@
 #include <coreplugin/actionmanager/commandbutton.h>
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/coreicons.h>
+#include <coreplugin/coreplugintr.h>
 #include <coreplugin/find/optionspopup.h>
 #include <coreplugin/findplaceholder.h>
 #include <coreplugin/icontext.h>
@@ -100,52 +80,48 @@ private:
 
     QPointer<QWidget> m_toolBar;
     QPointer<FancyLineEdit> m_filterOutputLineEdit;
-    QAction *m_clear;
-    QAction *m_filterActionRegexp;
-    QAction *m_filterActionCaseSensitive;
-    QAction *m_invertFilterAction;
-    QAction *m_zoomIn;
-    QAction *m_zoomOut;
+    QAction m_clear;
+    QAction m_filterActionRegexp;
+    QAction m_filterActionCaseSensitive;
+    QAction m_invertFilterAction;
+    QAction m_zoomIn;
+    QAction m_zoomOut;
 };
 
 BuildSystemOutputWindow::BuildSystemOutputWindow()
     : OutputWindow(Context(kBuildSystemOutputContext), "ProjectsMode.BuildSystemOutput.Zoom")
-    , m_clear(new QAction)
 {
     setReadOnly(true);
 
     Command *clearCommand = ActionManager::command(Core::Constants::OUTPUTPANE_CLEAR);
-    m_clear->setIcon(Utils::Icons::CLEAN_TOOLBAR.icon());
-    m_clear->setText(clearCommand->action()->text());
-    ActionManager::registerAction(m_clear,
+    m_clear.setIcon(Utils::Icons::CLEAN_TOOLBAR.icon());
+    m_clear.setText(clearCommand->action()->text());
+    ActionManager::registerAction(&m_clear,
                                   Core::Constants::OUTPUTPANE_CLEAR,
                                   Context(kBuildSystemOutputContext));
-    connect(m_clear, &QAction::triggered, this, [this] { clear(); });
+    connect(&m_clear, &QAction::triggered, this, &OutputWindow::clear);
 
-    m_filterActionRegexp = new QAction(this);
-    m_filterActionRegexp->setCheckable(true);
-    m_filterActionRegexp->setText(ProjectWindow::tr("Use Regular Expressions"));
-    connect(m_filterActionRegexp, &QAction::toggled, this, &BuildSystemOutputWindow::updateFilter);
-    Core::ActionManager::registerAction(m_filterActionRegexp,
+    m_filterActionRegexp.setCheckable(true);
+    m_filterActionRegexp.setText(Tr::tr("Use Regular Expressions"));
+    connect(&m_filterActionRegexp, &QAction::toggled, this, &BuildSystemOutputWindow::updateFilter);
+    Core::ActionManager::registerAction(&m_filterActionRegexp,
                                         kRegExpActionId,
                                         Context(Constants::C_PROJECTEXPLORER));
 
-    m_filterActionCaseSensitive = new QAction(this);
-    m_filterActionCaseSensitive->setCheckable(true);
-    m_filterActionCaseSensitive->setText(ProjectWindow::tr("Case Sensitive"));
-    connect(m_filterActionCaseSensitive,
+    m_filterActionCaseSensitive.setCheckable(true);
+    m_filterActionCaseSensitive.setText(Tr::tr("Case Sensitive"));
+    connect(&m_filterActionCaseSensitive,
             &QAction::toggled,
             this,
             &BuildSystemOutputWindow::updateFilter);
-    Core::ActionManager::registerAction(m_filterActionCaseSensitive,
+    Core::ActionManager::registerAction(&m_filterActionCaseSensitive,
                                         kCaseSensitiveActionId,
                                         Context(Constants::C_PROJECTEXPLORER));
 
-    m_invertFilterAction = new QAction(this);
-    m_invertFilterAction->setCheckable(true);
-    m_invertFilterAction->setText(ProjectWindow::tr("Show Non-matching Lines"));
-    connect(m_invertFilterAction, &QAction::toggled, this, &BuildSystemOutputWindow::updateFilter);
-    Core::ActionManager::registerAction(m_invertFilterAction,
+    m_invertFilterAction.setCheckable(true);
+    m_invertFilterAction.setText(Tr::tr("Show Non-matching Lines"));
+    connect(&m_invertFilterAction, &QAction::toggled, this, &BuildSystemOutputWindow::updateFilter);
+    Core::ActionManager::registerAction(&m_invertFilterAction,
                                         kInvertActionId,
                                         Context(Constants::C_PROJECTEXPLORER));
 
@@ -155,17 +131,15 @@ BuildSystemOutputWindow::BuildSystemOutputWindow()
             [this] { setBaseFont(TextEditor::TextEditorSettings::fontSettings().font()); });
     setBaseFont(TextEditor::TextEditorSettings::fontSettings().font());
 
-    m_zoomIn = new QAction;
-    m_zoomIn->setIcon(Utils::Icons::PLUS_TOOLBAR.icon());
-    connect(m_zoomIn, &QAction::triggered, this, [this] { zoomIn(); });
-    ActionManager::registerAction(m_zoomIn,
+    m_zoomIn.setIcon(Utils::Icons::PLUS_TOOLBAR.icon());
+    connect(&m_zoomIn, &QAction::triggered, this, [this] { zoomIn(); });
+    ActionManager::registerAction(&m_zoomIn,
                                   Core::Constants::ZOOM_IN,
                                   Context(kBuildSystemOutputContext));
 
-    m_zoomOut = new QAction;
-    m_zoomOut->setIcon(Utils::Icons::MINUS.icon());
-    connect(m_zoomOut, &QAction::triggered, this, [this] { zoomOut(); });
-    ActionManager::registerAction(m_zoomOut,
+    m_zoomOut.setIcon(Utils::Icons::MINUS_TOOLBAR.icon());
+    connect(&m_zoomOut, &QAction::triggered, this, [this] { zoomOut(); });
+    ActionManager::registerAction(&m_zoomOut,
                                   Core::Constants::ZOOM_OUT,
                                   Context(kBuildSystemOutputContext));
 }
@@ -175,8 +149,8 @@ QWidget *BuildSystemOutputWindow::toolBar()
     if (!m_toolBar) {
         m_toolBar = new StyledBar(this);
         auto clearButton = new CommandButton(Core::Constants::OUTPUTPANE_CLEAR);
-        clearButton->setDefaultAction(m_clear);
-        clearButton->setToolTipBase(m_clear->text());
+        clearButton->setDefaultAction(&m_clear);
+        clearButton->setToolTipBase(m_clear.text());
 
         m_filterOutputLineEdit = new FancyLineEdit;
         m_filterOutputLineEdit->setButtonVisible(FancyLineEdit::Left, true);
@@ -200,9 +174,9 @@ QWidget *BuildSystemOutputWindow::toolBar()
         });
 
         auto zoomInButton = new CommandButton(Core::Constants::ZOOM_IN);
-        zoomInButton->setDefaultAction(m_zoomIn);
+        zoomInButton->setDefaultAction(&m_zoomIn);
         auto zoomOutButton = new CommandButton(Core::Constants::ZOOM_OUT);
-        zoomOutButton->setDefaultAction(m_zoomOut);
+        zoomOutButton->setDefaultAction(&m_zoomOut);
 
         auto layout = new QHBoxLayout;
         layout->setContentsMargins(0, 0, 0, 0);
@@ -222,10 +196,10 @@ void BuildSystemOutputWindow::updateFilter()
     if (!m_filterOutputLineEdit)
         return;
     updateFilterProperties(m_filterOutputLineEdit->text(),
-                           m_filterActionCaseSensitive->isChecked() ? Qt::CaseSensitive
+                           m_filterActionCaseSensitive.isChecked() ? Qt::CaseSensitive
                                                                     : Qt::CaseInsensitive,
-                           m_filterActionRegexp->isChecked(),
-                           m_invertFilterAction->isChecked());
+                           m_filterActionRegexp.isChecked(),
+                           m_invertFilterAction.isChecked());
 }
 
 // Standard third level for the generic case: i.e. all except for the Build/Run page
@@ -261,7 +235,7 @@ QVariant MiscSettingsPanelItem::data(int column, int role) const
 
     if (role == PanelWidgetRole) {
         if (!m_widget) {
-            QWidget *widget = m_factory->createWidget(m_project);
+            ProjectSettingsWidget *widget = m_factory->createWidget(m_project);
             m_widget = new PanelsWidget(m_factory->displayName(), widget);
             m_widget->setFocusProxy(widget);
         }
@@ -304,7 +278,8 @@ public:
         : m_project(project)
     {
         QTC_ASSERT(m_project, return);
-        foreach (ProjectPanelFactory *factory, ProjectPanelFactory::factories())
+        const QList<ProjectPanelFactory *> factories = ProjectPanelFactory::factories();
+        for (ProjectPanelFactory *factory : factories)
             appendChild(new MiscSettingsPanelItem(factory, project));
     }
 
@@ -317,7 +292,7 @@ public:
     {
         switch (role) {
         case Qt::DisplayRole:
-            return ProjectWindow::tr("Project Settings");
+            return Tr::tr("Project Settings");
 
         case PanelWidgetRole:
         case ActiveItemRole:
@@ -362,7 +337,7 @@ public:
         : m_project(project), m_changeListener(changeListener)
     {
         QTC_ASSERT(m_project, return);
-        QString display = ProjectWindow::tr("Build & Run");
+        QString display = Tr::tr("Build & Run");
         appendChild(m_targetsItem = new TargetGroupItem(display, project));
         appendChild(m_miscItem = new MiscSettingsGroupItem(project));
     }
@@ -546,7 +521,7 @@ public:
     ProjectWindowPrivate(ProjectWindow *parent)
         : q(parent)
     {
-        m_projectsModel.setHeader({ProjectWindow::tr("Projects")});
+        m_projectsModel.setHeader({Tr::tr("Projects")});
 
         m_selectorTree = new SelectorTree;
         m_selectorTree->setModel(&m_projectsModel);
@@ -559,7 +534,7 @@ public:
 
         m_projectSelection = new QComboBox;
         m_projectSelection->setModel(&m_comboBoxModel);
-        connect(m_projectSelection, QOverload<int>::of(&QComboBox::activated),
+        connect(m_projectSelection, &QComboBox::activated,
                 this, &ProjectWindowPrivate::projectSelected, Qt::QueuedConnection);
 
         const auto switchProjectAction = new QAction(this);
@@ -578,14 +553,14 @@ public:
         connect(sessionManager, &SessionManager::startupProjectChanged,
                 this, &ProjectWindowPrivate::startupProjectChanged);
 
-        m_importBuild = new QPushButton(ProjectWindow::tr("Import Existing Build..."));
+        m_importBuild = new QPushButton(Tr::tr("Import Existing Build..."));
         connect(m_importBuild, &QPushButton::clicked,
                 this, &ProjectWindowPrivate::handleImportBuild);
         connect(sessionManager, &SessionManager::startupProjectChanged, this, [this](Project *project) {
             m_importBuild->setEnabled(project && project->projectImporter());
         });
 
-        m_manageKits = new QPushButton(ProjectWindow::tr("Manage Kits..."));
+        m_manageKits = new QPushButton(Tr::tr("Manage Kits..."));
         connect(m_manageKits, &QPushButton::clicked,
                 this, &ProjectWindowPrivate::handleManageKits);
 
@@ -594,13 +569,13 @@ public:
 
         auto selectorView = new QWidget; // Black blob + Combobox + Project tree below.
         selectorView->setObjectName("ProjectSelector"); // Needed for dock widget state saving
-        selectorView->setWindowTitle(ProjectWindow::tr("Project Selector"));
+        selectorView->setWindowTitle(Tr::tr("Project Selector"));
         selectorView->setAutoFillBackground(true);
         selectorView->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(selectorView, &QWidget::customContextMenuRequested,
                 this, &ProjectWindowPrivate::openContextMenu);
 
-        auto activeLabel = new QLabel(ProjectWindow::tr("Active Project"));
+        auto activeLabel = new QLabel(Tr::tr("Active Project"));
         QFont font = activeLabel->font();
         font.setBold(true);
         font.setPointSizeF(font.pointSizeF() * 1.2);
@@ -631,7 +606,7 @@ public:
         // especially the find tool bar (resulting in wrong label color)
         output->setBackgroundRole(QPalette::Window);
         output->setObjectName("BuildSystemOutput");
-        output->setWindowTitle(ProjectWindow::tr("Build System Output"));
+        output->setWindowTitle(Tr::tr("Build System Output"));
         auto outputLayout = new QVBoxLayout;
         output->setLayout(outputLayout);
         outputLayout->setContentsMargins(0, 0, 0, 0);
@@ -639,8 +614,27 @@ public:
         outputLayout->addWidget(m_buildSystemOutput->toolBar());
         outputLayout->addWidget(m_buildSystemOutput);
         outputLayout->addWidget(new FindToolBarPlaceHolder(m_buildSystemOutput));
-        auto outputDock = q->addDockForWidget(output, true);
-        q->addDockWidget(Qt::RightDockWidgetArea, outputDock);
+        m_outputDock = q->addDockForWidget(output, true);
+        q->addDockWidget(Qt::RightDockWidgetArea, m_outputDock);
+
+        m_toggleRightSidebarAction.setCheckable(true);
+        m_toggleRightSidebarAction.setChecked(true);
+        const auto toolTipText = [](bool checked) {
+            return checked ? ::Core::Tr::tr(Core::Constants::TR_HIDE_RIGHT_SIDEBAR)
+                           : ::Core::Tr::tr(Core::Constants::TR_SHOW_RIGHT_SIDEBAR);
+        };
+        m_toggleRightSidebarAction.setText(toolTipText(false)); // always "Show Right Sidebar"
+        m_toggleRightSidebarAction.setToolTip(toolTipText(m_toggleRightSidebarAction.isChecked()));
+        ActionManager::registerAction(&m_toggleRightSidebarAction,
+                                      Core::Constants::TOGGLE_RIGHT_SIDEBAR,
+                                      Context(Constants::C_PROJECTEXPLORER));
+        connect(&m_toggleRightSidebarAction,
+                &QAction::toggled,
+                this,
+                [this, toolTipText](bool checked) {
+                    m_toggleRightSidebarAction.setToolTip(toolTipText(checked));
+                    m_outputDock->setVisible(checked);
+                });
     }
 
     void updatePanel()
@@ -731,9 +725,9 @@ public:
         if (!menu.actions().isEmpty())
             menu.addSeparator();
 
-        QAction *importBuild = menu.addAction(ProjectWindow::tr("Import Existing Build..."));
+        QAction *importBuild = menu.addAction(Tr::tr("Import Existing Build..."));
         importBuild->setEnabled(project && project->projectImporter());
-        QAction *manageKits = menu.addAction(ProjectWindow::tr("Manage Kits..."));
+        QAction *manageKits = menu.addAction(Tr::tr("Manage Kits..."));
 
         QAction *act = menu.exec(m_selectorTree->mapToGlobal(pos));
 
@@ -760,7 +754,7 @@ public:
         QTC_ASSERT(projectImporter, return);
 
         FilePath importDir =
-                FileUtils::getExistingDirectory(nullptr, ProjectWindow::tr("Import Directory"),
+                FileUtils::getExistingDirectory(nullptr, Tr::tr("Import Directory"),
                                                 project->projectDirectory());
 
         Target *lastTarget = nullptr;
@@ -809,6 +803,8 @@ public:
     SelectorTree *m_selectorTree;
     QPushButton *m_importBuild;
     QPushButton *m_manageKits;
+    QAction m_toggleRightSidebarAction;
+    QDockWidget *m_outputDock;
     BuildSystemOutputWindow *m_buildSystemOutput;
 };
 
@@ -870,6 +866,7 @@ void ProjectWindow::loadPersistentSettings()
     settings->beginGroup(PROJECT_WINDOW_KEY);
     restoreSettings(settings);
     settings->endGroup();
+    d->m_toggleRightSidebarAction.setChecked(d->m_outputDock->isVisible());
 }
 
 QSize SelectorDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const

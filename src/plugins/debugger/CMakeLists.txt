@@ -1,5 +1,5 @@
 add_qtc_plugin(Debugger
-  DEPENDS LanguageUtils QmlDebug QmlJS QtcSsh registryaccess
+  DEPENDS LanguageUtils QmlDebug QmlJS registryaccess
   PLUGIN_DEPENDS Core CppEditor ProjectExplorer QtSupport TextEditor
   PLUGIN_RECOMMENDS QmakeProjectManager
   PLUGIN_TEST_DEPENDS QmakeProjectManager
@@ -46,6 +46,7 @@ add_qtc_plugin(Debugger
     debuggerruncontrol.cpp debuggerruncontrol.h
     debuggersourcepathmappingwidget.cpp debuggersourcepathmappingwidget.h
     debuggertooltipmanager.cpp debuggertooltipmanager.h
+    debuggertr.h
     disassembleragent.cpp disassembleragent.h
     disassemblerlines.cpp disassemblerlines.h
     gdb/gdbengine.cpp gdb/gdbengine.h
@@ -72,7 +73,7 @@ add_qtc_plugin(Debugger
     shared/cdbsymbolpathlisteditor.cpp shared/cdbsymbolpathlisteditor.h
     shared/hostutils.cpp shared/hostutils.h
     shared/peutils.cpp shared/peutils.h
-    shared/symbolpathsdialog.cpp shared/symbolpathsdialog.h shared/symbolpathsdialog.ui
+    shared/symbolpathsdialog.cpp shared/symbolpathsdialog.h
     simplifytype.cpp simplifytype.h
     sourceagent.cpp sourceagent.h
     sourcefileshandler.cpp sourcefileshandler.h

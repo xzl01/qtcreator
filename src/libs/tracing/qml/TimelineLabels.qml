@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtQuick 2.0
-import QtQml.Models 2.1
-import QtCreator.Tracing 1.0
+import QtQuick
+import QtQml.Models
+import QtCreator.Tracing
 
 Flickable {
     id: categories
@@ -60,7 +38,7 @@ Flickable {
 
             // As we cannot retrieve items by visible index we keep an array of row counts here,
             // for the time marks to draw the row backgrounds in the right colors.
-            property var rowCounts: new Array(modelProxy.models.length)
+            property var rowCounts: new Array(categories.modelProxy.models.length)
 
             function updateRowCount(visualIndex, rowCount) {
                 if (rowCounts[visualIndex] !== rowCount) {
@@ -70,7 +48,7 @@ Flickable {
                 }
             }
 
-            model: modelProxy.models
+            model: categories.modelProxy.models
             delegate: Loader {
                 id: loader
                 asynchronous: y < categories.contentY + categories.height &&
@@ -95,13 +73,16 @@ Flickable {
                     CategoryLabel {
                         id: label
                         model: modelData
-                        notesModel: modelProxy.notes
+                        notesModel: categories.modelProxy.notes
                         visualIndex: loader.visualIndex
                         dragging: categories.dragging
                         reverseSelect: categories.reverseSelect
                         onDragStarted: categories.dragging = true
                         onDragStopped: categories.dragging = false
                         draggerParent: categories
+                        contentY: categories.contentY
+                        contentHeight: categories.contentHeight
+                        visibleHeight: categories.height
                         width: 150
                         height: parent.height
                         dragOffset: loader.y
@@ -133,7 +114,7 @@ Flickable {
                     TimeMarks {
                         id: timeMarks
                         model: modelData
-                        mockup: modelProxy.height === 0
+                        mockup: categories.modelProxy.height === 0
                         anchors.right: parent.right
                         anchors.left: label.right
                         anchors.top: parent.top

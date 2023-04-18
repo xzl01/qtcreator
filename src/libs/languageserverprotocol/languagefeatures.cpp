@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "languagefeatures.h"
 
@@ -57,11 +35,11 @@ HoverContent LanguageServerProtocol::Hover::content() const
 
 void Hover::setContent(const HoverContent &content)
 {
-    if (auto val = Utils::get_if<MarkedString>(&content))
+    if (auto val = std::get_if<MarkedString>(&content))
         insert(contentsKey, *val);
-    else if (auto val = Utils::get_if<MarkupContent>(&content))
+    else if (auto val = std::get_if<MarkupContent>(&content))
         insert(contentsKey, *val);
-    else if (auto val = Utils::get_if<QList<MarkedString>>(&content))
+    else if (auto val = std::get_if<QList<MarkedString>>(&content))
         insert(contentsKey, LanguageClientArray<MarkedString>(*val).toJson());
     else
         QTC_ASSERT_STRING("LanguageClient Using unknown type Hover::setContent");
@@ -71,11 +49,11 @@ HoverRequest::HoverRequest(const TextDocumentPositionParams &params)
     : Request(methodName, params)
 { }
 
-Utils::optional<MarkupOrString> ParameterInformation::documentation() const
+std::optional<MarkupOrString> ParameterInformation::documentation() const
 {
     QJsonValue documentation = value(documentationKey);
     if (documentation.isUndefined())
-        return Utils::nullopt;
+        return std::nullopt;
     return MarkupOrString(documentation);
 }
 
@@ -103,7 +81,7 @@ DocumentSymbolsRequest::DocumentSymbolsRequest(const DocumentSymbolParams &param
     : Request(methodName, params)
 { }
 
-Utils::optional<QList<CodeActionKind> > CodeActionParams::CodeActionContext::only() const
+std::optional<QList<CodeActionKind> > CodeActionParams::CodeActionContext::only() const
 {
     return optionalArray<CodeActionKind>(onlyKey);
 }
@@ -160,7 +138,7 @@ QHash<QString, DocumentFormattingProperty> FormattingOptions::properties() const
 
 void FormattingOptions::setProperty(const QString &key, const DocumentFormattingProperty &property)
 {
-    using namespace Utils;
+    using namespace std;
     if (auto val = get_if<double>(&property))
         insert(key, *val);
     else if (auto val = get_if<QString>(&property))
@@ -202,17 +180,16 @@ RenameRequest::RenameRequest(const RenameParams &params)
     : Request(methodName, params)
 { }
 
-Utils::optional<DocumentUri> DocumentLink::target() const
+std::optional<DocumentUri> DocumentLink::target() const
 {
-    Utils::optional<QString> optionalTarget = optionalValue<QString>(targetKey);
-    return optionalTarget.has_value()
-            ? Utils::make_optional(DocumentUri::fromProtocol(optionalTarget.value()))
-            : Utils::nullopt;
+    if (std::optional<QString> optionalTarget = optionalValue<QString>(targetKey))
+        return std::make_optional(DocumentUri::fromProtocol(*optionalTarget));
+    return std::nullopt;
 }
 
-Utils::optional<QJsonValue> DocumentLink::data() const
+std::optional<QJsonValue> DocumentLink::data() const
 {
-    return contains(dataKey) ? Utils::make_optional(value(dataKey)) : Utils::nullopt;
+    return contains(dataKey) ? std::make_optional(value(dataKey)) : std::nullopt;
 }
 
 TextDocumentParams::TextDocumentParams()
@@ -294,16 +271,16 @@ MarkedString::MarkedString(const QJsonValue &value)
 
 bool MarkedString::isValid() const
 {
-    if (auto markedLanguageString = Utils::get_if<MarkedLanguageString>(this))
+    if (auto markedLanguageString = std::get_if<MarkedLanguageString>(this))
         return markedLanguageString->isValid();
     return true;
 }
 
 LanguageServerProtocol::MarkedString::operator QJsonValue() const
 {
-    if (auto val = Utils::get_if<QString>(this))
+    if (auto val = std::get_if<QString>(this))
         return *val;
-    if (auto val = Utils::get_if<MarkedLanguageString>(this))
+    if (auto val = std::get_if<MarkedLanguageString>(this))
         return QJsonValue(*val);
     return {};
 }
@@ -326,8 +303,8 @@ HoverContent::HoverContent(const QJsonValue &value)
 
 bool HoverContent::isValid() const
 {
-    if (Utils::holds_alternative<MarkedString>(*this))
-        return Utils::get<MarkedString>(*this).isValid();
+    if (std::holds_alternative<MarkedString>(*this))
+        return std::get<MarkedString>(*this).isValid();
     return true;
 }
 
@@ -347,7 +324,7 @@ SignatureHelpRequest::SignatureHelpRequest(const TextDocumentPositionParams &par
 
 CodeActionResult::CodeActionResult(const QJsonValue &val)
 {
-    using ResultArray = QList<Utils::variant<Command, CodeAction>>;
+    using ResultArray = QList<std::variant<Command, CodeAction>>;
     if (val.isArray()) {
         const QJsonArray array = val.toArray();
         ResultArray result;
@@ -369,21 +346,21 @@ CodeActionResult::CodeActionResult(const QJsonValue &val)
 }
 
 PrepareRenameResult::PrepareRenameResult()
-    : Utils::variant<PlaceHolderResult, Range, std::nullptr_t>(nullptr)
+    : std::variant<PlaceHolderResult, Range, std::nullptr_t>(nullptr)
 {}
 
 PrepareRenameResult::PrepareRenameResult(
-    const Utils::variant<PlaceHolderResult, Range, std::nullptr_t> &val)
-    : Utils::variant<PlaceHolderResult, Range, std::nullptr_t>(val)
+    const std::variant<PlaceHolderResult, Range, std::nullptr_t> &val)
+    : std::variant<PlaceHolderResult, Range, std::nullptr_t>(val)
 {}
 
 PrepareRenameResult::PrepareRenameResult(const PlaceHolderResult &val)
-    : Utils::variant<PlaceHolderResult, Range, std::nullptr_t>(val)
+    : std::variant<PlaceHolderResult, Range, std::nullptr_t>(val)
 
 {}
 
 PrepareRenameResult::PrepareRenameResult(const Range &val)
-    : Utils::variant<PlaceHolderResult, Range, std::nullptr_t>(val)
+    : std::variant<PlaceHolderResult, Range, std::nullptr_t>(val)
 {}
 
 PrepareRenameResult::PrepareRenameResult(const QJsonValue &val)
@@ -399,9 +376,24 @@ PrepareRenameResult::PrepareRenameResult(const QJsonValue &val)
     }
 }
 
-Utils::optional<QJsonValue> CodeLens::data() const
+std::optional<QJsonValue> CodeLens::data() const
 {
-    return contains(dataKey) ? Utils::make_optional(value(dataKey)) : Utils::nullopt;
+    return contains(dataKey) ? std::make_optional(value(dataKey)) : std::nullopt;
+}
+
+HoverResult::HoverResult(const QJsonValue &value)
+{
+    if (value.isObject())
+        emplace<Hover>(Hover(value.toObject()));
+    else
+        emplace<std::nullptr_t>(nullptr);
+}
+
+bool HoverResult::isValid() const
+{
+    if (auto hover = std::get_if<Hover>(this))
+        return hover->isValid();
+    return true;
 }
 
 } // namespace LanguageServerProtocol

@@ -1,37 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "designmode.h"
 
-#include <coreplugin/icore.h>
-#include <coreplugin/idocument.h>
-#include <coreplugin/modemanager.h>
-#include <coreplugin/editormanager/editormanager.h>
-#include <coreplugin/editormanager/ieditor.h>
-#include <coreplugin/coreconstants.h>
-#include <coreplugin/coreicons.h>
+#include "coreconstants.h"
+#include "coreicons.h"
+#include "coreplugintr.h"
+#include "editormanager/editormanager.h"
+#include "editormanager/ieditor.h"
+#include "icore.h"
+#include "idocument.h"
+#include "modemanager.h"
 
 #include <extensionsystem/pluginmanager.h>
 
@@ -78,7 +57,7 @@ static DesignModePrivate *d = nullptr;
 
 DesignMode::DesignMode()
 {
-    ICore::addPreCloseListener([]() -> bool {
+    ICore::addPreCloseListener([] {
         m_instance->currentEditorChanged(nullptr);
         return true;
     });
@@ -87,7 +66,7 @@ DesignMode::DesignMode()
     setEnabled(false);
     setContext(Context(Constants::C_DESIGN_MODE));
     setWidget(d->m_stackWidget);
-    setDisplayName(tr("Design"));
+    setDisplayName(Tr::tr("Design"));
     setIcon(Utils::Icon::modeIcon(Icons::MODE_DESIGN_CLASSIC,
                                   Icons::MODE_DESIGN_FLAT, Icons::MODE_DESIGN_FLAT_ACTIVE));
     setPriority(Constants::P_MODE_DESIGN);
@@ -140,7 +119,7 @@ void DesignMode::registerDesignWidget(QWidget *widget,
 void DesignMode::unregisterDesignWidget(QWidget *widget)
 {
     d->m_stackWidget->removeWidget(widget);
-    foreach (DesignEditorInfo *info, d->m_editors) {
+    for (DesignEditorInfo *info : std::as_const(d->m_editors)) {
         if (info->widget == widget) {
             d->m_editors.removeAll(info);
             delete info;
@@ -160,8 +139,8 @@ void DesignMode::currentEditorChanged(IEditor *editor)
     if (editor) {
         const QString mimeType = editor->document()->mimeType();
         if (!mimeType.isEmpty()) {
-            foreach (DesignEditorInfo *editorInfo, d->m_editors) {
-                foreach (const QString &mime, editorInfo->mimeTypes) {
+            for (const DesignEditorInfo *editorInfo : std::as_const(d->m_editors)) {
+                for (const QString &mime : editorInfo->mimeTypes) {
                     if (mime == mimeType) {
                         d->m_stackWidget->setCurrentIndex(editorInfo->widgetIndex);
                         setActiveContext(editorInfo->context);
@@ -169,10 +148,10 @@ void DesignMode::currentEditorChanged(IEditor *editor)
                         setEnabled(true);
                         break;
                     }
-                } // foreach mime
+                }
                 if (mimeEditorAvailable)
                     break;
-            } // foreach editorInfo
+            }
         }
     }
     if (d->m_currentEditor)

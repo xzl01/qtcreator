@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Przemyslaw Gorszkowski <pgorszkowski@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 Przemyslaw Gorszkowski <pgorszkowski@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "findinfilessilversearcher.h"
 
@@ -36,6 +14,7 @@
 #include <utils/runextensions.h>
 
 #include "silversearcheroutputparser.h"
+#include "silversearchertr.h"
 
 #include <QHBoxLayout>
 #include <QLabel>
@@ -90,7 +69,7 @@ bool isSilverSearcherAvailable()
     silverSearcherProcess.setCommand({"ag", {"--version"}});
     silverSearcherProcess.start();
     if (silverSearcherProcess.waitForFinished(1000)) {
-        if (silverSearcherProcess.stdOut().contains("ag version"))
+        if (silverSearcherProcess.cleanedStdOut().contains("ag version"))
             return true;
     }
 
@@ -114,11 +93,11 @@ void runSilverSeacher(FutureInterfaceType &fi, FileFindParameters parameters)
     if (!(parameters.flags & FindRegularExpression))
         arguments << "-Q";
 
-    for (const QString &filter : qAsConst(parameters.exclusionFilters))
+    for (const QString &filter : std::as_const(parameters.exclusionFilters))
         arguments << "--ignore" << filter;
 
     QString nameFiltersAsRegex;
-    for (const QString &filter : qAsConst(parameters.nameFilters))
+    for (const QString &filter : std::as_const(parameters.nameFilters))
         nameFiltersAsRegex += QString("(%1)|").arg(convertWildcardToRegex(filter));
     nameFiltersAsRegex.remove(nameFiltersAsRegex.length() - 1, 1);
 
@@ -135,7 +114,6 @@ void runSilverSeacher(FutureInterfaceType &fi, FileFindParameters parameters)
     process.setCommand({"ag", arguments});
     process.start();
     if (process.waitForFinished()) {
-        typedef QList<FileSearchResult> FileSearchResultList;
         QRegularExpression regexp;
         if (parameters.flags & FindRegularExpression) {
             const QRegularExpression::PatternOptions patternOptions
@@ -145,7 +123,7 @@ void runSilverSeacher(FutureInterfaceType &fi, FileFindParameters parameters)
             regexp.setPattern(parameters.text);
             regexp.setPatternOptions(patternOptions);
         }
-        SilverSearcher::SilverSearcherOutputParser parser(process.stdOut(), regexp);
+        SilverSearcher::SilverSearcherOutputParser parser(process.cleanedStdOut(), regexp);
         FileSearchResultList items = parser.parse();
         if (!items.isEmpty())
             fi.reportResult(items);
@@ -169,7 +147,7 @@ FindInFilesSilverSearcher::FindInFilesSilverSearcher(QObject *parent)
     auto layout = new QHBoxLayout(m_widget);
     layout->setContentsMargins(0, 0, 0, 0);
     m_searchOptionsLineEdit = new QLineEdit;
-    m_searchOptionsLineEdit->setPlaceholderText(tr("Search Options (optional)"));
+    m_searchOptionsLineEdit->setPlaceholderText(Tr::tr("Search Options (optional)"));
     layout->addWidget(m_searchOptionsLineEdit);
 
     FindInFiles *findInFiles = FindInFiles::instance();
@@ -178,7 +156,7 @@ FindInFilesSilverSearcher::FindInFilesSilverSearcher(QObject *parent)
 
     setEnabled(isSilverSearcherAvailable());
     if (!isEnabled()) {
-        QLabel *label = new QLabel(tr("Silver Searcher is not available on the system."));
+        QLabel *label = new QLabel(Tr::tr("Silver Searcher is not available on the system."));
         label->setStyleSheet("QLabel { color : red; }");
         layout->addWidget(label);
     }

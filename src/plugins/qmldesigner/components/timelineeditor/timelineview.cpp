@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelineview.h"
 
+#include "designericons.h"
 #include "easingcurve.h"
 #include "timelineactions.h"
 #include "timelineconstants.h"
@@ -35,7 +14,9 @@
 #include "timelinesettingsdialog.h"
 #include "timelinetoolbar.h"
 
+#include <auxiliarydataproperties.h>
 #include <bindingproperty.h>
+#include <designeractionmanager.h>
 #include <exception.h>
 #include <modelnodecontextmenu_helper.h>
 #include <nodeabstractproperty.h>
@@ -66,8 +47,8 @@
 
 namespace QmlDesigner {
 
-TimelineView::TimelineView(QObject *parent)
-    : AbstractView(parent)
+TimelineView::TimelineView(ExternalDependenciesInterface &externalDepoendencies)
+    : AbstractView{externalDepoendencies}
     , m_timelineWidget(nullptr)
 {
     EasingCurve::registerStreamOperators();
@@ -89,7 +70,8 @@ void TimelineView::modelAttached(Model *model)
 
 void TimelineView::modelAboutToBeDetached(Model *model)
 {
-    m_timelineWidget->reset();
+    if (!m_timelineWidget)
+        m_timelineWidget->reset();
     const bool empty = getTimelines().isEmpty();
     if (!empty)
         setTimelineRecording(false);
@@ -97,6 +79,10 @@ void TimelineView::modelAboutToBeDetached(Model *model)
 }
 
 void TimelineView::nodeCreated(const ModelNode & /*createdNode*/) {}
+
+namespace {
+constexpr AuxiliaryDataKeyView removedProperty{AuxiliaryDataType::Temporary, "removed"};
+}
 
 void TimelineView::nodeAboutToBeRemoved(const ModelNode &removedNode)
 {
@@ -108,29 +94,23 @@ void TimelineView::nodeAboutToBeRemoved(const ModelNode &removedNode)
             toolBar->removeTimeline(QmlTimeline(removedNode));
             QString currentId = toolBar->currentTimelineId();
 
-            removedNode.setAuxiliaryData("removed@Internal", true);
+            removedNode.setAuxiliaryData(removedProperty, true);
 
             if (currentId.isEmpty())
                 m_timelineWidget->graphicsScene()->clearTimeline();
             if (lastId != currentId)
                 m_timelineWidget->setTimelineId(currentId);
 
-        } else if (removedNode.parentProperty().isValid()
-                   && QmlTimeline::isValidQmlTimeline(
-                          removedNode.parentProperty().parentModelNode())) {
-            if (removedNode.hasBindingProperty("target")) {
-                const ModelNode target = removedNode.bindingProperty("target").resolveToModelNode();
-                if (target.isValid()) {
-                    QmlTimeline timeline(removedNode.parentProperty().parentModelNode());
-                    if (timeline.hasKeyframeGroupForTarget(target))
-                        QTimer::singleShot(0, [this, target, timeline]() {
-                            if (timeline.hasKeyframeGroupForTarget(target))
-                                m_timelineWidget->graphicsScene()->invalidateSectionForTarget(
-                                    target);
-                            else
-                                m_timelineWidget->graphicsScene()->invalidateScene();
-                        });
-                }
+        } else if (QmlTimeline::isValidQmlTimeline(removedNode.parentProperty().parentModelNode())) {
+            if (const ModelNode target = removedNode.bindingProperty("target").resolveToModelNode()) {
+                QmlTimeline timeline(removedNode.parentProperty().parentModelNode());
+                if (timeline.hasKeyframeGroupForTarget(target))
+                    QTimer::singleShot(0, [this, target, timeline]() {
+                        if (timeline.hasKeyframeGroupForTarget(target))
+                            m_timelineWidget->graphicsScene()->invalidateSectionForTarget(target);
+                        else
+                            m_timelineWidget->graphicsScene()->invalidateScene();
+                    });
             }
         }
     }
@@ -207,7 +187,6 @@ void TimelineView::variantPropertiesChanged(const QList<VariantProperty> &proper
     for (const auto &property : propertyList) {
         if ((property.name() == "frame" || property.name() == "value")
             && property.parentModelNode().type() == "QtQuick.Timeline.Keyframe"
-            && property.parentModelNode().isValid()
             && property.parentModelNode().hasParentProperty()) {
             const ModelNode framesNode
                 = property.parentModelNode().parentProperty().parentModelNode();
@@ -221,9 +200,8 @@ void TimelineView::variantPropertiesChanged(const QList<VariantProperty> &proper
 }
 
 void TimelineView::bindingPropertiesChanged(const QList<BindingProperty> &propertyList,
-                                            AbstractView::PropertyChangeFlags propertyChange)
+                                            [[maybe_unused]] AbstractView::PropertyChangeFlags propertyChange)
 {
-    Q_UNUSED(propertyChange)
     for (const auto &property : propertyList) {
         if (property.name() == "easing.bezierCurve") {
             updateAnimationCurveEditor();
@@ -239,12 +217,12 @@ void TimelineView::selectedNodesChanged(const QList<ModelNode> & /*selectedNodeL
 }
 
 void TimelineView::auxiliaryDataChanged(const ModelNode &modelNode,
-                                        const PropertyName &name,
+                                        AuxiliaryDataKeyView key,
                                         const QVariant &data)
 {
-    if (name == QmlDesigner::lockedProperty && data.toBool() && modelNode.isValid()) {
+    if (key == lockedProperty && data.toBool() && modelNode.isValid()) {
         for (const auto &node : modelNode.allSubModelNodesAndThisNode()) {
-            if (node.hasAuxiliaryData("timeline_expanded"))
+            if (node.hasAuxiliaryData(timelineExpandedProperty))
                 m_timelineWidget->graphicsScene()->invalidateHeightForTarget(node);
         }
     }
@@ -464,15 +442,13 @@ void TimelineView::setTimelineRecording(bool value)
 
 void TimelineView::customNotification(const AbstractView * /*view*/,
                                       const QString &identifier,
-                                      const QList<ModelNode> &nodeList,
-                                      const QList<QVariant> &data)
+                                      [[maybe_unused]] const QList<ModelNode> &nodeList,
+                                      [[maybe_unused]] const QList<QVariant> &data)
 {
-    Q_UNUSED(nodeList)
-    Q_UNUSED(data)
     if (identifier == QStringLiteral("reset QmlPuppet")) {
         QmlTimeline timeline = widget()->graphicsScene()->currentTimeline();
         if (timeline.isValid())
-            timeline.modelNode().removeAuxiliaryData("currentFrame@NodeInstance");
+            timeline.modelNode().removeAuxiliaryData(currentFrameProperty);
     }
 }
 
@@ -496,7 +472,7 @@ QList<QmlTimeline> TimelineView::getTimelines() const
 
     for (const ModelNode &modelNode : allModelNodes()) {
         if (QmlTimeline::isValidQmlTimeline(modelNode)
-            && !modelNode.hasAuxiliaryData("removed@Internal")) {
+            && !modelNode.hasAuxiliaryData(removedProperty)) {
             timelines.append(modelNode);
         }
     }
@@ -514,8 +490,7 @@ QList<ModelNode> TimelineView::getAnimations(const QmlTimeline &timeline)
                                    if (node.metaInfo().isValid() && node.hasParentProperty()
                                        && (node.parentProperty().parentModelNode()
                                            == timeline.modelNode()))
-                                       return node.metaInfo().isSubclassOf(
-                                           "QtQuick.Timeline.TimelineAnimation");
+                                       return node.metaInfo().isQtQuickTimelineTimelineAnimation();
                                    return false;
                                });
     }
@@ -610,7 +585,8 @@ void TimelineView::registerActions()
 
     actionManager.addDesignerAction(new ActionGroup(TimelineConstants::timelineCategoryDisplayName,
                                                     TimelineConstants::timelineCategory,
-                                                    TimelineConstants::priorityTimelineCategory,
+                                                    actionManager.contextIcon(DesignerIcons::TimelineIcon),
+                                                    ComponentCoreConstants::Priorities::TimelineCategory,
                                                     timelineEnabled,
                                                     &SelectionContextFunctors::always));
 
@@ -620,7 +596,7 @@ void TimelineView::registerActions()
                                        {},
                                        TimelineConstants::timelineCategory,
                                        QKeySequence(),
-                                       160,
+                                       3,
                                        deleteKeyframes,
                                        timelineHasKeyframes));
 
@@ -630,7 +606,7 @@ void TimelineView::registerActions()
                                        {},
                                        TimelineConstants::timelineCategory,
                                        QKeySequence(),
-                                       140,
+                                       1,
                                        insertKeyframes,
                                        timelineHasKeyframes));
 
@@ -640,7 +616,7 @@ void TimelineView::registerActions()
                                        {},
                                        TimelineConstants::timelineCategory,
                                        QKeySequence(),
-                                       120,
+                                       4,
                                        copyKeyframes,
                                        timelineHasKeyframes));
 
@@ -650,7 +626,7 @@ void TimelineView::registerActions()
                                        {},
                                        TimelineConstants::timelineCategory,
                                        QKeySequence(),
-                                       100,
+                                       5,
                                        pasteKeyframes,
                                        timelineHasClipboard));
 }
@@ -669,7 +645,6 @@ TimelineWidget *TimelineView::createWidget()
 WidgetInfo TimelineView::widgetInfo()
 {
     return createWidgetInfo(createWidget(),
-                            nullptr,
                             QStringLiteral("Timelines"),
                             WidgetInfo::BottomPane,
                             0,

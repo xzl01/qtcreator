@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "targetsetupwidget.h"
 
 #include "buildconfiguration.h"
 #include "buildinfo.h"
 #include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "kitmanager.h"
 #include "kitoptionspage.h"
 
@@ -65,13 +44,13 @@ TargetSetupWidget::TargetSetupWidget(Kit *k, const FilePath &projectPath) :
     auto vboxLayout = new QVBoxLayout();
     setLayout(vboxLayout);
     vboxLayout->setContentsMargins(0, 0, 0, 0);
-    m_detailsWidget = new Utils::DetailsWidget(this);
+    m_detailsWidget = new DetailsWidget(this);
     m_detailsWidget->setUseCheckBox(true);
     m_detailsWidget->setChecked(false);
     m_detailsWidget->setSummaryFontBold(true);
     vboxLayout->addWidget(m_detailsWidget);
 
-    auto panel = new Utils::FadingWidget(m_detailsWidget);
+    auto panel = new FadingWidget(m_detailsWidget);
     auto panelLayout = new QHBoxLayout(panel);
     m_manageButton = new QPushButton(KitAspectWidget::msgManage());
     panelLayout->addWidget(m_manageButton);
@@ -85,7 +64,7 @@ TargetSetupWidget::TargetSetupWidget(Kit *k, const FilePath &projectPath) :
     auto w = new QWidget;
     m_newBuildsLayout = new QGridLayout;
     m_newBuildsLayout->setContentsMargins(0, 0, 0, 0);
-    if (Utils::HostOsInfo::isMacHost())
+    if (HostOsInfo::isMacHost())
         m_newBuildsLayout->setSpacing(0);
     w->setLayout(m_newBuildsLayout);
     layout->addWidget(w);
@@ -95,9 +74,8 @@ TargetSetupWidget::TargetSetupWidget(Kit *k, const FilePath &projectPath) :
 
     setProjectPath(projectPath);
 
-    connect(m_detailsWidget, &Utils::DetailsWidget::checked,
+    connect(m_detailsWidget, &DetailsWidget::checked,
             this, &TargetSetupWidget::targetCheckBoxToggled);
-
     connect(m_manageButton, &QAbstractButton::clicked, this, &TargetSetupWidget::manageKit);
 }
 
@@ -123,10 +101,9 @@ void TargetSetupWidget::setKitSelected(bool b)
 {
     // Only check target if there are build configurations possible
     b &= hasSelectedBuildConfigurations();
-    m_ignoreChange = true;
+    const GuardLocker locker(m_ignoreChanges);
     m_detailsWidget->setChecked(b);
     m_detailsWidget->widget()->setEnabled(b);
-    m_ignoreChange = false;
 }
 
 void TargetSetupWidget::addBuildInfo(const BuildInfo &info, bool isImport)
@@ -158,8 +135,8 @@ void TargetSetupWidget::addBuildInfo(const BuildInfo &info, bool isImport)
         store.checkbox->setAttribute(Qt::WA_LayoutUsesWidgetRect);
         m_newBuildsLayout->addWidget(store.checkbox, pos * 2, 0);
 
-        store.pathChooser = new Utils::PathChooser();
-        store.pathChooser->setExpectedKind(Utils::PathChooser::Directory);
+        store.pathChooser = new PathChooser();
+        store.pathChooser->setExpectedKind(PathChooser::Directory);
         store.pathChooser->setFilePath(info.buildDirectory);
         store.pathChooser->setHistoryCompleter(QLatin1String("TargetSetup.BuildDir.History"));
         store.pathChooser->setReadOnly(isImport);
@@ -170,8 +147,10 @@ void TargetSetupWidget::addBuildInfo(const BuildInfo &info, bool isImport)
         m_newBuildsLayout->addWidget(store.issuesLabel, pos * 2 + 1, 0, 1, 2);
         store.issuesLabel->setVisible(false);
 
-        connect(store.checkbox, &QAbstractButton::toggled, this, &TargetSetupWidget::checkBoxToggled);
-        connect(store.pathChooser, &Utils::PathChooser::rawPathChanged, this, &TargetSetupWidget::pathChanged);
+        connect(store.checkbox, &QAbstractButton::toggled, this,
+                [this, checkBox = store.checkbox](bool b) { checkBoxToggled(checkBox, b); });
+        connect(store.pathChooser, &PathChooser::rawPathChanged, this,
+                [this, pathChooser = store.pathChooser] { pathChanged(pathChooser); });
     }
 
     store.hasIssues = false;
@@ -184,14 +163,14 @@ void TargetSetupWidget::addBuildInfo(const BuildInfo &info, bool isImport)
 
 void TargetSetupWidget::targetCheckBoxToggled(bool b)
 {
-    if (m_ignoreChange)
+    if (m_ignoreChanges.isLocked())
         return;
     m_detailsWidget->widget()->setEnabled(b);
     if (b && (contains(m_infoStore, &BuildInfoStore::hasIssues)
               || !contains(m_infoStore, &BuildInfoStore::isEnabled))) {
         m_detailsWidget->setState(DetailsWidget::Expanded);
     } else if (!b) {
-        m_detailsWidget->setState(Utils::DetailsWidget::Collapsed);
+        m_detailsWidget->setState(DetailsWidget::Collapsed);
     }
     emit selectedToggled();
 }
@@ -221,7 +200,7 @@ void TargetSetupWidget::setProjectPath(const FilePath &projectPath)
 
 void TargetSetupWidget::expandWidget()
 {
-    m_detailsWidget->setState(Utils::DetailsWidget::Expanded);
+    m_detailsWidget->setState(DetailsWidget::Expanded);
 }
 
 void TargetSetupWidget::update(const TasksGenerator &generator)
@@ -301,9 +280,8 @@ void TargetSetupWidget::updateDefaultBuildDirectories()
         for (BuildInfoStore &buildInfoStore : m_infoStore) {
             if (buildInfoStore.buildInfo.typeName == buildInfo.typeName) {
                 if (!buildInfoStore.customBuildDir) {
-                    m_ignoreChange = true;
+                    const GuardLocker locker(m_ignoreChanges);
                     buildInfoStore.pathChooser->setFilePath(buildInfo.buildDirectory);
-                    m_ignoreChange = false;
                 }
                 found = true;
                 break;
@@ -314,13 +292,10 @@ void TargetSetupWidget::updateDefaultBuildDirectories()
     }
 }
 
-void TargetSetupWidget::checkBoxToggled(bool b)
+void TargetSetupWidget::checkBoxToggled(QCheckBox *checkBox, bool b)
 {
-    auto box = qobject_cast<QCheckBox *>(sender());
-    if (!box)
-        return;
     auto it = std::find_if(m_infoStore.begin(), m_infoStore.end(),
-                           [box](const BuildInfoStore &store) { return store.checkbox == box; });
+              [checkBox](const BuildInfoStore &store) { return store.checkbox == checkBox; });
     QTC_ASSERT(it != m_infoStore.end(), return);
     if (it->isEnabled == b)
         return;
@@ -332,12 +307,10 @@ void TargetSetupWidget::checkBoxToggled(bool b)
     }
 }
 
-void TargetSetupWidget::pathChanged()
+void TargetSetupWidget::pathChanged(PathChooser *pathChooser)
 {
-    if (m_ignoreChange)
+    if (m_ignoreChanges.isLocked())
         return;
-    auto pathChooser = qobject_cast<Utils::PathChooser *>(sender());
-    QTC_ASSERT(pathChooser, return);
 
     auto it = std::find_if(m_infoStore.begin(), m_infoStore.end(),
                            [pathChooser](const BuildInfoStore &store) {
@@ -366,33 +339,32 @@ void TargetSetupWidget::reportIssues(int index)
 QPair<Task::TaskType, QString> TargetSetupWidget::findIssues(const BuildInfo &info)
 {
     if (m_projectPath.isEmpty() || !info.factory)
-        return qMakePair(Task::Unknown, QString());
+        return {Task::Unknown, {}};
 
-    QString buildDir = info.buildDirectory.toString();
     Tasks issues;
     if (info.factory)
-        issues = info.factory->reportIssues(m_kit, m_projectPath.toString(), buildDir);
+        issues = info.factory->reportIssues(m_kit, m_projectPath, info.buildDirectory);
 
     QString text;
     Task::TaskType highestType = Task::Unknown;
-    foreach (const Task &t, issues) {
+    for (const Task &t : std::as_const(issues)) {
         if (!text.isEmpty())
             text.append(QLatin1String("<br>"));
         // set severity:
         QString severity;
         if (t.type == Task::Error) {
             highestType = Task::Error;
-            severity = tr("<b>Error:</b> ", "Severity is Task::Error");
+            severity = Tr::tr("<b>Error:</b> ", "Severity is Task::Error");
         } else if (t.type == Task::Warning) {
             if (highestType == Task::Unknown)
                 highestType = Task::Warning;
-            severity = tr("<b>Warning:</b> ", "Severity is Task::Warning");
+            severity = Tr::tr("<b>Warning:</b> ", "Severity is Task::Warning");
         }
         text.append(severity + t.description());
     }
     if (!text.isEmpty())
         text = QLatin1String("<nobr>") + text;
-    return qMakePair(highestType, text);
+    return {highestType, text};
 }
 
 TargetSetupWidget::BuildInfoStore::~BuildInfoStore()

@@ -1,65 +1,50 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <utils/fileutils.h>
+#include <utils/temporarydirectory.h>
 
 #include <languageclient/client.h>
 #include <languageclient/languageclientsettings.h>
 
 namespace Core { class IDocument; }
-namespace LanguageClient { class Client; }
+namespace ProjectExplorer { class ExtraCompiler; }
 namespace TextEditor { class TextDocument; }
 
-namespace Python {
-namespace Internal {
+namespace Python::Internal {
 
-class Interpreter;
-struct PythonLanguageServerState;
+class PySideUicExtraCompiler;
+class PythonLanguageServerState;
+class PyLSInterface;
 
-class PyLSSettings : public LanguageClient::StdIOSettings
+class PyLSClient : public LanguageClient::Client
 {
+    Q_OBJECT
 public:
-    PyLSSettings();
+    explicit PyLSClient(PyLSInterface *interface);
+    ~PyLSClient();
 
-    QString interpreterId() const { return m_interpreterId; }
-    void setInterpreter(const QString &interpreterId);
+    void openDocument(TextEditor::TextDocument *document) override;
+    void projectClosed(ProjectExplorer::Project *project) override;
 
-    bool isValid() const final;
-    QVariantMap toMap() const final;
-    void fromMap(const QVariantMap &map) final;
-    bool applyFromSettingsWidget(QWidget *widget) final;
-    QWidget *createSettingsWidget(QWidget *parent) const final;
-    LanguageClient::BaseSettings *copy() const final;
-    LanguageClient::Client *createClient(LanguageClient::BaseClientInterface *interface) const final;
+    void updateExtraCompilers(ProjectExplorer::Project *project,
+                              const QList<PySideUicExtraCompiler *> &extraCompilers);
+
+    static PyLSClient *clientForPython(const Utils::FilePath &python);
+    void updateConfiguration();
 
 private:
-    QString m_interpreterId;
+    void updateExtraCompilerContents(ProjectExplorer::ExtraCompiler *compiler,
+                                     const Utils::FilePath &file);
+    void closeExtraDoc(const Utils::FilePath &file);
+    void closeExtraCompiler(ProjectExplorer::ExtraCompiler *compiler);
 
-    PyLSSettings(const PyLSSettings &other) = default;
+    Utils::FilePaths m_extraWorkspaceDirs;
+    Utils::FilePath m_extraCompilerOutputDir;
+
+    QHash<ProjectExplorer::Project *, QList<ProjectExplorer::ExtraCompiler *>> m_extraCompilers;
 };
 
 class PyLSConfigureAssistant : public QObject
@@ -68,12 +53,10 @@ class PyLSConfigureAssistant : public QObject
 public:
     static PyLSConfigureAssistant *instance();
 
-    static const LanguageClient::StdIOSettings *languageServerForPython(
-        const Utils::FilePath &python);
-    static void documentOpened(Core::IDocument *document);
-    static void updateEditorInfoBars(const Utils::FilePath &python, LanguageClient::Client *client);
-
-    void openDocumentWithPython(const Utils::FilePath &python, TextEditor::TextDocument *document);
+    static void updateEditorInfoBars(const Utils::FilePath &python,
+                                     LanguageClient::Client *client);
+    static void openDocumentWithPython(const Utils::FilePath &python,
+                                       TextEditor::TextDocument *document);
 
 private:
     explicit PyLSConfigureAssistant(QObject *parent);
@@ -88,5 +71,4 @@ private:
     QHash<Utils::FilePath, QList<TextEditor::TextDocument *>> m_infoBarEntries;
 };
 
-} // namespace Internal
-} // namespace Python
+} // Python::Internal

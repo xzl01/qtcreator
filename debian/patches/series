@@ -2,4 +2,3 @@
 
 # Debian patches.
 debian_paths.diff
-upstream_Correctly-include-KSyntaxHighlighting-headers.patch

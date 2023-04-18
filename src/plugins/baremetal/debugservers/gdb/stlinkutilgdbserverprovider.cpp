@@ -1,34 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "stlinkutilgdbserverprovider.h"
 
 #include <baremetal/baremetalconstants.h>
+#include <baremetal/baremetaltr.h>
 #include <baremetal/debugserverprovidermanager.h>
 
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 #include <utils/pathchooser.h>
 #include <utils/qtcassert.h>
 #include <utils/variablechooser.h>
@@ -41,14 +20,14 @@
 
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
+namespace BareMetal::Internal {
 
 const char executableFileKeyC[] = "ExecutableFile";
 const char verboseLevelKeyC[] = "VerboseLevel";
 const char extendedModeKeyC[] = "ExtendedMode";
 const char resetBoardKeyC[] = "ResetBoard";
 const char transportLayerKeyC[] = "TransportLayer";
+const char connectUnderResetKeyC[] = "ConnectUnderReset";
 
 // StLinkUtilGdbServerProvider
 
@@ -58,7 +37,7 @@ StLinkUtilGdbServerProvider::StLinkUtilGdbServerProvider()
     setInitCommands(defaultInitCommands());
     setResetCommands(defaultResetCommands());
     setChannel("localhost", 4242);
-    setTypeDisplayName(GdbServerProvider::tr("ST-LINK Utility"));
+    setTypeDisplayName(Tr::tr("ST-LINK Utility"));
     setConfigurationWidgetCreator([this] { return new StLinkUtilGdbServerProviderConfigWidget(this); });
 }
 
@@ -98,6 +77,10 @@ CommandLine StLinkUtilGdbServerProvider::command() const
 
     if (m_transport != UnspecifiedTransport)
         cmd.addArg("--stlink_version=" + QString::number(m_transport));
+
+    if (m_connectUnderReset)
+        cmd.addArg("--connect-under-reset");
+
     cmd.addArg("--listen_port=" + QString::number(channel().port()));
     cmd.addArg("--verbose=" + QString::number(m_verboseLevel));
 
@@ -133,11 +116,12 @@ bool StLinkUtilGdbServerProvider::isValid() const
 QVariantMap StLinkUtilGdbServerProvider::toMap() const
 {
     QVariantMap data = GdbServerProvider::toMap();
-    data.insert(executableFileKeyC, m_executableFile.toVariant());
+    data.insert(executableFileKeyC, m_executableFile.toSettings());
     data.insert(verboseLevelKeyC, m_verboseLevel);
     data.insert(extendedModeKeyC, m_extendedMode);
     data.insert(resetBoardKeyC, m_resetBoard);
     data.insert(transportLayerKeyC, m_transport);
+    data.insert(connectUnderResetKeyC, m_connectUnderReset);
     return data;
 }
 
@@ -146,12 +130,13 @@ bool StLinkUtilGdbServerProvider::fromMap(const QVariantMap &data)
     if (!GdbServerProvider::fromMap(data))
         return false;
 
-    m_executableFile = FilePath::fromVariant(data.value(executableFileKeyC));
+    m_executableFile = FilePath::fromSettings(data.value(executableFileKeyC));
     m_verboseLevel = data.value(verboseLevelKeyC).toInt();
     m_extendedMode = data.value(extendedModeKeyC).toBool();
     m_resetBoard = data.value(resetBoardKeyC).toBool();
     m_transport = static_cast<TransportLayer>(
                 data.value(transportLayerKeyC).toInt());
+    m_connectUnderReset = data.value(connectUnderResetKeyC).toBool();
     return true;
 }
 
@@ -165,7 +150,8 @@ bool StLinkUtilGdbServerProvider::operator==(const IDebugServerProvider &other) 
             && m_verboseLevel == p->m_verboseLevel
             && m_extendedMode == p->m_extendedMode
             && m_resetBoard == p->m_resetBoard
-            && m_transport == p->m_transport;
+            && m_transport == p->m_transport
+            && m_connectUnderReset == p->m_connectUnderReset;
 }
 
 // StLinkUtilGdbServerProviderFactory
@@ -173,7 +159,7 @@ bool StLinkUtilGdbServerProvider::operator==(const IDebugServerProvider &other) 
 StLinkUtilGdbServerProviderFactory::StLinkUtilGdbServerProviderFactory()
 {
     setId(Constants::GDBSERVER_STLINK_UTIL_PROVIDER_ID);
-    setDisplayName(GdbServerProvider::tr("ST-LINK Utility"));
+    setDisplayName(Tr::tr("ST-LINK Utility"));
     setCreator([] { return new StLinkUtilGdbServerProvider; });
 }
 
@@ -186,36 +172,41 @@ StLinkUtilGdbServerProviderConfigWidget::StLinkUtilGdbServerProviderConfigWidget
     Q_ASSERT(p);
 
     m_hostWidget = new HostWidget(this);
-    m_mainLayout->addRow(tr("Host:"), m_hostWidget);
+    m_mainLayout->addRow(Tr::tr("Host:"), m_hostWidget);
 
     m_executableFileChooser = new Utils::PathChooser;
     m_executableFileChooser->setExpectedKind(Utils::PathChooser::ExistingCommand);
-    m_mainLayout->addRow(tr("Executable file:"), m_executableFileChooser);
+    m_mainLayout->addRow(Tr::tr("Executable file:"), m_executableFileChooser);
 
     m_verboseLevelSpinBox = new QSpinBox;
     m_verboseLevelSpinBox->setRange(0, 99);
-    m_verboseLevelSpinBox->setToolTip(tr("Specify the verbosity level (0..99)."));
-    m_mainLayout->addRow(tr("Verbosity level:"), m_verboseLevelSpinBox);
+    m_verboseLevelSpinBox->setToolTip(Tr::tr("Specify the verbosity level (0..99)."));
+    m_mainLayout->addRow(Tr::tr("Verbosity level:"), m_verboseLevelSpinBox);
 
     m_extendedModeCheckBox = new QCheckBox;
-    m_extendedModeCheckBox->setToolTip(tr("Continue listening for connections "
+    m_extendedModeCheckBox->setToolTip(Tr::tr("Continue listening for connections "
                                           "after disconnect."));
-    m_mainLayout->addRow(tr("Extended mode:"), m_extendedModeCheckBox);
+    m_mainLayout->addRow(Tr::tr("Extended mode:"), m_extendedModeCheckBox);
 
     m_resetBoardCheckBox = new QCheckBox;
-    m_resetBoardCheckBox->setToolTip(tr("Reset board on connection."));
-    m_mainLayout->addRow(tr("Reset on connection:"), m_resetBoardCheckBox);
+    m_resetBoardCheckBox->setToolTip(Tr::tr("Reset board on connection."));
+    m_mainLayout->addRow(Tr::tr("Reset on connection:"), m_resetBoardCheckBox);
+
+    m_resetOnConnectCheckBox = new QCheckBox;
+    m_resetOnConnectCheckBox->setToolTip(Tr::tr("Connects to the board before "
+                                            "executing any instructions."));
+    m_mainLayout->addRow(Tr::tr("Connect under reset:"), m_resetOnConnectCheckBox);
 
     m_transportLayerComboBox = new QComboBox;
-    m_transportLayerComboBox->setToolTip(tr("Transport layer type."));
-    m_mainLayout->addRow(tr("Version:"), m_transportLayerComboBox);
+    m_transportLayerComboBox->setToolTip(Tr::tr("Transport layer type."));
+    m_mainLayout->addRow(Tr::tr("Version:"), m_transportLayerComboBox);
 
     m_initCommandsTextEdit = new QPlainTextEdit(this);
     m_initCommandsTextEdit->setToolTip(defaultInitCommandsTooltip());
-    m_mainLayout->addRow(tr("Init commands:"), m_initCommandsTextEdit);
+    m_mainLayout->addRow(Tr::tr("Init commands:"), m_initCommandsTextEdit);
     m_resetCommandsTextEdit = new QPlainTextEdit(this);
     m_resetCommandsTextEdit->setToolTip(defaultResetCommandsTooltip());
-    m_mainLayout->addRow(tr("Reset commands:"), m_resetCommandsTextEdit);
+    m_mainLayout->addRow(Tr::tr("Reset commands:"), m_resetCommandsTextEdit);
 
     populateTransportLayers();
     addErrorLabel();
@@ -230,20 +221,20 @@ StLinkUtilGdbServerProviderConfigWidget::StLinkUtilGdbServerProviderConfigWidget
     connect(m_executableFileChooser, &Utils::PathChooser::rawPathChanged,
             this, &GdbServerProviderConfigWidget::dirty);
 
-    connect(m_verboseLevelSpinBox,
-            QOverload<int>::of(&QSpinBox::valueChanged),
+    connect(m_verboseLevelSpinBox, &QSpinBox::valueChanged,
             this, &GdbServerProviderConfigWidget::dirty);
     connect(m_extendedModeCheckBox, &QAbstractButton::clicked,
             this, &GdbServerProviderConfigWidget::dirty);
     connect(m_resetBoardCheckBox, &QAbstractButton::clicked,
             this, &GdbServerProviderConfigWidget::dirty);
-    connect(m_transportLayerComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_transportLayerComboBox, &QComboBox::currentIndexChanged,
             this, &GdbServerProviderConfigWidget::dirty);
 
     connect(m_initCommandsTextEdit, &QPlainTextEdit::textChanged,
             this, &GdbServerProviderConfigWidget::dirty);
     connect(m_resetCommandsTextEdit, &QPlainTextEdit::textChanged,
+            this, &GdbServerProviderConfigWidget::dirty);
+    connect(m_resetOnConnectCheckBox, &QAbstractButton::clicked,
             this, &GdbServerProviderConfigWidget::dirty);
 }
 
@@ -260,6 +251,7 @@ void StLinkUtilGdbServerProviderConfigWidget::apply()
     p->m_transport = transportLayer();
     p->setInitCommands(m_initCommandsTextEdit->toPlainText());
     p->setResetCommands(m_resetCommandsTextEdit->toPlainText());
+    p->m_connectUnderReset = m_resetOnConnectCheckBox->isChecked();
     GdbServerProviderConfigWidget::apply();
 }
 
@@ -297,13 +289,13 @@ void StLinkUtilGdbServerProviderConfigWidget::setTransportLayer(
 void StLinkUtilGdbServerProviderConfigWidget::populateTransportLayers()
 {
     m_transportLayerComboBox->insertItem(
-                m_transportLayerComboBox->count(), tr("ST-LINK/V1"),
+                m_transportLayerComboBox->count(), Tr::tr("ST-LINK/V1"),
                 StLinkUtilGdbServerProvider::ScsiOverUsb);
     m_transportLayerComboBox->insertItem(
-                m_transportLayerComboBox->count(), tr("ST-LINK/V2"),
+                m_transportLayerComboBox->count(), Tr::tr("ST-LINK/V2"),
                 StLinkUtilGdbServerProvider::RawUsb);
     m_transportLayerComboBox->insertItem(
-                m_transportLayerComboBox->count(), tr("Keep unspecified"),
+                m_transportLayerComboBox->count(), Tr::tr("Keep unspecified"),
                 StLinkUtilGdbServerProvider::UnspecifiedTransport);
 }
 
@@ -321,7 +313,7 @@ void StLinkUtilGdbServerProviderConfigWidget::setFromProvider()
     setTransportLayer(p->m_transport);
     m_initCommandsTextEdit->setPlainText(p->initCommands());
     m_resetCommandsTextEdit->setPlainText(p->resetCommands());
+    m_resetOnConnectCheckBox->setChecked(p->m_connectUnderReset);
 }
 
-} // namespace Internal
-} // namespace ProjectExplorer
+} // ProjectExplorer::Internal

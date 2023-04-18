@@ -1,30 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qnxanalyzesupport.h"
 
+#include "qnxconstants.h"
+#include "qnxtr.h"
 #include "slog2inforunner.h"
 
 #include <projectexplorer/devicesupport/deviceusedportsgatherer.h>
@@ -37,35 +17,43 @@
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Qnx {
-namespace Internal {
+namespace Qnx::Internal {
 
-QnxQmlProfilerSupport::QnxQmlProfilerSupport(RunControl *runControl)
-    : SimpleTargetRunner(runControl)
+class QnxQmlProfilerSupport final : public SimpleTargetRunner
 {
-    setId("QnxQmlProfilerSupport");
-    appendMessage(tr("Preparing remote side..."), Utils::LogMessageFormat);
+public:
+    explicit QnxQmlProfilerSupport(RunControl *runControl)
+        : SimpleTargetRunner(runControl)
+    {
+        setId("QnxQmlProfilerSupport");
+        appendMessage(Tr::tr("Preparing remote side..."), LogMessageFormat);
 
-    auto portsGatherer = new PortsGatherer(runControl);
-    addStartDependency(portsGatherer);
+        auto portsGatherer = new PortsGatherer(runControl);
+        addStartDependency(portsGatherer);
 
-    auto slog2InfoRunner = new Slog2InfoRunner(runControl);
-    addStartDependency(slog2InfoRunner);
+        auto slog2InfoRunner = new Slog2InfoRunner(runControl);
+        addStartDependency(slog2InfoRunner);
 
-    auto profiler = runControl->createWorker(ProjectExplorer::Constants::QML_PROFILER_RUNNER);
-    profiler->addStartDependency(this);
-    addStopDependency(profiler);
+        auto profiler = runControl->createWorker(ProjectExplorer::Constants::QML_PROFILER_RUNNER);
+        profiler->addStartDependency(this);
+        addStopDependency(profiler);
 
-    setStarter([this, runControl, portsGatherer, profiler] {
-        const QUrl serverUrl = portsGatherer->findEndPoint();
-        profiler->recordData("QmlServerUrl", serverUrl);
+        setStartModifier([this, portsGatherer, profiler] {
+            const QUrl serverUrl = portsGatherer->findEndPoint();
+            profiler->recordData("QmlServerUrl", serverUrl);
 
-        Runnable r = runControl->runnable();
-        r.command.addArg(QmlDebug::qmlDebugTcpArguments(QmlDebug::QmlProfilerServices, serverUrl));
+            CommandLine cmd = commandLine();
+            cmd.addArg(QmlDebug::qmlDebugTcpArguments(QmlDebug::QmlProfilerServices, serverUrl));
+            setCommandLine(cmd);
+        });
+    }
+};
 
-        doStart(r, runControl->device());
-    });
+QnxQmlProfilerWorkerFactory::QnxQmlProfilerWorkerFactory()
+{
+    setProduct<QnxQmlProfilerSupport>();
+    // FIXME: Shouldn't this use the run mode id somehow?
+    addSupportedRunConfig(Constants::QNX_RUNCONFIG_ID);
 }
 
-} // namespace Internal
-} // namespace Qnx
+} // Qnx::Internal

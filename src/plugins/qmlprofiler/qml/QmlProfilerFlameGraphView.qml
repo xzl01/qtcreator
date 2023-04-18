@@ -1,30 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtCreator.QmlProfiler 1.0
-import "../Tracing" // TODO: Turn into module import when possible
+import QtCreator.QmlProfiler
+import QtCreator.Tracing
 
 FlameGraphView {
     id: root
@@ -46,21 +24,20 @@ FlameGraphView {
     ]
 
     trRoleNames: [
-        QmlProfilerFlameGraphModel.DurationRole,      qsTr("Total Time"),
-        QmlProfilerFlameGraphModel.CallCountRole,     qsTr("Calls"),
-        QmlProfilerFlameGraphModel.DetailsRole,       qsTr("Details"),
-        QmlProfilerFlameGraphModel.TimePerCallRole,   qsTr("Mean Time"),
-        QmlProfilerFlameGraphModel.TimeInPercentRole, qsTr("In Percent"),
-        QmlProfilerFlameGraphModel.LocationRole,      qsTr("Location"),
-        QmlProfilerFlameGraphModel.AllocationsRole,   qsTr("Allocations"),
-        QmlProfilerFlameGraphModel.MemoryRole,        qsTr("Memory")
+        QmlProfilerFlameGraphModel.DurationRole,      qsTranslate("QtC::QmlProfiler", "Total Time"),
+        QmlProfilerFlameGraphModel.CallCountRole,     qsTranslate("QtC::QmlProfiler", "Calls"),
+        QmlProfilerFlameGraphModel.DetailsRole,       qsTranslate("QtC::QmlProfiler", "Details"),
+        QmlProfilerFlameGraphModel.TimePerCallRole,   qsTranslate("QtC::QmlProfiler", "Mean Time"),
+        QmlProfilerFlameGraphModel.LocationRole,      qsTranslate("QtC::QmlProfiler", "Location"),
+        QmlProfilerFlameGraphModel.AllocationsRole,   qsTranslate("QtC::QmlProfiler", "Allocations"),
+        QmlProfilerFlameGraphModel.MemoryRole,        qsTranslate("QtC::QmlProfiler", "Memory")
     ].reduce(toMap, {})
 
     details: function(flameGraph) {
         var model = [];
         if (!flameGraph.dataValid) {
             model.push(trRoleNames[QmlProfilerFlameGraphModel.DetailsRole]);
-            model.push(qsTr("Various Events"));
+            model.push(qsTranslate("QtC::QmlProfiler", "Various Events"));
         } else {
             function addDetail(role, format) { root.addDetail(role, format, model, flameGraph); }
 
@@ -77,7 +54,7 @@ FlameGraphView {
 
     summary: function(attached) {
         if (!attached.dataValid)
-            return qsTr("others");
+            return qsTranslate("QtC::QmlProfiler", "others");
 
         return attached.data(QmlProfilerFlameGraphModel.DetailsRole) + " ("
                 + attached.data(QmlProfilerFlameGraphModel.TypeRole) + ", "

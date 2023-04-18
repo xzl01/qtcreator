@@ -1,57 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Author: Milian Wolff, KDAB (milian.wolff@kdab.com)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
-
-#include "valgrindplugin.h"
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "callgrindtool.h"
 #include "memchecktool.h"
-#include "valgrindsettings.h"
 #include "valgrindconfigwidget.h"
+#include "valgrindsettings.h"
+#include "valgrindtr.h"
+
+#include <coreplugin/dialogs/ioptionspage.h>
+#include <coreplugin/icontext.h>
+#include <coreplugin/icore.h>
+
+#include <debugger/analyzer/analyzerrunconfigwidget.h>
+#include <debugger/analyzer/analyzericons.h>
+
+#include <extensionsystem/iplugin.h>
+
+#include <projectexplorer/projectexplorer.h>
 
 #ifdef WITH_TESTS
 #   include "valgrindmemcheckparsertest.h"
 #   include "valgrindtestrunnertest.h"
 #endif
 
-#include <coreplugin/dialogs/ioptionspage.h>
-#include <coreplugin/icontext.h>
-#include <coreplugin/icore.h>
-#include <debugger/analyzer/analyzerrunconfigwidget.h>
-#include <debugger/analyzer/analyzericons.h>
-
-#include <projectexplorer/projectexplorer.h>
-
-#include <QCoreApplication>
-#include <QPointer>
-
 using namespace Core;
 using namespace ProjectExplorer;
 
-namespace Valgrind {
-namespace Internal {
+namespace Valgrind::Internal {
 
 class ValgrindRunConfigurationAspect : public GlobalOrProjectAspect
 {
@@ -61,8 +36,7 @@ public:
         setProjectSettings(new ValgrindProjectSettings);
         setGlobalSettings(ValgrindGlobalSettings::instance());
         setId(ANALYZER_VALGRIND_SETTINGS);
-        setDisplayName(QCoreApplication::translate("Valgrind::Internal::ValgrindRunConfigurationAspect",
-                                                   "Valgrind Settings"));
+        setDisplayName(Tr::tr("Valgrind Settings"));
         setUsingGlobalSettings(true);
         resetProjectToGlobalSettings();
         setConfigWidgetCreator([this] { return new Debugger::AnalyzerRunConfigWidget(this); });
@@ -78,28 +52,30 @@ public:
     ValgrindOptionsPage valgrindOptionsPage;
 };
 
-ValgrindPlugin::~ValgrindPlugin()
+class ValgrindPlugin final : public ExtensionSystem::IPlugin
 {
-    delete d;
-}
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "Valgrind.json")
 
-bool ValgrindPlugin::initialize(const QStringList &, QString *)
-{
-    d = new ValgrindPluginPrivate;
+public:
+    ValgrindPlugin() = default;
+    ~ValgrindPlugin() final { delete d; }
 
-    RunConfiguration::registerAspect<ValgrindRunConfigurationAspect>();
+    void initialize() final
+    {
+        d = new ValgrindPluginPrivate;
 
-    return true;
-}
-
-QVector<QObject *> ValgrindPlugin::createTestObjects() const
-{
-    QVector<QObject *> tests;
+        RunConfiguration::registerAspect<ValgrindRunConfigurationAspect>();
 #ifdef WITH_TESTS
-    tests << new Test::ValgrindMemcheckParserTest << new Test::ValgrindTestRunnerTest;
+        addTest<Test::ValgrindMemcheckParserTest>();
+        addTest<Test::ValgrindTestRunnerTest>();
 #endif
-    return tests;
-}
+    }
 
-} // namespace Internal
-} // namespace Valgrind
+private:
+    class ValgrindPluginPrivate *d = nullptr;
+};
+
+} // Valgrind::Internal
+
+#include "valgrindplugin.moc"

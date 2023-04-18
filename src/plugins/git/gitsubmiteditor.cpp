@@ -1,32 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gitsubmiteditor.h"
+
 #include "gitclient.h"
 #include "gitplugin.h"
 #include "gitsubmiteditorwidget.h"
+#include "gittr.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/iversioncontrol.h>
@@ -41,13 +21,12 @@
 #include <QTextCodec>
 #include <QTimer>
 
-static const char TASK_UPDATE_COMMIT[] = "Git.UpdateCommit";
-
 using namespace Utils;
 using namespace VcsBase;
 
-namespace Git {
-namespace Internal {
+namespace Git::Internal {
+
+const char TASK_UPDATE_COMMIT[] = "Git.UpdateCommit";
 
 class GitSubmitFileModel : public SubmitFileModel
 {
@@ -130,16 +109,14 @@ void GitSubmitEditor::setCommitData(const CommitData &d)
     m_amendSHA1 = d.amendSHA1;
 
     GitSubmitEditorWidget *w = submitEditorWidget();
-    w->initialize(m_commitType, m_workingDirectory, d.panelData, d.panelInfo, d.enablePush);
+    w->initialize(m_workingDirectory, d);
     w->setHasUnmerged(false);
 
     setEmptyFileListEnabled(m_commitType == AmendCommit); // Allow for just correcting the message
 
     m_model = new GitSubmitFileModel(this);
-    m_model->setRepositoryRoot(d.panelInfo.repository.toString());
-    m_model->setFileStatusQualifier([](const QString &, const QVariant &extraData)
-                                    -> SubmitFileModel::FileStatusHint
-    {
+    m_model->setRepositoryRoot(d.panelInfo.repository);
+    m_model->setFileStatusQualifier([](const QString &, const QVariant &extraData) {
         const FileStates state = static_cast<FileStates>(extraData.toInt());
         if (state & (UnmergedFile | UnmergedThem | UnmergedUs))
             return SubmitFileModel::FileUnmerged;
@@ -211,7 +188,7 @@ void GitSubmitEditor::slotDiffSelected(const QList<int> &rows)
 void GitSubmitEditor::showCommit(const QString &commit)
 {
     if (!m_workingDirectory.isEmpty())
-        GitClient::instance()->show(m_workingDirectory.toString(), commit);
+        GitClient::instance()->show(m_workingDirectory, commit);
 }
 
 void GitSubmitEditor::updateFileModel()
@@ -226,9 +203,10 @@ void GitSubmitEditor::updateFileModel()
     if (w->updateInProgress() || m_workingDirectory.isEmpty())
         return;
     w->setUpdateInProgress(true);
+    // TODO: Check if fetch works OK from separate thread, refactor otherwise
     m_fetchWatcher.setFuture(Utils::runAsync(&CommitDataFetchResult::fetch,
                                              m_commitType, m_workingDirectory));
-    Core::ProgressManager::addTask(m_fetchWatcher.future(), tr("Refreshing Commit Data"),
+    Core::ProgressManager::addTask(m_fetchWatcher.future(), Tr::tr("Refreshing Commit Data"),
                                    TASK_UPDATE_COMMIT);
 
     GitClient::instance()->addFuture(QFuture<void>(m_fetchWatcher.future()));
@@ -267,7 +245,7 @@ GitSubmitEditorPanelData GitSubmitEditor::panelData() const
 
 QString GitSubmitEditor::amendSHA1() const
 {
-    QString commit = submitEditorWidget()->amendSHA1();
+    const QString commit = submitEditorWidget()->amendSHA1();
     return commit.isEmpty() ? m_amendSHA1 : commit;
 }
 
@@ -284,5 +262,4 @@ QByteArray GitSubmitEditor::fileContents() const
     return text.toUtf8();
 }
 
-} // namespace Internal
-} // namespace Git
+} // Git::Internal

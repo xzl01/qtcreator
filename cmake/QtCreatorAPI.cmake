@@ -3,7 +3,7 @@ if(QT_CREATOR_API_DEFINED)
 endif()
 set(QT_CREATOR_API_DEFINED TRUE)
 
-set(IDE_QT_VERSION_MIN "5.15.2")
+set(IDE_QT_VERSION_MIN "6.2.0")
 
 include(${CMAKE_CURRENT_LIST_DIR}/QtCreatorAPIInternal.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/QtcSeparateDebugInfo.cmake)
@@ -43,6 +43,8 @@ option(BUILD_LIBRARIES_BY_DEFAULT "Build libraries by default. This can be used 
 option(BUILD_TESTS_BY_DEFAULT "Build tests by default. This can be used to build all tests by default, or none." ON)
 option(QTC_SEPARATE_DEBUG_INFO "Extract debug information from binary files." OFF)
 option(WITH_SCCACHE_SUPPORT "Enables support for building with SCCACHE and separate debug info with MSVC, which SCCACHE normally doesn't support." OFF)
+option(WITH_CCACHE_SUPPORT "Enables support for building with CCACHE and separate debug info with MSVC, which CCACHE normally doesn't support." OFF)
+option(QTC_STATIC_BUILD "Builds libraries and plugins as static libraries" OFF)
 
 # If we provide a list of plugins, executables, libraries, then the BUILD_<type>_BY_DEFAULT will be set to OFF
 # and for every element we set BUILD_<type>_<elment> to ON
@@ -109,16 +111,23 @@ function(qtc_source_dir varName)
   endif()
 endfunction()
 
+function(get_default_defines varName allow_ascii_casts)
+  get_directory_property(_compile_definitions COMPILE_DEFINITIONS)
+  list(FIND _compile_definitions QT_NO_CAST_FROM_ASCII no_cast_index)
+  set(default_defines_copy ${DEFAULT_DEFINES})
+  if(allow_ascii_casts OR no_cast_index GREATER_EQUAL 0)
+    list(REMOVE_ITEM default_defines_copy QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII)
+  endif()
+  set(${varName} ${default_defines_copy} PARENT_SCOPE)
+endfunction()
+
 function(add_qtc_library name)
-  cmake_parse_arguments(_arg "STATIC;OBJECT;SKIP_TRANSLATION;ALLOW_ASCII_CASTS;FEATURE_INFO;SKIP_PCH"
+  cmake_parse_arguments(_arg "STATIC;OBJECT;SHARED;SKIP_TRANSLATION;ALLOW_ASCII_CASTS;FEATURE_INFO;SKIP_PCH;EXCLUDE_FROM_INSTALL"
     "DESTINATION;COMPONENT;SOURCES_PREFIX;BUILD_DEFAULT"
     "CONDITION;DEPENDS;PUBLIC_DEPENDS;DEFINES;PUBLIC_DEFINES;INCLUDES;PUBLIC_INCLUDES;SOURCES;EXPLICIT_MOC;SKIP_AUTOMOC;EXTRA_TRANSLATIONS;PROPERTIES" ${ARGN}
   )
 
-  set(default_defines_copy ${DEFAULT_DEFINES})
-  if (_arg_ALLOW_ASCII_CASTS)
-    list(REMOVE_ITEM default_defines_copy QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII)
-  endif()
+  get_default_defines(default_defines_copy ${_arg_ALLOW_ASCII_CASTS})
 
   if (${_arg_UNPARSED_ARGUMENTS})
     message(FATAL_ERROR "add_qtc_library had unparsed arguments")
@@ -156,7 +165,7 @@ function(add_qtc_library name)
   endif()
 
   set(library_type SHARED)
-  if (_arg_STATIC)
+  if (_arg_STATIC OR (QTC_STATIC_BUILD AND NOT _arg_SHARED))
     set(library_type STATIC)
   endif()
   if (_arg_OBJECT)
@@ -167,7 +176,12 @@ function(add_qtc_library name)
   add_library(QtCreator::${name} ALIAS ${name})
 
   if (${name} MATCHES "^[^0-9-]+$")
-    string(TOUPPER "${name}_LIBRARY" EXPORT_SYMBOL)
+    if (QTC_STATIC_BUILD)
+      set(export_symbol_suffix "STATIC_LIBRARY")
+    else()
+      set(export_symbol_suffix "LIBRARY")
+    endif()
+    string(TOUPPER "${name}_${export_symbol_suffix}" EXPORT_SYMBOL)
   endif()
 
   if (WITH_TESTS)
@@ -184,7 +198,7 @@ function(add_qtc_library name)
     SOURCES ${_arg_SOURCES}
     INCLUDES ${_arg_INCLUDES}
     PUBLIC_INCLUDES ${_arg_PUBLIC_INCLUDES}
-    DEFINES ${EXPORT_SYMBOL} ${default_defines_copy} ${_arg_DEFINES} ${TEST_DEFINES}
+    DEFINES ${default_defines_copy} ${_arg_DEFINES} ${TEST_DEFINES}
     PUBLIC_DEFINES ${_arg_PUBLIC_DEFINES}
     DEPENDS ${_arg_DEPENDS} ${IMPLICIT_DEPENDS}
     PUBLIC_DEPENDS ${_arg_PUBLIC_DEPENDS}
@@ -192,6 +206,12 @@ function(add_qtc_library name)
     SKIP_AUTOMOC ${_arg_SKIP_AUTOMOC}
     EXTRA_TRANSLATIONS ${_arg_EXTRA_TRANSLATIONS}
   )
+
+  if (QTC_STATIC_BUILD)
+    extend_qtc_target(${name} PUBLIC_DEFINES ${EXPORT_SYMBOL})
+  else()
+    extend_qtc_target(${name} DEFINES ${EXPORT_SYMBOL})
+  endif()
 
   # everything is different with SOURCES_PREFIX
   if (NOT _arg_SOURCES_PREFIX)
@@ -244,6 +264,7 @@ function(add_qtc_library name)
   unset(NAMELINK_OPTION)
   if (library_type STREQUAL "SHARED")
     set(NAMELINK_OPTION NAMELINK_SKIP)
+    qtc_add_link_flags_no_undefined(${name})
   endif()
 
   unset(COMPONENT_OPTION)
@@ -251,33 +272,35 @@ function(add_qtc_library name)
     set(COMPONENT_OPTION "COMPONENT" "${_arg_COMPONENT}")
   endif()
 
-  install(TARGETS ${name}
-    EXPORT QtCreator
-    RUNTIME
-      DESTINATION "${_DESTINATION}"
-      ${COMPONENT_OPTION}
-      OPTIONAL
-    LIBRARY
-      DESTINATION "${IDE_LIBRARY_PATH}"
-      ${NAMELINK_OPTION}
-      ${COMPONENT_OPTION}
-      OPTIONAL
-    OBJECTS
-      DESTINATION "${IDE_LIBRARY_PATH}"
-      COMPONENT Devel EXCLUDE_FROM_ALL
-    ARCHIVE
-      DESTINATION "${IDE_LIBRARY_ARCHIVE_PATH}"
-      COMPONENT Devel EXCLUDE_FROM_ALL
-      OPTIONAL
-  )
+  if (NOT _arg_EXCLUDE_FROM_INSTALL AND (NOT QTC_STATIC_BUILD OR _arg_SHARED))
+    install(TARGETS ${name}
+      EXPORT QtCreator
+      RUNTIME
+        DESTINATION "${_DESTINATION}"
+        ${COMPONENT_OPTION}
+        OPTIONAL
+      LIBRARY
+        DESTINATION "${IDE_LIBRARY_PATH}"
+        ${NAMELINK_OPTION}
+        ${COMPONENT_OPTION}
+        OPTIONAL
+      OBJECTS
+        DESTINATION "${IDE_LIBRARY_PATH}"
+        COMPONENT Devel EXCLUDE_FROM_ALL
+      ARCHIVE
+        DESTINATION "${IDE_LIBRARY_ARCHIVE_PATH}"
+        COMPONENT Devel EXCLUDE_FROM_ALL
+        OPTIONAL
+    )
+  endif()
 
   qtc_enable_separate_debug_info(${name} "${IDE_LIBRARY_PATH}")
 
   if (WITH_SANITIZE)
-    qtc_enable_sanitize(${SANITIZE_FLAGS})
+    qtc_enable_sanitize("${name}" ${SANITIZE_FLAGS})
   endif()
 
-  if (NAMELINK_OPTION)
+  if (NAMELINK_OPTION AND NOT QTC_STATIC_BUILD)
     install(TARGETS ${name}
       LIBRARY
         DESTINATION "${IDE_LIBRARY_PATH}"
@@ -288,7 +311,8 @@ function(add_qtc_library name)
   endif()
 
   get_target_property(have_automoc_prop ${name} AUTOMOC)
-  if("${Qt5_VERSION}" VERSION_GREATER_EQUAL "6.2.0" AND "${have_automoc_prop}")
+  # check for Qt 6 is needed because sdktool & qml2puppet still build with Qt 5
+  if(Qt6_VERSION AND "${have_automoc_prop}")
     qt_extract_metatypes(${name})
   endif()
 endfunction(add_qtc_library)
@@ -296,7 +320,7 @@ endfunction(add_qtc_library)
 function(add_qtc_plugin target_name)
   cmake_parse_arguments(_arg
     "SKIP_INSTALL;INTERNAL_ONLY;SKIP_TRANSLATION;EXPORT;SKIP_PCH"
-    "VERSION;COMPAT_VERSION;PLUGIN_JSON_IN;PLUGIN_PATH;PLUGIN_NAME;OUTPUT_NAME;BUILD_DEFAULT"
+    "VERSION;COMPAT_VERSION;PLUGIN_JSON_IN;PLUGIN_PATH;PLUGIN_NAME;OUTPUT_NAME;BUILD_DEFAULT;PLUGIN_CLASS"
     "CONDITION;DEPENDS;PUBLIC_DEPENDS;DEFINES;PUBLIC_DEFINES;INCLUDES;PUBLIC_INCLUDES;SOURCES;EXPLICIT_MOC;SKIP_AUTOMOC;EXTRA_TRANSLATIONS;PLUGIN_DEPENDS;PLUGIN_RECOMMENDS;PLUGIN_TEST_DEPENDS;PROPERTIES"
     ${ARGN}
   )
@@ -419,26 +443,38 @@ function(add_qtc_plugin target_name)
       CONTENT "${plugin_json}")
   endif()
 
-  add_library(${target_name} SHARED ${_arg_SOURCES})
+  if (QTC_STATIC_BUILD)
+    set(library_type STATIC)
+  else()
+    set(library_type SHARED)
+  endif()
+
+  add_library(${target_name} ${library_type} ${_arg_SOURCES})
   add_library(QtCreator::${target_name} ALIAS ${target_name})
 
   set_public_headers(${target_name} "${_arg_SOURCES}")
+  update_resource_files_list("${_arg_SOURCES}")
 
   ### Generate EXPORT_SYMBOL
-  string(TOUPPER "${name}_LIBRARY" EXPORT_SYMBOL)
+  if (QTC_STATIC_BUILD)
+    set(export_symbol_suffix "STATIC_LIBRARY")
+  else()
+    set(export_symbol_suffix "LIBRARY")
+  endif()
+  string(TOUPPER "${name}_${export_symbol_suffix}" EXPORT_SYMBOL)
 
   if (WITH_TESTS)
     set(TEST_DEFINES WITH_TESTS SRCDIR="${CMAKE_CURRENT_SOURCE_DIR}")
   endif()
 
   if (WITH_SANITIZE)
-    qtc_enable_sanitize(${SANITIZE_FLAGS})
+    qtc_enable_sanitize("${name}" ${SANITIZE_FLAGS})
   endif()
 
   extend_qtc_target(${target_name}
     INCLUDES ${_arg_INCLUDES}
     PUBLIC_INCLUDES ${_arg_PUBLIC_INCLUDES}
-    DEFINES ${EXPORT_SYMBOL} ${DEFAULT_DEFINES} ${_arg_DEFINES} ${TEST_DEFINES}
+    DEFINES ${DEFAULT_DEFINES} ${_arg_DEFINES} ${TEST_DEFINES}
     PUBLIC_DEFINES ${_arg_PUBLIC_DEFINES}
     DEPENDS ${_arg_DEPENDS} ${_DEP_PLUGINS} ${IMPLICIT_DEPENDS}
     PUBLIC_DEPENDS ${_arg_PUBLIC_DEPENDS}
@@ -446,6 +482,13 @@ function(add_qtc_plugin target_name)
     SKIP_AUTOMOC ${_arg_SKIP_AUTOMOC}
     EXTRA_TRANSLATIONS ${_arg_EXTRA_TRANSLATIONS}
   )
+
+  if (QTC_STATIC_BUILD)
+    extend_qtc_target(${target_name} PUBLIC_DEFINES ${EXPORT_SYMBOL}
+                                     DEFINES QT_STATICPLUGIN)
+  else()
+    extend_qtc_target(${target_name} DEFINES ${EXPORT_SYMBOL})
+  endif()
 
   get_filename_component(public_build_interface_dir "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
   file(RELATIVE_PATH include_dir_relative_path ${PROJECT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/..")
@@ -469,6 +512,10 @@ function(add_qtc_plugin target_name)
     set(skip_translation ON)
   endif()
 
+  if(NOT _arg_PLUGIN_CLASS)
+    set(_arg_PLUGIN_CLASS ${target_name}Plugin)
+  endif()
+
   qtc_output_binary_dir(_output_binary_dir)
   set_target_properties(${target_name} PROPERTIES
     LINK_DEPENDS_NO_SHARED ON
@@ -488,6 +535,7 @@ function(add_qtc_plugin target_name)
     OUTPUT_NAME "${name}"
     QT_SKIP_TRANSLATION "${skip_translation}"
     QT_COMPILE_OPTIONS_DISABLE_WARNINGS OFF
+    QTC_PLUGIN_CLASS_NAME ${_arg_PLUGIN_CLASS}
     ${_arg_PROPERTIES}
   )
 
@@ -495,7 +543,7 @@ function(add_qtc_plugin target_name)
     enable_pch(${target_name})
   endif()
 
-  if (NOT _arg_SKIP_INSTALL)
+  if (NOT _arg_SKIP_INSTALL AND NOT QTC_STATIC_BUILD)
     if (_arg_EXPORT)
       set(export QtCreator${target_name})
     else()
@@ -576,10 +624,7 @@ function(add_qtc_executable name)
     message(FATAL_ERROR "add_qtc_executable had unparsed arguments!")
   endif()
 
-  set(default_defines_copy ${DEFAULT_DEFINES})
-  if (_arg_ALLOW_ASCII_CASTS)
-    list(REMOVE_ITEM default_defines_copy QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII)
-  endif()
+  get_default_defines(default_defines_copy ${_arg_ALLOW_ASCII_CASTS})
 
   update_cached_list(__QTC_EXECUTABLES "${name}")
 
@@ -633,6 +678,10 @@ function(add_qtc_executable name)
   endif()
 
   add_executable("${name}" ${_arg_SOURCES})
+
+  if (WITH_SANITIZE)
+    qtc_enable_sanitize("${name}" ${SANITIZE_FLAGS})
+  endif()
 
   extend_qtc_target("${name}"
     INCLUDES "${CMAKE_BINARY_DIR}/src" ${_arg_INCLUDES}
@@ -734,14 +783,14 @@ function(add_qtc_executable name)
         set(_code "${_code}
           execute_process(COMMAND \"${CMAKE_INSTALL_NAME_TOOL}\"
             -delete_rpath \"${_rpath}\"
-            \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_EXECUTABLE_FILE_PATH}\")"
+            \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_EXECUTABLE_FILE_PATH}\" ${QTC_COMMAND_ERROR_IS_FATAL})"
         )
       endforeach()
       foreach(_rpath ${install_rpath})
         set(_code "${_code}
           execute_process(COMMAND \"${CMAKE_INSTALL_NAME_TOOL}\"
             -add_rpath \"${_rpath}\"
-            \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_EXECUTABLE_FILE_PATH}\")"
+            \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_EXECUTABLE_FILE_PATH}\" ${QTC_COMMAND_ERROR_IS_FATAL})"
         )
       endforeach()
       install(CODE "${_code}")
@@ -767,10 +816,10 @@ function(extend_qtc_executable name)
 endfunction()
 
 function(add_qtc_test name)
-  cmake_parse_arguments(_arg "GTEST;MANUALTEST" "TIMEOUT"
+  cmake_parse_arguments(_arg "GTEST;MANUALTEST;EXCLUDE_FROM_PRECHECK" "TIMEOUT"
       "DEFINES;DEPENDS;INCLUDES;SOURCES;EXPLICIT_MOC;SKIP_AUTOMOC;SKIP_PCH;CONDITION" ${ARGN})
 
-  if ($_arg_UNPARSED_ARGUMENTS)
+  if (${_arg_UNPARSED_ARGUMENTS})
     message(FATAL_ERROR "add_qtc_test had unparsed arguments!")
   endif()
 
@@ -787,12 +836,17 @@ function(add_qtc_test name)
   endif()
   set(${_build_test_var} "${_build_test_default}" CACHE BOOL "Build test ${name}.")
 
-  if (NOT ${_build_test_var} OR NOT ${_arg_CONDITION})
+  if ((${_arg_CONDITION}) AND ${_build_test_var})
+    set(_test_enabled ON)
+  else()
+    set(_test_enabled OFF)
+  endif()
+  if (NOT _test_enabled)
     return()
   endif()
 
   foreach(dependency ${_arg_DEPENDS})
-    if (NOT TARGET ${dependency} AND NOT _arg_GTEST)
+    if (NOT TARGET ${dependency})
       if (WITH_DEBUG_CMAKE)
         message(STATUS  "'${dependency}' is not a target")
       endif()
@@ -803,8 +857,7 @@ function(add_qtc_test name)
   set(TEST_DEFINES SRCDIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
   # relax cast requirements for tests
-  set(default_defines_copy ${DEFAULT_DEFINES})
-  list(REMOVE_ITEM default_defines_copy QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII)
+  get_default_defines(default_defines_copy YES)
 
   file(RELATIVE_PATH _RPATH "/${IDE_BIN_PATH}" "/${IDE_LIBRARY_PATH}")
 
@@ -831,6 +884,9 @@ function(add_qtc_test name)
 
   if (NOT _arg_GTEST AND NOT _arg_MANUALTEST)
     add_test(NAME ${name} COMMAND ${name})
+    if (_arg_EXCLUDE_FROM_PRECHECK)
+      set_tests_properties(${name} PROPERTIES LABELS exclude_from_precheck)
+    endif()
     if (DEFINED _arg_TIMEOUT)
       set(timeout_option TIMEOUT ${_arg_TIMEOUT})
     else()
@@ -840,17 +896,32 @@ function(add_qtc_test name)
   endif()
 endfunction()
 
-function(finalize_qtc_gtest test_name exclude_sources_regex)
+function(finalize_qtc_gtest test_name)
   if (NOT TARGET ${test_name})
     return()
   endif()
+
+  cmake_parse_arguments(_arg "EXCLUDE_ALL_FROM_PRECHECK" "EXCLUDE_SOURCES_REGEX"
+      "EXCLUDE_FROM_PRECHECK" ${ARGN})
+
+  if (${_arg_UNPARSED_ARGUMENTS})
+    message(FATAL_ERROR "finalize_qtc_gtest had unparsed arguments!")
+  endif()
+
   get_target_property(test_sources ${test_name} SOURCES)
-  if (exclude_sources_regex)
-    list(FILTER test_sources EXCLUDE REGEX "${exclude_sources_regex}")
+  if (_arg_EXCLUDE_SOURCES_REGEX)
+    list(FILTER test_sources EXCLUDE REGEX "${_arg_EXCLUDE_SOURCES_REGEX}")
   endif()
   include(GoogleTest)
   gtest_add_tests(TARGET ${test_name} SOURCES ${test_sources} TEST_LIST test_list SKIP_DEPENDENCY)
 
+  if(_arg_EXCLUDE_ALL_FROM_PRECHECK)
+    set_tests_properties(${test_list}
+      PROPERTIES LABELS exclude_from_precheck)
+  elseif(_arg_EXCLUDE_FROM_PRECHECK)
+    set_tests_properties(${_arg_EXCLUDE_FROM_PRECHECK}
+      PROPERTIES LABELS exclude_from_precheck)
+  endif()
   foreach(test IN LISTS test_list)
     finalize_test_setup(${test})
   endforeach()
@@ -917,7 +988,10 @@ function(qtc_add_resources target resourceName)
     message(FATAL_ERROR "qtc_add_resources had unparsed arguments!")
   endif()
 
-  if (DEFINED _arg_CONDITION AND NOT _arg_CONDITION)
+  if (NOT _arg_CONDITION)
+    set(_arg_CONDITION ON)
+  endif()
+  if (NOT (${_arg_CONDITION}))
     return()
   endif()
 
@@ -991,11 +1065,11 @@ function(qtc_add_resources target resourceName)
 
   # Process .qrc file:
   add_custom_command(OUTPUT "${generatedSourceCode}"
-                     COMMAND Qt5::rcc ${rccArgs}
+                     COMMAND Qt::rcc ${rccArgs}
                      DEPENDS
                       ${resource_dependencies}
                       ${generatedResourceFile}
-                      "Qt5::rcc"
+                      "Qt::rcc"
                      COMMENT "RCC ${newResourceName}"
                      VERBATIM)
 

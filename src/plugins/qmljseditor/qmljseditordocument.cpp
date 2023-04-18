@@ -1,38 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljseditordocument.h"
 
-#include "qmljseditorconstants.h"
 #include "qmljseditordocument_p.h"
 #include "qmljseditorplugin.h"
+#include "qmljseditortr.h"
 #include "qmljshighlighter.h"
 #include "qmljsquickfixassist.h"
 #include "qmljssemantichighlighter.h"
 #include "qmljssemanticinfoupdater.h"
 #include "qmljstextmark.h"
+#include "qmllsclient.h"
+#include "qmllssettings.h"
 #include "qmloutlinemodel.h"
 
 #include <coreplugin/coreconstants.h>
@@ -42,9 +22,13 @@
 #include <qmljstools/qmljsmodelmanager.h>
 #include <qmljstools/qmljsqtstylecodeformatter.h>
 
+#include <utils/fileutils.h>
 #include <utils/infobar.h>
 
+#include <languageclient/languageclientmanager.h>
+
 #include <QDebug>
+#include <QLoggingCategory>
 #include <QTextCodec>
 
 const char QML_UI_FILE_WARNING[] = "QmlJSEditor.QmlUiFileWarning";
@@ -55,6 +39,8 @@ using namespace QmlJS::AST;
 using namespace QmlJSTools;
 
 namespace {
+
+Q_LOGGING_CATEGORY(qmllsLog, "qtc.qmlls.editor", QtWarningMsg);
 
 enum {
     UPDATE_DOCUMENT_DEFAULT_INTERVAL = 100,
@@ -491,9 +477,15 @@ QmlJSEditorDocumentPrivate::QmlJSEditorDocumentPrivate(QmlJSEditorDocument *pare
             this, &QmlJSEditorDocumentPrivate::reparseDocument);
     connect(modelManager, &ModelManagerInterface::documentUpdated,
             this, &QmlJSEditorDocumentPrivate::onDocumentUpdated);
+    connect(QmllsSettingsManager::instance(),
+            &QmllsSettingsManager::settingsChanged,
+            this,
+            &Internal::QmlJSEditorDocumentPrivate::settingsChanged);
 
     // semantic info
-    m_semanticInfoUpdater = new SemanticInfoUpdater(this);
+    m_semanticInfoUpdater = new SemanticInfoUpdater();
+    connect(m_semanticInfoUpdater, &SemanticInfoUpdater::finished,
+            m_semanticInfoUpdater, &QObject::deleteLater);
     connect(m_semanticInfoUpdater, &SemanticInfoUpdater::updated,
             this, &QmlJSEditorDocumentPrivate::acceptNewSemanticInfo);
     m_semanticInfoUpdater->start();
@@ -512,13 +504,13 @@ QmlJSEditorDocumentPrivate::QmlJSEditorDocumentPrivate(QmlJSEditorDocument *pare
     connect(&m_updateOutlineModelTimer, &QTimer::timeout,
             this, &QmlJSEditorDocumentPrivate::updateOutlineModel);
 
-    modelManager->updateSourceFiles(QStringList(parent->filePath().toString()), false);
+    modelManager->updateSourceFiles(Utils::FilePaths({parent->filePath()}), false);
+    settingsChanged();
 }
 
 QmlJSEditorDocumentPrivate::~QmlJSEditorDocumentPrivate()
 {
     m_semanticInfoUpdater->abort();
-    m_semanticInfoUpdater->wait();
     // clean up all marks, otherwise a callback could try to access deleted members.
     // see QTCREATORBUG-20199
     cleanDiagnosticMarks();
@@ -533,13 +525,12 @@ void QmlJSEditorDocumentPrivate::invalidateFormatterCache()
 
 void QmlJSEditorDocumentPrivate::reparseDocument()
 {
-    ModelManagerInterface::instance()->updateSourceFiles(QStringList(q->filePath().toString()),
-                                                         false);
+    ModelManagerInterface::instance()->updateSourceFiles(Utils::FilePaths({q->filePath()}), false);
 }
 
 void QmlJSEditorDocumentPrivate::onDocumentUpdated(Document::Ptr doc)
 {
-    if (q->filePath().toString() != doc->fileName())
+    if (q->filePath() != doc->fileName())
         return;
 
     // text document has changed, simply wait for the next onDocumentUpdated
@@ -551,7 +542,8 @@ void QmlJSEditorDocumentPrivate::onDocumentUpdated(Document::Ptr doc)
         // got a correctly parsed (or recovered) file.
         m_semanticInfoDocRevision = doc->editorRevision();
         m_semanticInfoUpdater->update(doc, ModelManagerInterface::instance()->snapshot());
-    } else if (doc->language().isFullySupportedLanguage()) {
+    } else if (doc->language().isFullySupportedLanguage()
+               && m_qmllsStatus.semanticWarningsSource == QmllsStatus::Source::EmbeddedCodeModel) {
         createTextMarks(doc->diagnosticMessages());
     }
     emit q->updateCodeWarnings(doc);
@@ -588,16 +580,22 @@ void QmlJSEditorDocumentPrivate::acceptNewSemanticInfo(const SemanticInfo &seman
     m_outlineModelNeedsUpdate = true;
     m_semanticHighlightingNecessary = true;
 
-    createTextMarks(m_semanticInfo);
+    if (m_qmllsStatus.semanticWarningsSource == QmllsStatus::Source::EmbeddedCodeModel)
+        createTextMarks(m_semanticInfo);
     emit q->semanticInfoUpdated(m_semanticInfo); // calls triggerPendingUpdates as necessary
 }
 
 void QmlJSEditorDocumentPrivate::updateOutlineModel()
 {
-    if (q->isSemanticInfoOutdated())
+    if (isSemanticInfoOutdated())
         return; // outline update will be retriggered when semantic info is updated
 
     m_outlineModel->update(m_semanticInfo);
+}
+
+bool QmlJSEditorDocumentPrivate::isSemanticInfoOutdated() const
+{
+    return m_semanticInfo.revision() != q->document()->revision();
 }
 
 static void cleanMarks(QVector<TextEditor::TextMark *> *marks, TextEditor::TextDocument *doc)
@@ -615,6 +613,8 @@ static void cleanMarks(QVector<TextEditor::TextMark *> *marks, TextEditor::TextD
 
 void QmlJSEditorDocumentPrivate::createTextMarks(const QList<DiagnosticMessage> &diagnostics)
 {
+    if (m_qmllsStatus.semanticWarningsSource != QmllsStatus::Source::EmbeddedCodeModel)
+        return;
     for (const DiagnosticMessage &diagnostic : diagnostics) {
         const auto onMarkRemoved = [this](QmlJSTextMark *mark) {
             m_diagnosticMarks.removeAll(mark);
@@ -639,13 +639,13 @@ void QmlJSEditorDocumentPrivate::createTextMarks(const SemanticInfo &info)
         m_semanticMarks.removeAll(mark);
         delete mark;
     };
-    for (const DiagnosticMessage &diagnostic : qAsConst(info.semanticMessages)) {
+    for (const DiagnosticMessage &diagnostic : std::as_const(info.semanticMessages)) {
         auto mark = new QmlJSTextMark(q->filePath(),
                                       diagnostic, onMarkRemoved);
         m_semanticMarks.append(mark);
         q->addMark(mark);
     }
-    for (const QmlJS::StaticAnalysis::Message &message : qAsConst(info.staticAnalysisMessages)) {
+    for (const QmlJS::StaticAnalysis::Message &message : std::as_const(info.staticAnalysisMessages)) {
         auto mark = new QmlJSTextMark(q->filePath(),
                                       message, onMarkRemoved);
         m_semanticMarks.append(mark);
@@ -656,6 +656,158 @@ void QmlJSEditorDocumentPrivate::createTextMarks(const SemanticInfo &info)
 void QmlJSEditorDocumentPrivate::cleanSemanticMarks()
 {
     cleanMarks(&m_semanticMarks, q);
+}
+
+void QmlJSEditorDocumentPrivate::setSemanticWarningSource(QmllsStatus::Source newSource)
+{
+    if (m_qmllsStatus.semanticWarningsSource == newSource)
+        return;
+    m_qmllsStatus.semanticWarningsSource = newSource;
+    QTC_ASSERT(q->thread() == QThread::currentThread(), return );
+    switch (m_qmllsStatus.semanticWarningsSource) {
+    case QmllsStatus::Source::Qmlls:
+        m_semanticHighlighter->setEnableWarnings(false);
+        cleanDiagnosticMarks();
+        cleanSemanticMarks();
+        if (m_semanticInfo.isValid() && !isSemanticInfoOutdated()) {
+            // clean up underlines for warning messages
+            m_semanticHighlightingNecessary = false;
+            m_semanticHighlighter->rerun(m_semanticInfo);
+        }
+        break;
+    case QmllsStatus::Source::EmbeddedCodeModel:
+        m_semanticHighlighter->setEnableWarnings(true);
+        reparseDocument();
+        break;
+    }
+}
+
+void QmlJSEditorDocumentPrivate::setSemanticHighlightSource(QmllsStatus::Source newSource)
+{
+    if (m_qmllsStatus.semanticHighlightSource == newSource)
+        return;
+    m_qmllsStatus.semanticHighlightSource = newSource;
+    QTC_ASSERT(q->thread() == QThread::currentThread(), return );
+    switch (m_qmllsStatus.semanticHighlightSource) {
+    case QmllsStatus::Source::Qmlls:
+        m_semanticHighlighter->setEnableHighlighting(false);
+        cleanSemanticMarks();
+        break;
+    case QmllsStatus::Source::EmbeddedCodeModel:
+        m_semanticHighlighter->setEnableHighlighting(true);
+        if (m_semanticInfo.isValid() && !isSemanticInfoOutdated()) {
+            m_semanticHighlightingNecessary = false;
+            m_semanticHighlighter->rerun(m_semanticInfo);
+        }
+        break;
+    }
+}
+
+void QmlJSEditorDocumentPrivate::setCompletionSource(QmllsStatus::Source newSource)
+{
+    if (m_qmllsStatus.completionSource == newSource)
+        return;
+    m_qmllsStatus.completionSource = newSource;
+    switch (m_qmllsStatus.completionSource) {
+    case QmllsStatus::Source::Qmlls:
+        // activation of the document already takes care of setting it
+        break;
+    case QmllsStatus::Source::EmbeddedCodeModel:
+        // deactivation of the document takes care of restoring it
+        break;
+    }
+}
+
+void QmlJSEditorDocumentPrivate::setSourcesWithCapabilities(
+    const LanguageServerProtocol::ServerCapabilities &cap)
+{
+    if (cap.completionProvider())
+        setCompletionSource(QmllsStatus::Source::Qmlls);
+    else
+        setCompletionSource(QmllsStatus::Source::EmbeddedCodeModel);
+    if (cap.codeActionProvider())
+        setSemanticWarningSource(QmllsStatus::Source::Qmlls);
+    else
+        setSemanticWarningSource(QmllsStatus::Source::EmbeddedCodeModel);
+    if (cap.semanticTokensProvider())
+        setSemanticHighlightSource(QmllsStatus::Source::Qmlls);
+    else
+        setSemanticHighlightSource(QmllsStatus::Source::EmbeddedCodeModel);
+}
+
+static Utils::FilePath qmllsForFile(const Utils::FilePath &file,
+                                    QmlJS::ModelManagerInterface *modelManager)
+{
+    QmllsSettingsManager *settingsManager = QmllsSettingsManager::instance();
+    QmllsSettings settings = settingsManager->lastSettings();
+    bool enabled = settings.useQmlls;
+    if (!enabled)
+        return Utils::FilePath();
+    if (settings.useLatestQmlls)
+        return settingsManager->latestQmlls();
+    QmlJS::ModelManagerInterface::ProjectInfo pInfo = modelManager->projectInfoForPath(file);
+    return pInfo.qmllsPath;
+}
+
+void QmlJSEditorDocumentPrivate::settingsChanged()
+{
+    Utils::FilePath newQmlls = qmllsForFile(q->filePath(), ModelManagerInterface::instance());
+    if (m_qmllsStatus.qmllsPath == newQmlls)
+        return;
+    m_qmllsStatus.qmllsPath = newQmlls;
+    auto lspClientManager = LanguageClient::LanguageClientManager::instance();
+    if (newQmlls.isEmpty()) {
+        qCDebug(qmllsLog) << "disabling qmlls for" << q->filePath();
+        if (LanguageClient::Client *client = lspClientManager->clientForDocument(q)) {
+            qCDebug(qmllsLog) << "deactivating " << q->filePath() << "in qmlls" << newQmlls;
+            client->deactivateDocument(q);
+        } else
+            qCWarning(qmllsLog) << "Could not find client to disable for document " << q->filePath()
+                                << " in LanguageClient::LanguageClientManager";
+        setCompletionSource(QmllsStatus::Source::EmbeddedCodeModel);
+        setSemanticWarningSource(QmllsStatus::Source::EmbeddedCodeModel);
+        setSemanticHighlightSource(QmllsStatus::Source::EmbeddedCodeModel);
+    } else if (QmllsClient *client = QmllsClient::clientForQmlls(newQmlls)) {
+        bool shouldActivate = false;
+        if (auto oldClient = lspClientManager->clientForDocument(q)) {
+            // check if it was disabled
+            if (client == oldClient)
+                shouldActivate = true;
+        }
+        switch (client->state()) {
+        case LanguageClient::Client::State::Uninitialized:
+        case LanguageClient::Client::State::InitializeRequested:
+            connect(client,
+                    &LanguageClient::Client::initialized,
+                    this,
+                    &QmlJSEditorDocumentPrivate::setSourcesWithCapabilities);
+            break;
+        case LanguageClient::Client::State::Initialized:
+            setSourcesWithCapabilities(client->capabilities());
+            break;
+        case LanguageClient::Client::State::Error:
+            qCWarning(qmllsLog) << "qmlls" << newQmlls << "requested for document" << q->filePath()
+                                << "had errors, skipping setSourcesWithCababilities";
+            break;
+        case LanguageClient::Client::State::Shutdown:
+            qCWarning(qmllsLog) << "qmlls" << newQmlls << "requested for document" << q->filePath()
+                                << "did stop, skipping setSourcesWithCababilities";
+            break;
+        case LanguageClient::Client::State::ShutdownRequested:
+            qCWarning(qmllsLog) << "qmlls" << newQmlls << "requested for document" << q->filePath()
+                                << "is stopping, skipping setSourcesWithCababilities";
+            break;
+        }
+        if (shouldActivate) {
+            qCDebug(qmllsLog) << "reactivating " << q->filePath() << "in qmlls" << newQmlls;
+            client->activateDocument(q);
+        } else {
+            qCDebug(qmllsLog) << "opening " << q->filePath() << "in qmlls" << newQmlls;
+            lspClientManager->openDocumentWithClient(q, client);
+        }
+    } else {
+        qCWarning(qmllsLog) << "could not start qmlls " << newQmlls << "for" << q->filePath();
+    }
 }
 
 } // Internal
@@ -688,7 +840,7 @@ const SemanticInfo &QmlJSEditorDocument::semanticInfo() const
 
 bool QmlJSEditorDocument::isSemanticInfoOutdated() const
 {
-    return d->m_semanticInfo.revision() != document()->revision();
+    return d->isSemanticInfoOutdated();
 }
 
 QVector<QTextLayout::FormatRange> QmlJSEditorDocument::diagnosticRanges() const
@@ -712,8 +864,8 @@ void QmlJSEditorDocument::setIsDesignModePreferred(bool value)
     if (value) {
         if (infoBar()->canInfoBeAdded(QML_UI_FILE_WARNING)) {
             Utils::InfoBarEntry info(QML_UI_FILE_WARNING,
-                                     tr("This file should only be edited in <b>Design</b> mode."));
-            info.addCustomButton(tr("Switch Mode"), []() {
+                                     Tr::tr("This file should only be edited in <b>Design</b> mode."));
+            info.addCustomButton(Tr::tr("Switch Mode"), []() {
                 Core::ModeManager::activateMode(Core::Constants::MODE_DESIGN);
             });
             infoBar()->addInfo(info);

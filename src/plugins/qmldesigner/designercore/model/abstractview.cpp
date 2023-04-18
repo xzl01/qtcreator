@@ -1,42 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "abstractview.h"
 
+#include "auxiliarydataproperties.h"
 #include "model.h"
 #include "model_p.h"
 #include "internalnode_p.h"
 #include "nodeinstanceview.h"
 #include <qmlstate.h>
 #include <qmltimeline.h>
-
-#ifndef QMLDESIGNER_TEST
-#include <qmldesignerplugin.h>
-#include <viewmanager.h>
-#include <nodeabstractproperty.h>
-#endif
+#include <nodemetainfo.h>
+#include <qmldesignerconstants.h>
+#include <nodelistproperty.h>
+#include <variantproperty.h>
+#include <bindingproperty.h>
 
 #include <coreplugin/helpmanager.h>
 #include <utils/qtcassert.h>
@@ -85,15 +63,22 @@ RewriterTransaction AbstractView::beginRewriterTransaction(const QByteArray &ide
     return RewriterTransaction(this, identifier);
 }
 
-ModelNode AbstractView::createModelNode(const TypeName &typeName,
-                            int majorVersion,
-                            int minorVersion,
-                            const QList<QPair<PropertyName, QVariant> > &propertyList,
-                            const QList<QPair<PropertyName, QVariant> > &auxPropertyList,
-                            const QString &nodeSource,
-                            ModelNode::NodeSourceType nodeSourceType)
+ModelNode AbstractView::createModelNode(const TypeName &typeName)
 {
-    return ModelNode(model()->d->createNode(typeName, majorVersion, minorVersion, propertyList, auxPropertyList, nodeSource, nodeSourceType), model(), this);
+    const NodeMetaInfo metaInfo = model()->metaInfo(typeName);
+    return createModelNode(typeName, metaInfo.majorVersion(), metaInfo.minorVersion());
+}
+
+ModelNode AbstractView::createModelNode(const TypeName &typeName,
+                                        int majorVersion,
+                                        int minorVersion,
+                                        const QList<QPair<PropertyName, QVariant>> &propertyList,
+                                        const AuxiliaryDatas &auxPropertyList,
+                                        const QString &nodeSource,
+                                        ModelNode::NodeSourceType nodeSourceType,
+                                        const QString &behaviorPropertyName)
+{
+    return ModelNode(model()->d->createNode(typeName, majorVersion, minorVersion, propertyList, auxPropertyList, nodeSource, nodeSourceType, behaviorPropertyName), model(), this);
 }
 
 
@@ -128,7 +113,6 @@ void AbstractView::removeModel()
 }
 
 WidgetInfo AbstractView::createWidgetInfo(QWidget *widget,
-                                          WidgetInfo::ToolBarWidgetFactoryInterface *toolBarWidgetFactory,
                                           const QString &uniqueId,
                                           WidgetInfo::PlacementHint placementHint,
                                           int placementPriority,
@@ -138,7 +122,6 @@ WidgetInfo AbstractView::createWidgetInfo(QWidget *widget,
     WidgetInfo widgetInfo;
 
     widgetInfo.widget = widget;
-    widgetInfo.toolBarWidgetFactory = toolBarWidgetFactory;
     widgetInfo.uniqueId = uniqueId;
     widgetInfo.placementHint = placementHint;
     widgetInfo.placementPriority = placementPriority;
@@ -341,6 +324,10 @@ void AbstractView::signalHandlerPropertiesChanged(const QVector<SignalHandlerPro
 {
 }
 
+void AbstractView::signalDeclarationPropertiesChanged(const QVector<SignalDeclarationProperty>& /*propertyList*/, PropertyChangeFlags /*propertyChange*/)
+{
+}
+
 void AbstractView::rootNodeTypeChanged(const QString &/*type*/, int /*majorVersion*/, int /*minorVersion*/)
 {
 }
@@ -362,7 +349,9 @@ void AbstractView::usedImportsChanged(const QList<Import> &/*usedImports*/)
 {
 }
 
-void AbstractView::auxiliaryDataChanged(const ModelNode &/*node*/, const PropertyName &/*name*/, const QVariant &/*data*/)
+void AbstractView::auxiliaryDataChanged(const ModelNode & /*node*/,
+                                        AuxiliaryDataKeyView /*key*/,
+                                        const QVariant & /*data*/)
 {
 }
 
@@ -394,9 +383,20 @@ void AbstractView::updateImport3DSupport(const QVariantMap & /*supportMap*/)
 {
 }
 
+// a Quick3DNode that is picked at the requested view position in the 3D Editor and the 3D scene
+// position of the requested view position.
+void AbstractView::nodeAtPosReady(const ModelNode & /*modelNode*/, const QVector3D &/*pos3d*/) {}
+
 void AbstractView::modelNodePreviewPixmapChanged(const ModelNode & /*node*/, const QPixmap & /*pixmap*/)
 {
 }
+
+void AbstractView::view3DAction(View3DActionType, const QVariant &) {}
+
+void AbstractView::active3DSceneChanged(qint32 /*sceneId*/) {}
+
+void AbstractView::dragStarted(QMimeData * /*mimeData*/) {}
+void AbstractView::dragEnded() {}
 
 QList<ModelNode> AbstractView::toModelNodeList(const QList<Internal::InternalNode::Pointer> &nodeList) const
 {
@@ -531,7 +531,7 @@ bool AbstractView::hasModelNodeForInternalId(qint32 internalId) const
     return model()->d->hasNodeForInternalId(internalId);
 }
 
-NodeInstanceView *AbstractView::nodeInstanceView() const
+const NodeInstanceView *AbstractView::nodeInstanceView() const
 {
     if (model())
         return model()->d->nodeInstanceView();
@@ -559,6 +559,7 @@ void AbstractView::resetView()
 
 void AbstractView::resetPuppet()
 {
+    QTC_ASSERT(isAttached(), return);
     emitCustomNotification(QStringLiteral("reset QmlPuppet"));
 }
 
@@ -584,21 +585,16 @@ void AbstractView::enableWidget()
         widgetInfo().widget->setEnabled(true);
 }
 
-void AbstractView::contextHelp(const Core::IContext::HelpCallback &callback) const
+QString AbstractView::contextHelpId() const
 {
-#ifndef QMLDESIGNER_TEST
+    QString id = const_cast<AbstractView *>(this)->widgetInfo().uniqueId;
 
-    const QString id = const_cast<AbstractView *>(this)->widgetInfo().uniqueId;
+    if (!selectedModelNodes().isEmpty()) {
+        const auto nodeId = selectedModelNodes().first().simplifiedTypeName();
+        id += " " + nodeId;
+    }
 
-    QString nodeId;
-    if (!selectedModelNodes().isEmpty())
-        nodeId = selectedModelNodes().first().simplifiedTypeName();
-    QmlDesignerPlugin::instance()->emitUsageStatisticsHelpRequested(id + " " + nodeId);
-    QmlDesignerPlugin::instance()->viewManager().qmlJSEditorContextHelp(callback);
-
-#else
-    callback(QString());
-#endif
+    return id;
 }
 
 void AbstractView::setCurrentTimeline(const ModelNode &timeline)
@@ -665,11 +661,10 @@ QList<ModelNode> AbstractView::allModelNodes() const
     return toModelNodeList(model()->d->allNodes());
 }
 
-QList<ModelNode> AbstractView::allModelNodesOfType(const TypeName &typeName) const
+QList<ModelNode> AbstractView::allModelNodesOfType(const NodeMetaInfo &type) const
 {
-    return Utils::filtered(allModelNodes(), [typeName](const ModelNode &node){
-        return node.metaInfo().isValid() && node.metaInfo().isSubclassOf(typeName);
-    });
+    return Utils::filtered(allModelNodes(),
+                           [&](const ModelNode &node) { return node.metaInfo().isBasedOn(type); });
 }
 
 void AbstractView::emitDocumentMessage(const QString &error)
@@ -695,7 +690,8 @@ void AbstractView::emitCustomNotification(const QString &identifier, const QList
 
 void AbstractView::emitCustomNotification(const QString &identifier, const QList<ModelNode> &nodeList, const QList<QVariant> &data)
 {
-    model()->d->notifyCustomNotification(this, identifier, nodeList, data);
+    if (model())
+        model()->d->notifyCustomNotification(this, identifier, nodeList, data);
 }
 
 void AbstractView::emitInstancePropertyChange(const QList<QPair<ModelNode, PropertyName> > &propertyList)
@@ -746,12 +742,6 @@ void AbstractView::emitRewriterBeginTransaction()
         model()->d->notifyRewriterBeginTransaction();
 }
 
-void AbstractView::sendTokenToInstances(const QString &token, int number, const QVector<ModelNode> &nodeVector)
-{
-    if (nodeInstanceView())
-        nodeInstanceView()->sendToken(token, number, nodeVector);
-}
-
 void AbstractView::emitInstanceToken(const QString &token, int number, const QVector<ModelNode> &nodeVector)
 {
     if (nodeInstanceView())
@@ -782,6 +772,18 @@ void AbstractView::emitImport3DSupportChanged(const QVariantMap &supportMap)
         model()->d->notifyImport3DSupportChanged(supportMap);
 }
 
+void AbstractView::emitNodeAtPosResult(const ModelNode &modelNode, const QVector3D &pos3d)
+{
+    if (model())
+        model()->d->notifyNodeAtPosResult(modelNode, pos3d);
+}
+
+void AbstractView::emitView3DAction(View3DActionType type, const QVariant &value)
+{
+    if (model())
+        model()->d->notifyView3DAction(type, value);
+}
+
 void AbstractView::emitRewriterEndTransaction()
 {
     if (model())
@@ -801,6 +803,143 @@ void AbstractView::changeRootNodeType(const TypeName &type, int majorVersion, in
 
     m_model.data()->d->changeRootNodeType(type, majorVersion, minorVersion);
 }
+
+// Creates material library if it doesn't exist and moves any existing materials into it.
+void AbstractView::ensureMaterialLibraryNode()
+{
+    ModelNode matLib = modelNodeForId(Constants::MATERIAL_LIB_ID);
+    if (matLib.isValid()
+            || (!rootModelNode().metaInfo().isQtQuick3DNode()
+                && !rootModelNode().metaInfo().isQtQuickItem())) {
+        return;
+    }
+
+    executeInTransaction(__FUNCTION__, [&] {
+        // Create material library node
+        auto nodeType = rootModelNode().metaInfo().isQtQuick3DNode()
+                            ? model()->qtQuick3DNodeMetaInfo()
+                            : model()->qtQuickItemMetaInfo();
+        matLib = createModelNode(nodeType.typeName(), nodeType.majorVersion(), nodeType.minorVersion());
+
+        matLib.setIdWithoutRefactoring(Constants::MATERIAL_LIB_ID);
+        rootModelNode().defaultNodeListProperty().reparentHere(matLib);
+    });
+
+    // Do the material reparentings in different transaction to work around issue QDS-8094
+    executeInTransaction(__FUNCTION__, [&] {
+        const QList<ModelNode> materials = rootModelNode().subModelNodesOfType(
+            model()->qtQuick3DMaterialMetaInfo());
+        if (!materials.isEmpty()) {
+            // Move all materials to under material library node
+            for (const ModelNode &node : materials) {
+                // If material has no name, set name to id
+                QString matName = node.variantProperty("objectName").value().toString();
+                if (matName.isEmpty()) {
+                    VariantProperty objNameProp = node.variantProperty("objectName");
+                    objNameProp.setValue(node.id());
+                }
+
+                matLib.defaultNodeListProperty().reparentHere(node);
+            }
+        }
+    });
+}
+
+// Returns ModelNode for project's material library if it exists.
+ModelNode AbstractView::materialLibraryNode()
+{
+    return modelNodeForId(Constants::MATERIAL_LIB_ID);
+}
+
+ModelNode AbstractView::active3DSceneNode()
+{
+    auto activeSceneAux = rootModelNode().auxiliaryData(active3dSceneProperty);
+    if (activeSceneAux) {
+        int activeScene = activeSceneAux->toInt();
+
+        if (hasModelNodeForInternalId(activeScene))
+            return modelNodeForInternalId(activeScene);
+    }
+
+    return {};
+}
+
+// Assigns given material to a 3D model.
+// The assigned material is also inserted into material library if not already there.
+// If given material is not valid, first existing material from material library is used,
+// or if material library is empty, a new material is created.
+// This function should be called only from inside a transaction, as it potentially does many
+// changes to model.
+void AbstractView::assignMaterialTo3dModel(const ModelNode &modelNode, const ModelNode &materialNode)
+{
+    QTC_ASSERT(modelNode.isValid() && modelNode.metaInfo().isQtQuick3DModel(), return );
+
+    ModelNode matLib = materialLibraryNode();
+
+    if (!matLib.isValid())
+        return;
+
+    ModelNode newMaterialNode;
+
+    if (materialNode.isValid() && materialNode.metaInfo().isQtQuick3DMaterial()) {
+        newMaterialNode = materialNode;
+    } else {
+        const QList<ModelNode> materials = matLib.directSubModelNodes();
+        if (materials.size() > 0) {
+            for (const ModelNode &mat : materials) {
+                if (mat.metaInfo().isQtQuick3DMaterial()) {
+                    newMaterialNode = mat;
+                    break;
+                }
+            }
+        }
+
+        // if no valid material, create a new default material
+        if (!newMaterialNode.isValid()) {
+            NodeMetaInfo metaInfo = model()->qtQuick3DDefaultMaterialMetaInfo();
+            newMaterialNode = createModelNode("QtQuick3D.DefaultMaterial", metaInfo.majorVersion(),
+                                              metaInfo.minorVersion());
+            newMaterialNode.validId();
+        }
+    }
+
+    QTC_ASSERT(newMaterialNode.isValid(), return);
+
+    VariantProperty matNameProp = newMaterialNode.variantProperty("objectName");
+    if (matNameProp.value().isNull())
+        matNameProp.setValue("New Material");
+
+    if (!newMaterialNode.hasParentProperty()
+            || newMaterialNode.parentProperty() != matLib.defaultNodeListProperty()) {
+        matLib.defaultNodeListProperty().reparentHere(newMaterialNode);
+    }
+    BindingProperty modelMatsProp = modelNode.bindingProperty("materials");
+    modelMatsProp.setExpression(newMaterialNode.id());
+}
+
+ModelNode AbstractView::getTextureDefaultInstance(const QString &source)
+{
+    ModelNode matLib = materialLibraryNode();
+    if (!matLib.isValid())
+        return {};
+
+    const QList <ModelNode> matLibNodes = matLib.directSubModelNodes();
+    for (const ModelNode &tex : matLibNodes) {
+        if (tex.isValid() && tex.metaInfo().isQtQuick3DTexture()) {
+            const QList<AbstractProperty> props = tex.properties();
+            if (props.size() != 1)
+                continue;
+            const AbstractProperty &prop = props[0];
+            if (prop.name() == "source" && prop.isVariantProperty()
+                    && prop.toVariantProperty().value().toString() == source) {
+                return tex;
+            }
+        }
+    }
+
+    return {};
+}
+
 
 ModelNode AbstractView::currentStateNode() const
 {
@@ -827,7 +966,8 @@ QmlTimeline AbstractView::currentTimeline() const
 
 static int getMinorVersionFromImport(const Model *model)
 {
-    foreach (const Import &import, model->imports()) {
+    const QList<Import> imports = model->imports();
+    for (const Import &import : imports) {
         if (import.isLibraryImport() && import.url() == "QtQuick") {
             const QString versionString = import.version();
             if (versionString.contains(".")) {
@@ -842,7 +982,8 @@ static int getMinorVersionFromImport(const Model *model)
 
 static int getMajorVersionFromImport(const Model *model)
 {
-    foreach (const Import &import, model->imports()) {
+    const QList<Import> imports = model->imports();
+    for (const Import &import : imports) {
         if (import.isLibraryImport() && import.url() == QStringLiteral("QtQuick")) {
             const QString versionString = import.version();
             if (versionString.contains(QStringLiteral("."))) {
@@ -872,7 +1013,8 @@ static int getMajorVersionFromNode(const ModelNode &modelNode)
 static int getMinorVersionFromNode(const ModelNode &modelNode)
 {
     if (modelNode.metaInfo().isValid()) {
-        foreach (const NodeMetaInfo &info,  modelNode.metaInfo().classHierarchy()) {
+        const NodeMetaInfos infos =  modelNode.metaInfo().classHierarchy();
+        for (const NodeMetaInfo &info :  infos) {
             if (info.typeName() == "QtQuick.QtObject" || info.typeName() == "QtQuick.Item")
                 return info.minorVersion();
         }

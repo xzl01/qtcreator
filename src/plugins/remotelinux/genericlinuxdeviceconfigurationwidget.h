@@ -1,46 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <projectexplorer/devicesupport/idevicewidget.h>
 
-#include "remotelinux_export.h"
+QT_BEGIN_NAMESPACE
+class QCheckBox;
+class QLabel;
+class QLineEdit;
+class QRadioButton;
+class QSpinBox;
+QT_END_NAMESPACE
 
-namespace RemoteLinux {
+namespace Utils {
+class FilePath;
+class PathChooser;
+} // Utils
 
-namespace Ui { class GenericLinuxDeviceConfigurationWidget; }
+namespace RemoteLinux::Internal {
 
-class REMOTELINUX_EXPORT GenericLinuxDeviceConfigurationWidget
+class GenericLinuxDeviceConfigurationWidget
         : public ProjectExplorer::IDeviceWidget
 {
     Q_OBJECT
 
 public:
-    explicit GenericLinuxDeviceConfigurationWidget(
-        const ProjectExplorer::IDevice::Ptr &deviceConfig);
+    explicit GenericLinuxDeviceConfigurationWidget(const ProjectExplorer::IDevicePtr &device);
     ~GenericLinuxDeviceConfigurationWidget() override;
 
 private:
@@ -51,6 +37,7 @@ private:
     void userNameEditingFinished();
     void keyFileEditingFinished();
     void gdbServerEditingFinished();
+    void qmlRuntimeEditingFinished();
     void handleFreePortsChanged();
     void setPrivateKey(const Utils::FilePath &path);
     void createNewKey();
@@ -60,7 +47,20 @@ private:
     void updatePortsWarningLabel();
     void initGui();
 
-    Ui::GenericLinuxDeviceConfigurationWidget *m_ui;
+    QRadioButton *m_defaultAuthButton;
+    QLabel *m_keyLabel;
+    QRadioButton *m_keyButton;
+    QLineEdit *m_hostLineEdit;
+    QSpinBox *m_sshPortSpinBox;
+    QCheckBox *m_hostKeyCheckBox;
+    QLineEdit *m_portsLineEdit;
+    QLabel *m_portsWarningLabel;
+    QLineEdit *m_userLineEdit;
+    QSpinBox *m_timeoutSpinBox;
+    Utils::PathChooser *m_keyFileLineEdit;
+    QLabel *m_machineTypeValueLabel;
+    Utils::PathChooser *m_gdbServerLineEdit;
+    Utils::PathChooser *m_qmlRuntimeLineEdit;
 };
 
-} // namespace RemoteLinux
+} // RemoteLinux::Internal

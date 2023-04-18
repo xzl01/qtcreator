@@ -1,40 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <coreplugin/core_global.h>
 
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 #include <utils/id.h>
-#include <utils/optional.h>
+#include <utils/link.h>
 
 #include <QFutureInterface>
 #include <QIcon>
 #include <QMetaType>
 #include <QVariant>
+#include <QKeySequence>
+
+#include <optional>
 
 namespace Core {
 
@@ -48,27 +29,47 @@ struct LocatorFilterEntry
             ExtraInfo
         };
 
+        HighlightInfo() = default;
+
+        HighlightInfo(QVector<int> startIndex,
+                      QVector<int> length,
+                      DataType type = DataType::DisplayName)
+        {
+            if (type == DataType::DisplayName) {
+                startsDisplay = startIndex;
+                lengthsDisplay = length;
+            } else {
+                startsExtraInfo = startIndex;
+                lengthsExtraInfo = length;
+            }
+        }
+
         HighlightInfo(int startIndex, int length, DataType type = DataType::DisplayName)
-            : starts{startIndex}
-            , lengths{length}
-            , dataType(type)
-        {}
+            : HighlightInfo(QVector<int>{startIndex}, QVector<int>{length}, type)
+        { }
 
-        HighlightInfo(QVector<int> startIndex, QVector<int> length, DataType type = DataType::DisplayName)
-            : starts(startIndex)
-            , lengths(length)
-            , dataType(type)
-        {}
+        QVector<int> starts(DataType type = DataType::DisplayName) const
+        {
+            return type == DataType::DisplayName ? startsDisplay : startsExtraInfo;
+        };
 
-        QVector<int> starts;
-        QVector<int> lengths;
-        DataType dataType;
+        QVector<int> lengths(DataType type = DataType::DisplayName) const
+        {
+            return type == DataType::DisplayName ? lengthsDisplay : lengthsExtraInfo;
+        };
+
+        QVector<int> startsDisplay;
+        QVector<int> lengthsDisplay;
+        QVector<int> startsExtraInfo;
+        QVector<int> lengthsExtraInfo;
     };
 
     LocatorFilterEntry() = default;
 
-    LocatorFilterEntry(ILocatorFilter *fromFilter, const QString &name, const QVariant &data,
-                Utils::optional<QIcon> icon = Utils::nullopt)
+    LocatorFilterEntry(ILocatorFilter *fromFilter,
+                       const QString &name,
+                       const QVariant &data = {},
+                       std::optional<QIcon> icon = std::nullopt)
         : filter(fromFilter)
         , displayName(name)
         , internalData(data)
@@ -79,6 +80,8 @@ struct LocatorFilterEntry
     ILocatorFilter *filter = nullptr;
     /* displayed string */
     QString displayName;
+    /* extra information displayed in parentheses and light-gray next to display name (optional)*/
+    QString displayExtra;
     /* extra information displayed in light-gray in a second column (optional) */
     QString extraInfo;
     /* additional tooltip */
@@ -86,12 +89,13 @@ struct LocatorFilterEntry
     /* can be used by the filter to save more information about the entry */
     QVariant internalData;
     /* icon to display along with the entry */
-    Utils::optional<QIcon> displayIcon;
+    std::optional<QIcon> displayIcon;
     /* file path, if the entry is related to a file, is used e.g. for resolving a file icon */
     Utils::FilePath filePath;
     /* highlighting support */
-    HighlightInfo highlightInfo{0, 0};
-
+    HighlightInfo highlightInfo;
+    // Should be used only when accept() calls BaseFileFilter::openEditorAt()
+    std::optional<Utils::Link> linkForEditor;
     static bool compareLexigraphically(const Core::LocatorFilterEntry &lhs,
                                        const Core::LocatorFilterEntry &rhs)
     {
@@ -139,6 +143,12 @@ public:
     void setDefaultShortcutString(const QString &shortcut);
     void setShortcutString(const QString &shortcut);
 
+    QKeySequence defaultKeySequence() const;
+    void setDefaultKeySequence(const QKeySequence &sequence);
+
+    std::optional<QString> defaultSearchText() const;
+    void setDefaultSearchText(const QString &defaultSearchText);
+
     virtual void prepareSearch(const QString &entry);
 
     virtual QList<LocatorFilterEntry> matchesFor(QFutureInterface<LocatorFilterEntry> &future, const QString &entry) = 0;
@@ -164,7 +174,8 @@ public:
 
     static Qt::CaseSensitivity caseSensitivity(const QString &str);
     static QRegularExpression createRegExp(const QString &text,
-                                           Qt::CaseSensitivity caseSensitivity = Qt::CaseInsensitive);
+                                           Qt::CaseSensitivity caseSensitivity = Qt::CaseInsensitive,
+                                           bool multiWord = false);
     static LocatorFilterEntry::HighlightInfo highlightInfo(const QRegularExpressionMatch &match,
         LocatorFilterEntry::HighlightInfo::DataType dataType = LocatorFilterEntry::HighlightInfo::DisplayName);
 
@@ -196,6 +207,8 @@ private:
     QString m_displayName;
     QString m_description;
     QString m_defaultShortcut;
+    std::optional<QString> m_defaultSearchText;
+    QKeySequence m_defaultKeySequence;
     bool m_defaultIncludedByDefault = false;
     bool m_includedByDefault = m_defaultIncludedByDefault;
     bool m_hidden = false;

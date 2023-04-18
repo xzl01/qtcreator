@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "algorithm.h"
 #include "icon.h"
@@ -30,12 +8,11 @@
 #include "stylehelper.h"
 
 #include <QApplication>
+#include <QDebug>
 #include <QIcon>
 #include <QImage>
 #include <QPainter>
-#include <QPaintEngine>
 #include <QWidget>
-#include <QDebug>
 
 namespace Utils {
 
@@ -59,7 +36,7 @@ static QPixmap maskToColorAndAlpha(const QPixmap &mask, const QColor &color)
 
 using MaskAndColor = QPair<QPixmap, QColor>;
 using MasksAndColors = QList<MaskAndColor>;
-static MasksAndColors masksAndColors(const Icon &icon, int dpr)
+static MasksAndColors masksAndColors(const QVector<IconMaskAndColor> &icon, int dpr)
 {
     MasksAndColors result;
     for (const IconMaskAndColor &i: icon) {
@@ -158,46 +135,50 @@ static QPixmap masksToIcon(const MasksAndColors &masks, const QPixmap &combinedM
 Icon::Icon() = default;
 
 Icon::Icon(std::initializer_list<IconMaskAndColor> args, Icon::IconStyleOptions style)
-    : QVector<IconMaskAndColor>(args)
+    : m_iconSourceList(args)
     , m_style(style)
 {
 }
 
 Icon::Icon(const FilePath &imageFileName)
 {
-    append({imageFileName, Theme::Color(-1)});
+    m_iconSourceList.append({imageFileName, Theme::Color(-1)});
 }
 
 QIcon Icon::icon() const
 {
-    if (isEmpty()) {
+    if (m_iconSourceList.isEmpty())
         return QIcon();
-    } else if (m_style == None) {
-        return QIcon(constFirst().first.toString());
-    } else {
-        QIcon result;
-        const int maxDpr = qRound(qApp->devicePixelRatio());
-        for (int dpr = 1; dpr <= maxDpr; dpr++) {
-            const MasksAndColors masks = masksAndColors(*this, dpr);
-            const QPixmap combinedMask = Utils::combinedMask(masks, m_style);
-            result.addPixmap(masksToIcon(masks, combinedMask, m_style));
 
-            const QColor disabledColor = creatorTheme()->color(Theme::IconsDisabledColor);
-            result.addPixmap(maskToColorAndAlpha(combinedMask, disabledColor), QIcon::Disabled);
-        }
-        return result;
+    if (m_style == None)
+        return QIcon(m_iconSourceList.constFirst().first.toString());
+
+    const int maxDpr = qRound(qApp->devicePixelRatio());
+    if (maxDpr == m_lastDevicePixelRatio)
+        return m_lastIcon;
+
+    m_lastDevicePixelRatio = maxDpr;
+    m_lastIcon = QIcon();
+    for (int dpr = 1; dpr <= maxDpr; dpr++) {
+        const MasksAndColors masks = masksAndColors(m_iconSourceList, dpr);
+        const QPixmap combinedMask = Utils::combinedMask(masks, m_style);
+        m_lastIcon.addPixmap(masksToIcon(masks, combinedMask, m_style));
+
+        const QColor disabledColor = creatorTheme()->color(Theme::IconsDisabledColor);
+        m_lastIcon.addPixmap(maskToColorAndAlpha(combinedMask, disabledColor), QIcon::Disabled);
     }
+    return m_lastIcon;
 }
 
 QPixmap Icon::pixmap(QIcon::Mode iconMode) const
 {
-    if (isEmpty()) {
+    if (m_iconSourceList.isEmpty()) {
         return QPixmap();
     } else if (m_style == None) {
-        return QPixmap(StyleHelper::dpiSpecificImageFile(constFirst().first.toString()));
+        return QPixmap(StyleHelper::dpiSpecificImageFile(m_iconSourceList.constFirst().first.toString()));
     } else {
         const MasksAndColors masks =
-                masksAndColors(*this, qRound(qApp->devicePixelRatio()));
+                masksAndColors(m_iconSourceList, qRound(qApp->devicePixelRatio()));
         const QPixmap combinedMask = Utils::combinedMask(masks, m_style);
         return iconMode == QIcon::Disabled
                 ? maskToColorAndAlpha(combinedMask, creatorTheme()->color(Theme::IconsDisabledColor))
@@ -207,8 +188,8 @@ QPixmap Icon::pixmap(QIcon::Mode iconMode) const
 
 FilePath Icon::imageFilePath() const
 {
-    QTC_ASSERT(length() == 1, return {});
-    return first().first;
+    QTC_ASSERT(m_iconSourceList.length() == 1, return {});
+    return m_iconSourceList.first().first;
 }
 
 QIcon Icon::sideBarIcon(const Icon &classic, const Icon &flat)

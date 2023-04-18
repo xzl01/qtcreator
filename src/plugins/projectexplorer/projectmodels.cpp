@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectmodels.h"
 
@@ -29,20 +7,25 @@
 #include "project.h"
 #include "projectnodes.h"
 #include "projectexplorer.h"
+#include "projectexplorertr.h"
 #include "projecttree.h"
 #include "session.h"
 #include "target.h"
 
 #include <app/app_version.h>
+
 #include <coreplugin/documentmanager.h>
-#include <coreplugin/fileiconprovider.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/iversioncontrol.h>
 #include <coreplugin/vcsmanager.h>
+
 #include <utils/utilsicons.h>
 #include <utils/algorithm.h>
 #include <utils/dropsupport.h>
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/pathchooser.h>
+#include <utils/qtcassert.h>
+#include <utils/qtcprocess.h>
 #include <utils/stringutils.h>
 #include <utils/theme/theme.h>
 
@@ -227,7 +210,7 @@ QVariant FlatModel::data(const QModelIndex &index, int role) const
                 if (!projectIssues.isEmpty())
                     tooltip += "<p>" + projectIssues;
             } else {
-                tooltip += "<p>" + tr("No kits are enabled for this project. "
+                tooltip += "<p>" + Tr::tr("No kits are enabled for this project. "
                                       "Enable kits in the \"Projects\" mode.");
             }
         }
@@ -313,8 +296,8 @@ bool FlatModel::setData(const QModelIndex &index, const QVariant &value, int rol
             });
             fileNames.removeDuplicates();
             const QMessageBox::StandardButton reply = QMessageBox::question(
-                        Core::ICore::dialogParent(), tr("Rename More Files?"),
-                        tr("Would you like to rename these files as well?\n    %1")
+                        Core::ICore::dialogParent(), Tr::tr("Rename More Files?"),
+                        Tr::tr("Would you like to rename these files as well?\n    %1")
                         .arg(fileNames.join("\n    ")),
                         QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel,
                         QMessageBox::Yes);
@@ -588,17 +571,16 @@ enum class DropAction { Copy, CopyWithFiles, Move, MoveWithFiles };
 
 class DropFileDialog : public QDialog
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::FlatModel)
 public:
     DropFileDialog(const FilePath &defaultTargetDir)
         : m_buttonBox(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel)),
           m_buttonGroup(new QButtonGroup(this))
     {
-        setWindowTitle(tr("Choose Drop Action"));
+        setWindowTitle(Tr::tr("Choose Drop Action"));
         const bool offerFileIo = !defaultTargetDir.isEmpty();
         auto * const layout = new QVBoxLayout(this);
         const QString idename(Core::Constants::IDE_DISPLAY_NAME);
-        layout->addWidget(new QLabel(tr("You just dragged some files from one project node to "
+        layout->addWidget(new QLabel(Tr::tr("You just dragged some files from one project node to "
                                         "another.\nWhat should %1 do now?").arg(idename), this));
         auto * const copyButton = new QRadioButton(this);
         m_buttonGroup->addButton(copyButton, int(DropAction::Copy));
@@ -607,20 +589,20 @@ public:
         m_buttonGroup->addButton(moveButton, int(DropAction::Move));
         layout->addWidget(moveButton);
         if (offerFileIo) {
-            copyButton->setText(tr("Copy Only File References"));
-            moveButton->setText(tr("Move Only File References"));
+            copyButton->setText(Tr::tr("Copy Only File References"));
+            moveButton->setText(Tr::tr("Move Only File References"));
             auto * const copyWithFilesButton
-                    = new QRadioButton(tr("Copy file references and files"), this);
+                    = new QRadioButton(Tr::tr("Copy file references and files"), this);
             m_buttonGroup->addButton(copyWithFilesButton, int(DropAction::CopyWithFiles));
             layout->addWidget(copyWithFilesButton);
             auto * const moveWithFilesButton
-                    = new QRadioButton(tr("Move file references and files"), this);
+                    = new QRadioButton(Tr::tr("Move file references and files"), this);
             m_buttonGroup->addButton(moveWithFilesButton, int(DropAction::MoveWithFiles));
             layout->addWidget(moveWithFilesButton);
             moveWithFilesButton->setChecked(true);
             auto * const targetDirLayout = new QHBoxLayout;
             layout->addLayout(targetDirLayout);
-            targetDirLayout->addWidget(new QLabel(tr("Target directory:"), this));
+            targetDirLayout->addWidget(new QLabel(Tr::tr("Target directory:"), this));
             m_targetDirChooser = new PathChooser(this);
             m_targetDirChooser->setExpectedKind(PathChooser::ExistingDirectory);
             m_targetDirChooser->setFilePath(defaultTargetDir);
@@ -628,8 +610,7 @@ public:
                 m_buttonBox->button(QDialogButtonBox::Ok)->setEnabled(valid);
             });
             targetDirLayout->addWidget(m_targetDirChooser);
-            connect(m_buttonGroup, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked),
-                    this, [this] {
+            connect(m_buttonGroup, &QButtonGroup::buttonClicked, this, [this] {
                 switch (dropAction()) {
                 case DropAction::CopyWithFiles:
                 case DropAction::MoveWithFiles:
@@ -645,8 +626,8 @@ public:
                 }
             });
         } else {
-            copyButton->setText(tr("Copy File References"));
-            moveButton->setText(tr("Move File References"));
+            copyButton->setText(Tr::tr("Copy File References"));
+            moveButton->setText(Tr::tr("Move File References"));
             moveButton->setChecked(true);
         }
         connect(m_buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -740,7 +721,7 @@ bool FlatModel::dropMimeData(const QMimeData *data, Qt::DropAction action, int r
 
     struct VcsInfo {
         Core::IVersionControl *vcs = nullptr;
-        QString repoDir;
+        FilePath repoDir;
         bool operator==(const VcsInfo &other) const {
             return vcs == other.vcs && repoDir == other.repoDir;
         }
@@ -840,31 +821,31 @@ bool FlatModel::dropMimeData(const QMimeData *data, Qt::DropAction action, int r
     };
     if (!failedAddToProject.empty() || !failedRemoveFromProject.empty()
             || !failedCopyOrMove.empty() || !failedDelete.empty() || !failedVcsOp.empty()) {
-        QString message = tr("Not all operations finished successfully.");
+        QString message = Tr::tr("Not all operations finished successfully.");
         if (!failedCopyOrMove.empty()) {
-            message.append('\n').append(tr("The following files could not be copied or moved:"))
+            message.append('\n').append(Tr::tr("The following files could not be copied or moved:"))
                     .append("\n  ").append(makeUserFileList(failedCopyOrMove));
         }
         if (!failedRemoveFromProject.empty()) {
-            message.append('\n').append(tr("The following files could not be removed from the "
+            message.append('\n').append(Tr::tr("The following files could not be removed from the "
                                            "project file:"))
                     .append("\n  ").append(makeUserFileList(failedRemoveFromProject));
         }
         if (!failedAddToProject.empty()) {
-            message.append('\n').append(tr("The following files could not be added to the "
+            message.append('\n').append(Tr::tr("The following files could not be added to the "
                                            "project file:"))
                     .append("\n  ").append(makeUserFileList(failedAddToProject));
         }
         if (!failedDelete.empty()) {
-            message.append('\n').append(tr("The following files could not be deleted:"))
+            message.append('\n').append(Tr::tr("The following files could not be deleted:"))
                     .append("\n  ").append(makeUserFileList(failedDelete));
         }
         if (!failedVcsOp.empty()) {
-            message.append('\n').append(tr("A version control operation failed for the following "
+            message.append('\n').append(Tr::tr("A version control operation failed for the following "
                                            "files. Please check your repository."))
                     .append("\n  ").append(makeUserFileList(failedVcsOp));
         }
-        QMessageBox::warning(Core::ICore::dialogParent(), tr("Failure Updating Project"), message);
+        QMessageBox::warning(Core::ICore::dialogParent(), Tr::tr("Failure Updating Project"), message);
     }
 
     return true;

@@ -11,8 +11,6 @@ QtcPlugin {
     Depends { name: "VcsBase" }
 
     files: [
-        "annotationhighlighter.cpp",
-        "annotationhighlighter.h",
         "cvseditor.cpp",
         "cvseditor.h",
         "cvsplugin.cpp",
@@ -21,6 +19,7 @@ QtcPlugin {
         "cvssettings.h",
         "cvssubmiteditor.cpp",
         "cvssubmiteditor.h",
+        "cvstr.h",
         "cvsutils.cpp",
         "cvsutils.h",
     ]

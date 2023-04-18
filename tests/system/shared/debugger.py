@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 def handleDebuggerWarnings(config, isMsvcBuild=False):
     if isMsvcBuild:
@@ -54,7 +32,7 @@ def handleDebuggerWarnings(config, isMsvcBuild=False):
 def takeDebuggerLog():
     invokeMenuItem("View", "Views", "Global Debugger Log")
     debuggerLogWindow = waitForObject("{container=':DebugModeWidget.Debugger Log_QDockWidget' "
-                                      "type='Debugger::Internal::DebuggerPane' unnamed='1' visible='1'}")
+                                      "type='QPlainTextEdit' unnamed='1' visible='1'}")
     debuggerLog = str(debuggerLogWindow.plainText)
     mouseClick(debuggerLogWindow)
     invokeContextMenuItem(debuggerLogWindow, "Clear Contents")
@@ -79,7 +57,7 @@ def setBreakpointsForCurrentProject(filesAndLines):
                   "window=':Qt Creator_Core::Internal::MainWindow'}")
     breakPointList = []
     for current in filesAndLines:
-        for curFile,curLine in current.iteritems():
+        for curFile,curLine in current.items():
             if not openDocument(curFile):
                 return None
             editor = getEditorForFileSuffix(curFile, True)
@@ -174,6 +152,8 @@ def doSimpleDebugging(currentKit, currentConfigName, expectedBPOrder=[], enableQ
 
 # param currentKit specifies the ID of the kit to use (see class Targets)
 def isMsvcConfig(currentKit):
+    if platform.system() not in ('Microsoft' 'Windows'):
+        return False
     switchViewTo(ViewConstants.PROJECTS)
     switchToBuildOrRunSettingsFor(currentKit, ProjectSettings.BUILD)
 
@@ -186,7 +166,8 @@ def isMsvcConfig(currentKit):
         raise Exception("Kit '%s' is not activated in the project." % wantedKitName)
     index = waitForObject(wantedKitIndexString)
     toolTip = str(index.data(Qt.ToolTipRole).toString())
-    compilerPattern = re.compile("<tr><td><b>Compiler:</b></td><td>(?P<compiler>.+)</td></tr>")
+    compilerPattern = re.compile('<dt style="font-weight:bold">Compiler:</dt><dd>(?P<compiler>.+)'
+                                 '</dd><dt style="font-weight:bold">Environment:')
     match = compilerPattern.search(toolTip)
     if match is None:
         test.warning("UI seems to have changed - failed to check for compiler.")
@@ -258,7 +239,7 @@ def __logDebugResult__():
 
 def verifyBreakPoint(bpToVerify):
     if isinstance(bpToVerify, dict):
-        fileName = bpToVerify.keys()[0]
+        fileName = list(bpToVerify.keys())[0]
         editor = getEditorForFileSuffix(fileName)
         if editor:
             test.compare(waitForObject(":DebugModeWidget_QComboBox").toolTip, fileName,

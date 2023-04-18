@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "outputtabwidget.h"
 #include "outputpane.h"
@@ -54,7 +32,7 @@ PaneTitleButton::PaneTitleButton(OutputPane *pane, QWidget *parent)
             stopAlert();
     });
 
-    connect(&animator, &QAbstractAnimation::finished, this, [this]() {
+    connect(&animator, &QAbstractAnimation::finished, this, [this] {
         m_animCounter++;
         if (m_animCounter < 8) {
             if (m_animCounter % 2 == 1)
@@ -64,11 +42,11 @@ PaneTitleButton::PaneTitleButton(OutputPane *pane, QWidget *parent)
         }
     });
 
-    connect(pane, &OutputPane::titleChanged, this, [=]() {
+    connect(pane, &OutputPane::titleChanged, this, [=] {
         setText(pane->title());
     });
 
-    connect(pane, &OutputPane::iconChanged, this, [=]() {
+    connect(pane, &OutputPane::iconChanged, this, [=] {
         setIcon(pane->icon());
     });
 }
@@ -138,8 +116,10 @@ int OutputTabWidget::addPane(OutputPane *pane)
 {
     if (pane) {
         auto button = new PaneTitleButton(pane, this);
-        connect(button, &PaneTitleButton::clicked, this, &OutputTabWidget::buttonClicked);
-        connect(pane, &OutputPane::dataChanged, this, &OutputTabWidget::showAlert);
+        connect(button, &PaneTitleButton::clicked, this, [this, button](bool checked) {
+            buttonClicked(button, checked);
+        });
+        connect(pane, &OutputPane::dataChanged, this, [this, pane] { showAlert(pane); });
 
         m_toolBar->addWidget(button);
         m_stackedWidget->addWidget(pane);
@@ -189,24 +169,26 @@ void OutputTabWidget::close()
     emit visibilityChanged(false);
 }
 
-void OutputTabWidget::showAlert()
+void OutputTabWidget::showAlert(OutputPane *pane)
 {
-    int index = m_pages.indexOf(qobject_cast<OutputPane*>(sender()));
+    const int index = m_pages.indexOf(pane);
     if (index >= 0 && !m_buttons[index]->isChecked())
         m_buttons[index]->startAlert(m_pages[index]->alertColor());
 }
 
-void OutputTabWidget::buttonClicked(bool para)
+void OutputTabWidget::buttonClicked(PaneTitleButton *button, bool checked)
 {
-    int index = m_buttons.indexOf(qobject_cast<PaneTitleButton*>(sender()));
-    if (index >= 0) {
-        if (para) {
-            for (int i = 0; i < m_buttons.count(); ++i) {
-                if (i != index)
-                    m_buttons[i]->setChecked(false);
-            }
-            showPane(index);
-        } else
-            close();
+    const int index = m_buttons.indexOf(button);
+    if (index < 0)
+        return;
+
+    if (checked) {
+        for (int i = 0; i < m_buttons.count(); ++i) {
+            if (i != index)
+                m_buttons[i]->setChecked(false);
+        }
+        showPane(index);
+    } else {
+        close();
     }
 }

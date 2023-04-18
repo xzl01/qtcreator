@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Studio documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example washingMachineUI
@@ -90,7 +68,7 @@
     \l {basic-image}{Image}, \l Text, and \l {Mouse Area} components. For the
     screen background, we use the \l {basic-rectangle}{Rectangle} component.
 
-    The text might look different on the desktop and MCUs, because on the
+    The text might look different on the desktop and MCUs because on the
     desktop we use dynamic font loading, whereas on MCUs fonts are compiled
     into application sources. Therefore, the text will always be Maven Pro
     on MCUs, whereas on the desktop you'd need to have Maven Pro installed
@@ -168,17 +146,17 @@
     and 1000 (\e arcSegment4).
 
     When we move the playhead in \uicontrol Timeline, we can see the rotation
-    animation in \l {Form Editor}.
+    animation in the \l {2D} view.
 
-    \image washingmachineui-multsegmentarc.gif "Rotation animation in Form Editor"
+    \image washingmachineui-multsegmentarc.gif "Rotation animation in the 2D view"
 
     \section1 Creating States
 
     In our UI, we use connections and states to move between screens. First,
     we specify the application workflow in \e ApplicationFlow.qml. When the
-    file is open in \uicontrol {Form Editor}, we drag-and-drop the components
+    file is open in the \uicontrol {2D} view, we drag-and-drop the components
     that define the screens in the application from \uicontrol Components to
-    \uicontrol Navigator or \uicontrol {Form Editor}: \e StartScreen,
+    \uicontrol Navigator or the \uicontrol {2D} view: \e StartScreen,
     \e SettingsScreen, \e PresetsScreen, and \e RunningScreen.
 
     \image washingmachineui-application-flow.png "startScreen component in different views"
@@ -188,7 +166,7 @@
     in the top-left corner of the root component.
 
     Then, we open the \uicontrol States view to create the \e start,
-    \e settings, \e presets, and \e running \l{Adding States}{states} for
+    \e settings, \e presets, and \e running \l{Working with States}{states} for
     displaying a particular screen by selecting \uicontrol {Create New State}.
 
     \image washingmachineui-states.png "States view"
@@ -205,7 +183,7 @@
 
     Some signals are predefined for the \l {Mouse Area} component, some we have to
     add ourselves. For example, let's look at the start button that we use
-    in \e StartScreen.ui.qml. First, we use the \l{Text Editor} view
+    in \e StartScreen.ui.qml. First, we use the \l{Code} view
     to create the \c startClicked signal:
 
     \quotefromfile washingMachineUI/StartScreen.ui.qml
@@ -213,12 +191,12 @@
     \printuntil startClicked
 
     Then, we select the mouse area for the start button, \e startMA,
-    in \uicontrol Navigator. In \l {Connection View} > \uicontrol Connections,
-    we select the \inlineimage icons/plus.png
+    in \uicontrol Navigator. On the \uicontrol Connections tab in the
+    \l {Connections} view, we select the \inlineimage icons/plus.png
     (\uicontrol Add) button to connect the \c onClicked() signal handler
     of the button to the \c startClicked() signal.
 
-    \image washingmachineui-connections.png "Connection View"
+    \image washingmachineui-connections.png "Connections view"
 
     Then, in \e ApplicationView.qml, we specify that the \c startClicked()
     signal changes the application state to \e presets:
@@ -227,7 +205,7 @@
     \skipto Item {
     \printuntil }
 
-    We have to do it this way, because we are developing for MCUs. We have to
+    We have to do it this way because we are developing for MCUs. We have to
     use either \c when conditions or set the state directly through code,
     which overrides \c when conditions. Otherwise, we could just select the
     action to change to the state that we want in the \uicontrol Action field.

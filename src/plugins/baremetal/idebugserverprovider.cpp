@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "idebugserverprovider.h"
 
 #include "baremetaldevice.h"
+#include "baremetaltr.h"
 #include "debugserverprovidermanager.h"
-#include "idebugserverprovider.h"
 
 #include <utils/environment.h>
 #include <utils/qtcassert.h>
 
-#include <QCoreApplication>
 #include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -40,8 +19,7 @@
 using namespace Debugger;
 using namespace ProjectExplorer;
 
-namespace BareMetal {
-namespace Internal {
+namespace BareMetal::Internal {
 
 const char idKeyC[] = "Id";
 const char displayNameKeyC[] = "DisplayName";
@@ -277,8 +255,8 @@ IDebugServerProviderConfigWidget::IDebugServerProviderConfigWidget(
     m_mainLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     m_nameLineEdit = new QLineEdit(this);
-    m_nameLineEdit->setToolTip(tr("Enter the name of the debugger server provider."));
-    m_mainLayout->addRow(tr("Name:"), m_nameLineEdit);
+    m_nameLineEdit->setToolTip(Tr::tr("Enter the name of the debugger server provider."));
+    m_mainLayout->addRow(Tr::tr("Name:"), m_nameLineEdit);
 
     setFromProvider();
 
@@ -337,21 +315,19 @@ HostWidget::HostWidget(QWidget *parent)
     : QWidget(parent)
 {
     m_hostLineEdit = new QLineEdit(this);
-    m_hostLineEdit->setToolTip(tr("Enter TCP/IP hostname of the debug server, "
-                                  "like \"localhost\" or \"192.0.2.1\"."));
+    m_hostLineEdit->setToolTip(Tr::tr("Enter TCP/IP hostname of the debug server, "
+                                      "like \"localhost\" or \"192.0.2.1\"."));
     m_portSpinBox = new QSpinBox(this);
     m_portSpinBox->setRange(0, 65535);
-    m_portSpinBox->setToolTip(tr("Enter TCP/IP port which will be listened by "
-                                 "the debug server."));
+    m_portSpinBox->setToolTip(Tr::tr("Enter TCP/IP port which will be listened by "
+                                     "the debug server."));
     const auto layout = new QHBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_hostLineEdit);
     layout->addWidget(m_portSpinBox);
 
-    connect(m_hostLineEdit, &QLineEdit::textChanged,
-            this, &HostWidget::dataChanged);
-    connect(m_portSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &HostWidget::dataChanged);
+    connect(m_hostLineEdit, &QLineEdit::textChanged, this, &HostWidget::dataChanged);
+    connect(m_portSpinBox, &QSpinBox::valueChanged, this, &HostWidget::dataChanged);
 }
 
 void HostWidget::setChannel(const QUrl &channel)
@@ -369,5 +345,4 @@ QUrl HostWidget::channel() const
     return url;
 }
 
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal

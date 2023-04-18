@@ -5,7 +5,7 @@ Project {
     name: "Utils"
 
     QtcLibrary {
-
+        cpp.includePaths: base.concat("mimetypes2", ".")
         cpp.defines: base.concat([
             "UTILS_LIBRARY"
         ])
@@ -15,6 +15,8 @@ Project {
                 libs.push("user32", "iphlpapi", "ws2_32", "shell32", "ole32");
                 if (qbs.toolchainType === "mingw")
                     libs.push("uuid");
+                else if (qbs.toolchainType === "msvc")
+                    libs.push("dbghelp");
             } else if (qbs.targetOS.contains("unix")) {
                 if (!qbs.targetOS.contains("macos"))
                     libs.push("X11");
@@ -31,8 +33,8 @@ Project {
             cpp.frameworks: ["Foundation", "AppKit"]
         }
 
-        Depends { name: "Qt"; submodules: ["concurrent", "network", "qml", "widgets", "xml"] }
-        Depends { name: "Qt.macextras"; condition: qbs.targetOS.contains("macos") }
+        Depends { name: "Qt"; submodules: ["concurrent", "core-private", "network", "qml", "widgets", "xml"] }
+        Depends { name: "Qt.macextras"; condition: Qt.core.versionMajor < 6 && qbs.targetOS.contains("macos") }
         Depends { name: "app_version_header" }
 
         files: [
@@ -46,6 +48,8 @@ Project {
             "archive.h",
             "aspects.cpp",
             "aspects.h",
+            "asynctask.cpp",
+            "asynctask.h",
             "basetreeview.cpp",
             "basetreeview.h",
             "benchmarker.cpp",
@@ -60,6 +64,8 @@ Project {
             "changeset.h",
             "checkablemessagebox.cpp",
             "checkablemessagebox.h",
+            "clangutils.cpp",
+            "clangutils.h",
             "classnamevalidatinglineedit.cpp",
             "classnamevalidatinglineedit.h",
             "codegeneration.cpp",
@@ -73,13 +79,16 @@ Project {
             "cpplanguage_details.h",
             "crumblepath.cpp",
             "crumblepath.h",
-            "declarationmacros.h",
             "delegates.cpp",
             "delegates.h",
             "detailsbutton.cpp",
             "detailsbutton.h",
             "detailswidget.cpp",
             "detailswidget.h",
+            "devicefileaccess.cpp",
+            "devicefileaccess.h",
+            "deviceshell.cpp",
+            "deviceshell.h",
             "differ.cpp",
             "differ.h",
             "displayname.cpp",
@@ -125,7 +134,6 @@ Project {
             "fileutils.h",
             "filewizardpage.cpp",
             "filewizardpage.h",
-            "filewizardpage.ui",
             "fixedsizeclicklabel.cpp",
             "fixedsizeclicklabel.h",
             "flowlayout.cpp",
@@ -179,6 +187,11 @@ Project {
             "macroexpander.cpp",
             "macroexpander.h",
             "mapreduce.h",
+            "mathutils.cpp",
+            "mathutils.h",
+            "mimeutils.h",
+            "minimizableinfobars.cpp",
+            "minimizableinfobars.h",
             "multitextcursor.cpp",
             "multitextcursor.h",
             "namevaluedictionary.cpp",
@@ -195,8 +208,8 @@ Project {
             "navigationtreeview.h",
             "networkaccessmanager.cpp",
             "networkaccessmanager.h",
-            "optional.h",
-            "../3rdparty/optional/optional.hpp",
+            "optionpushbutton.h",
+            "optionpushbutton.cpp",
             "osspecificaspects.h",
             "outputformat.h",
             "outputformatter.cpp",
@@ -217,11 +230,15 @@ Project {
             "pointeralgorithm.h",
             "port.cpp",
             "port.h",
-            "porting.h",
             "portlist.cpp",
             "portlist.h",
+            "processenums.h",
             "processhandle.cpp",
             "processhandle.h",
+            "processinfo.cpp",
+            "processinfo.h",
+            "processinterface.cpp",
+            "processinterface.h",
             "processreaper.cpp",
             "processreaper.h",
             "processutils.cpp",
@@ -230,12 +247,8 @@ Project {
             "progressindicator.h",
             "projectintropage.cpp",
             "projectintropage.h",
-            "projectintropage.ui",
             "proxyaction.cpp",
             "proxyaction.h",
-            "proxycredentialsdialog.cpp",
-            "proxycredentialsdialog.h",
-            "proxycredentialsdialog.ui",
             "qrcparser.cpp",
             "qrcparser.h",
             "qtcassert.cpp",
@@ -250,7 +263,6 @@ Project {
             "reloadpromptutils.h",
             "removefiledialog.cpp",
             "removefiledialog.h",
-            "removefiledialog.ui",
             "runextensions.cpp",
             "runextensions.h",
             "savefile.cpp",
@@ -262,10 +274,6 @@ Project {
             "settingsselector.cpp",
             "settingsselector.h",
             "settingsutils.h",
-            "shellcommand.cpp",
-            "shellcommand.h",
-            "shellcommandpage.cpp",
-            "shellcommandpage.h",
             "singleton.cpp",
             "singleton.h",
             "sizedarray.h",
@@ -276,16 +284,21 @@ Project {
             "smallstringlayout.h",
             "smallstringmemory.h",
             "smallstringvector.h",
+            "sortfiltermodel.h",
             "span.h",
             "../3rdparty/span/span.hpp",
             "statuslabel.cpp",
             "statuslabel.h",
+            "stringtable.cpp",
+            "stringtable.h",
             "stringutils.cpp",
             "stringutils.h",
             "styledbar.cpp",
             "styledbar.h",
             "stylehelper.cpp",
             "stylehelper.h",
+            "tasktree.cpp",
+            "tasktree.h",
             "templateengine.cpp",
             "templateengine.h",
             "temporarydirectory.cpp",
@@ -322,10 +335,9 @@ Project {
             "utils_global.h",
             "utilsicons.h",
             "utilsicons.cpp",
+            "utilstr.h",
             "variablechooser.cpp",
             "variablechooser.h",
-            "variant.h",
-            "../3rdparty/variant/variant.hpp",
             "winutils.cpp",
             "winutils.h",
             "wizard.cpp",
@@ -334,6 +346,26 @@ Project {
             "wizardpage.h",
             "images/*.png",
         ]
+
+        Group {
+            name: "FSEngine"
+            prefix: "fsengine/"
+            cpp.defines: outer.concat("QTC_UTILS_WITH_FSENGINE")
+            files: [
+                "diriterator.h",
+                "fileiconprovider.cpp",
+                "fileiconprovider.h",
+                "fileiteratordevicesappender.h",
+                "fixedlistfsengine.h",
+                "fsengine.cpp",
+                "fsengine.h",
+                "fsenginehandler.cpp",
+                "fsenginehandler.h",
+                "fsengine_impl.cpp",
+                "fsengine_impl.h",
+                "rootinjectfsengine.h",
+            ]
+        }
 
         Group {
             name: "Theme"
@@ -384,7 +416,7 @@ Project {
 
         Group {
             name: "MimeTypes"
-            prefix: "mimetypes/"
+            prefix: "mimetypes2/"
             files: [
                 "mimedatabase.cpp",
                 "mimedatabase.h",
@@ -402,6 +434,7 @@ Project {
                 "mimetype_p.h",
                 "mimetypeparser.cpp",
                 "mimetypeparser_p.h",
+                "mimeutils.cpp"
             ]
         }
 
@@ -428,6 +461,7 @@ Project {
 
         Export {
             Depends { name: "Qt"; submodules: ["concurrent", "widgets" ] }
+            cpp.includePaths: base.concat("mimetypes2")
         }
     }
 }

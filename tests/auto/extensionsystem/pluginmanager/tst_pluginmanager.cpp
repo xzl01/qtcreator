@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <extensionsystem/pluginmanager.h>
 #include <extensionsystem/pluginspec.h>
@@ -162,9 +140,9 @@ void tst_PluginManager::circularPlugins()
 {
     PluginManager::setPluginPaths(QStringList() << pluginFolder(QLatin1String("circularplugins")));
     PluginManager::loadPlugins();
-    QVector<PluginSpec *> plugins = PluginManager::plugins();
+    const QVector<PluginSpec *> plugins = PluginManager::plugins();
     QCOMPARE(plugins.count(), 3);
-    foreach (PluginSpec *spec, plugins) {
+    for (PluginSpec *spec : plugins) {
         if (spec->name() == "plugin1") {
             QVERIFY(spec->hasError());
             QCOMPARE(spec->state(), PluginSpec::Resolved);
@@ -186,7 +164,8 @@ void tst_PluginManager::correctPlugins1()
     PluginManager::loadPlugins();
     bool specError = false;
     bool runError = false;
-    foreach (PluginSpec *spec, PluginManager::plugins()) {
+    const QVector<PluginSpec *> plugins = PluginManager::plugins();
+    for (PluginSpec *spec : plugins) {
         if (spec->hasError()) {
             qDebug() << spec->filePath();
             qDebug() << spec->errorString();
@@ -199,7 +178,8 @@ void tst_PluginManager::correctPlugins1()
     bool plugin1running = false;
     bool plugin2running = false;
     bool plugin3running = false;
-    foreach (QObject *obj, PluginManager::allObjects()) {
+    const QVector<QObject *> objs = PluginManager::allObjects();
+    for (QObject *obj : objs) {
         if (obj->objectName() == "MyPlugin1_running")
             plugin1running = true;
         else if (obj->objectName() == "MyPlugin2_running")
@@ -212,7 +192,7 @@ void tst_PluginManager::correctPlugins1()
     QVERIFY(plugin3running);
 }
 
-QTEST_MAIN(tst_PluginManager)
+QTEST_GUILESS_MAIN(tst_PluginManager)
 
 #include "tst_pluginmanager.moc"
 

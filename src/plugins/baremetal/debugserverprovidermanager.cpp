@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debugserverprovidermanager.h"
 #include "idebugserverprovider.h"
@@ -46,10 +24,7 @@
 #include <utils/persistentsettings.h>
 #include <utils/qtcassert.h>
 
-#include <QDir>
-
-namespace BareMetal {
-namespace Internal {
+namespace BareMetal::Internal {
 
 const char dataKeyC[] = "DebugServerProvider.";
 const char countKeyC[] = "DebugServerProvider.Count";
@@ -125,7 +100,7 @@ void DebugServerProviderManager::restoreProviders()
                 map[key.mid(lastDot + 1)] = map[key];
         }
         bool restored = false;
-        for (IDebugServerProviderFactory *f : qAsConst(m_factories)) {
+        for (IDebugServerProviderFactory *f : std::as_const(m_factories)) {
             if (f->canRestore(map)) {
                 if (IDebugServerProvider *p = f->restore(map)) {
                     registerProvider(p);
@@ -149,7 +124,7 @@ void DebugServerProviderManager::saveProviders()
     data.insert(fileVersionKeyC, 1);
 
     int count = 0;
-    for (const IDebugServerProvider *p : qAsConst(m_providers)) {
+    for (const IDebugServerProvider *p : std::as_const(m_providers)) {
         if (p->isValid()) {
             const QVariantMap tmp = p->toMap();
             if (tmp.isEmpty())
@@ -201,7 +176,7 @@ bool DebugServerProviderManager::registerProvider(IDebugServerProvider *provider
 {
     if (!provider || m_instance->m_providers.contains(provider))
         return true;
-    for (const IDebugServerProvider *current : qAsConst(m_instance->m_providers)) {
+    for (const IDebugServerProvider *current : std::as_const(m_instance->m_providers)) {
         if (*provider == *current)
             return false;
         QTC_ASSERT(current->id() != provider->id(), return false);
@@ -221,5 +196,4 @@ void DebugServerProviderManager::deregisterProvider(IDebugServerProvider *provid
     delete provider;
 }
 
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal

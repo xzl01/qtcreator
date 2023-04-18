@@ -1,31 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cpplocatordata.h"
 
-#include "stringtable.h"
+#include <utils/stringtable.h>
+
+using namespace Utils;
 
 namespace CppEditor {
 
@@ -47,7 +27,7 @@ void CppLocatorData::onDocumentUpdated(const CPlusPlus::Document::Ptr &document)
     bool isPending = false;
     for (int i = 0, ei = m_pendingDocuments.size(); i < ei; ++i) {
         const CPlusPlus::Document::Ptr &doc = m_pendingDocuments.at(i);
-        if (doc->fileName() == document->fileName()) {
+        if (doc->filePath() == document->filePath()) {
             isPending = true;
             if (document->revision() >= doc->revision())
                 m_pendingDocuments[i] = document;
@@ -55,7 +35,7 @@ void CppLocatorData::onDocumentUpdated(const CPlusPlus::Document::Ptr &document)
         }
     }
 
-    if (!isPending && QFileInfo(document->fileName()).suffix() != "moc")
+    if (!isPending && document->filePath().suffix() != "moc")
         m_pendingDocuments.append(document);
 
     flushPendingDocument(false);
@@ -68,18 +48,18 @@ void CppLocatorData::onAboutToRemoveFiles(const QStringList &files)
 
     QMutexLocker locker(&m_pendingDocumentsMutex);
 
-    foreach (const QString &file, files) {
+    for (const QString &file : files) {
         m_infosByFile.remove(file);
 
         for (int i = 0; i < m_pendingDocuments.size(); ++i) {
-            if (m_pendingDocuments.at(i)->fileName() == file) {
+            if (m_pendingDocuments.at(i)->filePath().path() == file) {
                 m_pendingDocuments.remove(i);
                 break;
             }
         }
     }
 
-    Internal::StringTable::scheduleGC();
+    StringTable::scheduleGC();
     flushPendingDocument(false);
 }
 
@@ -91,8 +71,8 @@ void CppLocatorData::flushPendingDocument(bool force) const
     if (m_pendingDocuments.isEmpty())
         return;
 
-    foreach (CPlusPlus::Document::Ptr doc, m_pendingDocuments)
-        m_infosByFile.insert(Internal::StringTable::insert(doc->fileName()), m_search(doc));
+    for (CPlusPlus::Document::Ptr doc : std::as_const(m_pendingDocuments))
+        m_infosByFile.insert(StringTable::insert(doc->filePath().toString()), m_search(doc));
 
     m_pendingDocuments.clear();
     m_pendingDocuments.reserve(MaxPendingDocuments);

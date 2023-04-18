@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "flamegraphmodel_test.h"
+#include "../qmlprofilertr.h"
 
 #include <qmlprofiler/qmlprofilerrangemodel.h>
 
@@ -55,7 +34,7 @@ int FlameGraphModelTest::generateData(QmlProfilerModelManager *manager,
         QmlEvent event;
         if (i < 5) {
             typeIndex = manager->appendEventType(
-                        QmlEventType(MaximumMessage,
+                        QmlEventType(UndefinedMessage,
                                      static_cast<RangeType>(static_cast<int>(Javascript) - i), -1,
                                      QmlEventLocation("somefile.js", i, 20 - i),
                                      QString("funcfunc")));
@@ -133,10 +112,10 @@ void FlameGraphModelTest::testCounts()
 void FlameGraphModelTest::testData()
 {
     const QVector<QString> typeRoles({
-        FlameGraphModel::tr("JavaScript"),
-        FlameGraphModel::tr("Signal"),
-        FlameGraphModel::tr("Binding"),
-        FlameGraphModel::tr("Create")
+        Tr::tr("JavaScript"),
+        Tr::tr("Signal"),
+        Tr::tr("Binding"),
+        Tr::tr("Create")
     });
 
     QModelIndex index = model.index(0, 0);
@@ -144,9 +123,9 @@ void FlameGraphModelTest::testData()
     QCOMPARE(model.data(index, FlameGraphModel::TypeIdRole).toInt(), 0);
     QCOMPARE(model.data(index2, FlameGraphModel::TypeIdRole).toInt(), 4);
     QCOMPARE(model.data(index, FlameGraphModel::TypeRole).toString(),
-             FlameGraphModel::tr("JavaScript"));
+             Tr::tr("JavaScript"));
     QCOMPARE(model.data(index2, FlameGraphModel::TypeRole).toString(),
-             FlameGraphModel::tr("Compile"));
+             Tr::tr("Compile"));
     QCOMPARE(model.data(index, FlameGraphModel::DurationRole).toLongLong(), 21);
     QCOMPARE(model.data(index2, FlameGraphModel::DurationRole).toLongLong(), 13);
     QCOMPARE(model.data(index, FlameGraphModel::CallCountRole).toInt(), 1);
@@ -194,7 +173,7 @@ void FlameGraphModelTest::testData()
 
     index2 = model.index(0, 0, index2);
     QCOMPARE(model.data(index2, FlameGraphModel::TypeRole).toString(),
-             FlameGraphModel::tr("Compile"));
+             Tr::tr("Compile"));
     QCOMPARE(model.data(index2, FlameGraphModel::NoteRole).toString(), QString());
     QCOMPARE(model.data(index2, FlameGraphModel::CallCountRole).toInt(), 1);
 }

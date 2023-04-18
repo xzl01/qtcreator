@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmleventtype.h"
 #include <QDataStream>
@@ -39,7 +17,7 @@ static ProfileFeature qmlFeatureFromType(Message message, RangeType rangeType, i
         case AnimationFrame:
             return ProfileAnimations;
         default:
-            return MaximumProfileFeature;
+            return UndefinedProfileFeature;
         }
     }
     case PixmapCacheEvent:
@@ -51,7 +29,11 @@ static ProfileFeature qmlFeatureFromType(Message message, RangeType rangeType, i
     case DebugMessage:
         return ProfileDebugMessages;
     case Quick3DEvent:
-        return ProfileQuick3D;
+        // Check if it's actually Quick3DEvent since old traces used MaximumMessage
+        // (whose value is now Quick3DEvent value) as undefined value
+        if (rangeType == UndefinedRangeType)
+            return ProfileQuick3D;
+        return featureFromRangeType(rangeType);
     default:
         return featureFromRangeType(rangeType);
     }
@@ -68,6 +50,9 @@ QDataStream &operator>>(QDataStream &stream, QmlEventType &type)
     type.m_message = static_cast<Message>(message);
     type.m_rangeType = static_cast<RangeType>(rangeType);
     type.setFeature(qmlFeatureFromType(type.m_message, type.m_rangeType, type.m_detailType));
+    // Update message if qmlFeatureFromType determined it is not Quick3D event
+    if (type.m_message == Quick3DEvent && type.feature() != ProfileQuick3D)
+        type.m_message = UndefinedMessage;
     return stream;
 }
 

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "proitems.h"
 
@@ -72,7 +50,7 @@ ProString::ProString(const QString &str) :
 {
 }
 
-ProString::ProString(Utils::StringView str) :
+ProString::ProString(QStringView str) :
     m_string(str.toString()), m_offset(0), m_length(str.size()), m_file(0), m_hash(0x80000000)
 {
 }
@@ -114,7 +92,7 @@ uint ProString::updatedHash() const
      return (m_hash = hash(m_string.constData() + m_offset, m_length));
 }
 
-Utils::QHashValueType qHash(const ProString &str)
+size_t qHash(const ProString &str)
 {
     if (!(str.m_hash & 0x80000000))
         return str.m_hash;
@@ -449,7 +427,7 @@ bool ProStringList::contains(const ProString &str, Qt::CaseSensitivity cs) const
     return false;
 }
 
-bool ProStringList::contains(Utils::StringView str, Qt::CaseSensitivity cs) const
+bool ProStringList::contains(QStringView str, Qt::CaseSensitivity cs) const
 {
     for (int i = 0; i < size(); i++)
         if (!at(i).toStringView().compare(str, cs))
@@ -465,16 +443,21 @@ bool ProStringList::contains(const char *str, Qt::CaseSensitivity cs) const
     return false;
 }
 
-ProFile::ProFile(int id, const QString &fileName)
+ProFile::ProFile(const QString &device, int id, const QString &fileName)
     : m_refCount(1),
       m_fileName(fileName),
+      m_device(device),
       m_id(id),
       m_ok(true),
       m_hostBuild(false)
 {
-    if (!fileName.startsWith(QLatin1Char('(')))
-        m_directoryName = QFileInfo( // qmake sickness: canonicalize only the directory!
-                fileName.left(fileName.lastIndexOf(QLatin1Char('/')))).canonicalFilePath();
+    if (!fileName.startsWith(QLatin1Char('('))) {
+        m_directoryName = fileName.left(fileName.lastIndexOf(QLatin1Char('/')));
+        if (device.isEmpty()) {
+            // qmake sickness: canonicalize only the directory!
+            m_directoryName = QFileInfo(m_directoryName).canonicalFilePath();
+        }
+    }
 }
 
 ProFile::~ProFile()

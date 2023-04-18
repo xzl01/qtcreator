@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "choosefrompropertylistdialog.h"
 #include "nodemetainfo.h"
@@ -40,6 +18,7 @@ ChooseFromPropertyListFilter::ChooseFromPropertyListFilter(const NodeMetaInfo &i
     // Texture
     //  -> DefaultMaterial
     //  -> PrincipledMaterial
+    //  -> SpecularGlossyMaterial
     //  -> SpriteParticle3D
     //  -> TextureInput
     //  -> SceneEnvironment
@@ -56,54 +35,69 @@ ChooseFromPropertyListFilter::ChooseFromPropertyListFilter(const NodeMetaInfo &i
     // ParticleAbstractShape3D
     //  -> ParticleEmitter3D
     //  -> Attractor3D
+    // Material
+    //  -> Model
+    // BundleMaterial
+    //  -> Model
+    // Effect
+    //  -> Item
 
-    const TypeName textureType = "QtQuick3D.Texture";
-    if (insertInfo.isSubclassOf(textureType)) {
-        const TypeName textureTypeCpp = "<cpp>.QQuick3DTexture";
-        if (parentInfo.isSubclassOf("QtQuick3D.DefaultMaterial")
-            || parentInfo.isSubclassOf("QtQuick3D.PrincipledMaterial")) {
+    if (insertInfo.isQtQuick3DTexture()) {
+        if (parentInfo.isQtQuick3DDefaultMaterial() || parentInfo.isQtQuick3DPrincipledMaterial()
+            || parentInfo.isQtQuick3DSpecularGlossyMaterial()) {
             // All texture properties are valid targets
-            const PropertyNameList targetNodeNameList = parentInfo.propertyNames();
-            for (const PropertyName &name : targetNodeNameList) {
-                TypeName propType = parentInfo.propertyTypeName(name);
-                if (propType == textureType || propType == textureTypeCpp) {
-                    propertyList.append(QString::fromLatin1(name));
+            for (const auto &property : parentInfo.properties()) {
+                const auto &propType = property.propertyType();
+                if (propType.isQtQuick3DTexture()) {
+                    propertyList.append(QString::fromUtf8(property.name()));
                     if (breakOnFirst)
                         return;
                 }
             }
-        } else if (parentInfo.isSubclassOf("QtQuick3D.Particles3D.SpriteParticle3D")) {
+        } else if (parentInfo.isQtQuick3DParticles3DSpriteParticle3D()) {
             propertyList.append("sprite");
-        } else if (parentInfo.isSubclassOf("QtQuick3D.TextureInput")) {
+        } else if (parentInfo.isQtQuick3DTextureInput()) {
             propertyList.append("texture");
-        } else if (parentInfo.isSubclassOf("QtQuick3D.SceneEnvironment")) {
-            propertyList.append("lightProbe");
+        } else if (parentInfo.isQtQuick3DSceneEnvironment()) {
+            if (insertInfo.isQtQuick3DCubeMapTexture())
+                propertyList.append("skyBoxCubeMap");
+            else
+                propertyList.append("lightProbe");
         }
-    } else if (insertInfo.isSubclassOf("QtQuick3D.Effect")) {
-        if (parentInfo.isSubclassOf("QtQuick3D.SceneEnvironment"))
+    } else if (insertInfo.isQtQuick3DEffect()) {
+        if (parentInfo.isQtQuick3DSceneEnvironment())
             propertyList.append("effects");
-    } else if (insertInfo.isSubclassOf("QtQuick3D.Shader")) {
-        if (parentInfo.isSubclassOf("QtQuick3D.Pass"))
+    } else if (insertInfo.isQtQuick3DShader()) {
+        if (parentInfo.isQtQuick3DPass())
             propertyList.append("shaders");
-    } else if (insertInfo.isSubclassOf("QtQuick3D.Command")) {
-        if (parentInfo.isSubclassOf("QtQuick3D.Pass"))
+    } else if (insertInfo.isQtQuick3DCommand()) {
+        if (parentInfo.isQtQuick3DPass())
             propertyList.append("commands");
-    } else if (insertInfo.isSubclassOf("QtQuick3D.Buffer")) {
-        if (parentInfo.isSubclassOf("QtQuick3D.Pass"))
+    } else if (insertInfo.isQtQuick3DBuffer()) {
+        if (parentInfo.isQtQuick3DPass())
             propertyList.append("output");
-    } else if (insertInfo.isSubclassOf("QtQuick3D.InstanceListEntry")) {
-        if (parentInfo.isSubclassOf("QtQuick3D.InstanceList"))
+    } else if (insertInfo.isQtQuick3DInstanceListEntry()) {
+        if (parentInfo.isQtQuick3DInstanceList())
             propertyList.append("instances");
-    } else if (insertInfo.isSubclassOf("QtQuick3D.Pass")) {
-        if (parentInfo.isSubclassOf("QtQuick3D.Effect"))
+    } else if (insertInfo.isQtQuick3DPass()) {
+        if (parentInfo.isQtQuick3DEffect())
             propertyList.append("passes");
-    } else if (insertInfo.isSubclassOf("QtQuick3D.Particles3D.Particle3D")) {
-        if (parentInfo.isSubclassOf("QtQuick3D.Particles3D.ParticleEmitter3D"))
+    } else if (insertInfo.isQtQuick3DParticles3DParticle3D()) {
+        if (parentInfo.isQtQuick3DParticles3DParticleEmitter3D())
             propertyList.append("particle");
-    } else if (insertInfo.isSubclassOf("QQuick3DParticleAbstractShape")) {
-        if (parentInfo.isSubclassOf("QtQuick3D.Particles3D.ParticleEmitter3D")
-                || parentInfo.isSubclassOf("QtQuick3D.Particles3D.Attractor3D"))
+    } else if (insertInfo.isQuick3DParticleAbstractShape()) {
+        if (parentInfo.isQtQuick3DParticles3DParticleEmitter3D()
+            || parentInfo.isQtQuick3DParticles3DAttractor3D())
             propertyList.append("shape");
+    } else if (insertInfo.isQtQuick3DMaterial()) {
+        if (parentInfo.isQtQuick3DModel())
+            propertyList.append("materials");
+    } else if (insertInfo.typeName().startsWith("ComponentBundles.MaterialBundle")) {
+        if (parentInfo.isQtQuick3DModel())
+            propertyList.append("materials");
+    } else if (insertInfo.isEffectMaker()) {
+        if (parentInfo.isQtQuickItem())
+            propertyList.append("effect");
     }
 }
 
@@ -119,7 +113,7 @@ ChooseFromPropertyListDialog::ChooseFromPropertyListDialog(const QStringList &pr
        return;
     }
     m_ui->setupUi(this);
-    setWindowTitle(tr("Select property"));
+    setWindowTitle(tr("Select Property"));
     m_ui->label->setText(tr("Bind to property:"));
     m_ui->label->setToolTip(tr("Binds this component to the parent's selected property."));
     setFixedSize(size());
@@ -128,10 +122,10 @@ ChooseFromPropertyListDialog::ChooseFromPropertyListDialog(const QStringList &pr
         m_selectedProperty = item->isSelected() ? item->data(Qt::DisplayRole).toByteArray() : QByteArray();
     });
 
-    connect(m_ui->listProps, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
-        Q_UNUSED(item)
-        QDialog::accept();
-    });
+    connect(m_ui->listProps,
+            &QListWidget::itemDoubleClicked,
+            this,
+            [this]([[maybe_unused]] QListWidgetItem *item) { QDialog::accept(); });
 
     fillList(propNames);
 }
@@ -163,15 +157,13 @@ ChooseFromPropertyListDialog *ChooseFromPropertyListDialog::createIfNeeded(
 
 // Create dialog for selecting writable properties of exact property type
 ChooseFromPropertyListDialog *ChooseFromPropertyListDialog::createIfNeeded(
-        const ModelNode &targetNode, TypeName type, QWidget *parent)
+    const ModelNode &targetNode, const NodeMetaInfo &propertyType, QWidget *parent)
 {
     const NodeMetaInfo metaInfo = targetNode.metaInfo();
-    const PropertyNameList propNames = metaInfo.propertyNames();
-    const TypeName property(type);
     QStringList matchingNames;
-    for (const auto &propName : propNames) {
-        if (metaInfo.propertyTypeName(propName) == property && metaInfo.propertyIsWritable(propName))
-            matchingNames.append(QString::fromLatin1(propName));
+    for (const auto &property : metaInfo.properties()) {
+        if (property.propertyType() == propertyType && property.isWritable())
+            matchingNames.append(QString::fromUtf8(property.name()));
     }
 
     if (!matchingNames.isEmpty())
@@ -188,7 +180,7 @@ void ChooseFromPropertyListDialog::fillList(const QStringList &propNames)
     QString defaultProp = propNames.first();
     QStringList sortedNames = propNames;
     sortedNames.sort();
-    for (const auto &propName : qAsConst(sortedNames)) {
+    for (const auto &propName : std::as_const(sortedNames)) {
         QListWidgetItem *newItem = new QListWidgetItem(propName);
         m_ui->listProps->addItem(newItem);
     }

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "pathtool.h"
 
@@ -78,7 +56,7 @@ static int pathRankForModelNode(const ModelNode &modelNode) {
     if (modelNode.metaInfo().hasProperty("path")) {
         if (modelNode.hasNodeProperty("path")) {
             ModelNode pathNode = modelNode.nodeProperty("path").modelNode();
-            if (pathNode.metaInfo().isSubclassOf("QtQuick.Path") && pathNode.hasNodeListProperty("pathElements")) {
+            if (pathNode.metaInfo().isQtQuickPath() && pathNode.hasNodeListProperty("pathElements")) {
                 const QList<ModelNode> pathElements = pathNode.nodeListProperty("pathElements")
                                                           .toModelNodeList();
                 if (pathElements.isEmpty())
@@ -139,8 +117,8 @@ protected:
     }
 };
 
-PathTool::PathTool()
-    : m_pathToolView(this)
+PathTool::PathTool(ExternalDependenciesInterface &externalDepoendencies)
+    : m_pathToolView(this, externalDepoendencies)
 {
     auto textToolAction = new PathToolAction;
     QmlDesignerPlugin::instance()->designerActionManager().addDesignerAction(textToolAction);
@@ -277,7 +255,7 @@ void  PathTool::instancesParentChanged(const QList<FormEditorItem *> & /*itemLis
 void PathTool::instancePropertyChange(const QList<QPair<ModelNode, PropertyName> > &propertyList)
 {
     using ModelNodePropertyNamePair = QPair<ModelNode, PropertyName>;
-    foreach (const ModelNodePropertyNamePair &propertyPair, propertyList) {
+    for (const ModelNodePropertyNamePair &propertyPair : propertyList) {
         if (propertyPair.first == m_pathItem->formEditorItem()->qmlItemNode().modelNode()
                 && propertyPair.second == "path")
             m_pathItem->updatePath();

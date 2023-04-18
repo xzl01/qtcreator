@@ -110,26 +110,26 @@ const int PerfRegisterInfo::s_dummyRegisters[ARCH_INVALID][2] = {
     {0, 0}
 };
 
-const char *PerfRegisterInfo::defaultArchitecture()
+QString PerfRegisterInfo::defaultArchitecture()
 {
 #if defined(__aarch64__)
-    return "aarch64";
+    return QStringLiteral("aarch64");
 #elif defined(__arm__)
-    return "arm";
+    return QStringLiteral("arm");
 #elif defined(__powerpc__)
-    return "powerpc";
+    return QStringLiteral("powerpc");
 #elif defined(__s390__)
-    return "s390";
+    return QStringLiteral("s390");
 #elif defined(__sh__)
-    return "sh";
+    return QStringLiteral("sh");
 #elif defined(__sparc__)
-    return "sparc";
+    return QStringLiteral("sparc");
 #elif defined(__i386__) || defined(__x86_64__)
-    return "x86";
+    return QStringLiteral("x86");
 #else
-    return "";
+    return QString();
 #endif
-};
+}
 
 PerfRegisterInfo::Architecture PerfRegisterInfo::archByName(const QByteArray &name)
 {
@@ -151,9 +151,8 @@ PerfRegisterInfo::Architecture PerfRegisterInfo::archByName(const QByteArray &na
     if (name.startsWith("sparc"))
         return ARCH_SPARC;
 
-    if (name.startsWith("x86")
-            || QRegularExpression("^i[3-7]86$").match(name).hasMatch()
-            || name == "amd64")
+    if (name.startsWith("x86") || name == "i386" || name == "i486" || name == "i586" || name == "i686" || name == "i786"
+        || name == "amd64")
         return ARCH_X86;
 
     if (name.startsWith("mips"))

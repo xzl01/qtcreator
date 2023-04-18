@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "iarewtoolchain.h"
 
 #include "baremetalconstants.h"
-
+#include "baremetaltr.h"
 #include "iarewparser.h"
-#include "iarewtoolchain.h"
 
 #include <projectexplorer/abiwidget.h>
 #include <projectexplorer/projectexplorerconstants.h>
@@ -52,8 +31,7 @@
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
+namespace BareMetal::Internal {
 
 // Helpers:
 
@@ -113,7 +91,7 @@ static Macros dumpPredefinedMacros(const FilePath &compiler, const QStringList &
 
     cpp.setCommand(cmd);
     cpp.runBlocking();
-    if (cpp.result() != QtcProcess::FinishedWithSuccess) {
+    if (cpp.result() != ProcessResult::FinishedWithSuccess) {
         qWarning() << cpp.exitMessage();
         return {};
     }
@@ -281,7 +259,7 @@ static QString buildDisplayName(Abi::Architecture arch, Utils::Id language,
 {
     const auto archName = Abi::toString(arch);
     const auto langName = ToolChainManager::displayNameOfLanguageId(language);
-    return IarToolChain::tr("IAREW %1 (%2, %3)").arg(version, langName, archName);
+    return Tr::tr("IAREW %1 (%2, %3)").arg(version, langName, archName);
 }
 
 // IarToolChain
@@ -289,7 +267,7 @@ static QString buildDisplayName(Abi::Architecture arch, Utils::Id language,
 IarToolChain::IarToolChain() :
     ToolChain(Constants::IAREW_TOOLCHAIN_TYPEID)
 {
-    setTypeDisplayName(Internal::IarToolChain::tr("IAREW"));
+    setTypeDisplayName(Tr::tr("IAREW"));
     setTargetAbiKey("TargetAbi");
     setCompilerCommandKey("CompilerPath");
 }
@@ -347,10 +325,10 @@ ToolChain::BuiltInHeaderPathsRunner IarToolChain::createBuiltInHeaderPathsRunner
     HeaderPathsCache headerPaths = headerPathsCache();
 
     return [env, compiler, headerPaths, languageId](const QStringList &flags,
-                                                    const QString &fileName,
+                                                    const FilePath &sysRoot,
                                                     const QString &) {
         Q_UNUSED(flags)
-        Q_UNUSED(fileName)
+        Q_UNUSED(sysRoot)
 
         const HeaderPaths paths = dumpHeaderPaths(compiler, languageId, env);
         headerPaths->insert({}, paths);
@@ -423,7 +401,7 @@ FilePath IarToolChain::makeCommand(const Environment &env) const
 
 IarToolChainFactory::IarToolChainFactory()
 {
-    setDisplayName(IarToolChain::tr("IAREW"));
+    setDisplayName(Tr::tr("IAREW"));
     setSupportedToolChainType(Constants::IAREW_TOOLCHAIN_TYPEID);
     setSupportedLanguages({ProjectExplorer::Constants::C_LANGUAGE_ID,
                            ProjectExplorer::Constants::CXX_LANGUAGE_ID});
@@ -437,10 +415,10 @@ Toolchains IarToolChainFactory::autoDetect(const ToolchainDetector &detector) co
 
 #ifdef Q_OS_WIN
 
+    QStringList registryNodes;
+    registryNodes << "HKEY_LOCAL_MACHINE\\SOFTWARE\\IAR Systems\\Embedded Workbench";
 #ifdef Q_OS_WIN64
-    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\IAR Systems\\Embedded Workbench";
-#else
-    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\IAR Systems\\Embedded Workbench";
+    registryNodes << "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\IAR Systems\\Embedded Workbench";
 #endif
 
     // Dictionary for know toolchains.
@@ -468,33 +446,35 @@ Toolchains IarToolChainFactory::autoDetect(const ToolchainDetector &detector) co
         {{"EWCR16C"}, {"/cr16c/bin/icccr16c.exe"}},
     };
 
-    QSettings registry(kRegistryNode, QSettings::NativeFormat);
-    const auto oneLevelGroups = registry.childGroups();
-    for (const QString &oneLevelKey : oneLevelGroups) {
-        registry.beginGroup(oneLevelKey);
-        const auto twoLevelGroups = registry.childGroups();
-        for (const Entry &entry : knowToolchains) {
-            if (twoLevelGroups.contains(entry.registryKey)) {
-                registry.beginGroup(entry.registryKey);
-                const auto threeLevelGroups = registry.childGroups();
-                for (const QString &threeLevelKey : threeLevelGroups) {
-                    registry.beginGroup(threeLevelKey);
-                    QString compilerPath = registry.value("InstallPath").toString();
-                    if (!compilerPath.isEmpty()) {
-                        // Build full compiler path.
-                        compilerPath += entry.subExePath;
-                        const FilePath fn = FilePath::fromString(compilerPath);
-                        if (compilerExists(fn)) {
-                            // Note: threeLevelKey is a guessed toolchain version.
-                            candidates.push_back({fn, threeLevelKey});
+    for (const QString &registryNode : registryNodes) {
+        QSettings registry(registryNode, QSettings::NativeFormat);
+        const auto oneLevelGroups = registry.childGroups();
+        for (const QString &oneLevelKey : oneLevelGroups) {
+            registry.beginGroup(oneLevelKey);
+            const auto twoLevelGroups = registry.childGroups();
+            for (const Entry &entry : knowToolchains) {
+                if (twoLevelGroups.contains(entry.registryKey)) {
+                    registry.beginGroup(entry.registryKey);
+                    const auto threeLevelGroups = registry.childGroups();
+                    for (const QString &threeLevelKey : threeLevelGroups) {
+                        registry.beginGroup(threeLevelKey);
+                        QString compilerPath = registry.value("InstallPath").toString();
+                        if (!compilerPath.isEmpty()) {
+                            // Build full compiler path.
+                            compilerPath += entry.subExePath;
+                            const FilePath fn = FilePath::fromUserInput(compilerPath);
+                            if (compilerExists(fn)) {
+                                // Note: threeLevelKey is a guessed toolchain version.
+                                candidates.push_back({fn, threeLevelKey});
+                            }
                         }
+                        registry.endGroup();
                     }
                     registry.endGroup();
                 }
-                registry.endGroup();
             }
+            registry.endGroup();
         }
-        registry.endGroup();
     }
 
 #endif // Q_OS_WIN
@@ -512,7 +492,7 @@ Toolchains IarToolChainFactory::autoDetectToolchains(
 {
     Toolchains result;
 
-    for (const Candidate &candidate : qAsConst(candidates)) {
+    for (const Candidate &candidate : std::as_const(candidates)) {
         const Toolchains filtered = Utils::filtered(alreadyKnown, [candidate](ToolChain *tc) {
             return tc->typeId() == Constants::IAREW_TOOLCHAIN_TYPEID
                 && tc->compilerCommand() == candidate.compilerPath
@@ -567,11 +547,11 @@ IarToolChainConfigWidget::IarToolChainConfigWidget(IarToolChain *tc) :
 {
     m_compilerCommand->setExpectedKind(PathChooser::ExistingCommand);
     m_compilerCommand->setHistoryCompleter("PE.IAREW.Command.History");
-    m_mainLayout->addRow(tr("&Compiler path:"), m_compilerCommand);
+    m_mainLayout->addRow(Tr::tr("&Compiler path:"), m_compilerCommand);
     m_platformCodeGenFlagsLineEdit = new QLineEdit(this);
     m_platformCodeGenFlagsLineEdit->setText(ProcessArgs::joinArgs(tc->extraCodeModelFlags()));
-    m_mainLayout->addRow(tr("Platform codegen flags:"), m_platformCodeGenFlagsLineEdit);
-    m_mainLayout->addRow(tr("&ABI:"), m_abiWidget);
+    m_mainLayout->addRow(Tr::tr("Platform codegen flags:"), m_platformCodeGenFlagsLineEdit);
+    m_mainLayout->addRow(Tr::tr("&ABI:"), m_abiWidget);
 
     m_abiWidget->setEnabled(false);
 
@@ -661,5 +641,4 @@ void IarToolChainConfigWidget::handlePlatformCodeGenFlagsChange()
         handleCompilerCommandChange();
 }
 
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal

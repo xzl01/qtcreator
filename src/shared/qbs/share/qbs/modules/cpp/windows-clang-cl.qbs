@@ -35,9 +35,9 @@ import qbs.FileInfo
 import 'windows-msvc-base.qbs' as MsvcBaseModule
 
 MsvcBaseModule {
-    condition: Host.os().contains('windows') &&
-               qbs.targetOS.contains('windows') &&
-               qbs.toolchain && qbs.toolchain.contains('clang-cl')
+    condition: Host.os().includes('windows') &&
+               qbs.targetOS.includes('windows') &&
+               qbs.toolchain && qbs.toolchain.includes('clang-cl')
     priority: 100
 
     Probes.ClangClBinaryProbe {
@@ -86,13 +86,14 @@ MsvcBaseModule {
     linkerPath: FileInfo.joinPaths(toolchainInstallPath, linkerName)
 
     validateFunc: {
+        var baseFunc = base;
         return function() {
             if (_skipAllChecks)
                 return;
             var validator = new ModUtils.PropertyValidator("cpp");
             validator.setRequiredProperty("vcvarsallPath", vcvarsallPath);
             validator.validate();
-            base();
+            baseFunc();
         }
     }
 }

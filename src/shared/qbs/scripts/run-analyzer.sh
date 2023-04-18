@@ -57,7 +57,8 @@ if [ -z "$RUN_CLANG_TIDY" ] || [ -z "$CLANG_TIDY" ]; then
     fi
 fi
 
-CPU_COUNT=$("$(dirname "$0")"/cpu-count.sh)
+SCRIPT_DIR=$(dirname "$0")
+CPU_COUNT=$("${SCRIPT_DIR}/cpu-count.sh")
 
 BUILD_OPTIONS="\
     ${QBS_BUILD_PROFILE:+profile:${QBS_BUILD_PROFILE}} \
@@ -88,7 +89,7 @@ import os
 import sys
 
 dbFile = sys.argv[1]
-blacklist = ['json.cpp', 'qmljsgrammar.cpp']
+blacklist = ['json.cpp', 'qmljsgrammar.cpp', 'qmljsparser.cpp']
 seenFiles = set()
 patched_db = []
 with open(dbFile, 'r') as f:

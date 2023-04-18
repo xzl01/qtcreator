@@ -13,10 +13,16 @@ QtcPlugin {
     Depends { name: "TextEditor" }
     Depends { name: "ProjectExplorer" }
     Depends { name: "QmlJSTools" }
+    Depends { name: "QtSupport" }
+    Depends { name: "LanguageClient" }
 
     files: [
         "qmlexpressionundercursor.cpp",
         "qmlexpressionundercursor.h",
+        "qmllsclient.cpp",
+        "qmllsclient.h",
+        "qmllssettings.cpp",
+        "qmllssettings.h",
         "qmljsautocompleter.cpp",
         "qmljsautocompleter.h",
         "qmljscompletionassist.cpp",
@@ -25,13 +31,11 @@ QtcPlugin {
         "qmljscomponentfromobjectdef.h",
         "qmljscomponentnamedialog.cpp",
         "qmljscomponentnamedialog.h",
-        "qmljscomponentnamedialog.ui",
         "qmljseditingsettingspage.cpp",
         "qmljseditingsettingspage.h",
-        "qmljseditingsettingspage.ui",
         "qmljseditor.cpp",
         "qmljseditor.h",
-        "qmljseditor_global.h",
+        "qmljseditor_global.h", "qmljseditortr.h",
         "qmljseditorconstants.h",
         "qmljseditordocument.cpp",
         "qmljseditordocument.h",

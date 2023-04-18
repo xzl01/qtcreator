@@ -1,68 +1,48 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "projectexplorer_export.h"
-#include "runconfiguration.h"
 
 #include <extensionsystem/iplugin.h>
+
+#include <utils/filepath.h>
+#include <utils/id.h>
 
 #include <QPair>
 
 QT_BEGIN_NAMESPACE
 class QPoint;
-class QAction;
 class QThreadPool;
 QT_END_NAMESPACE
 
 namespace Core {
-class IMode;
 class OutputWindow;
-} // namespace Core
+} // Core
 
 namespace Utils {
+class CommandLine;
 class ProcessHandle;
-class FilePath;
-}
+} // Utils
 
 namespace ProjectExplorer {
 class BuildPropertiesSettings;
 class CustomParserSettings;
+class FolderNode;
+class Node;
+class Project;
+class ProjectExplorerSettings;
 class RunControl;
 class RunConfiguration;
-class Project;
-class Node;
-class FolderNode;
-class FileNode;
 
 namespace Internal {
 class AppOutputSettings;
 class MiniProjectTargetSelector;
-class ProjectExplorerSettings;
 }
+
+using RecentProjectsEntry = QPair<Utils::FilePath, QString>;
+using RecentProjectsEntries = QList<RecentProjectsEntry>;
 
 class PROJECTEXPLORER_EXPORT ProjectExplorerPlugin : public ExtensionSystem::IPlugin
 {
@@ -119,7 +99,7 @@ public:
     static OpenProjectResult openProject(const Utils::FilePath &filePath);
     static OpenProjectResult openProjects(const Utils::FilePaths &filePaths);
     static void showOpenProjectError(const OpenProjectResult &result);
-    static void openProjectWelcomePage(const QString &fileName);
+    static void openProjectWelcomePage(const Utils::FilePath &filePath);
     static void unloadProject(Project *project);
 
     static bool saveModifiedFiles();
@@ -132,8 +112,8 @@ public:
     void restoreKits();
     ShutdownFlag aboutToShutdown() override;
 
-    static void setProjectExplorerSettings(const Internal::ProjectExplorerSettings &pes);
-    static const Internal::ProjectExplorerSettings &projectExplorerSettings();
+    static void setProjectExplorerSettings(const ProjectExplorerSettings &pes);
+    static const ProjectExplorerSettings &projectExplorerSettings();
 
     static void setAppOutputSettings(const Internal::AppOutputSettings &settings);
     static const Internal::AppOutputSettings &appOutputSettings();
@@ -153,14 +133,17 @@ public:
     static void renameFile(Node *node, const QString &newFilePath);
     static QStringList projectFilePatterns();
     static bool isProjectFile(const Utils::FilePath &filePath);
-    static QList<QPair<QString, QString> > recentProjects();
+    static RecentProjectsEntries recentProjects();
+
+    static void renameFilesForSymbol(const QString &oldSymbolName, const QString &newSymbolName,
+                                     const Utils::FilePaths &files, bool preferLowerCaseFileNames);
 
     static bool canRunStartupProject(Utils::Id runMode, QString *whyNot = nullptr);
     static void runProject(Project *pro, Utils::Id, const bool forceSkipDeploy = false);
     static void runStartupProject(Utils::Id runMode, bool forceSkipDeploy = false);
     static void runRunConfiguration(RunConfiguration *rc, Utils::Id runMode,
                              const bool forceSkipDeploy = false);
-    static QList<QPair<Runnable, Utils::ProcessHandle>> runningRunControlProcesses();
+    static QList<QPair<Utils::CommandLine, Utils::ProcessHandle>> runningRunControlProcesses();
     static QList<RunControl *> allRunControls();
 
     static void addExistingFiles(FolderNode *folderNode, const Utils::FilePaths &filePaths);
@@ -183,7 +166,7 @@ public:
 
     static void activateProjectPanel(Utils::Id panelId);
     static void clearRecentProjects();
-    static void removeFromRecentProjects(const QString &fileName, const QString &displayName);
+    static void removeFromRecentProjects(const Utils::FilePath &filePath);
 
     static void updateRunActions();
 

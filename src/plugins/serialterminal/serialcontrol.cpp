@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Benjamin Balga
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 Benjamin Balga
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "serialcontrol.h"
 #include "serialterminalconstants.h"
+#include "serialterminaltr.h"
 
 #include <utils/outputformatter.h>
 
@@ -64,7 +43,7 @@ bool SerialControl::start()
 
     if (!m_serialPort.open(QIODevice::ReadWrite)) {
         if (!m_retrying) {
-            appendMessage(tr("Unable to open port %1: %2.")
+            appendMessage(Tr::tr("Unable to open port %1: %2.")
                           .arg(portName(), m_serialPort.errorString()),
                           Utils::ErrorMessageFormat);
         }
@@ -75,9 +54,9 @@ bool SerialControl::start()
     m_serialPort.setRequestToSend(m_initialRtsState);
 
     if (m_retrying)
-        appendMessage(tr("Session resumed.") + QString("\n\n"), Utils::NormalMessageFormat);
+        appendMessage(Tr::tr("Session resumed.") + QString("\n\n"), Utils::NormalMessageFormat);
     else
-        appendMessage(tr("Starting new session on %1...").arg(portName()) + "\n", Utils::NormalMessageFormat);
+        appendMessage(Tr::tr("Starting new session on %1...").arg(portName()) + "\n", Utils::NormalMessageFormat);
 
     m_retrying = false;
 
@@ -102,7 +81,7 @@ void SerialControl::stop(bool force)
     // Print paused or finished message
     if (force || (m_running && !m_retrying)) {
         appendMessage(QString("\n")
-                      + tr("Session finished on %1.").arg(portName())
+                      + Tr::tr("Session finished on %1.").arg(portName())
                       + QString("\n\n"),
                       Utils::NormalMessageFormat);
 
@@ -111,7 +90,7 @@ void SerialControl::stop(bool force)
         emit runningChanged(false);
     } else if (m_running && m_retrying) {
         appendMessage(QString("\n")
-                      + tr("Session paused...")
+                      + Tr::tr("Session paused...")
                       + QString("\n"),
                       Utils::NormalMessageFormat);
         m_running = false;
@@ -127,7 +106,7 @@ bool SerialControl::isRunning() const
 
 QString SerialControl::displayName() const
 {
-    return portName().isEmpty() ? tr("No Port") : portName();
+    return portName().isEmpty() ? Tr::tr("No Port") : portName();
 }
 
 bool SerialControl::canReUseOutputPane(const SerialControl *other) const
@@ -212,7 +191,7 @@ void SerialControl::handleError(QSerialPort::SerialPortError error)
 
     if (!m_retrying && error != QSerialPort::NoError)
         appendMessage(QString("\n")
-                      + tr("Serial port error: %1 (%2)").arg(m_serialPort.errorString()).arg(error)
+                      + Tr::tr("Serial port error: %1 (%2)").arg(m_serialPort.errorString()).arg(error)
                       + QString("\n"),
                       Utils::ErrorMessageFormat);
 

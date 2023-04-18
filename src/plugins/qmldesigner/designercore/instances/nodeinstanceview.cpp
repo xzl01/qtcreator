@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nodeinstanceview.h"
 
@@ -47,11 +25,11 @@
 #include "createscenecommand.h"
 #include "debugoutputcommand.h"
 #include "informationchangedcommand.h"
+#include "imageutils.h"
 #include "inputeventcommand.h"
 #include "nodeabstractproperty.h"
 #include "nodeinstanceserverproxy.h"
 #include "nodelistproperty.h"
-#include "nodeproperty.h"
 #include "pixmapchangedcommand.h"
 #include "puppettocreatorcommand.h"
 #include "qml3dnode.h"
@@ -76,7 +54,9 @@
 #include "nanotracecommand.h"
 #include "nanotrace/nanotrace.h"
 
+#include <auxiliarydataproperties.h>
 #include <designersettings.h>
+#include <externaldependenciesinterface.h>
 #include <metainfo.h>
 #include <model.h>
 #include <modelnode.h>
@@ -84,13 +64,7 @@
 #include <rewriterview.h>
 #include <qmlitemnode.h>
 
-#ifndef QMLDESIGNER_TEST
-#include <qmldesignerplugin.h>
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/editormanager/editormanager.h>
-#include <coreplugin/documentmanager.h>
-#include <hdrimage.h>
-#endif
+#include <utils/hdrimage.h>
 
 #include <coreplugin/messagemanager.h>
 
@@ -103,19 +77,21 @@
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
+#include <utils/theme/theme.h>
+#include <utils/threadutils.h>
 
 #include <qtsupport/qtkitinformation.h>
 
-#include <QUrl>
-#include <QMultiHash>
-#include <QTimerEvent>
-#include <QPicture>
-#include <QPainter>
 #include <QDirIterator>
 #include <QFileSystemWatcher>
+#include <QImageReader>
+#include <QLocale>
+#include <QMultiHash>
+#include <QPainter>
+#include <QPicture>
 #include <QScopedPointer>
-#include <QThread>
-#include <QApplication>
+#include <QTimerEvent>
+#include <QUrl>
 
 enum {
     debug = false
@@ -147,8 +123,11 @@ namespace QmlDesigner {
 
     \sa ~NodeInstanceView, setRenderOffScreen()
 */
-NodeInstanceView::NodeInstanceView(ConnectionManagerInterface &connectionManager)
-    : m_connectionManager(connectionManager)
+NodeInstanceView::NodeInstanceView(ConnectionManagerInterface &connectionManager,
+                                   ExternalDependenciesInterface &externalDependencies)
+    : AbstractView{externalDependencies}
+    , m_connectionManager(connectionManager)
+    , m_externalDependencies(externalDependencies)
     , m_baseStatePreviewImage(QSize(100, 100), QImage::Format_ARGB32)
     , m_restartProcessTimerId(0)
     , m_fileSystemWatcher(new QFileSystemWatcher(this))
@@ -159,13 +138,14 @@ NodeInstanceView::NodeInstanceView(ConnectionManagerInterface &connectionManager
     // related to a single event to be received before we act.
     m_resetTimer.setSingleShot(true);
     m_resetTimer.setInterval(100);
-    QObject::connect(&m_resetTimer, &QTimer::timeout, [this] {
-        resetPuppet();
+    QObject::connect(&m_resetTimer, &QTimer::timeout, this, [this] {
+        if (isAttached())
+            resetPuppet();
     });
     m_updateWatcherTimer.setSingleShot(true);
     m_updateWatcherTimer.setInterval(100);
-    QObject::connect(&m_updateWatcherTimer, &QTimer::timeout, [this] {
-        for (const auto &path : qAsConst(m_pendingUpdateDirs))
+    QObject::connect(&m_updateWatcherTimer, &QTimer::timeout, this, [this] {
+        for (const auto &path : std::as_const(m_pendingUpdateDirs))
             updateWatcher(path);
         m_pendingUpdateDirs.clear();
     });
@@ -175,11 +155,11 @@ NodeInstanceView::NodeInstanceView(ConnectionManagerInterface &connectionManager
     // unnecessary generation when project with multiple shaders is opened.
     m_generateQsbFilesTimer.setSingleShot(true);
     m_generateQsbFilesTimer.setInterval(100);
-    QObject::connect(&m_generateQsbFilesTimer, &QTimer::timeout, [this] {
+    QObject::connect(&m_generateQsbFilesTimer, &QTimer::timeout, this, [this] {
         handleShaderChanges();
     });
 
-    connect(m_fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
+    connect(m_fileSystemWatcher, &QFileSystemWatcher::directoryChanged, this,
             [this](const QString &path) {
         const QSet<QString> pendingDirs = m_pendingUpdateDirs;
         for (const auto &pendingPath : pendingDirs) {
@@ -195,7 +175,7 @@ NodeInstanceView::NodeInstanceView(ConnectionManagerInterface &connectionManager
         m_updateWatcherTimer.start();
 
     });
-    connect(m_fileSystemWatcher, &QFileSystemWatcher::fileChanged, [this](const QString &path) {
+    connect(m_fileSystemWatcher, &QFileSystemWatcher::fileChanged, this, [this](const QString &path) {
         if (m_qsbTargets.contains(path)) {
             m_qsbTargets.insert(path, true);
             m_generateQsbFilesTimer.start();
@@ -244,13 +224,9 @@ bool static isSkippedNode(const ModelNode &node)
 
 bool static parentTakesOverRendering(const ModelNode &modelNode)
 {
-    if (!modelNode.isValid())
-        return false;
-
     ModelNode currentNode = modelNode;
 
-    while (currentNode.hasParentProperty()) {
-        currentNode = currentNode.parentProperty().parentModelNode();
+    while ((currentNode = currentNode.parentProperty().parentModelNode())) {
         if (NodeHints::fromModelNode(currentNode).takesOverRenderingOfChildren())
             return true;
     }
@@ -276,7 +252,7 @@ void NodeInstanceView::modelAttached(Model *model)
     }
 
     ModelNode stateNode = currentStateNode();
-    if (stateNode.isValid() && stateNode.metaInfo().isSubclassOf("QtQuick.State", 1, 0)) {
+    if (stateNode.metaInfo().isQtQuickState()) {
         NodeInstance newStateInstance = instanceForModelNode(stateNode);
         activateState(newStateInstance);
     }
@@ -284,7 +260,7 @@ void NodeInstanceView::modelAttached(Model *model)
     // If model gets attached on non-main thread of the application, do not attempt to monitor
     // file changes. Such models are typically short lived for specific purpose, and timers
     // will not work at all, if the thread is not based on QThread.
-    if (QThread::currentThread() == qApp->thread()) {
+    if (Utils::isMainThread()) {
         m_generateQsbFilesTimer.stop();
         m_qsbTargets.clear();
         updateQsbPathToFilterMap();
@@ -323,9 +299,9 @@ void NodeInstanceView::modelAboutToBeDetached(Model * model)
 void NodeInstanceView::handleCrash()
 {
     qint64 elaspsedTimeSinceLastCrash = m_lastCrashTime.restart();
-    qint64 forceRestartTime = 2000;
+    qint64 forceRestartTime = 5000;
 #ifdef QT_DEBUG
-    forceRestartTime = 4000;
+    forceRestartTime = 10000;
 #endif
     if (elaspsedTimeSinceLastCrash > forceRestartTime)
         restartProcess();
@@ -388,7 +364,7 @@ void NodeInstanceView::restartProcess()
         }
 
         ModelNode stateNode = currentStateNode();
-        if (stateNode.isValid() && stateNode.metaInfo().isSubclassOf("QtQuick.State", 1, 0)) {
+        if (stateNode.isValid() && stateNode.metaInfo().isQtQuickState()) {
             NodeInstance newStateInstance = instanceForModelNode(stateNode);
             activateState(newStateInstance);
         }
@@ -482,7 +458,7 @@ void NodeInstanceView::propertiesAboutToBeRemoved(const QList<AbstractProperty>&
     QList<ModelNode> nodeList;
     QList<AbstractProperty> nonNodePropertyList;
 
-    foreach (const AbstractProperty &property, propertyList) {
+    for (const AbstractProperty &property : propertyList) {
         if (property.isNodeAbstractProperty())
             nodeList.append(property.toNodeAbstractProperty().allSubNodes());
         else
@@ -497,7 +473,7 @@ void NodeInstanceView::propertiesAboutToBeRemoved(const QList<AbstractProperty>&
     m_nodeInstanceServer->removeSharedMemory(createRemoveSharedMemoryCommand("Image", nodeList));
     m_nodeInstanceServer->removeProperties(createRemovePropertiesCommand(nonNodePropertyList));
 
-    foreach (const AbstractProperty &property, propertyList) {
+    for (const AbstractProperty &property : propertyList) {
         const PropertyName &name = property.name();
         if (name == "anchors.fill") {
             resetHorizontalAnchors(property.parentModelNode());
@@ -525,13 +501,14 @@ void NodeInstanceView::propertiesAboutToBeRemoved(const QList<AbstractProperty>&
         }
     }
 
-    foreach (const ModelNode &node, nodeList)
+    for (const ModelNode &node : std::as_const(nodeList))
         removeInstanceNodeRelationship(node);
 }
 
 void NodeInstanceView::removeInstanceAndSubInstances(const ModelNode &node)
 {
-    foreach (const ModelNode &subNode, node.allSubModelNodes()) {
+    const QList<ModelNode> subNodes = node.allSubModelNodes();
+    for (const ModelNode &subNode : subNodes) {
         if (hasInstanceForModelNode(subNode))
             removeInstanceNodeRelationship(subNode);
     }
@@ -599,11 +576,10 @@ void NodeInstanceView::nodeReparented(const ModelNode &node, const NodeAbstractP
 
         // Reset puppet when particle emitter/affector is reparented to work around issue in
         // autodetecting the particle system it belongs to. QTBUG-101157
-        // Reset is also needed when particle shapes are reparented. QTBUG-101882
-        if (((node.isSubclassOf("QtQuick.Particles3D.ParticleEmitter3D")
-              || node.isSubclassOf("QtQuick.Particles3D.Affector3D"))
-             && node.property("system").toBindingProperty().expression().isEmpty())
-            || node.isSubclassOf("QQuick3DParticleAbstractShape")) {
+        if (auto metaInfo = node.metaInfo();
+            (metaInfo.isQtQuick3DParticles3DParticleEmitter3D()
+             || metaInfo.isQtQuick3DParticles3DAffector3D())
+            && node.property("system").toBindingProperty().expression().isEmpty()) {
             resetPuppet();
         }
     }
@@ -636,7 +612,8 @@ void NodeInstanceView::nodeOrderChanged(const NodeListProperty &listProperty)
     if (hasInstanceForModelNode(containerNode))
         containerInstanceId = instanceForModelNode(containerNode).instanceId();
 
-    foreach (const ModelNode &node, listProperty.toModelNodeList()) {
+    const QList<ModelNode> nodes = listProperty.toModelNodeList();
+    for (const ModelNode &node : nodes) {
         qint32 instanceId = -1;
         if (hasInstanceForModelNode(node)) {
             instanceId = instanceForModelNode(node).instanceId();
@@ -654,36 +631,82 @@ void NodeInstanceView::importsChanged(const QList<Import> &/*addedImports*/, con
 }
 
 void NodeInstanceView::auxiliaryDataChanged(const ModelNode &node,
-                                            const PropertyName &name,
+                                            AuxiliaryDataKeyView key,
                                             const QVariant &value)
 {
-    QTC_ASSERT(m_nodeInstanceServer, return);
-    const bool forceAuxChange = name == "invisible" || name == "locked" || name == "rotBlocked@Internal";
-    if (((node.isRootNode() && (name == "width" || name == "height")) || forceAuxChange)
-            || name.endsWith(PropertyName("@NodeInstance"))) {
+    QTC_ASSERT(m_nodeInstanceServer, return );
+
+    switch (key.type) {
+    case AuxiliaryDataType::Document:
+        if ((key == lockedProperty || key == invisibleProperty) && hasInstanceForModelNode(node)) {
+            NodeInstance instance = instanceForModelNode(node);
+            PropertyValueContainer container{instance.instanceId(),
+                                             PropertyName{key.name},
+                                             value,
+                                             TypeName(),
+                                             key.type};
+            m_nodeInstanceServer->changeAuxiliaryValues({{container}});
+        };
+        break;
+
+    case AuxiliaryDataType::NodeInstanceAuxiliary:
         if (hasInstanceForModelNode(node)) {
             NodeInstance instance = instanceForModelNode(node);
-            if (value.isValid() || forceAuxChange) {
-                PropertyValueContainer container{instance.instanceId(), name, value, TypeName()};
+            PropertyValueContainer container{instance.instanceId(),
+                                             PropertyName{key.name},
+                                             value,
+                                             TypeName(),
+                                             key.type};
+            m_nodeInstanceServer->changeAuxiliaryValues({{container}});
+        };
+        break;
+
+    case AuxiliaryDataType::NodeInstancePropertyOverwrite:
+        if (hasInstanceForModelNode(node)) {
+            NodeInstance instance = instanceForModelNode(node);
+            if (value.isValid()) {
+                PropertyValueContainer container{instance.instanceId(),
+                                                 PropertyName{key.name},
+                                                 value,
+                                                 TypeName(),
+                                                 key.type};
                 m_nodeInstanceServer->changeAuxiliaryValues({{container}});
             } else {
+                PropertyName name{key.name};
                 if (node.hasVariantProperty(name)) {
-                    PropertyValueContainer container(instance.instanceId(), name, node.variantProperty(name).value(), TypeName());
+                    PropertyValueContainer container(instance.instanceId(),
+                                                     name,
+                                                     node.variantProperty(name).value(),
+                                                     TypeName());
                     ChangeValuesCommand changeValueCommand({container});
                     m_nodeInstanceServer->changePropertyValues(changeValueCommand);
                 } else if (node.hasBindingProperty(name)) {
-                    PropertyBindingContainer container{instance.instanceId(), name, node.bindingProperty(name).expression(), TypeName()};
+                    PropertyBindingContainer container{instance.instanceId(),
+                                                       name,
+                                                       node.bindingProperty(name).expression(),
+                                                       TypeName()};
                     m_nodeInstanceServer->changePropertyBindings({{container}});
                 }
             }
-        }
-    } else if (node.isRootNode() && name == "language@Internal") {
-        const QString languageAsString = value.toString();
-        if (auto multiLanguageAspect = QmlProjectManager::QmlMultiLanguageAspect::current(m_currentTarget))
-            multiLanguageAspect->setCurrentLocale(languageAsString);
-        m_nodeInstanceServer->changeLanguage({languageAsString});
-    } else if (node.isRootNode() && name == "previewSize@Internal") {
-        m_nodeInstanceServer->changePreviewImageSize(value.toSize());
+        };
+        break;
+
+    case AuxiliaryDataType::Temporary:
+        if (node.isRootNode()) {
+            if (key == languageProperty) {
+                const QString languageAsString = value.toString();
+                if (auto multiLanguageAspect = QmlProjectManager::QmlMultiLanguageAspect::current(
+                        m_currentTarget))
+                    multiLanguageAspect->setCurrentLocale(languageAsString);
+                m_nodeInstanceServer->changeLanguage({languageAsString});
+            } else if (key.name == "previewSize") {
+                m_nodeInstanceServer->changePreviewImageSize(value.toSize());
+            }
+        };
+        break;
+
+    default:
+        break;
     }
 }
 
@@ -712,10 +735,10 @@ void NodeInstanceView::currentStateChanged(const ModelNode &node)
 {
     NodeInstance newStateInstance = instanceForModelNode(node);
 
-    if (newStateInstance.isValid() && node.metaInfo().isSubclassOf("QtQuick.State", 1, 0))
-        nodeInstanceView()->activateState(newStateInstance);
+    if (newStateInstance.isValid() && node.metaInfo().isQtQuickState())
+        activateState(newStateInstance);
     else
-        nodeInstanceView()->activateBaseState();
+        activateBaseState();
 }
 
 void NodeInstanceView::sceneCreated(const SceneCreatedCommand &) {}
@@ -759,7 +782,7 @@ bool NodeInstanceView::hasInstanceForModelNode(const ModelNode &node) const
     return m_nodeInstanceHash.contains(node);
 }
 
-NodeInstance NodeInstanceView::instanceForId(qint32 id)
+NodeInstance NodeInstanceView::instanceForId(qint32 id) const
 {
     if (id < 0 || !hasModelNodeForInternalId(id))
         return NodeInstance();
@@ -767,14 +790,13 @@ NodeInstance NodeInstanceView::instanceForId(qint32 id)
     return m_nodeInstanceHash.value(modelNodeForInternalId(id));
 }
 
-bool NodeInstanceView::hasInstanceForId(qint32 id)
+bool NodeInstanceView::hasInstanceForId(qint32 id) const
 {
     if (id < 0 || !hasModelNodeForInternalId(id))
         return false;
 
     return m_nodeInstanceHash.contains(modelNodeForInternalId(id));
 }
-
 
 /*!
     Returns the root node instance of this view.
@@ -848,11 +870,11 @@ NodeInstance NodeInstanceView::activeStateInstance() const
 
 void NodeInstanceView::updateChildren(const NodeAbstractProperty &newPropertyParent)
 {
-    QVector<ModelNode> childNodeVector = newPropertyParent.directSubNodes().toVector();
+    const QVector<ModelNode> childNodeVector = newPropertyParent.directSubNodes().toVector();
 
     qint32 parentInstanceId = newPropertyParent.parentModelNode().internalId();
 
-    foreach (const ModelNode &childNode, childNodeVector) {
+    for (const ModelNode &childNode : childNodeVector) {
         qint32 instanceId = childNode.internalId();
         if (hasInstanceForId(instanceId)) {
             NodeInstance instance = instanceForId(instanceId);
@@ -882,7 +904,7 @@ void NodeInstanceView::updatePosition(const QList<VariantProperty> &propertyList
 {
     QMultiHash<ModelNode, InformationName> informationChangeHash;
 
-    foreach (const VariantProperty &variantProperty, propertyList) {
+    for (const VariantProperty &variantProperty : propertyList) {
         if (variantProperty.name() == "x") {
             const ModelNode modelNode = variantProperty.parentModelNode();
             if (!currentState().isBaseState() && QmlPropertyChanges::isValidQmlPropertyChanges(modelNode)) {
@@ -913,15 +935,13 @@ void NodeInstanceView::updatePosition(const QList<VariantProperty> &propertyList
 
             QmlTimelineKeyframeGroup frames = QmlTimelineKeyframeGroup::keyframeGroupForKeyframe(variantProperty.parentModelNode());
 
-            if (frames.isValid() && frames.propertyName() == "x" && frames.target().isValid()) {
-
+            if (frames.propertyName() == "x" && frames.target().isValid()) {
                 NodeInstance instance = instanceForModelNode(frames.target());
                 setXValue(instance, variantProperty, informationChangeHash);
-            } else if (frames.isValid() && frames.propertyName() == "y" && frames.target().isValid()) {
+            } else if (frames.propertyName() == "y" && frames.target().isValid()) {
                 NodeInstance instance = instanceForModelNode(frames.target());
                 setYValue(instance, variantProperty, informationChangeHash);
             }
-
         }
     }
 
@@ -957,7 +977,8 @@ void NodeInstanceView::removeRecursiveChildRelationship(const ModelNode &removed
 //        instanceForNode(removedNode).setId(QString());
 //    }
 
-    foreach (const ModelNode &childNode, removedNode.directSubModelNodes())
+    const QList<ModelNode> nodes = removedNode.directSubModelNodes();
+    for (const ModelNode &childNode : nodes)
         removeRecursiveChildRelationship(childNode);
 
     removeInstanceNodeRelationship(removedNode);
@@ -974,7 +995,7 @@ QRectF NodeInstanceView::sceneRect() const
 QList<ModelNode> filterNodesForSkipItems(const QList<ModelNode> &nodeList)
 {
     QList<ModelNode> filteredNodeList;
-    foreach (const ModelNode &node, nodeList) {
+    for (const ModelNode &node : nodeList) {
         if (isSkippedNode(node))
             continue;
 
@@ -983,15 +1004,34 @@ QList<ModelNode> filterNodesForSkipItems(const QList<ModelNode> &nodeList)
 
     return filteredNodeList;
 }
+namespace {
+bool shouldSendAuxiliary(const AuxiliaryDataKey &key)
+{
+    return key.type == AuxiliaryDataType::NodeInstancePropertyOverwrite
+           || key.type == AuxiliaryDataType::NodeInstanceAuxiliary || key == invisibleProperty
+           || key == lockedProperty;
+}
+} // namespace
+
+bool parentIsBehavior(ModelNode node)
+{
+    while (node.isValid() && !node.isRootNode()) {
+        if (!node.behaviorPropertyName().isEmpty())
+            return true;
+
+        node = node.parentProperty().parentModelNode();
+    }
+
+    return false;
+}
 
 CreateSceneCommand NodeInstanceView::createCreateSceneCommand()
 {
     QList<ModelNode> nodeList = allModelNodes();
     QList<NodeInstance> instanceList;
 
-    Utils::optional oldNodeInstanceHash = m_nodeInstanceCache.take(model());
-    if (oldNodeInstanceHash
-        && oldNodeInstanceHash->instances.value(rootModelNode()).isValid()) {
+    std::optional oldNodeInstanceHash = m_nodeInstanceCache.take(model());
+    if (oldNodeInstanceHash && oldNodeInstanceHash->instances.value(rootModelNode()).isValid()) {
         instanceList = loadInstancesFromCache(nodeList, oldNodeInstanceHash.value());
     } else {
         for (const ModelNode &node : std::as_const(nodeList)) {
@@ -1014,12 +1054,14 @@ CreateSceneCommand NodeInstanceView::createCreateSceneCommand()
         bindingPropertyList.append(node.bindingProperties());
         if (node.isValid() && hasInstanceForModelNode(node)) {
             NodeInstance instance = instanceForModelNode(node);
-            const QHash<PropertyName, QVariant> aux = node.auxiliaryData();
-            for (auto auxiliaryIterator = aux.cbegin(), end = aux.cend();
-                      auxiliaryIterator != end;
-                      ++auxiliaryIterator) {
-                PropertyValueContainer container(instance.instanceId(), auxiliaryIterator.key(), auxiliaryIterator.value(), TypeName());
-                auxiliaryContainerVector.append(container);
+            for (const auto &element : node.auxiliaryData()) {
+                if (shouldSendAuxiliary(element.first)) {
+                    auxiliaryContainerVector.emplace_back(instance.instanceId(),
+                                                          element.first.name.toQByteArray(),
+                                                          element.second,
+                                                          TypeName(),
+                                                          element.first.type);
+                }
             }
         }
     }
@@ -1029,7 +1071,7 @@ CreateSceneCommand NodeInstanceView::createCreateSceneCommand()
         InstanceContainer::NodeSourceType nodeSourceType = static_cast<InstanceContainer::NodeSourceType>(instance.modelNode().nodeSourceType());
 
         InstanceContainer::NodeMetaType nodeMetaType = InstanceContainer::ObjectMetaType;
-        if (instance.modelNode().metaInfo().isSubclassOf("QtQuick.Item"))
+        if (instance.modelNode().metaInfo().isQtQuickItem())
             nodeMetaType = InstanceContainer::ItemMetaType;
 
         InstanceContainer::NodeFlags nodeFlags;
@@ -1047,7 +1089,8 @@ CreateSceneCommand NodeInstanceView::createCreateSceneCommand()
                                     nodeMetaType,
                                     nodeFlags);
 
-        instanceContainerList.append(container);
+        if (!parentIsBehavior(instance.modelNode()))
+            instanceContainerList.append(container);
     }
 
     QVector<ReparentContainer> reparentContainerList;
@@ -1135,30 +1178,29 @@ CreateSceneCommand NodeInstanceView::createCreateSceneCommand()
 
     ModelNode stateNode = currentStateNode();
     qint32 stateInstanceId = 0;
-    if (stateNode.isValid() && stateNode.metaInfo().isSubclassOf("QtQuick.State", 1, 0))
+    if (stateNode.isValid() && stateNode.metaInfo().isQtQuickState())
         stateInstanceId = stateNode.internalId();
 
-    return CreateSceneCommand(
-        instanceContainerList,
-        reparentContainerList,
-        idContainerList,
-        valueContainerList,
-        bindingContainerList,
-        auxiliaryContainerVector,
-        importVector,
-        mockupTypesVector,
-        model()->fileUrl(),
-#ifndef QMLDESIGNER_TEST
-        QUrl::fromLocalFile(
-            QmlDesigner::DocumentManager::currentResourcePath().toFileInfo().absoluteFilePath()),
-#else
-        QUrl::fromLocalFile(QFileInfo(model()->fileUrl().toLocalFile()).absolutePath()),
-#endif
-        m_edit3DToolStates[model()->fileUrl()],
-        lastUsedLanguage,
-        m_captureImageMinimumSize,
-        m_captureImageMaximumSize,
-        stateInstanceId);
+    QColor gridColor = m_externalDependencies.designerSettingsEdit3DViewGridColor();
+    QList<QColor> backgroundColor = m_externalDependencies.designerSettingsEdit3DViewBackgroundColor();
+
+    return CreateSceneCommand(instanceContainerList,
+                              reparentContainerList,
+                              idContainerList,
+                              valueContainerList,
+                              bindingContainerList,
+                              auxiliaryContainerVector,
+                              importVector,
+                              mockupTypesVector,
+                              model()->fileUrl(),
+                              m_externalDependencies.currentResourcePath(),
+                              m_edit3DToolStates[model()->fileUrl()],
+                              lastUsedLanguage,
+                              m_captureImageMinimumSize,
+                              m_captureImageMaximumSize,
+                              stateInstanceId,
+                              backgroundColor,
+                              gridColor);
 }
 
 ClearSceneCommand NodeInstanceView::createClearSceneCommand() const
@@ -1169,7 +1211,7 @@ ClearSceneCommand NodeInstanceView::createClearSceneCommand() const
 CompleteComponentCommand NodeInstanceView::createComponentCompleteCommand(const QList<NodeInstance> &instanceList) const
 {
     QVector<qint32> containerList;
-    foreach (const NodeInstance &instance, instanceList) {
+    for (const NodeInstance &instance : instanceList) {
         if (instance.instanceId() >= 0)
             containerList.append(instance.instanceId());
     }
@@ -1180,7 +1222,7 @@ CompleteComponentCommand NodeInstanceView::createComponentCompleteCommand(const 
 ComponentCompletedCommand NodeInstanceView::createComponentCompletedCommand(const QList<NodeInstance> &instanceList) const
 {
     QVector<qint32> containerList;
-    foreach (const NodeInstance &instance, instanceList) {
+    for (const NodeInstance &instance : instanceList) {
         if (instance.instanceId() >= 0)
             containerList.append(instance.instanceId());
     }
@@ -1191,11 +1233,11 @@ ComponentCompletedCommand NodeInstanceView::createComponentCompletedCommand(cons
 CreateInstancesCommand NodeInstanceView::createCreateInstancesCommand(const QList<NodeInstance> &instanceList) const
 {
     QVector<InstanceContainer> containerList;
-    foreach (const NodeInstance &instance, instanceList) {
+    for (const NodeInstance &instance : instanceList) {
         InstanceContainer::NodeSourceType nodeSourceType = static_cast<InstanceContainer::NodeSourceType>(instance.modelNode().nodeSourceType());
 
         InstanceContainer::NodeMetaType nodeMetaType = InstanceContainer::ObjectMetaType;
-        if (instance.modelNode().metaInfo().isSubclassOf("QtQuick.Item"))
+        if (instance.modelNode().metaInfo().isQtQuickItem())
             nodeMetaType = InstanceContainer::ItemMetaType;
 
         InstanceContainer::NodeFlags nodeFlags;
@@ -1221,7 +1263,7 @@ CreateInstancesCommand NodeInstanceView::createCreateInstancesCommand(const QLis
 ReparentInstancesCommand NodeInstanceView::createReparentInstancesCommand(const QList<NodeInstance> &instanceList) const
 {
     QVector<ReparentContainer> containerList;
-    foreach (const NodeInstance &instance, instanceList) {
+    for (const NodeInstance &instance : instanceList) {
         if (instance.modelNode().hasParentProperty()) {
             NodeAbstractProperty parentProperty = instance.modelNode().parentProperty();
             ReparentContainer container(instance.instanceId(), -1, PropertyName(), instanceForModelNode(parentProperty.parentModelNode()).instanceId(), parentProperty.name());
@@ -1265,7 +1307,7 @@ ChangeValuesCommand NodeInstanceView::createChangeValueCommand(const QList<Varia
 
     const bool reflectionFlag = m_puppetTransaction.isValid() && (!currentTimeline().isValid() || !currentTimeline().isRecording());
 
-    foreach (const VariantProperty &property, propertyList) {
+    for (const VariantProperty &property : propertyList) {
         ModelNode node = property.parentModelNode();
         if (node.isValid() && hasInstanceForModelNode(node)) {
             NodeInstance instance = instanceForModelNode(node);
@@ -1315,7 +1357,7 @@ ChangeIdsCommand NodeInstanceView::createChangeIdsCommand(const QList<NodeInstan
 RemoveInstancesCommand NodeInstanceView::createRemoveInstancesCommand(const QList<ModelNode> &nodeList) const
 {
     QVector<qint32> idList;
-    foreach (const ModelNode &node, nodeList) {
+    for (const ModelNode &node : nodeList) {
         if (node.isValid() && hasInstanceForModelNode(node)) {
             NodeInstance instance = instanceForModelNode(node);
 
@@ -1330,7 +1372,7 @@ RemoveInstancesCommand NodeInstanceView::createRemoveInstancesCommand(const QLis
 ChangeSelectionCommand NodeInstanceView::createChangeSelectionCommand(const QList<ModelNode> &nodeList) const
 {
     QVector<qint32> idList;
-    foreach (const ModelNode &node, nodeList) {
+    for (const ModelNode &node : nodeList) {
         if (node.isValid() && hasInstanceForModelNode(node)) {
             NodeInstance instance = instanceForModelNode(node);
 
@@ -1356,7 +1398,7 @@ RemovePropertiesCommand NodeInstanceView::createRemovePropertiesCommand(const QL
 {
     QVector<PropertyAbstractContainer> containerList;
 
-    foreach (const AbstractProperty &property, propertyList) {
+    for (const AbstractProperty &property : propertyList) {
         ModelNode node = property.parentModelNode();
         if (node.isValid() && hasInstanceForModelNode(node)) {
             NodeInstance instance = instanceForModelNode(node);
@@ -1378,7 +1420,7 @@ RemoveSharedMemoryCommand NodeInstanceView::createRemoveSharedMemoryCommand(cons
 {
     QVector<qint32> keyNumberVector;
 
-    foreach (const ModelNode &modelNode, nodeList)
+    for (const ModelNode &modelNode : nodeList)
         keyNumberVector.append(modelNode.internalId());
 
     return RemoveSharedMemoryCommand(sharedMemoryTypeName, keyNumberVector);
@@ -1391,7 +1433,8 @@ void NodeInstanceView::valuesChanged(const ValuesChangedCommand &command)
 
     QList<QPair<ModelNode, PropertyName> > valuePropertyChangeList;
 
-    foreach (const PropertyValueContainer &container, command.valueChanges()) {
+    const QVector<PropertyValueContainer> containers = command.valueChanges();
+    for (const PropertyValueContainer &container : containers) {
         if (hasInstanceForId(container.instanceId())) {
             NodeInstance instance = instanceForId(container.instanceId());
             if (instance.isValid()) {
@@ -1439,10 +1482,21 @@ void NodeInstanceView::pixmapChanged(const PixmapChangedCommand &command)
 
     QSet<ModelNode> renderImageChangeSet;
 
-    foreach (const ImageContainer &container, command.images()) {
+    QVector<InformationContainer> containerVector;
+
+    const QVector<ImageContainer> containers = command.images();
+    for (const ImageContainer &container : containers) {
         if (hasInstanceForId(container.instanceId())) {
             NodeInstance instance = instanceForId(container.instanceId());
             if (instance.isValid()) {
+                if (container.rect().isValid()) {
+                    InformationContainer rectContainer = InformationContainer(container.instanceId(),
+                                                                              BoundingRectPixmap,
+                                                                              container.rect(),
+                                                                              {},
+                                                                              {});
+                    containerVector.append(rectContainer);
+                }
                 instance.setRenderPixmap(container.image());
                 renderImageChangeSet.insert(instance.modelNode());
             }
@@ -1453,13 +1507,21 @@ void NodeInstanceView::pixmapChanged(const PixmapChangedCommand &command)
 
     if (!renderImageChangeSet.isEmpty())
         emitInstancesRenderImageChanged(Utils::toList(renderImageChangeSet).toVector());
+
+    if (!containerVector.isEmpty()) {
+        QMultiHash<ModelNode, InformationName> informationChangeHash = informationChanged(
+            containerVector);
+
+        if (!informationChangeHash.isEmpty())
+            emitInstanceInformationsChange(informationChangeHash);
+    }
 }
 
 QMultiHash<ModelNode, InformationName> NodeInstanceView::informationChanged(const QVector<InformationContainer> &containerVector)
 {
     QMultiHash<ModelNode, InformationName> informationChangeHash;
 
-    foreach (const InformationContainer &container, containerVector) {
+    for (const InformationContainer &container : containerVector) {
         if (hasInstanceForId(container.instanceId())) {
             NodeInstance instance = instanceForId(container.instanceId());
             if (instance.isValid()) {
@@ -1517,7 +1579,8 @@ void NodeInstanceView::statePreviewImagesChanged(const StatePreviewImageChangedC
 
   QVector<ModelNode> previewImageChangeVector;
 
-  foreach (const ImageContainer &container, command.previews()) {
+  const QVector<ImageContainer> containers = command.previews();
+  for (const ImageContainer &container : containers) {
       if (container.keyNumber() == -1) {
           m_baseStatePreviewImage = container.image();
           if (!container.image().isNull())
@@ -1541,7 +1604,8 @@ void NodeInstanceView::componentCompleted(const ComponentCompletedCommand &comma
 
     QVector<ModelNode> nodeVector;
 
-    foreach (const qint32 &instanceId, command.instances()) {
+    const QVector<qint32> instances = command.instances();
+    for (const qint32 &instanceId : instances) {
         if (hasModelNodeForInternalId(instanceId))
             nodeVector.append(modelNodeForInternalId(instanceId));
     }
@@ -1559,7 +1623,8 @@ void NodeInstanceView::childrenChanged(const ChildrenChangedCommand &command)
 
     QVector<ModelNode> childNodeVector;
 
-    foreach (qint32 instanceId, command.childrenInstances()) {
+    const QVector<qint32> instances = command.childrenInstances();
+    for (const qint32 &instanceId : instances) {
         if (hasInstanceForId(instanceId)) {
             NodeInstance instance = instanceForId(instanceId);
             if (instance.parentId() == -1 || !instance.directUpdates())
@@ -1584,7 +1649,8 @@ void NodeInstanceView::token(const TokenCommand &command)
 
     QVector<ModelNode> nodeVector;
 
-    foreach (const qint32 &instanceId, command.instances()) {
+    const QVector<qint32> instances = command.instances();
+    for (const qint32 &instanceId : instances) {
         if (hasModelNodeForInternalId(instanceId))
             nodeVector.append(modelNodeForInternalId(instanceId));
     }
@@ -1599,7 +1665,8 @@ void NodeInstanceView::debugOutput(const DebugOutputCommand & command)
         emitDocumentMessage(command.text());
     } else {
         QVector<qint32> instanceIdsWithChangedErrors;
-        foreach (qint32 instanceId, command.instanceIds()) {
+        const QVector<qint32> instanceIds = command.instanceIds();
+        for (const qint32 &instanceId : instanceIds) {
             NodeInstance instance = instanceForId(instanceId);
             if (instance.isValid()) {
                 if (instance.setError(command.text()))
@@ -1615,7 +1682,7 @@ void NodeInstanceView::debugOutput(const DebugOutputCommand & command)
 void NodeInstanceView::sendToken(const QString &token, int number, const QVector<ModelNode> &nodeVector)
 {
     QVector<qint32> instanceIdVector;
-    foreach (const ModelNode &node, nodeVector)
+    for (const ModelNode &node : nodeVector)
         instanceIdVector.append(node.internalId());
 
     m_nodeInstanceServer->token(TokenCommand(token, number, instanceIdVector));
@@ -1624,7 +1691,8 @@ void NodeInstanceView::sendToken(const QString &token, int number, const QVector
 void NodeInstanceView::selectionChanged(const ChangeSelectionCommand &command)
 {
     clearSelectedModelNodes();
-    foreach (const qint32 &instanceId, command.instanceIds()) {
+    const QVector<qint32> instanceIds = command.instanceIds();
+    for (const qint32 &instanceId : instanceIds) {
         if (hasModelNodeForInternalId(instanceId))
             selectModelNode(modelNodeForInternalId(instanceId));
     }
@@ -1653,11 +1721,7 @@ void NodeInstanceView::handlePuppetToCreatorCommand(const PuppetToCreatorCommand
         if (hasModelNodeForInternalId(container.instanceId()) && !image.isNull()) {
             auto node = modelNodeForInternalId(container.instanceId());
             if (node.isValid()) {
-#ifndef QMLDESIGNER_TEST
-                const double ratio = QmlDesignerPlugin::formEditorDevicePixelRatio();
-#else
-                const double ratio = 1;
-#endif
+                const double ratio = m_externalDependencies.formEditorDevicePixelRatio();
                 const int dim = Constants::MODELNODE_PREVIEW_IMAGE_DIMENSIONS * ratio;
                 if (image.height() != dim || image.width() != dim)
                     image = image.scaled(dim, dim, Qt::KeepAspectRatio);
@@ -1668,12 +1732,22 @@ void NodeInstanceView::handlePuppetToCreatorCommand(const PuppetToCreatorCommand
     } else if (command.type() == PuppetToCreatorCommand::Import3DSupport) {
         const QVariantMap supportMap = qvariant_cast<QVariantMap>(command.data());
         emitImport3DSupportChanged(supportMap);
+    } else if (command.type() == PuppetToCreatorCommand::NodeAtPos) {
+        auto data = qvariant_cast<QVariantList>(command.data());
+        if (data.size() == 2) {
+            ModelNode modelNode = modelNodeForInternalId(data[0].toInt());
+            QVector3D pos3d = data[1].value<QVector3D>();
+            emitNodeAtPosResult(modelNode, pos3d);
+        }
     }
 }
 
 std::unique_ptr<NodeInstanceServerProxy> NodeInstanceView::createNodeInstanceServerProxy()
 {
-    return std::make_unique<NodeInstanceServerProxy>(this, m_currentTarget, m_connectionManager);
+    return std::make_unique<NodeInstanceServerProxy>(this,
+                                                     m_currentTarget,
+                                                     m_connectionManager,
+                                                     m_externalDependencies);
 }
 
 void NodeInstanceView::selectedNodesChanged(const QList<ModelNode> &selectedNodeList,
@@ -1688,14 +1762,15 @@ void NodeInstanceView::sendInputEvent(QInputEvent *e) const
     m_nodeInstanceServer->inputEvent(InputEventCommand(e));
 }
 
-void NodeInstanceView::view3DAction(const View3DActionCommand &command)
+void NodeInstanceView::view3DAction(View3DActionType type, const QVariant &value)
 {
-    m_nodeInstanceServer->view3DAction(command);
+    m_nodeInstanceServer->view3DAction({type, value});
 }
 
-void NodeInstanceView::requestModelNodePreviewImage(const ModelNode &node, const ModelNode &renderNode)
+void NodeInstanceView::requestModelNodePreviewImage(const ModelNode &node,
+                                                    const ModelNode &renderNode) const
 {
-    if (node.isValid()) {
+    if (m_nodeInstanceServer && node.isValid()) {
         auto instance = instanceForModelNode(node);
         if (instance.isValid()) {
             qint32 renderItemId = -1;
@@ -1709,11 +1784,7 @@ void NodeInstanceView::requestModelNodePreviewImage(const ModelNode &node, const
             } else if (node.isComponent()) {
                 componentPath = node.metaInfo().componentFileName();
             }
-#ifndef QMLDESIGNER_TEST
-                const double ratio = QmlDesignerPlugin::formEditorDevicePixelRatio();
-#else
-                const double ratio = 1;
-#endif
+            const double ratio = m_externalDependencies.formEditorDevicePixelRatio();
             const int dim = Constants::MODELNODE_PREVIEW_IMAGE_DIMENSIONS * ratio;
             m_nodeInstanceServer->requestModelNodePreviewImage(
                         RequestModelNodePreviewImageCommand(instance.instanceId(), QSize(dim, dim),
@@ -1733,9 +1804,18 @@ void NodeInstanceView::timerEvent(QTimerEvent *event)
         restartProcess();
 }
 
-QVariant NodeInstanceView::modelNodePreviewImageDataToVariant(const ModelNodePreviewImageData &imageData)
+QVariant NodeInstanceView::modelNodePreviewImageDataToVariant(const ModelNodePreviewImageData &imageData) const
 {
-    static const QPixmap placeHolder(":/navigator/icon/tooltip_placeholder.png");
+    static QPixmap placeHolder;
+    if (placeHolder.isNull()) {
+        QPixmap placeHolderSrc(":/navigator/icon/tooltip_placeholder.png");
+        placeHolder = {150, 150};
+        // Placeholder has transparency, but we don't want to show the checkerboard, so
+        // paint in the correct background color
+        placeHolder.fill(Utils::creatorTheme()->color(Utils::Theme::BackgroundColorNormal));
+        QPainter painter(&placeHolder);
+        painter.drawPixmap(0, 0, 150, 150, placeHolderSrc);
+    }
 
     QVariantMap map;
     map.insert("type", imageData.type);
@@ -1748,7 +1828,7 @@ QVariant NodeInstanceView::modelNodePreviewImageDataToVariant(const ModelNodePre
     return map;
 }
 
-QVariant NodeInstanceView::previewImageDataForImageNode(const ModelNode &modelNode)
+QVariant NodeInstanceView::previewImageDataForImageNode(const ModelNode &modelNode) const
 {
     if (!modelNode.isValid())
         return {};
@@ -1759,13 +1839,9 @@ QVariant NodeInstanceView::previewImageDataForImageNode(const ModelNode &modelNo
     ModelNodePreviewImageData imageData;
     imageData.id = modelNode.id();
     imageData.type = QString::fromLatin1(modelNode.type());
-#ifndef QMLDESIGNER_TEST
-                const double ratio = QmlDesignerPlugin::formEditorDevicePixelRatio();
-#else
-                const double ratio = 1;
-#endif
+    const double ratio = m_externalDependencies.formEditorDevicePixelRatio();
 
-    if (imageSource.isEmpty() && modelNode.isSubclassOf("QtQuick3D.Texture")) {
+    if (imageSource.isEmpty() && modelNode.metaInfo().isQtQuick3DTexture()) {
         // Texture node may have sourceItem instead
         BindingProperty binding = modelNode.bindingProperty("sourceItem");
         if (binding.isValid()) {
@@ -1779,9 +1855,10 @@ QVariant NodeInstanceView::previewImageDataForImageNode(const ModelNode &modelNo
                 } else {
                     QmlItemNode itemNode(boundNode);
                     const int dim = Constants::MODELNODE_PREVIEW_IMAGE_DIMENSIONS * ratio;
-                    imageData.pixmap = itemNode.instanceRenderPixmap().scaled(dim, dim, Qt::KeepAspectRatio);
+                    imageData.pixmap = itemNode.instanceRenderPixmap().scaled(dim,
+                                                                              dim,
+                                                                              Qt::KeepAspectRatio);
                     imageData.pixmap.setDevicePixelRatio(ratio);
-
                 }
                 imageData.info = ::QmlDesigner::NodeInstanceView::tr("Source item: %1")
                                      .arg(boundNode.id());
@@ -1796,7 +1873,9 @@ QVariant NodeInstanceView::previewImageDataForImageNode(const ModelNode &modelNo
 
         QFileInfo imageFi(imageSource);
         if (imageFi.isRelative())
-            imageSource = QFileInfo(modelNode.model()->fileUrl().toLocalFile()).dir().absoluteFilePath(imageSource);
+            imageSource = QFileInfo(modelNode.model()->fileUrl().toLocalFile())
+                              .dir()
+                              .absoluteFilePath(imageSource);
 
         imageFi = QFileInfo(imageSource);
         QDateTime modified = imageFi.lastModified();
@@ -1810,7 +1889,7 @@ QVariant NodeInstanceView::previewImageDataForImageNode(const ModelNode &modelNo
 
         if (reload) {
             QPixmap originalPixmap;
-            if (modelNode.isSubclassOf("Qt.SafeRenderer.SafeRendererPicture")) {
+            if (modelNode.metaInfo().isQtSafeRendererSafeRendererPicture()) {
                 QPicture picture;
                 picture.load(imageSource);
                 if (!picture.isNull()) {
@@ -1822,30 +1901,17 @@ QVariant NodeInstanceView::previewImageDataForImageNode(const ModelNode &modelNo
                     originalPixmap = QPixmap::fromImage(paintImage);
                 }
             } else {
-#ifndef QMLDESIGNER_TEST
                 if (imageFi.suffix() == "hdr")
                     originalPixmap = HdrImage{imageSource}.toPixmap();
                 else
-#endif
                     originalPixmap.load(imageSource);
             }
             if (!originalPixmap.isNull()) {
                 const int dim = Constants::MODELNODE_PREVIEW_IMAGE_DIMENSIONS * ratio;
                 imageData.pixmap = originalPixmap.scaled(dim, dim, Qt::KeepAspectRatio);
                 imageData.pixmap.setDevicePixelRatio(ratio);
-
-                double imgSize = double(imageFi.size());
-                static QStringList units({::QmlDesigner::NodeInstanceView::tr("B"),
-                                          ::QmlDesigner::NodeInstanceView::tr("KB"),
-                                          ::QmlDesigner::NodeInstanceView::tr("MB"),
-                                          ::QmlDesigner::NodeInstanceView::tr("GB")});
-                int unitIndex = 0;
-                while (imgSize > 1024. && unitIndex < units.size() - 1) {
-                    ++unitIndex;
-                    imgSize /= 1024.;
-                }
-                imageData.info = QStringLiteral("%1 x %2\n%3%4 (%5)").arg(originalPixmap.width()).arg(originalPixmap.height())
-                        .arg(QString::number(imgSize, 'g', 3)).arg(units[unitIndex]).arg(imageFi.suffix());
+                imageData.time = modified;
+                imageData.info = ImageUtils::imageInfo(imageSource);
                 m_imageDataMap.insert(imageData.id, imageData);
             }
         }
@@ -1866,8 +1932,12 @@ void NodeInstanceView::endNanotrace()
     m_connectionManager.writeCommand(QVariant::fromValue(EndNanotraceCommand()) );
 }
 
-QVariant NodeInstanceView::previewImageDataForGenericNode(const ModelNode &modelNode, const ModelNode &renderNode)
+QVariant NodeInstanceView::previewImageDataForGenericNode(const ModelNode &modelNode,
+                                                          const ModelNode &renderNode) const
 {
+    if (!modelNode.isValid())
+        return {};
+
     ModelNodePreviewImageData imageData;
 
     // We need puppet to generate the image, which needs to be asynchronous.
@@ -1901,11 +1971,11 @@ void NodeInstanceView::updateWatcher(const QString &path)
     QStringList newFiles;
     QStringList newDirs;
     QStringList qsbFiles;
-#ifndef QMLDESIGNER_TEST
-    const QString projPath = QmlDesignerPlugin::instance()->documentManager().currentProjectDirPath().toString();
-#else
-    const QString projPath = QFileInfo(model()->fileUrl().toLocalFile()).absolutePath();
-#endif
+
+    const QString projPath = m_externalDependencies.currentProjectDirPath();
+
+    if (projPath.isEmpty())
+        return;
 
     const QStringList files = m_fileSystemWatcher->files();
     const QStringList directories = m_fileSystemWatcher->directories();
@@ -2000,14 +2070,12 @@ void NodeInstanceView::handleQsbProcessExit(Utils::QtcProcess *qsbProcess, const
 {
     --m_remainingQsbTargets;
 
-    QString errStr = qsbProcess->errorString();
-    QByteArray stdErrStr = qsbProcess->readAllStandardError();
+    const QString errStr = qsbProcess->errorString();
+    const QByteArray stdErrStr = qsbProcess->readAllRawStandardError();
 
     if (!errStr.isEmpty() || !stdErrStr.isEmpty()) {
-        Core::MessageManager::writeSilently(
-            QCoreApplication::translate("QmlDesigner::NodeInstanceView",
-                                        "Failed to generate QSB file for: %1")
-                .arg(shader));
+        Core::MessageManager::writeSilently(QCoreApplication::translate(
+            "QmlDesigner::NodeInstanceView", "Failed to generate QSB file for: %1").arg(shader));
         if (!errStr.isEmpty())
             Core::MessageManager::writeSilently(errStr);
         if (!stdErrStr.isEmpty())
@@ -2025,13 +2093,15 @@ void NodeInstanceView::updateQsbPathToFilterMap()
     m_qsbPathToFilterMap.clear();
     if (m_currentTarget && !m_qsbPath.isEmpty()) {
         const auto bs = qobject_cast<QmlProjectManager::QmlBuildSystem *>(m_currentTarget->buildSystem());
+        if (!bs)
+            return;
         const QStringList shaderToolFiles = bs->shaderToolFiles();
 
-#ifndef QMLDESIGNER_TEST
-        const QString projPath = QmlDesignerPlugin::instance()->documentManager().currentProjectDirPath().toString();
-#else
-        const QString projPath = QFileInfo(model()->fileUrl().toLocalFile()).absolutePath();
-#endif
+        const QString projPath = m_externalDependencies.currentProjectDirPath();
+
+        if (projPath.isEmpty())
+            return;
+
         // Parse ShaderTool files from project configuration.
         // Separate files to path and file name (called filter here as it can contain wildcards)
         // and group filters by paths. Blank path indicates project-wide file wildcard.
@@ -2056,6 +2126,9 @@ void NodeInstanceView::handleShaderChanges()
         return;
 
     const auto bs = qobject_cast<QmlProjectManager::QmlBuildSystem *>(m_currentTarget->buildSystem());
+    if (!bs)
+        return;
+
     QStringList baseArgs = bs->shaderToolArgs();
     if (baseArgs.isEmpty())
         return;
@@ -2075,7 +2148,7 @@ void NodeInstanceView::handleShaderChanges()
 
     m_remainingQsbTargets += newShaders.size();
 
-    for (const auto &shader : qAsConst(newShaders)) {
+    for (const auto &shader : std::as_const(newShaders)) {
         const Utils::FilePath srcFile = Utils::FilePath::fromString(shader);
         const Utils::FilePath srcPath = srcFile.absolutePath();
         const Utils::FilePath outPath = Utils::FilePath::fromString(shader + ".qsb");
@@ -2094,27 +2167,13 @@ void NodeInstanceView::handleShaderChanges()
         QStringList args = baseArgs;
         args.append(outPath.toString());
         args.append(shader);
-        auto qsbProcess = new Utils::QtcProcess;
+        auto qsbProcess = new Utils::QtcProcess(this);
+        connect(qsbProcess, &Utils::QtcProcess::done, this, [this, qsbProcess, shader] {
+            handleQsbProcessExit(qsbProcess, shader);
+        });
         qsbProcess->setWorkingDirectory(srcPath);
         qsbProcess->setCommand({m_qsbPath, args});
         qsbProcess->start();
-
-        if (!qsbProcess->waitForStarted()) {
-            handleQsbProcessExit(qsbProcess, shader);
-            continue;
-        }
-
-        if (qsbProcess->state() == QProcess::Running) {
-            connect(qsbProcess, &Utils::QtcProcess::finished,
-                    [thisView = QPointer<NodeInstanceView>(this), qsbProcess, shader]() {
-                if (thisView)
-                    thisView->handleQsbProcessExit(qsbProcess, shader);
-                else
-                    qsbProcess->deleteLater();
-            });
-        } else {
-            handleQsbProcessExit(qsbProcess, shader);
-        }
     }
 }
 
@@ -2133,7 +2192,8 @@ void NodeInstanceView::updateRotationBlocks()
     for (const auto &node : selectedNodes) {
         if (Qml3DNode::isValidQml3DNode(node)) {
             if (!groupsResolved) {
-                const QList<ModelNode> keyframeGroups = allModelNodesOfType("KeyframeGroup");
+                const QList<ModelNode> keyframeGroups = allModelNodesOfType(
+                    model()->qtQuickTimelineKeyframeGroupMetaInfo());
                 for (const auto &kfgNode : keyframeGroups) {
                     if (kfgNode.isValid()) {
                         VariantProperty varProp = kfgNode.variantProperty(propertyPropName);
@@ -2153,12 +2213,11 @@ void NodeInstanceView::updateRotationBlocks()
         }
     }
     if (!qml3DNodes.isEmpty()) {
-        const PropertyName auxDataProp {"rotBlocked@Internal"};
-        for (const auto &node : qAsConst(qml3DNodes)) {
+        for (const auto &node : std::as_const(qml3DNodes)) {
             if (rotationKeyframeTargets.contains(node))
-                node.setAuxiliaryData(auxDataProp, true);
+                node.setAuxiliaryData(rotBlockProperty, true);
             else
-                node.setAuxiliaryData(auxDataProp, false);
+                node.setAuxiliaryData(rotBlockProperty, false);
         }
     }
 }
@@ -2167,14 +2226,13 @@ void NodeInstanceView::maybeResetOnPropertyChange(const PropertyName &name, cons
                                                   PropertyChangeFlags flags)
 {
     bool reset = false;
-    if (flags & AbstractView::PropertiesAdded
-            && name == "model" && (node.isSubclassOf("QtQuick.Repeater")
-                                   || node.isSubclassOf("QtQuick3D.Repeater3D"))) {
-        // TODO: This is a workaround for QTBUG-97583 (2D) and QTBUG-97586 (3D):
+    if (flags & AbstractView::PropertiesAdded && name == "model"
+        && node.metaInfo().isQtQuickRepeater()) {
+        // TODO: This is a workaround for QTBUG-97583:
         //       Reset puppet when repeater model is first added, if there is already a delegate
         if (node.hasProperty("delegate"))
             reset = true;
-    } else if (name == "shader" && node.isSubclassOf("QtQuick3D.Shader")) {
+    } else if (name == "shader" && node.metaInfo().isQtQuick3DShader()) {
         reset = true;
     }
     if (reset)

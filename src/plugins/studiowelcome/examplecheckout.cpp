@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "examplecheckout.h"
 
 #include "studiowelcomeplugin.h"
@@ -46,7 +24,6 @@
 #include <QDialog>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QHBoxLayout>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -56,6 +33,12 @@
 #include <algorithm>
 
 using namespace Utils;
+
+static bool enableDownload()
+{
+    const QString lastQDSVersionEntry = "QML/Designer/EnableWelcomePageDownload";
+    return Core::ICore::settings()->value(lastQDSVersionEntry, false).toBool();
+}
 
 void ExampleCheckout::registerTypes()
 {
@@ -92,13 +75,13 @@ void FileDownloader::start()
     auto request = QNetworkRequest(m_url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::UserVerifiedRedirectPolicy);
-    QNetworkReply *reply = Utils::NetworkAccessManager::instance()->get(request);
+    m_reply = Utils::NetworkAccessManager::instance()->get(request);
 
-    QNetworkReply::connect(reply, &QNetworkReply::readyRead, this, [this, reply]() {
-        m_tempFile.write(reply->readAll());
+    QNetworkReply::connect(m_reply, &QNetworkReply::readyRead, this, [this]() {
+        m_tempFile.write(m_reply->readAll());
     });
 
-    QNetworkReply::connect(reply,
+    QNetworkReply::connect(m_reply,
                            &QNetworkReply::downloadProgress,
                            this,
                            [this](qint64 current, qint64 max) {
@@ -109,16 +92,21 @@ void FileDownloader::start()
                                emit progressChanged();
                            });
 
-    QNetworkReply::connect(reply, &QNetworkReply::redirected, [reply](const QUrl &) {
-        emit reply->redirectAllowed();
+    QNetworkReply::connect(m_reply, &QNetworkReply::redirected, [this](const QUrl &) {
+        emit m_reply->redirectAllowed();
     });
 
-    QNetworkReply::connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        if (reply->error()) {
+    QNetworkReply::connect(m_reply, &QNetworkReply::finished, this, [this]() {
+        if (m_reply->error()) {
             if (m_tempFile.exists())
                 m_tempFile.remove();
-            qDebug() << Q_FUNC_INFO << m_url << reply->errorString();
-            emit downloadFailed();
+
+            if (m_reply->error() != QNetworkReply::OperationCanceledError) {
+                qWarning() << Q_FUNC_INFO << m_url << m_reply->errorString();
+                emit downloadFailed();
+            } else {
+                emit downloadCanceled();
+            }
         } else {
             m_tempFile.flush();
             m_tempFile.close();
@@ -126,7 +114,15 @@ void FileDownloader::start()
             emit tempFileChanged();
             emit finishedChanged();
         }
+
+        m_reply = nullptr;
     });
+}
+
+void FileDownloader::cancel()
+{
+    if (m_reply)
+        m_reply->abort();
 }
 
 void FileDownloader::setUrl(const QUrl &url)
@@ -186,6 +182,12 @@ bool FileDownloader::available() const
 
 void FileDownloader::probeUrl()
 {
+    if (!enableDownload()) {
+        m_available = false;
+        emit availableChanged();
+        return;
+    }
+
     auto request = QNetworkRequest(m_url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::UserVerifiedRedirectPolicy);
@@ -196,17 +198,6 @@ void FileDownloader::probeUrl()
     });
 
     QNetworkReply::connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        QQmlData *data = QQmlData::get(this, false);
-        if (!data) {
-            qDebug() << Q_FUNC_INFO << "FileDownloader is nullptr.";
-            return;
-        }
-
-        if (QQmlData::wasDeleted(this)) {
-            qDebug() << Q_FUNC_INFO << "FileDownloader was deleted.";
-            return;
-        }
-
         if (reply->error())
             return;
 
@@ -381,9 +372,8 @@ void FileExtractor::extract()
     // Create a new directory to generate a proper creation date
     targetDir.mkdir(targetFolder);
 
-    Utils::Archive *archive = Utils::Archive::unarchive(m_sourceFile, m_targetPath);
-    archive->setParent(this);
-    QTC_ASSERT(archive, return );
+    Utils::Archive *archive = new Utils::Archive(m_sourceFile, m_targetPath);
+    QTC_ASSERT(archive->isValid(), delete archive; return);
 
     m_timer.start();
     qint64 bytesBefore = QStorageInfo(m_targetPath.toFileInfo().dir()).bytesAvailable();
@@ -423,7 +413,8 @@ void FileExtractor::extract()
         emit detailedTextChanged();
     });
 
-    QObject::connect(archive, &Utils::Archive::finished, this, [this](bool ret) {
+    QObject::connect(archive, &Utils::Archive::finished, this, [this, archive](bool ret) {
+        archive->deleteLater();
         m_finished = ret;
         m_timer.stop();
 
@@ -432,6 +423,107 @@ void FileExtractor::extract()
 
         emit targetFolderExistsChanged();
         emit finishedChanged();
-        QTC_ASSERT(ret, ;);
+        QTC_CHECK(ret);
     });
+    archive->unarchive();
+}
+
+static Utils::FilePath tempFilePath()
+{
+    QStandardPaths::StandardLocation location = QStandardPaths::CacheLocation;
+
+    return Utils::FilePath::fromString(QStandardPaths::writableLocation(location))
+        .pathAppended("QtDesignStudio");
+}
+
+DataModelDownloader::DataModelDownloader(QObject * /* parent */)
+{
+    auto fileInfo = targetFolder().toFileInfo();
+    m_birthTime = fileInfo.lastModified();
+    m_exists = fileInfo.exists();
+
+    connect(&m_fileDownloader,
+            &FileDownloader::progressChanged,
+            this,
+            &DataModelDownloader::progressChanged);
+
+    connect(&m_fileDownloader,
+            &FileDownloader::downloadFailed,
+            this,
+            &DataModelDownloader::downloadFailed);
+}
+
+bool DataModelDownloader::start()
+{
+
+    if (!enableDownload()) {
+        m_available = false;
+        emit availableChanged();
+        return false;
+    }
+
+    m_fileDownloader.setUrl(QUrl::fromUserInput(
+        "https://download.qt.io/learning/examples/qtdesignstudio/dataImports.zip"));
+
+    bool started = false;
+
+    connect(&m_fileDownloader, &FileDownloader::availableChanged, this, [this, &started]() {
+
+        m_available = m_fileDownloader.available();
+
+        emit availableChanged();
+
+        if (!m_available) {
+            qWarning() << m_fileDownloader.url() << "failed to download";
+            return;
+        }
+
+        if (!m_forceDownload && (m_fileDownloader.lastModified() <= m_birthTime))
+            return;
+
+        started = true;
+
+        m_fileDownloader.start();
+        connect(&m_fileDownloader, &FileDownloader::finishedChanged, this, [this]() {
+            if (m_fileDownloader.finished()) {
+                const Utils::FilePath archiveFile = Utils::FilePath::fromString(
+                    m_fileDownloader.tempFile());
+                QTC_ASSERT(Utils::Archive::supportsFile(archiveFile), return );
+                auto archive = new Utils::Archive(archiveFile, tempFilePath());
+                QTC_ASSERT(archive->isValid(), delete archive; return );
+                QObject::connect(archive, &Utils::Archive::finished, this, [this, archive](bool ret) {
+                    QTC_CHECK(ret);
+                    archive->deleteLater();
+                    emit finished();
+                });
+                archive->unarchive();
+            }
+        });
+    });
+    return started;
+}
+
+bool DataModelDownloader::exists() const
+{
+    return m_exists;
+}
+
+bool DataModelDownloader::available() const
+{
+    return m_available;
+}
+
+Utils::FilePath DataModelDownloader::targetFolder() const
+{
+    return Utils::FilePath::fromUserInput(tempFilePath().toString() + "/" + "dataImports");
+}
+
+void DataModelDownloader::setForceDownload(bool b)
+{
+    m_forceDownload = b;
+}
+
+int DataModelDownloader::progress() const
+{
+    return m_fileDownloader.progress();
 }

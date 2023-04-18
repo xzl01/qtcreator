@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "manhattanstyle.h"
 
@@ -409,8 +387,14 @@ int ManhattanStyle::styleHint(StyleHint hint, const QStyleOption *option, const 
             ret = QFormLayout::AllNonFixedFieldsGrow;
         break;
     case QStyle::SH_Widget_Animation_Duration:
-        if (widget->inherits("QTreeView"))
+        if (widget && widget->inherits("QTreeView"))
             ret = 0;
+        break;
+    case QStyle::SH_ComboBox_AllowWheelScrolling:
+        // Turn this on only when simultaneously pressing Ctrl, to prevent accidental current
+        // index change, e.g. on a scroll view
+        ret = QGuiApplication::keyboardModifiers()
+              == (HostOsInfo::isMacHost() ? Qt::MetaModifier : Qt::ControlModifier);
         break;
     default:
         break;
@@ -892,19 +876,25 @@ void ManhattanStyle::drawControl(ControlElement element, const QStyleOption *opt
                     editRect.adjust(0, 0, -13, 0);
                 }
 
+                Qt::TextElideMode elideMode = Qt::ElideRight;
+                if (widget && widget->dynamicPropertyNames().contains("elidemode"))
+                    elideMode = widget->property("elidemode").value<Qt::TextElideMode>();
+
                 QLatin1Char asterisk('*');
                 int elideWidth = editRect.width();
 
-                bool notElideAsterisk = widget && widget->property("notelideasterisk").toBool()
+                bool notElideAsterisk = elideMode == Qt::ElideRight && widget
+                                        && widget->property("notelideasterisk").toBool()
                                         && cb->currentText.endsWith(asterisk)
-                                        && option->fontMetrics.horizontalAdvance(cb->currentText) > elideWidth;
+                                        && option->fontMetrics.horizontalAdvance(cb->currentText)
+                                               > elideWidth;
 
                 QString text;
                 if (notElideAsterisk) {
                     elideWidth -= option->fontMetrics.horizontalAdvance(asterisk);
                     text = asterisk;
                 }
-                text.prepend(option->fontMetrics.elidedText(cb->currentText, Qt::ElideRight, elideWidth));
+                text.prepend(option->fontMetrics.elidedText(cb->currentText, elideMode, elideWidth));
 
                 if (creatorTheme()->flag(Theme::ComboBoxDrawTextShadow)
                     && (option->state & State_Enabled))

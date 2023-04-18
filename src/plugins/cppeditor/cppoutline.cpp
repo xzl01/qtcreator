@@ -1,33 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppoutline.h"
 
+#include "cppeditordocument.h"
 #include "cppeditoroutline.h"
+#include "cppeditortr.h"
 #include "cppmodelmanager.h"
-#include "cppoverviewmodel.h"
+#include "cppoutlinemodel.h"
 
 #include <coreplugin/find/itemviewfind.h>
 #include <coreplugin/editormanager/editormanager.h>
@@ -58,9 +38,9 @@ void CppOutlineTreeView::contextMenuEvent(QContextMenuEvent *event)
 
     QMenu contextMenu;
 
-    QAction *action = contextMenu.addAction(tr("Expand All"));
+    QAction *action = contextMenu.addAction(Tr::tr("Expand All"));
     connect(action, &QAction::triggered, this, &QTreeView::expandAll);
-    action = contextMenu.addAction(tr("Collapse All"));
+    action = contextMenu.addAction(Tr::tr("Collapse All"));
     connect(action, &QAction::triggered, this, &QTreeView::collapseAll);
 
     contextMenu.exec(event->globalPos());
@@ -68,7 +48,7 @@ void CppOutlineTreeView::contextMenuEvent(QContextMenuEvent *event)
     event->accept();
 }
 
-CppOutlineFilterModel::CppOutlineFilterModel(AbstractOverviewModel &sourceModel,
+CppOutlineFilterModel::CppOutlineFilterModel(OutlineModel &sourceModel,
                                              QObject *parent)
     : QSortFilterProxyModel(parent)
     , m_sourceModel(sourceModel)
@@ -98,13 +78,13 @@ Qt::DropActions CppOutlineFilterModel::supportedDragActions() const
 CppOutlineWidget::CppOutlineWidget(CppEditorWidget *editor) :
     m_editor(editor),
     m_treeView(new CppOutlineTreeView(this)),
+    m_model(&m_editor->cppEditorDocument()->outlineModel()),
+    m_proxyModel(new CppOutlineFilterModel(*m_model, this)),
     m_enableCursorSync(true),
     m_blockCursorSync(false),
     m_sorted(false)
 {
-    AbstractOverviewModel *model = m_editor->outline()->model();
-    m_proxyModel = new CppOutlineFilterModel(*model, this);
-    m_proxyModel->setSourceModel(model);
+    m_proxyModel->setSourceModel(m_model);
 
     auto *layout = new QVBoxLayout;
     layout->setContentsMargins(0, 0, 0, 0);
@@ -116,13 +96,19 @@ CppOutlineWidget::CppOutlineWidget(CppEditorWidget *editor) :
     m_treeView->setSortingEnabled(true);
     setFocusProxy(m_treeView);
 
-    connect(model, &QAbstractItemModel::modelReset, this, &CppOutlineWidget::modelUpdated);
+    connect(m_model, &QAbstractItemModel::modelReset, this, &CppOutlineWidget::modelUpdated);
     modelUpdated();
 
-    connect(m_editor->outline(), &CppEditorOutline::modelIndexChanged,
-            this, &CppOutlineWidget::updateSelectionInTree);
     connect(m_treeView, &QAbstractItemView::activated,
             this, &CppOutlineWidget::onItemActivated);
+    connect(editor, &QPlainTextEdit::cursorPositionChanged, this, [this] {
+        if (m_model->rootItem()->hasChildren())
+            updateIndex();
+    });
+
+    m_updateIndexTimer.setSingleShot(true);
+    m_updateIndexTimer.setInterval(500);
+    connect(&m_updateIndexTimer, &QTimer::timeout, this, &CppOutlineWidget::updateIndexNow);
 }
 
 QList<QAction*> CppOutlineWidget::filterMenuActions() const
@@ -134,7 +120,7 @@ void CppOutlineWidget::setCursorSynchronization(bool syncWithCursor)
 {
     m_enableCursorSync = syncWithCursor;
     if (m_enableCursorSync)
-        updateSelectionInTree(m_editor->outline()->modelIndex());
+        updateIndexNow();
 }
 
 bool CppOutlineWidget::isSorted() const
@@ -163,24 +149,43 @@ void CppOutlineWidget::modelUpdated()
     m_treeView->expandAll();
 }
 
-void CppOutlineWidget::updateSelectionInTree(const QModelIndex &index)
+void CppOutlineWidget::updateIndex()
+{
+    m_updateIndexTimer.start();
+}
+
+void CppOutlineWidget::updateIndexNow()
 {
     if (!syncCursor())
         return;
 
-    QModelIndex proxyIndex = m_proxyModel->mapFromSource(index);
+    const int revision = m_editor->document()->revision();
+    if (m_model->editorRevision() != revision) {
+        m_editor->cppEditorDocument()->updateOutline();
+        return;
+    }
 
-    m_blockCursorSync = true;
-    m_treeView->setCurrentIndex(proxyIndex);
-    m_treeView->scrollTo(proxyIndex);
-    m_blockCursorSync = false;
+    m_updateIndexTimer.stop();
+
+    int line = 0, column = 0;
+    m_editor->convertPosition(m_editor->position(), &line, &column);
+    QModelIndex index = m_model->indexForPosition(line, column);
+
+    if (index.isValid()) {
+        m_blockCursorSync = true;
+        QModelIndex proxyIndex = m_proxyModel->mapFromSource(index);
+        m_treeView->setCurrentIndex(proxyIndex);
+        m_treeView->scrollTo(proxyIndex);
+        m_blockCursorSync = false;
+    }
+
 }
 
 void CppOutlineWidget::updateTextCursor(const QModelIndex &proxyIndex)
 {
     QModelIndex index = m_proxyModel->mapToSource(proxyIndex);
-    AbstractOverviewModel *model = m_editor->outline()->model();
-    Utils::LineColumn lineColumn = model->lineColumnFromIndex(index);
+    Utils::LineColumn lineColumn
+        = m_editor->cppEditorDocument()->outlineModel().lineColumnFromIndex(index);
     if (!lineColumn.isValid())
         return;
 
@@ -213,7 +218,7 @@ bool CppOutlineWidgetFactory::supportsEditor(Core::IEditor *editor) const
     const auto cppEditor = qobject_cast<TextEditor::BaseTextEditor*>(editor);
     if (!cppEditor || !CppModelManager::isCppEditor(cppEditor))
         return false;
-    return CppModelManager::supportsOutline(cppEditor->textDocument());
+    return !CppModelManager::usesClangd(cppEditor->textDocument());
 }
 
 TextEditor::IOutlineWidget *CppOutlineWidgetFactory::createWidget(Core::IEditor *editor)

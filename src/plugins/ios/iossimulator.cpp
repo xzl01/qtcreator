@@ -1,47 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "iossimulator.h"
 #include "iosconstants.h"
-#include "iostoolhandler.h"
+#include "iostr.h"
 
 #include <projectexplorer/kitinformation.h>
+
 #include <utils/port.h>
 #include <utils/qtcprocess.h>
 
-#include <QCoreApplication>
 #include <QMapIterator>
 
 using namespace ProjectExplorer;
 
-namespace Ios {
-namespace Internal {
+namespace Ios::Internal {
 
-static const QLatin1String iosDeviceTypeDisplayNameKey = QLatin1String("displayName");
-static const QLatin1String iosDeviceTypeTypeKey = QLatin1String("type");
-static const QLatin1String iosDeviceTypeIdentifierKey = QLatin1String("identifier");
+const QLatin1String iosDeviceTypeDisplayNameKey("displayName");
+const QLatin1String iosDeviceTypeTypeKey("type");
+const QLatin1String iosDeviceTypeIdentifierKey("identifier");
 
 IosSimulator::IosSimulator(Utils::Id id)
     : m_lastPort(Constants::IOS_SIMULATOR_PORT_START)
@@ -50,8 +27,8 @@ IosSimulator::IosSimulator(Utils::Id id)
     setType(Constants::IOS_SIMULATOR_TYPE);
     setMachineType(IDevice::Emulator);
     setOsType(Utils::OsTypeMac);
-    setDefaultDisplayName(tr("iOS Simulator"));
-    setDisplayType(tr("iOS Simulator"));
+    setDefaultDisplayName(Tr::tr("iOS Simulator"));
+    setDisplayType(Tr::tr("iOS Simulator"));
     setDeviceState(DeviceReadyToUse);
 }
 
@@ -69,11 +46,6 @@ IDeviceWidget *IosSimulator::createWidget()
     return nullptr;
 }
 
-DeviceProcessSignalOperation::Ptr IosSimulator::signalOperation() const
-{
-    return DeviceProcessSignalOperation::Ptr();
-}
-
 Utils::Port IosSimulator::nextPort() const
 {
     for (int i = 0; i < 100; ++i) {
@@ -85,8 +57,6 @@ Utils::Port IosSimulator::nextPort() const
         // to that port from this computer)
         portVerifier.setCommand({"lsof", {"-n", "-P", "-i", QString(":%1").arg(m_lastPort)}});
         portVerifier.start();
-        if (!portVerifier.waitForStarted())
-            break;
         if (!portVerifier.waitForFinished())
             break;
         if (portVerifier.exitStatus() != QProcess::NormalExit
@@ -238,13 +208,12 @@ QDebug operator <<(QDebug debug, const IosDeviceType &deviceType)
 // Factory
 
 IosSimulatorFactory::IosSimulatorFactory()
-    : ProjectExplorer::IDeviceFactory(Constants::IOS_SIMULATOR_TYPE)
+    : IDeviceFactory(Constants::IOS_SIMULATOR_TYPE)
 {
-    setDisplayName(IosSimulator::tr("iOS Simulator"));
+    setDisplayName(Tr::tr("iOS Simulator"));
     setCombinedIcon(":/ios/images/iosdevicesmall.png",
                     ":/ios/images/iosdevice.png");
-    setConstructionFunction([] { return ProjectExplorer::IDevice::Ptr(new IosSimulator()); });
+    setConstructionFunction([] { return IDevice::Ptr(new IosSimulator()); });
 }
 
-} // namespace Internal
-} // namespace Ios
+} // Ios::Internal

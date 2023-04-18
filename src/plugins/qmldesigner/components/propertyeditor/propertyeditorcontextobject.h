@@ -1,39 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <model.h>
 #include <modelnode.h>
 
-#include <QObject>
-#include <QUrl>
-#include <QQmlPropertyMap>
-#include <QQmlComponent>
 #include <QColor>
+#include <QObject>
 #include <QPoint>
+#include <QPointer>
+#include <QQmlComponent>
+#include <QQmlPropertyMap>
+#include <QUrl>
+
 #include <QMouseEvent>
 
 namespace QmlDesigner {
@@ -56,6 +36,8 @@ class PropertyEditorContextObject : public QObject
     Q_PROPERTY(int majorQtQuickVersion READ majorQtQuickVersion WRITE setMajorQtQuickVersion NOTIFY majorQtQuickVersionChanged)
     Q_PROPERTY(int minorQtQuickVersion READ minorQtQuickVersion WRITE setMinorQtQuickVersion NOTIFY minorQtQuickVersionChanged)
 
+    Q_PROPERTY(QString activeDragSuffix READ activeDragSuffix NOTIFY activeDragSuffixChanged)
+
     Q_PROPERTY(bool hasAliasExport READ hasAliasExport NOTIFY hasAliasExportChanged)
 
     Q_PROPERTY(bool hasActiveTimeline READ hasActiveTimeline NOTIFY hasActiveTimelineChanged)
@@ -63,6 +45,12 @@ class PropertyEditorContextObject : public QObject
     Q_PROPERTY(QQmlPropertyMap* backendValues READ backendValues WRITE setBackendValues NOTIFY backendValuesChanged)
 
     Q_PROPERTY(QQmlComponent* specificQmlComponent READ specificQmlComponent NOTIFY specificQmlComponentChanged)
+
+    Q_PROPERTY(bool hasMultiSelection READ hasMultiSelection WRITE setHasMultiSelection NOTIFY
+                   hasMultiSelectionChanged)
+
+    Q_PROPERTY(bool insightEnabled MEMBER m_insightEnabled NOTIFY insightEnabledChanged)
+    Q_PROPERTY(QStringList insightCategories MEMBER m_insightCategories NOTIFY insightCategoriesChanged)
 
 public:
     PropertyEditorContextObject(QObject *parent = nullptr);
@@ -102,6 +90,11 @@ public:
 
     Q_INVOKABLE bool isBlocked(const QString &propName) const;
 
+    Q_INVOKABLE void verifyInsightImport();
+
+    QString activeDragSuffix() const;
+    void setActiveDragSuffix(const QString &suffix);
+
     int majorVersion() const;
     int majorQtQuickVersion() const;
     int minorQtQuickVersion() const;
@@ -119,6 +112,13 @@ public:
 
     bool hasAliasExport() const { return m_aliasExport; }
 
+    bool hasMultiSelection() const;
+
+    void setHasMultiSelection(bool);
+
+    void setInsightEnabled(bool value);
+    void setInsightCategories(const QStringList &categories);
+
 signals:
     void specificsUrlChanged();
     void specificQmlDataChanged();
@@ -134,6 +134,11 @@ signals:
     void specificQmlComponentChanged();
     void hasAliasExportChanged();
     void hasActiveTimelineChanged();
+    void activeDragSuffixChanged();
+    void hasMultiSelectionChanged();
+
+    void insightEnabledChanged();
+    void insightCategoriesChanged();
 
 public slots:
 
@@ -177,11 +182,18 @@ private:
 
     QPoint m_lastPos;
 
-    Model *m_model = nullptr;
+    QPointer<Model> m_model;
 
     bool m_aliasExport = false;
 
     bool m_setHasActiveTimeline = false;
+
+    QString m_activeDragSuffix;
+
+    bool m_hasMultiSelection = false;
+
+    bool m_insightEnabled = false;
+    QStringList m_insightCategories;
 };
 
 class EasingCurveEditor : public QObject

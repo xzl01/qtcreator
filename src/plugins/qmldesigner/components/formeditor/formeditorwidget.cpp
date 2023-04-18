@@ -1,45 +1,26 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "formeditorwidget.h"
 #include "designeractionmanager.h"
+#include "designericons.h"
 #include "designersettings.h"
 #include "formeditoritem.h"
 #include "formeditorscene.h"
+#include "modelnodecontextmenu_helper.h"
 #include "qmldesignerconstants.h"
 #include "qmldesignericons.h"
 #include "qmldesignerplugin.h"
 #include "viewmanager.h"
-#include <model.h>
-#include <theme.h>
 
+#include <auxiliarydataproperties.h>
 #include <backgroundaction.h>
 #include <formeditorgraphicsview.h>
 #include <formeditorscene.h>
 #include <formeditorview.h>
 #include <lineeditaction.h>
+#include <model.h>
+#include <theme.h>
 #include <toolbox.h>
 #include <zoomaction.h>
 
@@ -60,6 +41,11 @@
 #include <QWheelEvent>
 
 namespace QmlDesigner {
+
+namespace {
+constexpr AuxiliaryDataKeyView formeditorZoomProperty{AuxiliaryDataType::NodeInstancePropertyOverwrite,
+                                                      "formeditorZoom"};
+}
 
 FormEditorWidget::FormEditorWidget(FormEditorView *view)
     : m_formEditorView(view)
@@ -83,47 +69,50 @@ FormEditorWidget::FormEditorWidget(FormEditorView *view)
     auto layoutActionGroup = new QActionGroup(this);
     layoutActionGroup->setExclusive(true);
 
-    m_noSnappingAction = layoutActionGroup->addAction(tr("No snapping."));
+    m_noSnappingAction = layoutActionGroup->addAction(tr("No Snapping"));
     m_noSnappingAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     m_noSnappingAction->setCheckable(true);
     m_noSnappingAction->setChecked(true);
-    m_noSnappingAction->setIcon(Icons::NO_SNAPPING.icon());
-    registerActionAsCommand(m_noSnappingAction, Constants::FORMEDITOR_NO_SNAPPING, QKeySequence(Qt::Key_T));
 
-    m_snappingAndAnchoringAction = layoutActionGroup->addAction(tr("Snap to parent or sibling components and generate anchors."));
+    registerActionAsCommand(m_noSnappingAction,
+                            Constants::FORMEDITOR_NO_SNAPPING,
+                            QKeySequence(Qt::Key_T),
+                            ComponentCoreConstants::snappingCategory,
+                            1);
+
+    m_snappingAndAnchoringAction = layoutActionGroup->addAction(tr("Snap with Anchors"));
     m_snappingAndAnchoringAction->setCheckable(true);
     m_snappingAndAnchoringAction->setChecked(true);
-    m_snappingAndAnchoringAction->setIcon(Icons::NO_SNAPPING_AND_ANCHORING.icon());
-    registerActionAsCommand(m_snappingAndAnchoringAction, Constants::FORMEDITOR_NO_SNAPPING_AND_ANCHORING, QKeySequence(Qt::Key_W));
 
-    m_snappingAction = layoutActionGroup->addAction(tr("Snap to parent or sibling components but do not generate anchors."));
+    registerActionAsCommand(m_snappingAndAnchoringAction,
+                            Constants::FORMEDITOR_NO_SNAPPING_AND_ANCHORING,
+                            QKeySequence(Qt::Key_W),
+                            ComponentCoreConstants::snappingCategory,
+                            2);
+
+    m_snappingAction = layoutActionGroup->addAction(tr("Snap without Anchors"));
     m_snappingAction->setCheckable(true);
     m_snappingAction->setChecked(true);
-    m_snappingAction->setIcon(Icons::SNAPPING.icon());
-    registerActionAsCommand(m_snappingAction, Constants::FORMEDITOR_SNAPPING, QKeySequence(Qt::Key_E));
+
+    registerActionAsCommand(m_snappingAction,
+                            Constants::FORMEDITOR_SNAPPING,
+                            QKeySequence(Qt::Key_E),
+                            ComponentCoreConstants::snappingCategory,
+                            3);
 
     addActions(layoutActionGroup->actions());
-    upperActions.append(layoutActionGroup->actions());
 
-    auto separatorAction = new QAction(this);
-    separatorAction->setSeparator(true);
-    addAction(separatorAction);
-    upperActions.append(separatorAction);
-
-    m_showBoundingRectAction = new QAction(Utils::Icons::BOUNDING_RECT.icon(),
-                                           tr("Show bounding rectangles and stripes for empty components."),
-                                           this);
+    m_showBoundingRectAction = new QAction(tr("Show Bounds"), this);
     m_showBoundingRectAction->setCheckable(true);
     m_showBoundingRectAction->setChecked(false);
-    registerActionAsCommand(m_showBoundingRectAction, Constants::FORMEDITOR_NO_SHOW_BOUNDING_RECTANGLE, QKeySequence(Qt::Key_A));
+    m_showBoundingRectAction->setIcon(DesignerActionManager::instance().contextIcon(DesignerIcons::ShowBoundsIcon));
+    registerActionAsCommand(m_showBoundingRectAction,
+                            Constants::FORMEDITOR_NO_SHOW_BOUNDING_RECTANGLE,
+                            QKeySequence(Qt::Key_A),
+                            ComponentCoreConstants::rootCategory,
+                            ComponentCoreConstants::Priorities::ShowBoundingRect);
 
     addAction(m_showBoundingRectAction.data());
-    upperActions.append(m_showBoundingRectAction.data());
-
-    separatorAction = new QAction(this);
-    separatorAction->setSeparator(true);
-    addAction(separatorAction);
-    upperActions.append(separatorAction);
 
     m_rootWidthAction = new LineEditAction(tr("Override Width"), this);
     m_rootWidthAction->setToolTip(tr("Override width of root component."));
@@ -178,10 +167,9 @@ FormEditorWidget::FormEditorWidget(FormEditorView *view)
     auto writeZoomLevel = [this]() {
         double level = m_graphicsView->transform().m11();
         if (level == 1.0) {
-            if (m_formEditorView->rootModelNode().hasAuxiliaryData("formeditorZoom"))
-                m_formEditorView->rootModelNode().setAuxiliaryData("formeditorZoom", {});
+            m_formEditorView->rootModelNode().removeAuxiliaryData(formeditorZoomProperty);
         } else {
-            m_formEditorView->rootModelNode().setAuxiliaryData("formeditorZoom", level);
+            m_formEditorView->rootModelNode().setAuxiliaryData(formeditorZoomProperty, level);
         }
     };
 
@@ -283,14 +271,21 @@ FormEditorWidget::FormEditorWidget(FormEditorView *view)
     connect(m_zoomSelectionAction.data(), &QAction::triggered, frameSelection);
 
     m_resetAction = new QAction(Utils::Icons::RESET_TOOLBAR.icon(), tr("Reset View"), this);
-    registerActionAsCommand(m_resetAction, Constants::FORMEDITOR_REFRESH, QKeySequence(Qt::Key_R));
+    registerActionAsCommand(m_resetAction,
+                            Constants::FORMEDITOR_REFRESH,
+                            QKeySequence(Qt::Key_R),
+                            ComponentCoreConstants::rootCategory,
+                            ComponentCoreConstants::Priorities::ResetView);
 
     addAction(m_resetAction.data());
     upperActions.append(m_resetAction.data());
     m_toolBox->addRightSideAction(m_resetAction.data());
 
     m_graphicsView = new FormEditorGraphicsView(this);
-    auto applyZoom = [this](double zoom) { zoomAction()->setZoomFactor(zoom); };
+    auto applyZoom = [this, writeZoomLevel](double zoom) {
+        zoomAction()->setZoomFactor(zoom);
+        writeZoomLevel();
+    };
     connect(m_graphicsView, &FormEditorGraphicsView::zoomChanged, applyZoom);
     connect(m_graphicsView, &FormEditorGraphicsView::zoomIn, zoomIn);
     connect(m_graphicsView, &FormEditorGraphicsView::zoomOut, zoomOut);
@@ -312,40 +307,61 @@ void FormEditorWidget::changeRootItemWidth(const QString &widthText)
 {
     bool canConvert;
     int width = widthText.toInt(&canConvert);
-    if (canConvert)
-        m_formEditorView->rootModelNode().setAuxiliaryData("width", width);
-    else
-        m_formEditorView->rootModelNode().setAuxiliaryData("width", QVariant());
+    if (canConvert) {
+        m_formEditorView->rootModelNode().setAuxiliaryData(widthProperty, width);
+    } else {
+        m_formEditorView->rootModelNode().removeAuxiliaryData(widthProperty);
+    }
 }
 
 void FormEditorWidget::changeRootItemHeight(const QString &heighText)
 {
     bool canConvert;
     int height = heighText.toInt(&canConvert);
-    if (canConvert)
-        m_formEditorView->rootModelNode().setAuxiliaryData("height", height);
-    else
-        m_formEditorView->rootModelNode().setAuxiliaryData("height", QVariant());
+    if (canConvert) {
+        m_formEditorView->rootModelNode().setAuxiliaryData(heightProperty, height);
+    } else {
+        m_formEditorView->rootModelNode().removeAuxiliaryData(heightProperty);
+    }
+}
+
+namespace {
+constexpr AuxiliaryDataKeyView formeditorColorProperty{AuxiliaryDataType::Temporary,
+                                                       "formeditorColor"};
 }
 
 void FormEditorWidget::changeBackgound(const QColor &color)
 {
     if (color.alpha() == 0) {
         m_graphicsView->activateCheckboardBackground();
-        if (m_formEditorView->rootModelNode().hasAuxiliaryData("formeditorColor"))
-            m_formEditorView->rootModelNode().setAuxiliaryData("formeditorColor", {});
+        if (m_formEditorView->rootModelNode().hasAuxiliaryData(formeditorColorProperty)) {
+            m_formEditorView->rootModelNode().setAuxiliaryData(formeditorColorProperty, {});
+        }
     } else {
         m_graphicsView->activateColoredBackground(color);
-        m_formEditorView->rootModelNode().setAuxiliaryData("formeditorColor", color);
+        m_formEditorView->rootModelNode().setAuxiliaryData(formeditorColorProperty, color);
     }
 }
 
-void FormEditorWidget::registerActionAsCommand(QAction *action, Utils::Id id, const QKeySequence &keysequence)
+void FormEditorWidget::registerActionAsCommand(
+    QAction *action, Utils::Id id, const QKeySequence &, const QByteArray &category, int priority)
 {
     Core::Context context(Constants::C_QMLFORMEDITOR);
 
     Core::Command *command = Core::ActionManager::registerAction(action, id, context);
-    command->setDefaultKeySequence(keysequence);
+
+    DesignerActionManager &designerActionManager = QmlDesignerPlugin::instance()
+                                                       ->viewManager()
+                                                       .designerActionManager();
+
+    designerActionManager.addCreatorCommand(command, category, priority);
+
+    connect(command->action(), &QAction::enabledChanged, command, [command](bool b) {
+        command->action()->setVisible(b);
+    });
+
+    command->action()->setVisible(command->action()->isEnabled());
+
     command->augmentActionWithShortcutToolTip(action);
 }
 
@@ -353,8 +369,9 @@ void FormEditorWidget::initialize()
 {
     double defaultZoom = 1.0;
     if (m_formEditorView->model() && m_formEditorView->rootModelNode().isValid()) {
-        if (m_formEditorView->rootModelNode().hasAuxiliaryData("formeditorZoom"))
-            defaultZoom = m_formEditorView->rootModelNode().auxiliaryData("formeditorZoom").toDouble();
+        if (auto data = m_formEditorView->rootModelNode().auxiliaryData(formeditorZoomProperty)) {
+            defaultZoom = data->toDouble();
+        }
     }
     m_graphicsView->setZoomFactor(defaultZoom);
     if (m_formEditorView->scene() && m_formEditorView->scene()->rootFormEditorItem())
@@ -366,25 +383,23 @@ void FormEditorWidget::initialize()
 void FormEditorWidget::updateActions()
 {
     if (m_formEditorView->model() && m_formEditorView->rootModelNode().isValid()) {
-        if (m_formEditorView->rootModelNode().hasAuxiliaryData("width")
-            && m_formEditorView->rootModelNode().auxiliaryData("width").isValid())
-            m_rootWidthAction->setLineEditText(
-                m_formEditorView->rootModelNode().auxiliaryData("width").toString());
-        else
+        if (auto data = m_formEditorView->rootModelNode().auxiliaryData(widthProperty)) {
+            m_rootWidthAction->setLineEditText(data->toString());
+        } else {
             m_rootWidthAction->clearLineEditText();
-        if (m_formEditorView->rootModelNode().hasAuxiliaryData("height")
-            && m_formEditorView->rootModelNode().auxiliaryData("height").isValid())
-            m_rootHeightAction->setLineEditText(
-                m_formEditorView->rootModelNode().auxiliaryData("height").toString());
-        else
+        }
+
+        if (auto data = m_formEditorView->rootModelNode().auxiliaryData(heightProperty)) {
+            m_rootHeightAction->setLineEditText(data->toString());
+        } else {
             m_rootHeightAction->clearLineEditText();
+        }
 
-        if (m_formEditorView->rootModelNode().hasAuxiliaryData("formeditorColor"))
-            m_backgroundAction->setColor(
-                m_formEditorView->rootModelNode().auxiliaryData("formeditorColor").value<QColor>());
-        else
+        if (auto data = m_formEditorView->rootModelNode().auxiliaryData(formeditorColorProperty)) {
+            m_backgroundAction->setColor(data->value<QColor>());
+        } else {
             m_backgroundAction->setColor(Qt::transparent);
-
+        }
     } else {
         m_rootWidthAction->clearLineEditText();
         m_rootHeightAction->clearLineEditText();
@@ -479,18 +494,18 @@ ToolBox *FormEditorWidget::toolBox() const
 
 double FormEditorWidget::spacing() const
 {
-    return DesignerSettings::getValue(DesignerSettingsKey::ITEMSPACING).toDouble();
+    return QmlDesignerPlugin::settings().value(DesignerSettingsKey::ITEMSPACING).toDouble();
 }
 
 double FormEditorWidget::containerPadding() const
 {
-    return DesignerSettings::getValue(DesignerSettingsKey::CONTAINERPADDING).toDouble();
+    return QmlDesignerPlugin::settings().value(DesignerSettingsKey::CONTAINERPADDING).toDouble();
 }
 
 void FormEditorWidget::contextHelp(const Core::IContext::HelpCallback &callback) const
 {
     if (m_formEditorView)
-        m_formEditorView->contextHelp(callback);
+        QmlDesignerPlugin::contextHelp(callback, m_formEditorView->contextHelpId());
     else
         callback({});
 }

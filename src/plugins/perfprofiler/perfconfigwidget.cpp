@@ -1,49 +1,29 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "perfconfigeventsmodel.h"
 #include "perfconfigwidget.h"
-#include "perfprofilerconstants.h"
+#include "perfprofilertr.h"
 
 #include <coreplugin/messagebox.h>
 
-#include <projectexplorer/devicesupport/deviceprocess.h>
+#include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/kit.h>
 #include <projectexplorer/kitinformation.h>
-#include <projectexplorer/runcontrol.h>
 #include <projectexplorer/target.h>
 
 #include <utils/aspects.h>
 #include <utils/layoutbuilder.h>
+#include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 
 #include <QComboBox>
 #include <QHeaderView>
 #include <QMessageBox>
 #include <QMetaEnum>
+#include <QPushButton>
 #include <QStyledItemDelegate>
+#include <QTableView>
 
 using namespace Utils;
 
@@ -82,20 +62,20 @@ PerfConfigWidget::PerfConfigWidget(PerfSettings *settings, QWidget *parent)
     eventsView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
     useTracePointsButton = new QPushButton(this);
-    useTracePointsButton->setText(tr("Use Trace Points"));
+    useTracePointsButton->setText(Tr::tr("Use Trace Points"));
     useTracePointsButton->setVisible(false);
     connect(useTracePointsButton, &QPushButton::pressed,
             this, &PerfConfigWidget::readTracePoints);
 
     addEventButton = new QPushButton(this);
-    addEventButton->setText(tr("Add Event"));
+    addEventButton->setText(Tr::tr("Add Event"));
     connect(addEventButton, &QPushButton::pressed, this, [this]() {
         auto model = eventsView->model();
         model->insertRow(model->rowCount());
     });
 
     removeEventButton = new QPushButton(this);
-    removeEventButton->setText(tr("Remove Event"));
+    removeEventButton->setText(Tr::tr("Remove Event"));
     connect(removeEventButton, &QPushButton::pressed, this, [this]() {
         QModelIndex index = eventsView->currentIndex();
         if (index.isValid())
@@ -103,26 +83,26 @@ PerfConfigWidget::PerfConfigWidget(PerfSettings *settings, QWidget *parent)
     });
 
     resetButton = new QPushButton(this);
-    resetButton->setText(tr("Reset"));
+    resetButton->setText(Tr::tr("Reset"));
     connect(resetButton, &QPushButton::pressed, m_settings, &PerfSettings::resetToDefault);
 
     using namespace Layouting;
-    const Break nl;
-
     Column {
-        Row { Stretch(), useTracePointsButton, addEventButton, removeEventButton, resetButton },
+        Row { st, useTracePointsButton, addEventButton, removeEventButton, resetButton },
 
         eventsView,
 
         Grid {
-            m_settings->callgraphMode, m_settings->stackSize, nl,
-            m_settings->sampleMode, m_settings->period, nl,
+            m_settings->callgraphMode, m_settings->stackSize, br,
+            m_settings->sampleMode, m_settings->period, br,
             m_settings->extraArguments,
         },
 
-        Stretch()
+        st
     }.attachTo(this);
 }
+
+PerfConfigWidget::~PerfConfigWidget() = default;
 
 void PerfConfigWidget::setTarget(ProjectExplorer::Target *target)
 {
@@ -140,17 +120,10 @@ void PerfConfigWidget::setTarget(ProjectExplorer::Target *target)
     QTC_ASSERT(device, return);
     QTC_CHECK(!m_process || m_process->state() == QProcess::NotRunning);
 
-    m_process.reset(device->createProcess(nullptr));
-    if (!m_process) {
-        useTracePointsButton->setEnabled(false);
-        return;
-    }
-
-    connect(m_process.get(), &ProjectExplorer::DeviceProcess::finished,
-            this, &PerfConfigWidget::handleProcessFinished);
-
-    connect(m_process.get(), &ProjectExplorer::DeviceProcess::errorOccurred,
-            this, &PerfConfigWidget::handleProcessError);
+    m_process.reset(new QtcProcess);
+    m_process->setCommand({device->filePath("perf"), {"probe", "-l"}});
+    connect(m_process.get(), &QtcProcess::done,
+            this, &PerfConfigWidget::handleProcessDone);
 
     useTracePointsButton->setEnabled(true);
 }
@@ -168,22 +141,27 @@ void PerfConfigWidget::apply()
 void PerfConfigWidget::readTracePoints()
 {
     QMessageBox messageBox;
-    messageBox.setWindowTitle(tr("Use Trace Points"));
+    messageBox.setWindowTitle(Tr::tr("Use Trace Points"));
     messageBox.setIcon(QMessageBox::Question);
-    messageBox.setText(tr("Replace events with trace points read from the device?"));
+    messageBox.setText(Tr::tr("Replace events with trace points read from the device?"));
     messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
     if (messageBox.exec() == QMessageBox::Yes) {
-        ProjectExplorer::Runnable runnable;
-        runnable.command = {"perf", {"probe", "-l"}};
-        m_process->start(runnable);
+        m_process->start();
         useTracePointsButton->setEnabled(false);
     }
 }
 
-void PerfConfigWidget::handleProcessFinished()
+void PerfConfigWidget::handleProcessDone()
 {
+    if (m_process->error() == QProcess::FailedToStart) {
+        Core::AsynchronousMessageBox::warning(
+                    Tr::tr("Cannot List Trace Points"),
+                    Tr::tr("\"perf probe -l\" failed to start. Is perf installed?"));
+        useTracePointsButton->setEnabled(true);
+        return;
+    }
     const QList<QByteArray> lines =
-            m_process->readAllStandardOutput().append(m_process->readAllStandardError())
+            m_process->readAllRawStandardOutput().append(m_process->readAllRawStandardError())
             .split('\n');
     auto model = eventsView->model();
     const int previousRows = model->rowCount();
@@ -200,10 +178,10 @@ void PerfConfigWidget::handleProcessFinished()
 
     if (tracePoints.isEmpty()) {
         Core::AsynchronousMessageBox::warning(
-                    tr("No Trace Points Found"),
-                    tr("Trace points can be defined with \"perf probe -a\"."));
+                    Tr::tr("No Trace Points Found"),
+                    Tr::tr("Trace points can be defined with \"perf probe -a\"."));
     } else {
-        for (const QByteArray &event : qAsConst(tracePoints)) {
+        for (const QByteArray &event : std::as_const(tracePoints)) {
             int row = model->rowCount();
             model->insertRow(row);
             model->setData(model->index(row, PerfConfigEventsModel::ColumnEventType),
@@ -216,16 +194,6 @@ void PerfConfigWidget::handleProcessFinished()
         m_settings->period.setVolatileValue(1);
     }
     useTracePointsButton->setEnabled(true);
-}
-
-void PerfConfigWidget::handleProcessError(QProcess::ProcessError error)
-{
-    if (error == QProcess::FailedToStart) {
-        Core::AsynchronousMessageBox::warning(
-                    tr("Cannot List Trace Points"),
-                    tr("\"perf probe -l\" failed to start. Is perf installed?"));
-        useTracePointsButton->setEnabled(true);
-    }
 }
 
 QWidget *SettingsDelegate::createEditor(QWidget *parent, const QStyleOptionViewItem &option,

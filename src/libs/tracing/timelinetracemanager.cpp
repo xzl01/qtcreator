@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelinenotesmodel.h"
-#include "timelinetracemanager.h"
 #include "timelinetracefile.h"
+#include "timelinetracemanager.h"
+#include "tracingtr.h"
 
 #include <utils/qtcassert.h>
 #include <utils/temporaryfile.h>
@@ -219,7 +198,7 @@ void TimelineTraceManager::setAggregateTraces(bool aggregateTraces)
 
 void TimelineTraceManager::initialize()
 {
-    for (const Initializer &initializer : qAsConst(d->initializers))
+    for (const Initializer &initializer : std::as_const(d->initializers))
         initializer();
 }
 
@@ -230,7 +209,7 @@ void TimelineTraceManager::finalize()
     // Load notes after the timeline models have been initialized ...
     // which happens on stateChanged(Done).
 
-    for (const Finalizer &finalizer : qAsConst(d->finalizers))
+    for (const Finalizer &finalizer : std::as_const(d->finalizers))
         finalizer();
 }
 
@@ -251,7 +230,7 @@ QFuture<void> TimelineTraceManager::save(const QString &filename)
         if (file.open(QIODevice::WriteOnly))
             writer->save(&file);
         else
-            writer->fail(tr("Could not open %1 for writing.").arg(filename));
+            writer->fail(Tr::tr("Could not open %1 for writing.").arg(filename));
 
         if (future.isCanceled())
             file.remove();
@@ -277,7 +256,7 @@ QFuture<void> TimelineTraceManager::load(const QString &filename)
         if (file.open(QIODevice::ReadOnly))
             reader->load(&file);
         else
-            reader->fail(tr("Could not open %1 for reading.").arg(filename));
+            reader->fail(Tr::tr("Could not open %1 for reading.").arg(filename));
 
         reader->deleteLater();
     });
@@ -396,8 +375,8 @@ void TimelineTraceManager::restrictByFilter(TraceEventFilter filter)
         finalize();
     }, [this](const QString &message) {
         if (!message.isEmpty()) {
-            emit error(tr("Could not re-read events from temporary trace file: %1\n"
-                          "The trace data is lost.").arg(message));
+            emit error(Tr::tr("Could not re-read events from temporary trace file: %1\n"
+                              "The trace data is lost.").arg(message));
         }
         clearAll();
     }, future);
@@ -419,7 +398,7 @@ void TimelineTraceManager::TimelineTraceManagerPrivate::reset()
     traceStart = -1;
     traceEnd = -1;
 
-    for (const Clearer &clearer : qAsConst(clearers))
+    for (const Clearer &clearer : std::as_const(clearers))
         clearer();
 
     numEvents = 0;

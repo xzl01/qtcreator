@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "sdcctoolchain.h"
 
 #include "baremetalconstants.h"
-
+#include "baremetaltr.h"
 #include "sdccparser.h"
-#include "sdcctoolchain.h"
 
 #include <projectexplorer/abiwidget.h>
 #include <projectexplorer/projectexplorerconstants.h>
@@ -53,8 +32,7 @@
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
+namespace BareMetal::Internal {
 
 // Helpers:
 
@@ -93,7 +71,7 @@ static Macros dumpPredefinedMacros(const FilePath &compiler, const Environment &
     cpp.setCommand({compiler, {compilerTargetFlag(abi),  "-dM", "-E", fakeIn.fileName()}});
 
     cpp.runBlocking();
-    if (cpp.result() != QtcProcess::FinishedWithSuccess) {
+    if (cpp.result() != ProcessResult::FinishedWithSuccess) {
         qWarning() << cpp.exitMessage();
         return {};
     }
@@ -114,7 +92,7 @@ static HeaderPaths dumpHeaderPaths(const FilePath &compiler, const Environment &
     cpp.setCommand({compiler, {compilerTargetFlag(abi), "--print-search-dirs"}});
 
     cpp.runBlocking();
-    if (cpp.result() != QtcProcess::FinishedWithSuccess) {
+    if (cpp.result() != ProcessResult::FinishedWithSuccess) {
         qWarning() << cpp.exitMessage();
         return {};
     }
@@ -185,7 +163,7 @@ static Abi::BinaryFormat guessFormat(Abi::Architecture arch)
 
 static Abi guessAbi(const Macros &macros)
 {
-    const auto arch = guessArchitecture(macros);
+    const Abi::Architecture arch = guessArchitecture(macros);
     return {arch, Abi::OS::BareMetalOS, Abi::OSFlavor::GenericFlavor,
             guessFormat(arch), guessWordWidth(macros)};
 }
@@ -193,10 +171,9 @@ static Abi guessAbi(const Macros &macros)
 static QString buildDisplayName(Abi::Architecture arch, Utils::Id language,
                                 const QString &version)
 {
-    const auto archName = Abi::toString(arch);
-    const auto langName = ToolChainManager::displayNameOfLanguageId(language);
-    return SdccToolChain::tr("SDCC %1 (%2, %3)")
-            .arg(version, langName, archName);
+    const QString archName = Abi::toString(arch);
+    const QString langName = ToolChainManager::displayNameOfLanguageId(language);
+    return Tr::tr("SDCC %1 (%2, %3)").arg(version, langName, archName);
 }
 
 static Utils::FilePath compilerPathFromEnvironment(const QString &compilerName)
@@ -210,7 +187,7 @@ static Utils::FilePath compilerPathFromEnvironment(const QString &compilerName)
 SdccToolChain::SdccToolChain() :
     ToolChain(Constants::SDCC_TOOLCHAIN_TYPEID)
 {
-    setTypeDisplayName(Internal::SdccToolChain::tr("SDCC"));
+    setTypeDisplayName(Tr::tr("SDCC"));
     setTargetAbiKey("TargetAbi");
     setCompilerCommandKey("CompilerPath");
 }
@@ -258,7 +235,7 @@ ToolChain::BuiltInHeaderPathsRunner SdccToolChain::createBuiltInHeaderPathsRunne
     const FilePath compiler = compilerCommand();
     const Abi abi = targetAbi();
 
-    return [env, compiler, abi](const QStringList &, const QString &, const QString &) {
+    return [env, compiler, abi](const QStringList &, const FilePath &, const QString &) {
         return dumpHeaderPaths(compiler, env, abi);
     };
 }
@@ -299,7 +276,7 @@ FilePath SdccToolChain::makeCommand(const Environment &env) const
 
 SdccToolChainFactory::SdccToolChainFactory()
 {
-    setDisplayName(SdccToolChain::tr("SDCC"));
+    setDisplayName(Tr::tr("SDCC"));
     setSupportedToolChainType(Constants::SDCC_TOOLCHAIN_TYPEID);
     setSupportedLanguages({ProjectExplorer::Constants::C_LANGUAGE_ID});
     setToolchainConstructor([] { return new SdccToolChain; });
@@ -368,7 +345,7 @@ Toolchains SdccToolChainFactory::autoDetectToolchains(
 {
     Toolchains result;
 
-    for (const Candidate &candidate : qAsConst(candidates)) {
+    for (const Candidate &candidate : std::as_const(candidates)) {
         const Toolchains filtered = Utils::filtered(alreadyKnown, [candidate](ToolChain *tc) {
             return tc->typeId() == Constants::SDCC_TOOLCHAIN_TYPEID
                 && tc->compilerCommand() == candidate.compilerPath
@@ -435,8 +412,8 @@ SdccToolChainConfigWidget::SdccToolChainConfigWidget(SdccToolChain *tc) :
 {
     m_compilerCommand->setExpectedKind(PathChooser::ExistingCommand);
     m_compilerCommand->setHistoryCompleter("PE.SDCC.Command.History");
-    m_mainLayout->addRow(tr("&Compiler path:"), m_compilerCommand);
-    m_mainLayout->addRow(tr("&ABI:"), m_abiWidget);
+    m_mainLayout->addRow(Tr::tr("&Compiler path:"), m_compilerCommand);
+    m_mainLayout->addRow(Tr::tr("&ABI:"), m_abiWidget);
 
     m_abiWidget->setEnabled(false);
 
@@ -508,5 +485,4 @@ void SdccToolChainConfigWidget::handleCompilerCommandChange()
     emit dirty();
 }
 
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal

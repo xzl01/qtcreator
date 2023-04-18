@@ -18,6 +18,7 @@ Module {
         && qbs.targetPlatform === targetPlatform + "-simulator"
 
     Depends { name: "cpp" }
+    Depends { name: "Sanitizers.address"; condition: config.contains("sanitize_address") }
 
     Depends { name: "Qt.android_support"; condition: qbs.targetOS.contains("android") }
     Properties {
@@ -56,6 +57,7 @@ Module {
     property string qdocName: versionMajor >= 5 ? "qdoc" : "qdoc3"
     property stringList qdocEnvironment
     property path docPath: @docPath@
+    property string helpGeneratorLibExecPath: @helpGeneratorLibExecPath@
     property stringList helpGeneratorArgs: versionMajor >= 5 ? ["-platform", "minimal"] : []
     property var versionParts: version ? version.split('.').map(function(item) { return parseInt(item, 10); }) : []
     property int versionMajor: versionParts[0]
@@ -118,6 +120,7 @@ Module {
     property bool lreleaseMultiplexMode: false
 
     property stringList moduleConfig: @moduleConfig@
+
     Properties {
         condition: moduleConfig.contains("use_gold_linker")
         cpp.linkerVariant: "gold"
@@ -146,13 +149,13 @@ Module {
             if (Utilities.versionCompare(version, "5.6.0") < 0)
                 defines.push("main=qtmn");
         }
+        if (qbs.toolchain.contains("msvc"))
+            defines.push("_ENABLE_EXTENDED_ALIGNED_STORAGE");
         return defines;
     }
     cpp.driverFlags: {
         var flags = [];
         if (qbs.toolchain.contains("gcc")) {
-            if (config.contains("sanitize_address"))
-                flags.push("-fsanitize=address");
             if (config.contains("sanitize_undefined"))
                 flags.push("-fsanitize=undefined");
             if (config.contains("sanitize_thread"))
@@ -204,8 +207,11 @@ Module {
         if (qbs.toolchain.contains('msvc')) {
             if (versionMajor < 5)
                 flags.push('/Zc:wchar_t-');
+            if (Utilities.versionCompare(version, "6.3") >= 0
+                && Utilities.versionCompare(cpp.compilerVersion, "19.10") >= 0) {
+                flags.push("/permissive-");
+            }
         }
-
         return flags;
     }
     cpp.cxxStandardLibrary: {
@@ -540,7 +546,8 @@ Module {
             args = args.concat(product.Qt.core.helpGeneratorArgs);
             args.push("-o");
             args.push(output.filePath);
-            var cmd = new Command(product.Qt.core.binPath + "/qhelpgenerator", args);
+            var cmd = new Command(
+                product.Qt.core.helpGeneratorLibExecPath + "/qhelpgenerator", args);
             cmd.description = 'qhelpgenerator ' + input.fileName;
             cmd.highlight = 'filegen';
             cmd.stdoutFilterFunction = function(output) {

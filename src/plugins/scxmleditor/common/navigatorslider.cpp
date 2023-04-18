@@ -1,56 +1,66 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "navigatorslider.h"
+
+#include <QSlider>
+#include <QToolButton>
+
+#include <utils/layoutbuilder.h>
+#include <utils/utilsicons.h>
 
 using namespace ScxmlEditor::Common;
 
 NavigatorSlider::NavigatorSlider(QWidget *parent)
     : QFrame(parent)
 {
-    m_ui.setupUi(this);
+    m_slider = new QSlider(Qt::Horizontal);
+    m_slider->setMinimum(0);
+    m_slider->setMaximum(100);
 
-    connect(m_ui.m_zoomOut, &QToolButton::clicked, this, &NavigatorSlider::zoomOut);
-    connect(m_ui.m_zoomIn, &QToolButton::clicked, this, &NavigatorSlider::zoomIn);
-    connect(m_ui.m_slider, &QSlider::valueChanged, this, [=](int newValue){
+    auto zoomIn = new QToolButton;
+    zoomIn->setIcon(Utils::Icons::PLUS.icon());
+    auto zoomOut = new QToolButton;
+    zoomOut->setIcon(Utils::Icons::MINUS.icon());
+    for (auto btn : {zoomIn, zoomOut}) {
+        btn->setAutoRaise(true);
+        btn->setAutoRepeat(true);
+        btn->setAutoRepeatDelay(200);
+        btn->setAutoRepeatInterval(10);
+    }
+
+    using namespace Utils::Layouting;
+    Row {
+        zoomOut,
+        m_slider,
+        zoomIn,
+        Space(20),
+    }.setSpacing(0).attachTo(this, WithoutMargins);
+
+    connect(zoomOut, &QToolButton::clicked, this, &NavigatorSlider::zoomOut);
+    connect(zoomIn, &QToolButton::clicked, this, &NavigatorSlider::zoomIn);
+    connect(m_slider, &QSlider::valueChanged, this, [=](int newValue){
         emit valueChanged(newValue);
     });
 }
 
 void NavigatorSlider::zoomIn()
 {
-    m_ui.m_slider->setValue(m_ui.m_slider->value() + 1);
+    m_slider->setValue(m_slider->value() + 1);
 }
 
 void NavigatorSlider::zoomOut()
 {
-    m_ui.m_slider->setValue(m_ui.m_slider->value() - 1);
+    m_slider->setValue(m_slider->value() - 1);
+}
+
+int NavigatorSlider::value() const
+{
+    return m_slider->value();
 }
 
 void NavigatorSlider::setSliderValue(int val)
 {
-    QSignalBlocker blocker(m_ui.m_slider);
-    m_ui.m_slider->setValue(val);
+    QSignalBlocker blocker(m_slider);
+    m_slider->setValue(val);
 }

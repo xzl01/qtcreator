@@ -1,34 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "modelnodeoperations.h"
+#include "coreplugin/coreplugintr.h"
+#include "designmodewidget.h"
 #include "modelnodecontextmenu_helper.h"
 #include "addimagesdialog.h"
 #include "layoutingridlayout.h"
 #include "findimplementation.h"
-
 
 #include "addsignalhandlerdialog.h"
 
@@ -68,11 +47,16 @@
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/projecttree.h>
-#include "projectexplorer/session.h"
+#include "projectexplorer/target.h"
+
+#include <qtsupport/baseqtversion.h>
+#include <qtsupport/qtkitinformation.h>
 
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
 #include <utils/qtcassert.h>
+#include "utils/qtcprocess.h"
+#include <utils/smallstring.h>
 
 #include <QComboBox>
 #include <QCoreApplication>
@@ -94,7 +78,14 @@
 
 namespace QmlDesigner {
 
-const PropertyName auxDataString("anchors_");
+namespace {
+const Utils::SmallString auxDataString("anchors_");
+
+Utils::SmallString auxPropertyString(Utils::SmallStringView name)
+{
+    return auxDataString + name;
+}
+} // namespace
 
 static inline void reparentTo(const ModelNode &node, const QmlItemNode &parent)
 {
@@ -114,7 +105,7 @@ static inline void reparentTo(const ModelNode &node, const QmlItemNode &parent)
 static inline QPointF getUpperLeftPosition(const QList<ModelNode> &modelNodeList)
 {
     QPointF postion(std::numeric_limits<qreal>::max(), std::numeric_limits<qreal>::max());
-    foreach (const ModelNode &modelNode, modelNodeList) {
+    for (const ModelNode &modelNode : modelNodeList) {
         if (QmlItemNode::isValidQmlItemNode(modelNode)) {
             QmlItemNode qmlIitemNode = QmlItemNode(modelNode);
             if (qmlIitemNode.instancePosition().x() < postion.x())
@@ -151,7 +142,8 @@ void deSelect(const SelectionContext &selectionState)
 {
     if (selectionState.view()) {
         QList<ModelNode> selectedNodes = selectionState.view()->selectedModelNodes();
-        foreach (const ModelNode &node, selectionState.selectedModelNodes()) {
+        const QList<ModelNode> nodes = selectionState.selectedModelNodes();
+        for (const ModelNode &node : nodes) {
             if (selectedNodes.contains(node))
                 selectedNodes.removeAll(node);
         }
@@ -310,7 +302,8 @@ void resetSize(const SelectionContext &selectionState)
         return;
 
     selectionState.view()->executeInTransaction("DesignerActionManager|resetSize",[selectionState](){
-        foreach (ModelNode node, selectionState.selectedModelNodes()) {
+        const QList<ModelNode> nodes = selectionState.selectedModelNodes();
+        for (const ModelNode &node : nodes) {
             QmlItemNode itemNode(node);
             if (itemNode.isValid()) {
                 itemNode.removeProperty("width");
@@ -326,7 +319,8 @@ void resetPosition(const SelectionContext &selectionState)
         return;
 
     selectionState.view()->executeInTransaction("DesignerActionManager|resetPosition",[selectionState](){
-        foreach (ModelNode node, selectionState.selectedModelNodes()) {
+        const QList<ModelNode> nodes = selectionState.selectedModelNodes();
+        for (const ModelNode &node : nodes) {
             QmlItemNode itemNode(node);
             if (itemNode.isValid()) {
                 itemNode.removeProperty("x");
@@ -372,20 +366,24 @@ void reverse(const SelectionContext &selectionState)
 static inline void backupPropertyAndRemove(const ModelNode &node, const PropertyName &propertyName)
 {
     if (node.hasVariantProperty(propertyName)) {
-        node.setAuxiliaryData(auxDataString + propertyName, node.variantProperty(propertyName).value());
+        node.setAuxiliaryData(AuxiliaryDataType::Document,
+                              auxPropertyString(propertyName),
+                              node.variantProperty(propertyName).value());
         node.removeProperty(propertyName);
 
     }
     if (node.hasBindingProperty(propertyName)) {
-        node.setAuxiliaryData(auxDataString + propertyName, QmlItemNode(node).instanceValue(propertyName));
+        node.setAuxiliaryData(AuxiliaryDataType::Document,
+                              auxPropertyString(propertyName),
+                              QmlItemNode(node).instanceValue(propertyName));
         node.removeProperty(propertyName);
     }
 }
 
-static inline void restoreProperty(const ModelNode &node, const PropertyName &propertyName)
+static void restoreProperty(const ModelNode &node, const PropertyName &propertyName)
 {
-    if (node.hasAuxiliaryData(auxDataString + propertyName))
-        node.variantProperty(propertyName).setValue(node.auxiliaryData(auxDataString + propertyName));
+    if (auto data = node.auxiliaryData(AuxiliaryDataType::Document, auxPropertyString(propertyName)))
+        node.variantProperty(propertyName).setValue(*data);
 }
 
 void anchorsFill(const SelectionContext &selectionState)
@@ -474,19 +472,16 @@ static void layoutHelperFunction(const SelectionContext &selectionContext,
         const QmlItemNode qmlItemNode = QmlItemNode(selectionContext.firstSelectedModelNode());
 
         if (qmlItemNode.hasInstanceParentItem()) {
-            ModelNode layoutNode;
-            selectionContext.view()->executeInTransaction("DesignerActionManager|layoutHelperFunction1",[=, &layoutNode](){
+
+            selectionContext.view()->executeInTransaction("DesignerActionManager|layoutHelperFunction",[=](){
 
                 QmlItemNode parentNode = qmlItemNode.instanceParentItem();
 
                 NodeMetaInfo metaInfo = selectionContext.view()->model()->metaInfo(layoutType);
 
-                layoutNode = selectionContext.view()->createModelNode(layoutType, metaInfo.majorVersion(), metaInfo.minorVersion());
+                const ModelNode layoutNode = selectionContext.view()->createModelNode(layoutType, metaInfo.majorVersion(), metaInfo.minorVersion());
 
                 reparentTo(layoutNode, parentNode);
-            });
-
-            selectionContext.view()->executeInTransaction("DesignerActionManager|layoutHelperFunction2",[=](){
 
                 QList<ModelNode> sortedSelectedNodes =  selectionContext.selectedModelNodes();
                 Utils::sort(sortedSelectedNodes, lessThan);
@@ -567,11 +562,17 @@ void layoutGridLayout(const SelectionContext &selectionContext)
     }
 }
 
-static PropertyNameList sortedPropertyNameList(const PropertyNameList &nameList)
+static PropertyNameList sortedPropertyNameList(const PropertyMetaInfos &properties)
 {
-    PropertyNameList sortedPropertyNameList = nameList;
-    std::stable_sort(sortedPropertyNameList.begin(), sortedPropertyNameList.end());
-    return sortedPropertyNameList;
+    auto propertyNames = Utils::transform<PropertyNameList>(properties, [](const auto &property) {
+        return property.name();
+    });
+
+    std::sort(propertyNames.begin(), propertyNames.end());
+
+    propertyNames.erase(std::unique(propertyNames.begin(), propertyNames.end()), propertyNames.end());
+
+    return propertyNames;
 }
 
 static QString toUpper(const QString &signal)
@@ -581,10 +582,14 @@ static QString toUpper(const QString &signal)
     return ret;
 }
 
-static void addSignal(const QString &typeName, const QString &itemId, const QString &signalName, bool isRootModelNode)
+static void addSignal(const QString &typeName,
+                      const QString &itemId,
+                      const QString &signalName,
+                      bool isRootModelNode,
+                      ExternalDependenciesInterface &externanDependencies)
 {
-    QScopedPointer<Model> model(Model::create("Item", 2, 0));
-    RewriterView rewriterView(RewriterView::Amend, nullptr);
+    auto model = Model::create("Item", 2, 0);
+    RewriterView rewriterView(externanDependencies, RewriterView::Amend);
 
     auto textEdit = qobject_cast<TextEditor::TextEditorWidget*>
             (Core::EditorManager::currentEditor()->widget());
@@ -602,8 +607,8 @@ static void addSignal(const QString &typeName, const QString &itemId, const QStr
         signalHandlerName = "on" + toUpper(signalName).toUtf8();
     else
         signalHandlerName = itemId.toUtf8() + ".on" + toUpper(signalName).toUtf8();
-
-    foreach (const ModelNode &modelNode, rewriterView.allModelNodes()) {
+    const QList<ModelNode> nodes = rewriterView.allModelNodes();
+    for (const ModelNode &modelNode : nodes) {
         if (modelNode.type() == typeName.toUtf8()) {
             modelNode.signalHandlerProperty(signalHandlerName).setSource(QLatin1String("{\n}"));
         }
@@ -614,7 +619,7 @@ static QStringList cleanSignalNames(const QStringList &input)
 {
     QStringList output;
 
-    foreach (const QString &signal, input)
+    for (const QString &signal : input)
         if (!signal.startsWith(QLatin1String("__")) && !output.contains(signal))
             output.append(signal);
 
@@ -627,11 +632,15 @@ static QStringList getSortedSignalNameList(const ModelNode &modelNode)
     QStringList signalNames;
 
     if (metaInfo.isValid()) {
-        foreach (const PropertyName &signalName, sortedPropertyNameList(metaInfo.signalNames()))
+        // TODO seem to be broken because there can be properties without notifier and the notifier can be even have a different name
+
+        const PropertyNameList signalNameList = metaInfo.signalNames();
+        for (const PropertyName &signalName : signalNameList)
             if (!signalName.contains("Changed"))
                 signalNames.append(QString::fromUtf8(signalName));
 
-        foreach (const PropertyName &propertyName, sortedPropertyNameList(metaInfo.propertyNames()))
+        const PropertyNameList propertyNameList = sortedPropertyNameList(metaInfo.properties());
+        for (const PropertyName &propertyName : propertyNameList)
             if (!propertyName.contains("."))
                 signalNames.append(QString::fromUtf8(propertyName + "Changed"));
     }
@@ -671,7 +680,8 @@ void addSignalHandlerOrGotoImplementation(const SelectionContext &selectionState
 
     QStringList signalNames = cleanSignalNames(getSortedSignalNameList(selectionState.selectedModelNodes().constFirst()));
 
-    QList<QmlJSEditor::FindReferences::Usage> usages = QmlJSEditor::FindReferences::findUsageOfType(fileName, typeName);
+    QList<QmlJSEditor::FindReferences::Usage> usages
+        = QmlJSEditor::FindReferences::findUsageOfType(currentDesignDocument, typeName);
 
     if (usages.isEmpty()) {
         QString title = QCoreApplication::translate("ModelNodeOperations", "Go to Implementation");
@@ -680,14 +690,13 @@ void addSignalHandlerOrGotoImplementation(const SelectionContext &selectionState
         return;
     }
 
-    usages = FindImplementation::run(usages.constFirst().path, typeName, itemId);
+    usages = FindImplementation::run(usages.constFirst().path.toString(), typeName, itemId);
 
     Core::ModeManager::activateMode(Core::Constants::MODE_EDIT);
 
     if (!usages.isEmpty() && (addAlwaysNewSlot || usages.count() < 2)  && (!isModelNodeRoot  || addAlwaysNewSlot)) {
-        Core::EditorManager::openEditorAt({Utils::FilePath::fromString(usages.constFirst().path),
-                                           usages.constFirst().line,
-                                           usages.constFirst().col});
+        Core::EditorManager::openEditorAt(
+            {usages.constFirst().path, usages.constFirst().line, usages.constFirst().col});
 
         if (!signalNames.isEmpty()) {
             auto dialog = new AddSignalHandlerDialog(Core::ICore::dialogParent());
@@ -699,12 +708,19 @@ void addSignalHandlerOrGotoImplementation(const SelectionContext &selectionState
                 if (dialog->signal().isEmpty())
                     return;
 
-                qmlObjectNode.view()->executeInTransaction("NavigatorTreeModel:exportItem", [=](){
-
-                    addSignal(typeName, itemId, dialog->signal(), isModelNodeRoot);
+                qmlObjectNode.view()->executeInTransaction("NavigatorTreeModel:exportItem", [=]() {
+                    addSignal(typeName,
+                              itemId,
+                              dialog->signal(),
+                              isModelNodeRoot,
+                              selectionState.view()->externalDependencies());
                 });
 
-                addSignal(typeName, itemId, dialog->signal(), isModelNodeRoot);
+                addSignal(typeName,
+                          itemId,
+                          dialog->signal(),
+                          isModelNodeRoot,
+                          selectionState.view()->externalDependencies());
 
                 //Move cursor to correct curser position
                 const QString filePath = Core::EditorManager::currentDocument()->filePath().toString();
@@ -719,9 +735,8 @@ void addSignalHandlerOrGotoImplementation(const SelectionContext &selectionState
         return;
     }
 
-    Core::EditorManager::openEditorAt({Utils::FilePath::fromString(usages.constFirst().path),
-                                       usages.constFirst().line,
-                                       usages.constFirst().col + 1});
+    Core::EditorManager::openEditorAt(
+        {usages.constFirst().path, usages.constFirst().line, usages.constFirst().col + 1});
 }
 
 void removeLayout(const SelectionContext &selectionContext)
@@ -743,7 +758,8 @@ void removeLayout(const SelectionContext &selectionContext)
         return;
 
     selectionContext.view()->executeInTransaction("DesignerActionManager|removeLayout", [selectionContext, &layoutItem, parent](){
-        foreach (const ModelNode &modelNode, selectionContext.currentSingleSelectedNode().directSubModelNodes()) {
+        const QList<ModelNode> modelNodes = selectionContext.currentSingleSelectedNode().directSubModelNodes();
+        for (const ModelNode &modelNode : modelNodes) {
             if (QmlItemNode::isValidQmlItemNode(modelNode)) {
 
                 QmlItemNode qmlItem(modelNode);
@@ -757,8 +773,7 @@ void removeLayout(const SelectionContext &selectionContext)
                     modelNode.variantProperty("y").setValue(pos.y());
                 }
             }
-            if (modelNode.isValid())
-                parent.modelNode().defaultNodeListProperty().reparentHere(modelNode);
+            parent.modelNode().defaultNodeListProperty().reparentHere(modelNode);
         }
         layoutItem.destroy();
     });
@@ -789,6 +804,41 @@ void addNewSignalHandler(const SelectionContext &selectionState)
     addSignalHandlerOrGotoImplementation(selectionState, true);
 }
 
+// Open a model's material in the material editor
+void editMaterial(const SelectionContext &selectionContext)
+{
+    ModelNode modelNode = selectionContext.targetNode();
+
+    if (!modelNode.isValid())
+        modelNode = selectionContext.currentSingleSelectedNode();
+
+    QTC_ASSERT(modelNode.isValid(), return);
+
+    BindingProperty prop = modelNode.bindingProperty("materials");
+    if (!prop.exists())
+        return;
+
+    AbstractView *view = selectionContext.view();
+
+    ModelNode material;
+
+    if (view->hasId(prop.expression())) {
+        material = view->modelNodeForId(prop.expression());
+    } else {
+        QList<ModelNode> materials = prop.resolveToModelNodeList();
+
+        if (materials.size() > 0)
+            material = materials.first();
+    }
+
+    if (material.isValid()) {
+        QmlDesignerPlugin::instance()->mainWidget()->showDockWidget("MaterialEditor");
+
+        // to MaterialEditor and MaterialBrowser...
+        view->emitCustomNotification("selected_material_changed", {material});
+    }
+}
+
 void addItemToStackedContainer(const SelectionContext &selectionContext)
 {
     AbstractView *view = selectionContext.view();
@@ -809,8 +859,7 @@ void addItemToStackedContainer(const SelectionContext &selectionContext)
         if (bindingTarget.isValid()) { // In this case the stacked container might be hooked up to a TabBar
             potentialTabBar = bindingTarget.parentModelNode();
 
-            if (!(potentialTabBar.metaInfo().isValid()
-                  && potentialTabBar.metaInfo().isSubclassOf("QtQuick.Controls.TabBar")))
+            if (!potentialTabBar.metaInfo().isQtQuickControlsTabBar())
                 potentialTabBar = ModelNode();
         }
     }
@@ -989,20 +1038,24 @@ void addTabBarToStackedContainer(const SelectionContext &selectionContext)
 
 }
 
-AddFilesResult addFilesToProject(const QStringList &fileNames, const QString &defaultDirectory)
+AddFilesResult addFilesToProject(const QStringList &fileNames, const QString &defaultDir, bool showDialog)
 {
-    QString directory = AddImagesDialog::getDirectory(fileNames, defaultDirectory);
+    QString directory = showDialog ? AddImagesDialog::getDirectory(fileNames, defaultDir) : defaultDir;
     if (directory.isEmpty())
-        return AddFilesResult::Cancelled;
+        return AddFilesResult::cancelled(directory);
 
     DesignDocument *document = QmlDesignerPlugin::instance()->currentDesignDocument();
-    QTC_ASSERT(document, return AddFilesResult::Failed);
+    QTC_ASSERT(document, return AddFilesResult::failed(directory));
 
     QList<QPair<QString, QString>> copyList;
     QStringList removeList;
     for (const QString &fileName : fileNames) {
         const QString targetFile = directory + "/" + QFileInfo(fileName).fileName();
-        if (QFileInfo::exists(targetFile)) {
+        Utils::FilePath srcFilePath = Utils::FilePath::fromString(fileName);
+        Utils::FilePath targetFilePath = Utils::FilePath::fromString(targetFile);
+        if (targetFilePath.exists()) {
+            if (srcFilePath.lastModified() == targetFilePath.lastModified())
+                continue;
             const QString title = QCoreApplication::translate(
                         "ModelNodeOperations", "Overwrite Existing File?");
             const QString question = QCoreApplication::translate(
@@ -1018,13 +1071,13 @@ AddFilesResult addFilesToProject(const QStringList &fileNames, const QString &de
     }
     // Defer actual file operations after we have dealt with possible popup dialogs to avoid
     // unnecessarily refreshing file models multiple times during the operation
-    for (const auto &file : qAsConst(removeList))
+    for (const auto &file : std::as_const(removeList))
         QFile::remove(file);
 
-    for (const auto &filePair : qAsConst(copyList)) {
+    for (const auto &filePair : std::as_const(copyList)) {
         const bool success = QFile::copy(filePair.first, filePair.second);
         if (!success)
-            return AddFilesResult::Failed;
+            return AddFilesResult::failed(directory);
 
         ProjectExplorer::Node *node = ProjectExplorer::ProjectTree::nodeForFile(document->fileName());
         if (node) {
@@ -1034,7 +1087,7 @@ AddFilesResult addFilesToProject(const QStringList &fileNames, const QString &de
         }
     }
 
-    return AddFilesResult::Succeeded;
+    return AddFilesResult::succeeded(directory);
 }
 
 static QString getAssetDefaultDirectory(const QString &assetDir, const QString &defaultDirectory)
@@ -1060,29 +1113,29 @@ static QString getAssetDefaultDirectory(const QString &assetDir, const QString &
     return adjustedDefaultDirectory;
 }
 
-AddFilesResult addFontToProject(const QStringList &fileNames, const QString &defaultDirectory)
+AddFilesResult addFontToProject(const QStringList &fileNames, const QString &defaultDir, bool showDialog)
 {
-    return addFilesToProject(fileNames, getAssetDefaultDirectory("fonts", defaultDirectory));
+    return addFilesToProject(fileNames, getAssetDefaultDirectory("fonts", defaultDir), showDialog);
 }
 
-AddFilesResult addSoundToProject(const QStringList &fileNames, const QString &defaultDirectory)
+AddFilesResult addSoundToProject(const QStringList &fileNames, const QString &defaultDir, bool showDialog)
 {
-    return addFilesToProject(fileNames, getAssetDefaultDirectory("sounds", defaultDirectory));
+    return addFilesToProject(fileNames, getAssetDefaultDirectory("sounds", defaultDir), showDialog);
 }
 
-AddFilesResult addShaderToProject(const QStringList &fileNames, const QString &defaultDirectory)
+AddFilesResult addShaderToProject(const QStringList &fileNames, const QString &defaultDir, bool showDialog)
 {
-    return addFilesToProject(fileNames, getAssetDefaultDirectory("shaders", defaultDirectory));
+    return addFilesToProject(fileNames, getAssetDefaultDirectory("shaders", defaultDir), showDialog);
 }
 
-AddFilesResult addImageToProject(const QStringList &fileNames, const QString &defaultDirectory)
+AddFilesResult addImageToProject(const QStringList &fileNames, const QString &defaultDir, bool showDialog)
 {
-    return addFilesToProject(fileNames, getAssetDefaultDirectory("images", defaultDirectory));
+    return addFilesToProject(fileNames, getAssetDefaultDirectory("images", defaultDir), showDialog);
 }
 
-AddFilesResult addVideoToProject(const QStringList &fileNames, const QString &defaultDirectory)
+AddFilesResult addVideoToProject(const QStringList &fileNames, const QString &defaultDir, bool showDialog)
 {
-    return addFilesToProject(fileNames, getAssetDefaultDirectory("videos", defaultDirectory));
+    return addFilesToProject(fileNames, getAssetDefaultDirectory("videos", defaultDir), showDialog);
 }
 
 void createFlowActionArea(const SelectionContext &selectionContext)
@@ -1466,76 +1519,17 @@ QString getTemplateDialog(const Utils::FilePath &projectPath)
     return result;
 }
 
-void styleMerge(const SelectionContext &selectionContext, const QString &templateFile)
-{
-    Model *parentModel = selectionContext.view()->model();
-
-    QTC_ASSERT(parentModel, return);
-
-    QScopedPointer<Model> templateModel(Model::create("QtQuick.Item", 2, 1, parentModel));
-    Q_ASSERT(templateModel.data());
-
-    templateModel->setFileUrl(QUrl::fromLocalFile(templateFile));
-
-    QPlainTextEdit textEditTemplate;
-    Utils::FileReader reader;
-
-    QTC_ASSERT(reader.fetch(Utils::FilePath::fromString(templateFile)), return);
-    QString qmlTemplateString = QString::fromUtf8(reader.data());
-    QString imports;
-
-    for (const Import &import : parentModel->imports())
-        imports += QStringLiteral("import ") + import.toString(true) + QLatin1Char(';') + QLatin1Char('\n');
-
-    textEditTemplate.setPlainText(imports + qmlTemplateString);
-    NotIndentingTextEditModifier textModifierTemplate(&textEditTemplate);
-
-    QScopedPointer<RewriterView> templateRewriterView(new RewriterView(RewriterView::Amend, nullptr));
-    templateRewriterView->setTextModifier(&textModifierTemplate);
-    templateModel->attachView(templateRewriterView.data());
-    templateRewriterView->setCheckSemanticErrors(false);
-
-    ModelNode templateRootNode = templateRewriterView->rootModelNode();
-    QTC_ASSERT(templateRootNode.isValid(), return);
-
-    QScopedPointer<Model> styleModel(Model::create("QtQuick.Item", 2, 1, parentModel));
-    Q_ASSERT(styleModel.data());
-
-    styleModel->setFileUrl(QUrl::fromLocalFile(templateFile));
-
-    QPlainTextEdit textEditStyle;
-    RewriterView *parentRewriterView = selectionContext.view()->model()->rewriterView();
-    QTC_ASSERT(parentRewriterView, return);
-    textEditStyle.setPlainText(parentRewriterView->textModifierContent());
-    NotIndentingTextEditModifier textModifierStyle(&textEditStyle);
-
-    QScopedPointer<RewriterView> styleRewriterView(new RewriterView(RewriterView::Amend, nullptr));
-    styleRewriterView->setTextModifier(&textModifierStyle);
-    styleModel->attachView(styleRewriterView.data());
-
-    StylesheetMerger merger(templateRewriterView.data(), styleRewriterView.data());
-
-    try {
-        merger.merge();
-    } catch (Exception &e) {
-        e.showException();
-    }
-
-    try {
-        parentRewriterView->textModifier()->textDocument()->setPlainText(templateRewriterView->textModifierContent());
-    } catch (Exception &e) {
-        e.showException();
-    }
-}
-
-void mergeWithTemplate(const SelectionContext &selectionContext)
+void mergeWithTemplate(const SelectionContext &selectionContext, ExternalDependenciesInterface &externalDependencies)
 {
     const Utils::FilePath projectPath = Utils::FilePath::fromString(baseDirectory(selectionContext.view()->model()->fileUrl()));
 
     const QString templateFile = getTemplateDialog(projectPath);
 
-    if (QFileInfo::exists(templateFile))
-        styleMerge(selectionContext, templateFile);
+    if (QFileInfo::exists(templateFile)) {
+        StylesheetMerger::styleMerge(Utils::FilePath::fromString(templateFile),
+                                     selectionContext.view()->model(),
+                                     externalDependencies);
+    }
 }
 
 void removeGroup(const SelectionContext &selectionContext)
@@ -1559,9 +1553,7 @@ void removeGroup(const SelectionContext &selectionContext)
         "DesignerActionManager::removeGroup", [selectionContext, &groupItem, parent]() {
             for (const ModelNode &modelNode :
                  selectionContext.currentSingleSelectedNode().directSubModelNodes()) {
-                if (modelNode.isValid()) {
-                    QmlItemNode qmlItem(modelNode);
-
+                if (QmlItemNode qmlItem = modelNode) {
                     QPointF pos = qmlItem.instancePosition();
                     pos = groupItem.instanceTransform().map(pos);
                     modelNode.variantProperty("x").setValue(pos.x());
@@ -1579,6 +1571,35 @@ void editAnnotation(const SelectionContext &selectionContext)
     ModelNode selectedNode = selectionContext.currentSingleSelectedNode();
 
     ModelNodeEditorProxy::fromModelNode<AnnotationEditor>(selectedNode);
+}
+
+void addMouseAreaFill(const SelectionContext &selectionContext)
+{
+    if (!selectionContext.isValid()) {
+        return;
+    }
+
+    if (!selectionContext.singleNodeIsSelected()) {
+        return;
+    }
+
+    selectionContext.view()->executeInTransaction("DesignerActionManager|addMouseAreaFill", [selectionContext]() {
+        ModelNode modelNode = selectionContext.currentSingleSelectedNode();
+        if (modelNode.isValid()) {
+            NodeMetaInfo itemMetaInfo = selectionContext.view()->model()->metaInfo("QtQuick.MouseArea", -1, -1);
+            QTC_ASSERT(itemMetaInfo.isValid(), return);
+
+            QmlDesigner::ModelNode mouseAreaNode =
+                selectionContext.view()->createModelNode("QtQuick.MouseArea", itemMetaInfo.majorVersion(), itemMetaInfo.minorVersion());
+            mouseAreaNode.validId();
+
+            modelNode.defaultNodeListProperty().reparentHere(mouseAreaNode);
+            QmlItemNode mouseAreaItemNode(mouseAreaNode);
+            if (mouseAreaItemNode.isValid()) {
+                mouseAreaItemNode.anchors().fill();
+            }
+        }
+    });
 }
 
 QVariant previewImageDataForGenericNode(const ModelNode &modelNode)
@@ -1608,8 +1629,121 @@ void updateImported3DAsset(const SelectionContext &selectionContext)
     if (selectionContext.view()) {
         selectionContext.view()->emitCustomNotification(
                     "UpdateImported3DAsset", {selectionContext.currentSingleSelectedNode()});
-
     }
+}
+
+void openEffectMaker(const QString &filePath)
+{
+    const ProjectExplorer::Target *target = ProjectExplorer::ProjectTree::currentTarget();
+    if (!target) {
+        qWarning() << __FUNCTION__ << "No project open";
+        return;
+    }
+
+    Utils::FilePath projectPath = target->project()->projectDirectory();
+    QString effectName = QFileInfo(filePath).baseName();
+    QString effectResDir = "asset_imports/Effects/" + effectName;
+    Utils::FilePath effectResPath = projectPath.resolvePath(effectResDir);
+    if (!effectResPath.exists())
+        QDir(projectPath.toString()).mkpath(effectResDir);
+
+    const QtSupport::QtVersion *baseQtVersion = QtSupport::QtKitAspect::qtVersion(target->kit());
+    if (baseQtVersion) {
+        auto effectMakerPath = baseQtVersion->binPath().pathAppended("qqem").withExecutableSuffix();
+        if (!effectMakerPath.exists()) {
+            qWarning() << __FUNCTION__ << "Cannot find EffectMaker app";
+            return;
+        }
+
+        Utils::FilePath effectPath = Utils::FilePath::fromString(filePath);
+        QStringList arguments;
+        arguments << filePath;
+        if (effectPath.fileContents()->isEmpty())
+            arguments << "--create";
+        arguments << "--exportpath" << effectResPath.toString();
+
+        Utils::Environment env = Utils::Environment::systemEnvironment();
+        if (env.osType() == Utils::OsTypeMac)
+            env.appendOrSet("QSG_RHI_BACKEND", "metal");
+
+        Utils::QtcProcess *qqemProcess = new Utils::QtcProcess();
+        qqemProcess->setEnvironment(env);
+        qqemProcess->setCommand({ effectMakerPath, arguments });
+        qqemProcess->start();
+
+        QObject::connect(qqemProcess, &Utils::QtcProcess::done, [qqemProcess]() {
+            qqemProcess->deleteLater();
+        });
+    }
+}
+
+Utils::FilePath getEffectsImportDirectory()
+{
+    QString defaultDir = "asset_imports/Effects";
+    Utils::FilePath projectPath = QmlDesignerPlugin::instance()->documentManager().currentProjectDirPath();
+    Utils::FilePath effectsPath = projectPath.pathAppended(defaultDir);
+
+    if (!effectsPath.exists()) {
+        QDir dir(projectPath.toString());
+        dir.mkpath(defaultDir);
+    }
+
+    return effectsPath;
+}
+
+QString getEffectsDefaultDirectory(const QString &defaultDir)
+{
+    return getAssetDefaultDirectory("effects", defaultDir);
+}
+
+QString getEffectIcon(const QString &effectPath)
+{
+    const ProjectExplorer::Target *target = ProjectExplorer::ProjectTree::currentTarget();
+    if (!target) {
+        qWarning() << __FUNCTION__ << "No project open";
+        return QString();
+    }
+
+    Utils::FilePath projectPath = target->project()->projectDirectory();
+    QString effectName = QFileInfo(effectPath).baseName();
+    QString effectResDir = "asset_imports/Effects/" + effectName;
+    Utils::FilePath effectResPath = projectPath.resolvePath(effectResDir + "/" + effectName + ".qml");
+
+    return effectResPath.exists() ? QString("effectExported") : QString("effectClass");
+}
+
+bool useLayerEffect()
+{
+    QSettings *settings = Core::ICore::settings();
+    const QString layerEffectEntry = "QML/Designer/UseLayerEffect";
+
+    return settings->value(layerEffectEntry, true).toBool();
+}
+
+bool validateEffect(const QString &effectPath)
+{
+    const QString effectName = QFileInfo(effectPath).baseName();
+    Utils::FilePath effectsResDir = ModelNodeOperations::getEffectsImportDirectory();
+    Utils::FilePath qmlPath = effectsResDir.resolvePath(effectName + "/" + effectName + ".qml");
+    if (!qmlPath.exists()) {
+        QMessageBox msgBox;
+        msgBox.setText(QObject::tr("Effect %1 not complete").arg(effectName));
+        msgBox.setInformativeText(QObject::tr("Do you want to edit %1?").arg(effectName));
+        msgBox.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
+        msgBox.setDefaultButton(QMessageBox::Yes);
+        msgBox.setIcon(QMessageBox::Question);
+        if (msgBox.exec() == QMessageBox::Yes)
+            ModelNodeOperations::openEffectMaker(effectPath);
+        return false;
+    }
+    return true;
+}
+
+Utils::FilePath getImagesDefaultDirectory()
+{
+    return Utils::FilePath::fromString(
+                getAssetDefaultDirectory(
+        "images", QmlDesignerPlugin::instance()->documentManager().currentProjectDirPath().toString()));
 }
 
 } // namespace ModelNodeOperations

@@ -1,36 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "unixutils.h"
 
-#include "fileutils.h"
+#include "filepath.h"
 #include "qtcsettings.h"
+#include "utilstr.h"
 
-#include <QSettings>
 #include <QFileInfo>
-#include <QCoreApplication>
+#include <QSettings>
 
 using namespace Utils;
 
@@ -55,14 +33,13 @@ void UnixUtils::setFileBrowser(QSettings *settings, const QString &term)
 
 QString UnixUtils::fileBrowserHelpText()
 {
-    QString help = QCoreApplication::translate("Utils::UnixTools",
-            "<table border=1 cellspacing=0 cellpadding=3>"
-            "<tr><th>Variable</th><th>Expands to</th></tr>"
-            "<tr><td>%d</td><td>directory of current file</td></tr>"
-            "<tr><td>%f</td><td>file name (with full path)</td></tr>"
-            "<tr><td>%n</td><td>file name (without path)</td></tr>"
-            "<tr><td>%%</td><td>%</td></tr>"
-            "</table>");
+    QString help = Tr::tr("<table border=1 cellspacing=0 cellpadding=3>"
+                          "<tr><th>Variable</th><th>Expands to</th></tr>"
+                          "<tr><td>%d</td><td>directory of current file</td></tr>"
+                          "<tr><td>%f</td><td>file name (with full path)</td></tr>"
+                          "<tr><td>%n</td><td>file name (without path)</td></tr>"
+                          "<tr><td>%%</td><td>%</td></tr>"
+                          "</table>");
     return help;
 }
 

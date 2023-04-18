@@ -1,27 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+
+#line 126 "qmljs.g"
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 //
@@ -108,7 +88,7 @@ public:
       AST::ExportClause *ExportClause;
       AST::ExportDeclaration *ExportDeclaration;
       AST::TypeAnnotation *TypeAnnotation;
-      AST::TypeArgumentList *TypeArgumentList;
+      AST::TypeArgument *TypeArgument;
       AST::Type *Type;
 
       AST::UiProgram *UiProgram;
@@ -182,7 +162,7 @@ public:
     inline DiagnosticMessage diagnosticMessage() const
     {
         for (const DiagnosticMessage &d : diagnostic_messages) {
-            if (d.kind != Severity::Warning)
+            if (d.isWarning())
                 return d;
         }
 
@@ -247,8 +227,8 @@ protected:
     Value *sym_stack = nullptr;
     int *state_stack = nullptr;
     SourceLocation *location_stack = nullptr;
-    QVector<QStringView> string_stack;
-    QVector<QStringView> rawString_stack;
+    std::vector<QStringView> string_stack;
+    std::vector<QStringView> rawString_stack;
 
     AST::Node *program = nullptr;
 
@@ -275,6 +255,7 @@ protected:
     SavedToken *last_token = nullptr;
 
     int functionNestingLevel = 0;
+    int classNestingLevel = 0;
 
     enum CoverExpressionType {
         CE_Invalid,
@@ -289,27 +270,27 @@ protected:
 
 } // end of namespace QmlJS
 
-#line 1819 "qmljs.g"
+#line 1769 "qmljs.g"
 
-#define J_SCRIPT_REGEXPLITERAL_RULE1 159
+#define J_SCRIPT_REGEXPLITERAL_RULE1 163
 
-#line 1831 "qmljs.g"
+#line 1781 "qmljs.g"
 
-#define J_SCRIPT_REGEXPLITERAL_RULE2 160
+#define J_SCRIPT_REGEXPLITERAL_RULE2 164
 
-#line 3451 "qmljs.g"
+#line 3401 "qmljs.g"
 
-#define J_SCRIPT_EXPRESSIONSTATEMENTLOOKAHEAD_RULE 461
+#define J_SCRIPT_EXPRESSIONSTATEMENTLOOKAHEAD_RULE 465
 
-#line 4103 "qmljs.g"
+#line 4053 "qmljs.g"
 
-#define J_SCRIPT_CONCISEBODYLOOKAHEAD_RULE 531
+#define J_SCRIPT_CONCISEBODYLOOKAHEAD_RULE 535
 
-#line 4645 "qmljs.g"
+#line 4594 "qmljs.g"
 
-#define J_SCRIPT_EXPORTDECLARATIONLOOKAHEAD_RULE 600
+#define J_SCRIPT_EXPORTDECLARATIONLOOKAHEAD_RULE 603
 
-#line 4929 "qmljs.g"
+#line 4878 "qmljs.g"
 
 QT_QML_END_NAMESPACE
 

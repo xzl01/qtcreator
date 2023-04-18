@@ -1,33 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Tooling
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "keyframeitem.h"
 #include "curveitem.h"
 #include "handleitem.h"
 
+#include <QApplication>
 #include <QPainter>
+#include <qnamespace.h>
+#include <QGraphicsSceneMouseEvent>
 
 #include <cmath>
 
@@ -66,11 +47,10 @@ QRectF KeyframeItem::boundingRect() const
     return QRectF(topLeft, -topLeft);
 }
 
-void KeyframeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+void KeyframeItem::paint(QPainter *painter,
+                         [[maybe_unused]] const QStyleOptionGraphicsItem *option,
+                         [[maybe_unused]] QWidget *widget)
 {
-    Q_UNUSED(option)
-    Q_UNUSED(widget)
-
     QColor mainColor = selected() ? m_style.selectionColor : m_style.color;
     QColor borderColor = isUnified() ? m_style.unifiedColor : m_style.splitColor;
 
@@ -103,8 +83,16 @@ void KeyframeItem::lockedCallback()
 
 KeyframeItem::~KeyframeItem() {}
 
-Keyframe KeyframeItem::keyframe() const
+Keyframe KeyframeItem::keyframe(bool remap) const
 {
+    if (remap) {
+        auto frame = m_frame;
+        auto pos = frame.position();
+        auto center = m_min + ((m_max - m_min) / 2.0);
+        pos.ry() = pos.y() > center ? 1.0 : 0.0;
+        frame.setPosition(pos);
+        return frame;
+    }
     return m_frame;
 }
 
@@ -338,6 +326,18 @@ void KeyframeItem::moveHandle(HandleItem::Slot slot, double deltaAngle, double d
     emit redrawCurve();
 }
 
+void KeyframeItem::remapValue(double min, double max)
+{
+    auto center = m_min + ((m_max - m_min) / 2.0);
+    auto pos = m_frame.position();
+    pos.ry() = pos.y() > center ? max : min;
+    m_frame.setPosition(pos);
+
+    m_max = max;
+    m_min = min;
+    setKeyframe(m_frame);
+}
+
 void KeyframeItem::updateHandle(HandleItem *handle, bool emitChanged)
 {
     bool ok = false;
@@ -410,8 +410,10 @@ QVariant KeyframeItem::itemChange(QGraphicsItem::GraphicsItemChange change, cons
 
             if (curveItem->valueType() == PropertyTreeItem::ValueType::Integer)
                 position.setY(std::round(position.y()));
-            else if (curveItem->valueType() == PropertyTreeItem::ValueType::Bool)
-                position.setY(position.y() > 0.5 ? 1.0 : 0.0);
+            else if (curveItem->valueType() == PropertyTreeItem::ValueType::Bool) {
+                double center = m_min + ((m_max - m_min) / 2.0);
+                position.setY(position.y() > center ? m_max : m_min);
+            }
 
             if (!legalLeft() || !legalRight()) {
                 return QVariant(m_transform.map(position));
@@ -419,10 +421,22 @@ QVariant KeyframeItem::itemChange(QGraphicsItem::GraphicsItemChange change, cons
                 lseg.moveRightTo(position);
                 rseg.moveLeftTo(position);
 
-                if (legalLeft() && legalRight())
-                    m_validPos = position;
+                if (legalLeft() && legalRight()) {
+                    if (qApp->keyboardModifiers().testFlag(Qt::ShiftModifier) && m_validPos.has_value()) {
+                        if (m_firstPos) {
+                            auto firstToNow = QLineF(*m_firstPos, position);
+                            if (std::abs(firstToNow.dx()) > std::abs(firstToNow.dy()))
+                                m_validPos = QPointF(position.x(), m_firstPos->y());
+                            else
+                                m_validPos = QPointF(m_firstPos->x(), position.y());
+                        }
 
-                return QVariant(m_transform.map(m_validPos));
+                    } else {
+                        m_validPos = position;
+                    }
+                }
+
+                return QVariant(m_transform.map(*m_validPos));
             }
         }
     }
@@ -432,6 +446,11 @@ QVariant KeyframeItem::itemChange(QGraphicsItem::GraphicsItemChange change, cons
 
 void KeyframeItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
+    bool ok;
+    m_firstPos = m_transform.inverted(&ok).map(event->scenePos());
+    if (!ok)
+        m_firstPos = std::nullopt;
+
     SelectableItem::mousePressEvent(event);
     if (auto *curveItem = qgraphicsitem_cast<CurveItem *>(parentItem()))
         curveItem->setHandleVisibility(false);
@@ -439,6 +458,7 @@ void KeyframeItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 
 void KeyframeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
+    m_firstPos = std::nullopt;
     SelectableItem::mouseReleaseEvent(event);
     if (auto *curveItem = qgraphicsitem_cast<CurveItem *>(parentItem()))
         curveItem->setHandleVisibility(true);

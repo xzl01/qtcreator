@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
-** Contact: http://www.qt.io/licensing
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nimblebuildsystem.h"
 
 #include "nimbuildsystem.h"
-#include "nimbleproject.h"
-#include "nimproject.h"
 #include "../nimconstants.h"
 
 #include <projectexplorer/target.h>
@@ -46,7 +22,7 @@ const char C_NIMBLEPROJECT_TASKS[] = "Nim.NimbleProject.Tasks";
 
 static QList<QByteArray> linesFromProcessOutput(QtcProcess *process)
 {
-    QList<QByteArray> lines = process->readAllStandardOutput().split('\n');
+    QList<QByteArray> lines = process->readAllRawStandardOutput().split('\n');
     lines = Utils::transform(lines, [](const QByteArray &line){ return line.trimmed(); });
     Utils::erase(lines, [](const QByteArray &line) { return line.isEmpty(); });
     return lines;
@@ -63,7 +39,7 @@ static std::vector<NimbleTask> parseTasks(const FilePath &nimblePath, const File
     std::vector<NimbleTask> result;
 
     if (process.exitCode() != 0) {
-        TaskHub::addTask(Task(Task::Error, process.stdOut(), {}, -1, Constants::C_NIMPARSE_ID));
+        TaskHub::addTask(Task(Task::Error, process.cleanedStdOut(), {}, -1, Constants::C_NIMPARSE_ID));
         return result;
     }
 
@@ -91,7 +67,7 @@ static NimbleMetadata parseMetadata(const FilePath &nimblePath, const FilePath &
     NimbleMetadata result = {};
 
     if (process.exitCode() != 0) {
-        TaskHub::addTask(Task(Task::Error, process.stdOut(), {}, -1, Constants::C_NIMPARSE_ID));
+        TaskHub::addTask(Task(Task::Error, process.cleanedStdOut(), {}, -1, Constants::C_NIMPARSE_ID));
         return result;
     }
     const QList<QByteArray> &lines = linesFromProcessOutput(&process);

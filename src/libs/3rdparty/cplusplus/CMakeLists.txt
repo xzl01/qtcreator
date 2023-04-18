@@ -1,6 +1,5 @@
 add_qtc_library(3rd_cplusplus OBJECT
-  PUBLIC_DEPENDS Qt5::Core Utils
-  DEFINES CPLUSPLUS_BUILD_LIB
+  PUBLIC_DEPENDS Qt::Core Utils
   SOURCES
     AST.cpp AST.h
     ASTClone.cpp
@@ -45,10 +44,20 @@ add_qtc_library(3rd_cplusplus OBJECT
   PROPERTIES POSITION_INDEPENDENT_CODE ON
 )
 
+set(export_symbol_declaration DEFINES CPLUSPLUS_BUILD_LIB)
+if (QTC_STATIC_BUILD)
+  set(export_symbol_declaration PUBLIC_DEFINES CPLUSPLUS_BUILD_STATIC_LIB)
+endif()
+extend_qtc_target(3rd_cplusplus ${export_symbol_declaration})
+
 if(TARGET 3rd_cplusplus)
   qtc_enable_release_for_debug_configuration()
   if (BUILD_WITH_PCH)
     target_precompile_headers(3rd_cplusplus PRIVATE
       "${QtCreator_SOURCE_DIR}/src/shared/qtcreator_gui_pch.h")
+  endif()
+
+  if(UNIX)
+    target_compile_options(3rd_cplusplus PRIVATE "-Wno-unused-variable")
   endif()
 endif()

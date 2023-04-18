@@ -1,31 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "findkeyoperation.h"
 
 #include <iostream>
+
+#ifdef WITH_TESTS
+#include <QTest>
+#endif
+
+#include <QLoggingCategory>
+
+Q_LOGGING_CATEGORY(findkeylog, "qtc.sdktool.operations.findkey", QtWarningMsg)
+
 
 QString FindKeyOperation::name() const
 {
@@ -57,9 +44,9 @@ bool FindKeyOperation::setArguments(const QStringList &args)
     }
 
     if (m_file.isEmpty())
-        std::cerr << "No file given." << std::endl << std::endl;
+        qCCritical(findkeylog) << "No file given.";
     if (m_keys.isEmpty())
-        std::cerr << "No keys given." << std::endl << std::endl;
+        qCCritical(findkeylog) << "No keys given.";
 
     return (!m_file.isEmpty() && !m_keys.isEmpty());
 }
@@ -69,17 +56,18 @@ int FindKeyOperation::execute() const
     Q_ASSERT(!m_keys.isEmpty());
     QVariantMap map = load(m_file);
 
-    foreach (const QString &k, m_keys) {
+    for (const auto &k : m_keys) {
         const QStringList result = findKey(map, k);
-        foreach (const QString &r, result)
+        for (const auto &r: result) {
             std::cout << qPrintable(r) << std::endl;
+        }
     }
 
     return 0;
 }
 
 #ifdef WITH_TESTS
-bool FindKeyOperation::test() const
+void FindKeyOperation::unittest()
 {
     QVariantMap testMap;
     QVariantMap subKeys;
@@ -108,26 +96,20 @@ bool FindKeyOperation::test() const
 
     QStringList result;
     result = findKey(testMap, QLatin1String("missing"));
-    if (!result.isEmpty())
-        return false;
+    QVERIFY(result.isEmpty());
 
     result = findKey(testMap, QLatin1String("testint"));
-    if (result.count() != 2
-            || !result.contains(QLatin1String("testint"))
-            || !result.contains(QLatin1String("subkeys/subsubkeys/testint")))
-        return false;
+    QCOMPARE(result.count(), 2);
+    QVERIFY(result.contains(QLatin1String("testint")));
+    QVERIFY(result.contains(QLatin1String("subkeys/subsubkeys/testint")));
 
     result = findKey(testMap, QLatin1String("testbool"));
-    if (result.count() != 2
-            || !result.contains(QLatin1String("testbool")))
-        return false;
+    QCOMPARE(result.count(), 2);
+    QVERIFY(result.contains(QLatin1String("testbool")));
 
     result = findKey(testMap, QLatin1String("findMe"));
-    if (result.count() != 1
-            || !result.contains(QLatin1String("aList[2][1]/findMe")))
-        return false;
-
-    return true;
+    QCOMPARE(result.count(), 1);
+    QVERIFY(result.contains(QLatin1String("aList[2][1]/findMe")));
 }
 #endif
 

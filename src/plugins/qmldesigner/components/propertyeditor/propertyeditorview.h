@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -51,7 +29,8 @@ class PropertyEditorView: public AbstractView
     Q_OBJECT
 
 public:
-    PropertyEditorView(QWidget *parent = nullptr);
+    PropertyEditorView(class AsynchronousImageCache &imageCache,
+                       ExternalDependenciesInterface &externalDependencies);
     ~PropertyEditorView() override;
 
     bool hasWidget() const override;
@@ -69,7 +48,9 @@ public:
 
     void variantPropertiesChanged(const QList<VariantProperty>& propertyList, PropertyChangeFlags propertyChange) override;
     void bindingPropertiesChanged(const QList<BindingProperty>& propertyList, PropertyChangeFlags propertyChange) override;
-    void auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &data) override;
+    void auxiliaryDataChanged(const ModelNode &node,
+                              AuxiliaryDataKeyView key,
+                              const QVariant &data) override;
 
     void instanceInformationsChanged(const QMultiHash<ModelNode, InformationName> &informationChangedHash) override;
 
@@ -87,9 +68,12 @@ public:
                         const NodeAbstractProperty &oldPropertyParent,
                         AbstractView::PropertyChangeFlags propertyChange) override;
 
+    void dragStarted(QMimeData *mimeData) override;
+    void dragEnded() override;
+
     void changeValue(const QString &name);
     void changeExpression(const QString &name);
-    void exportPopertyAsAlias(const QString &name);
+    void exportPropertyAsAlias(const QString &name);
     void removeAliasExport(const QString &name);
 
     bool locked() const;
@@ -119,8 +103,8 @@ private: //functions
     bool noValidSelection() const;
 
 private: //variables
+    AsynchronousImageCache &m_imageCache;
     ModelNode m_selectedNode;
-    QWidget *m_parent;
     QShortcut *m_updateShortcut;
     int m_timerId;
     PropertyEditorWidget* m_stackedWidget;

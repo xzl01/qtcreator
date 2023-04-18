@@ -1,40 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "fancylineedit.h"
 
 #include "camelcasecursor.h"
 #include "execmenu.h"
-#include "fancylineedit.h"
 #include "historycompleter.h"
 #include "hostosinfo.h"
-#include "optional.h"
 #include "qtcassert.h"
-#include "stylehelper.h"
 #include "utilsicons.h"
+#include "utilstr.h"
 
-#include <QAbstractItemView>
-#include <QDebug>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QMenu>
@@ -42,7 +18,11 @@
 #include <QStylePainter>
 #include <QPropertyAnimation>
 #include <QStyle>
+#include <QStyleOptionFocusRect>
+#include <QValidator>
 #include <QWindow>
+
+#include <optional>
 
 /*!
     \class Utils::FancyLineEdit
@@ -195,8 +175,12 @@ FancyLineEdit::FancyLineEdit(QWidget *parent) :
     ensurePolished();
     updateMargins();
 
-    connect(d->m_iconbutton[Left], &QAbstractButton::clicked, this, &FancyLineEdit::iconClicked);
-    connect(d->m_iconbutton[Right], &QAbstractButton::clicked, this, &FancyLineEdit::iconClicked);
+    connect(d->m_iconbutton[Left], &QAbstractButton::clicked, this, [this] {
+        iconClicked(Left);
+    });
+    connect(d->m_iconbutton[Right], &QAbstractButton::clicked, this, [this] {
+        iconClicked(Right);
+    });
     connect(this, &QLineEdit::textChanged, this, &FancyLineEdit::validate);
     connect(&d->m_completionShortcut, &QShortcut::activated, this, [this] {
         if (!completer())
@@ -220,7 +204,7 @@ FancyLineEdit::~FancyLineEdit()
 
 void FancyLineEdit::setTextKeepingActiveCursor(const QString &text)
 {
-    optional<int> cursor = hasFocus() ? make_optional(cursorPosition()) : nullopt;
+    std::optional<int> cursor = hasFocus() ? std::make_optional(cursorPosition()) : std::nullopt;
     setText(text);
     if (cursor)
         setCursorPosition(*cursor);
@@ -238,27 +222,20 @@ bool FancyLineEdit::isButtonVisible(Side side) const
     return d->m_iconEnabled[side];
 }
 
-QAbstractButton *FancyLineEdit::button(FancyLineEdit::Side side) const
+QAbstractButton *FancyLineEdit::button(Side side) const
 {
     return d->m_iconbutton[side];
 }
 
-void FancyLineEdit::iconClicked()
+void FancyLineEdit::iconClicked(Side side)
 {
-    auto button = qobject_cast<IconButton *>(sender());
-    int index = -1;
-    for (int i = 0; i < 2; ++i)
-        if (d->m_iconbutton[i] == button)
-            index = i;
-    if (index == -1)
-        return;
-    if (d->m_menu[index]) {
-        execMenuAtWidget(d->m_menu[index], button);
+    if (d->m_menu[side]) {
+        execMenuAtWidget(d->m_menu[side], button(side));
     } else {
-        emit buttonClicked((Side)index);
-        if (index == Left)
+        emit buttonClicked(side);
+        if (side == Left)
             emit leftButtonClicked();
-        else if (index == Right)
+        else if (side == Right)
             emit rightButtonClicked();
     }
 }
@@ -442,8 +419,8 @@ void FancyLineEdit::setFiltering(bool on)
 
         setButtonIcon(Right, icon);
         setButtonVisible(Right, true);
-        setPlaceholderText(tr("Filter"));
-        setButtonToolTip(Right, tr("Clear text"));
+        setPlaceholderText(Tr::tr("Filter"));
+        setButtonToolTip(Right, Tr::tr("Clear text"));
         setAutoHideButton(Right, true);
         connect(this, &FancyLineEdit::rightButtonClicked, this, &QLineEdit::clear);
     } else {
@@ -533,7 +510,7 @@ void FancyLineEdit::validate()
 
     // Check buttons.
     if (d->m_oldText.isEmpty() || t.isEmpty()) {
-        for (auto &button : qAsConst(d->m_iconbutton)) {
+        for (auto &button : std::as_const(d->m_iconbutton)) {
             if (button->hasAutoHide())
                 button->animateShow(!t.isEmpty());
         }

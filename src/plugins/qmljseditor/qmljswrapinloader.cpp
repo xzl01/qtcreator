@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "qmljswrapinloader.h"
+#include "qmljseditortr.h"
 #include "qmljsquickfixassist.h"
+#include "qmljswrapinloader.h"
 
 #include <coreplugin/idocument.h>
 
@@ -83,19 +62,16 @@ protected:
 template <typename T>
 class Operation: public QmlJSQuickFixOperation
 {
-    Q_DECLARE_TR_FUNCTIONS(QmlJSEditor::Internal::Operation)
-
     T *m_objDef;
 
 public:
-    Operation(const QSharedPointer<const QmlJSQuickFixAssistInterface> &interface,
-              T *objDef)
+    Operation(const QmlJSQuickFixAssistInterface *interface, T *objDef)
         : QmlJSQuickFixOperation(interface, 0)
         , m_objDef(objDef)
     {
         Q_ASSERT(m_objDef);
 
-        setDescription(tr("Wrap Component in Loader"));
+        setDescription(Tr::tr("Wrap Component in Loader"));
     }
 
     QString findFreeName(const QString &base)
@@ -103,7 +79,7 @@ public:
         QString tryName = base;
         int extraNumber = 1;
         const ObjectValue *found = nullptr;
-        const ScopeChain &scope = assistInterface()->semanticInfo().scopeChain();
+        const ScopeChain &scope = semanticInfo().scopeChain();
         forever {
             scope.lookup(tryName, &found);
             if (!found || extraNumber > 1000)
@@ -135,11 +111,11 @@ public:
         FindIds::Result innerIds = FindIds()(m_objDef);
         innerIds.remove(id);
 
-        QString comment = tr("// TODO: Move position bindings from the component to the Loader.\n"
+        QString comment = Tr::tr("// TODO: Move position bindings from the component to the Loader.\n"
                              "//       Check all uses of 'parent' inside the root element of the component.")
                           + QLatin1Char('\n');
         if (idBinding) {
-            comment += tr("//       Rename all outer uses of the id \"%1\" to \"%2.item\".").arg(
+            comment += Tr::tr("//       Rename all outer uses of the id \"%1\" to \"%2.item\".").arg(
                         id, loaderId) + QLatin1Char('\n');
         }
 
@@ -147,7 +123,7 @@ public:
         QString innerIdForwarders;
         for (auto it = innerIds.cbegin(), end = innerIds.cend(); it != end; ++it) {
             const QString innerId = it.key();
-            comment += tr("//       Rename all outer uses of the id \"%1\" to \"%2.item.%1\".\n").arg(
+            comment += Tr::tr("//       Rename all outer uses of the id \"%1\" to \"%2.item.%1\".\n").arg(
                         innerId, loaderId);
             changes.replace(it.value().begin(), it.value().end(), QString::fromLatin1("inner_%1").arg(innerId));
             innerIdForwarders += QString::fromLatin1("\nproperty alias %1: inner_%1").arg(innerId);
@@ -178,7 +154,7 @@ public:
 } // end of anonymous namespace
 
 
-void matchWrapInLoaderQuickFix(const QmlJSQuickFixInterface &interface, QuickFixOperations &result)
+void matchWrapInLoaderQuickFix(const QmlJSQuickFixAssistInterface *interface, QuickFixOperations &result)
 {
     const int pos = interface->currentFile()->cursor().position();
 

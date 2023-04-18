@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -53,12 +31,12 @@ public:
     typedef QSharedPointer<const Document> Ptr;
     typedef QSharedPointer<Document> MutablePtr;
 protected:
-    Document(const QString &fileName, Dialect language);
+    Document(const Utils::FilePath &fileName, Dialect language);
 
 public:
     ~Document();
 
-    static MutablePtr create(const QString &fileName, Dialect language);
+    static MutablePtr create(const Utils::FilePath &fileName, Dialect language);
 
     Document::Ptr ptr() const;
 
@@ -93,8 +71,8 @@ public:
     int editorRevision() const;
     void setEditorRevision(int revision);
 
-    QString fileName() const;
-    QString path() const;
+    Utils::FilePath fileName() const;
+    Utils::FilePath path() const;
     QString componentName() const;
 
     QList<SourceLocation> jsDirectives() const;
@@ -107,8 +85,8 @@ private:
     AST::Node *_ast;
     Bind *_bind;
     QList<QmlJS::DiagnosticMessage> _diagnosticMessages;
-    QString _fileName;
-    QString _path;
+    Utils::FilePath _fileName;
+    Utils::FilePath _path;
     QString _componentName;
     QString _source;
     QList<SourceLocation> _jsdirectives;
@@ -170,20 +148,19 @@ public:
     explicit LibraryInfo(const QString &typeInfo);
     explicit LibraryInfo(const QmlDirParser &parser, const QByteArray &fingerprint = QByteArray());
     ~LibraryInfo() = default;
-    LibraryInfo(const LibraryInfo &other) = default;
 
     QByteArray calculateFingerprint() const;
     void updateFingerprint();
     QByteArray fingerprint() const
     { return _fingerprint; }
 
-    QList<QmlDirParser::Component> components() const
+    const QList<QmlDirParser::Component> components() const
     { return _components; }
 
     QList<QmlDirParser::Plugin> plugins() const
     { return _plugins; }
 
-    QStringList typeInfos() const
+    const QStringList typeInfos() const
     { return _typeinfos; }
 
     FakeMetaObjectList metaObjects() const
@@ -192,7 +169,7 @@ public:
     void setMetaObjects(const FakeMetaObjectList &objects)
     { _metaObjects = objects; }
 
-    QList<ModuleApiInfo> moduleApis() const
+    const QList<ModuleApiInfo> moduleApis() const
     { return _moduleApis; }
 
     void setModuleApis(const QList<ModuleApiInfo> &apis)
@@ -231,10 +208,10 @@ public:
 
 class QMLJS_EXPORT Snapshot
 {
-    typedef QHash<QString, Document::Ptr> Base;
-    QHash<QString, Document::Ptr> _documents;
-    QHash<QString, QList<Document::Ptr> > _documentsByPath;
-    QHash<QString, LibraryInfo> _libraries;
+    typedef QHash<Utils::FilePath, Document::Ptr> Base;
+    QHash<Utils::FilePath, Document::Ptr> _documents;
+    QHash<Utils::FilePath, QList<Document::Ptr>> _documentsByPath;
+    QHash<Utils::FilePath, LibraryInfo> _libraries;
     ImportDependencies _dependencies;
 
 public:
@@ -248,20 +225,19 @@ public:
     const_iterator end() const { return _documents.end(); }
 
     void insert(const Document::Ptr &document, bool allowInvalid = false);
-    void insertLibraryInfo(const QString &path, const LibraryInfo &info);
-    void remove(const QString &fileName);
+    void insertLibraryInfo(const Utils::FilePath &path, const LibraryInfo &info);
+    void remove(const Utils::FilePath &fileName);
 
     const ImportDependencies *importDependencies() const;
     ImportDependencies *importDependencies();
 
-    Document::Ptr document(const QString &fileName) const;
-    QList<Document::Ptr> documentsInDirectory(const QString &path) const;
-    LibraryInfo libraryInfo(const QString &path) const; // FIXME: Remove
+    Document::Ptr document(const Utils::FilePath &fileName) const;
+    QList<Document::Ptr> documentsInDirectory(const Utils::FilePath &path) const;
     LibraryInfo libraryInfo(const Utils::FilePath &path) const;
 
     Document::MutablePtr documentFromSource(const QString &code,
-                                     const QString &fileName,
-                                     Dialect language) const;
+                                            const Utils::FilePath &fileName,
+                                            Dialect language) const;
 };
 
 } // namespace QmlJS

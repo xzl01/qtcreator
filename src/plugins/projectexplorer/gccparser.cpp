@@ -1,34 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gccparser.h"
 #include "ldparser.h"
 #include "lldparser.h"
 #include "task.h"
-#include "projectexplorerconstants.h"
-#include "buildmanager.h"
 
 #include <utils/qtcassert.h>
 
@@ -39,7 +15,7 @@ using namespace Utils;
 
 // opt. drive letter + filename: (2 brackets)
 static const char FILE_PATTERN[] = "(<command[ -]line>|([A-Za-z]:)?[^:]+):";
-static const char COMMAND_PATTERN[] = "^(.*?[\\\\/])?([a-z0-9]+-[a-z0-9]+-[a-z0-9]+-)?(gcc|g\\+\\+)(-[0-9\\.]+)?(\\.exe)?: ";
+static const char COMMAND_PATTERN[] = "^(.*?[\\\\/])?([a-z0-9]+-[a-z0-9]+-[a-z0-9]+-)?(gcc|g\\+\\+)(-[0-9.]+)?(\\.exe)?: ";
 
 GccParser::GccParser()
 {
@@ -126,8 +102,8 @@ void GccParser::createOrAmendTask(
 
     // If a "required from here" line is present, it is almost always the cause of the problem,
     // so that's where we should go when the issue is double-clicked.
-    if ((originalLine.endsWith("required from here") || originalLine.endsWith("requested here"))
-            && !file.isEmpty() && line > 0) {
+    if ((originalLine.endsWith("required from here") || originalLine.endsWith("requested here")
+         || originalLine.endsWith("note: here")) && !file.isEmpty() && line > 0) {
         m_requiredFromHereFound = true;
         m_currentTask.setFile(file);
         m_currentTask.line = line;
@@ -626,7 +602,7 @@ void ProjectExplorerPlugin::testGccOutputParsers_data()
                                 8))
             << QString();
 
-    QTest::newRow("instanciated from here")
+    QTest::newRow("instantiated from here")
             << QString::fromLatin1("main.cpp:10: instantiated from here  ")
             << OutputParserTester::STDERR
             << QString() << QString()
@@ -1396,6 +1372,39 @@ void ProjectExplorerPlugin::testGccOutputParsers_data()
                                  "    if (!QTest::qCompare(actual, expected, #actual, #expected, __FILE__, __LINE__))\\\n"
                                  "                ^",
                                  FilePath::fromUserInput("tst_addresscache.cpp"), 79, 13, {})}
+            << QString();
+
+    QTest::newRow(R"("note: here")")
+            << QString(
+                   "In file included from qmlprofilerstatisticsmodel.h:31,\n"
+                   "                 from qmlprofilerstatisticsmodel.cpp:26:\n"
+                   "qmlprofilerstatisticsmodel.cpp: In member function ‘virtual QVariant QmlProfiler::QmlProfilerStatisticsModel::data(const QModelIndex&, int) const’:\n"
+                   "qtcassert.h:43:34: warning: this statement may fall through [-Wimplicit-fallthrough=]\n"
+                   "   43 | #define QTC_ASSERT(cond, action) if (Q_LIKELY(cond)) {} else { QTC_ASSERT_STRING(#cond); action; } do {} while (0)\n"
+                   "      |                                  ^~\n"
+                   "qtcassert.h:43:34: note: in definition of macro ‘QTC_ASSERT’\n"
+                   "   43 | #define QTC_ASSERT(cond, action) if (Q_LIKELY(cond)) {} else { QTC_ASSERT_STRING(#cond); action; } do {} while (0)\n"
+                   "      |                                  ^~\n"
+                   "qmlprofilerstatisticsmodel.cpp:365:5: note: here\n"
+                   "  365 |     default:\n"
+                   "      |     ^~~~~~~")
+            << OutputParserTester::STDERR
+            << QString() << QString()
+            << Tasks{compileTask(Task::Warning,
+                                 "this statement may fall through [-Wimplicit-fallthrough=]\n"
+                                 "In file included from qmlprofilerstatisticsmodel.h:31,\n"
+                                 "                 from qmlprofilerstatisticsmodel.cpp:26:\n"
+                                 "qmlprofilerstatisticsmodel.cpp: In member function ‘virtual QVariant QmlProfiler::QmlProfilerStatisticsModel::data(const QModelIndex&, int) const’:\n"
+                                 "qtcassert.h:43:34: warning: this statement may fall through [-Wimplicit-fallthrough=]\n"
+                                 "   43 | #define QTC_ASSERT(cond, action) if (Q_LIKELY(cond)) {} else { QTC_ASSERT_STRING(#cond); action; } do {} while (0)\n"
+                                 "      |                                  ^~\n"
+                                 "qtcassert.h:43:34: note: in definition of macro ‘QTC_ASSERT’\n"
+                                 "   43 | #define QTC_ASSERT(cond, action) if (Q_LIKELY(cond)) {} else { QTC_ASSERT_STRING(#cond); action; } do {} while (0)\n"
+                                 "      |                                  ^~\n"
+                                 "qmlprofilerstatisticsmodel.cpp:365:5: note: here\n"
+                                 "  365 |     default:\n"
+                                 "      |     ^~~~~~~",
+                                 FilePath::fromUserInput("qmlprofilerstatisticsmodel.cpp"), 365, 5, {})}
             << QString();
 
     QTest::newRow("cc1plus")

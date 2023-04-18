@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -32,13 +10,13 @@
 #include <utils/dropsupport.h>
 #include <previewtooltip/previewtooltipbackend.h>
 
-#include <QFrame>
-#include <QToolButton>
 #include <QFileIconProvider>
-#include <QQuickWidget>
-#include <QQmlPropertyMap>
-#include <QTimer>
+#include <QFrame>
 #include <QPointF>
+#include <QQmlPropertyMap>
+#include <QQuickWidget>
+#include <QTimer>
+#include <QToolButton>
 
 #include <memory>
 
@@ -56,7 +34,6 @@ class Model;
 class ItemLibraryModel;
 class ItemLibraryAddImportModel;
 class ItemLibraryResourceView;
-class SynchronousImageCache;
 class AsynchronousImageCache;
 class ImageCacheCollector;
 
@@ -67,17 +44,16 @@ class ItemLibraryWidget : public QFrame
 public:
     Q_PROPERTY(bool subCompEditMode READ subCompEditMode NOTIFY subCompEditModeChanged)
 
-    ItemLibraryWidget(AsynchronousImageCache &imageCache,
-                      AsynchronousImageCache &asynchronousFontImageCache,
-                      SynchronousImageCache &synchronousFontImageCache);
+    ItemLibraryWidget(AsynchronousImageCache &imageCache);
     ~ItemLibraryWidget();
 
     void setItemLibraryInfo(ItemLibraryInfo *itemLibraryInfo);
     QList<QToolButton *> createToolBarWidgets();
 
     static QString qmlSourcesPath();
-    void clearSearchFilter();
 
+    void clearSearchFilter();
+    void switchToComponentsView();
     void delayedUpdateModel();
     void updateModel();
     void updatePossibleImports(const QList<Import> &possibleImports);
@@ -93,7 +69,7 @@ public:
     Q_INVOKABLE void startDragAndDrop(const QVariant &itemLibEntry, const QPointF &mousePos);
     Q_INVOKABLE void removeImport(const QString &importUrl);
     Q_INVOKABLE void addImportForItem(const QString &importUrl);
-    Q_INVOKABLE void handleSearchfilterChanged(const QString &filterText);
+    Q_INVOKABLE void handleSearchFilterChanged(const QString &filterText);
     Q_INVOKABLE void handleAddImport(int index);
     Q_INVOKABLE void goIntoComponent(const QString &source);
 
@@ -115,7 +91,6 @@ private:
     QTimer m_compressionTimer;
     QSize m_itemIconSize;
 
-    SynchronousImageCache &m_fontImageCache;
     QPointer<ItemLibraryInfo> m_itemLibraryInfo;
 
     QPointer<ItemLibraryModel> m_itemLibraryModel;

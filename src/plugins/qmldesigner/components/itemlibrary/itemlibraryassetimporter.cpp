@@ -1,42 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "itemlibraryassetimporter.h"
 #include "assetimportupdatedialog.h"
 #include "qmldesignerplugin.h"
 #include "qmldesignerconstants.h"
 
-#include "rewriterview.h"
+#include "documentmanager.h"
+#include "externaldependenciesinterface.h"
 #include "model.h"
-#include "puppetcreator.h"
+#include "puppetstarter.h"
 #include "rewritertransaction.h"
+#include "rewriterview.h"
 #include "rewritingexception.h"
+#include "viewmanager.h"
 
 #include <qmljs/qmljsmodelmanagerinterface.h>
 
 #include <utils/algorithm.h>
 #include <utils/runextensions.h>
+#include <utils/qtcassert.h>
 
 #include <QApplication>
 #include <QDir>
@@ -90,21 +72,16 @@ void ItemLibraryAssetImporter::importQuick3D(const QStringList &inputFiles,
 
     if (!isCancelled()) {
         const auto parseData = m_parseData;
-        for (const auto &pd : parseData) {
-            if (!startImportProcess(pd)) {
-                addError(tr("Failed to start import 3D asset process."),
-                         pd.sourceInfo.absoluteFilePath());
-                m_parseData.remove(pd.importId);
-            }
-        }
+        for (const auto &pd : parseData)
+            m_puppetQueue.append(pd.importId);
+        startNextImportProcess();
     }
 
     if (!isCancelled()) {
         // Wait for puppet processes to finish
-        if (m_qmlPuppetProcesses.empty()) {
+        if (m_puppetQueue.isEmpty() && !m_puppetProcess) {
             postImport();
         } else {
-            m_qmlPuppetCount = static_cast<int>(m_qmlPuppetProcesses.size());
             const QString progressTitle = tr("Importing 3D assets.");
             addInfo(progressTitle);
             notifyProgress(0, progressTitle);
@@ -142,21 +119,13 @@ void ItemLibraryAssetImporter::addInfo(const QString &infoMsg, const QString &sr
     emit infoReported(infoMsg, srcPath);
 }
 
-void ItemLibraryAssetImporter::importProcessFinished(int exitCode, QProcess::ExitStatus exitStatus,
-                                                     int importId)
+void ItemLibraryAssetImporter::importProcessFinished([[maybe_unused]] int exitCode,
+                                                     QProcess::ExitStatus exitStatus)
 {
-    Q_UNUSED(exitCode)
+    m_puppetProcess.reset();
 
-    ++m_qmlImportFinishedCount;
-
-    m_qmlPuppetProcesses.erase(
-        std::remove_if(m_qmlPuppetProcesses.begin(), m_qmlPuppetProcesses.end(),
-                       [&](const auto &entry) {
-        return !entry || entry->state() == QProcess::NotRunning;
-    }));
-
-    if (m_parseData.contains(importId)) {
-        const ParseData &pd = m_parseData[importId];
+    if (m_parseData.contains(m_currentImportId)) {
+        const ParseData &pd = m_parseData[m_currentImportId];
         QString errStr;
         if (exitStatus == QProcess::ExitStatus::CrashExit) {
             errStr = tr("Import process crashed.");
@@ -179,34 +148,36 @@ void ItemLibraryAssetImporter::importProcessFinished(int exitCode, QProcess::Exi
             addError(tr("Asset import process failed: \"%1\".")
                      .arg(pd.sourceInfo.absoluteFilePath()));
             addError(errStr);
-            m_parseData.remove(importId);
+            m_parseData.remove(m_currentImportId);
         }
     }
 
-    if (m_qmlImportFinishedCount == m_qmlPuppetCount) {
+    int finishedCount = m_parseData.size() - m_puppetQueue.size();
+    if (!m_puppetQueue.isEmpty())
+        startNextImportProcess();
+
+    if (m_puppetQueue.isEmpty() && !m_puppetProcess) {
         notifyProgress(100);
         QTimer::singleShot(0, this, &ItemLibraryAssetImporter::postImport);
     } else {
-        notifyProgress(int(100. * (double(m_qmlImportFinishedCount) / double(m_qmlPuppetCount))));
+        notifyProgress(int(100. * (double(finishedCount) / double(m_parseData.size()))));
     }
 }
 
-void ItemLibraryAssetImporter::iconProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
+void ItemLibraryAssetImporter::iconProcessFinished([[maybe_unused]] int exitCode,
+                                                   [[maybe_unused]] QProcess::ExitStatus exitStatus)
 {
-    Q_UNUSED(exitCode)
-    Q_UNUSED(exitStatus)
+    m_puppetProcess.reset();
 
-    m_qmlPuppetProcesses.erase(
-        std::remove_if(m_qmlPuppetProcesses.begin(), m_qmlPuppetProcesses.end(),
-                       [&](const auto &entry) {
-        return !entry || entry->state() == QProcess::NotRunning;
-    }));
+    int finishedCount = m_parseData.size() - m_puppetQueue.size();
+    if (!m_puppetQueue.isEmpty())
+        startNextIconProcess();
 
-    if (m_qmlPuppetProcesses.empty()) {
+    if (m_puppetQueue.isEmpty() && !m_puppetProcess) {
         notifyProgress(100);
         QTimer::singleShot(0, this, &ItemLibraryAssetImporter::finalizeQuick3DImport);
     } else {
-        notifyProgress(int(100. * (1. - (double(m_qmlPuppetProcesses.size()) / double(m_qmlPuppetCount)))));
+        notifyProgress(int(100. * (double(finishedCount) / double(m_parseData.size()))));
     }
 }
 
@@ -225,11 +196,11 @@ void ItemLibraryAssetImporter::reset()
     m_tempDir = new QTemporaryDir;
     m_importFiles.clear();
     m_overwrittenImports.clear();
-    m_qmlPuppetProcesses.clear();
-    m_qmlPuppetCount = 0;
-    m_qmlImportFinishedCount = 0;
+    m_puppetProcess.reset();
     m_parseData.clear();
     m_requiredImports.clear();
+    m_currentImportId = 0;
+    m_puppetQueue.clear();
 }
 
 void ItemLibraryAssetImporter::parseFiles(const QStringList &filePaths,
@@ -351,7 +322,7 @@ bool ItemLibraryAssetImporter::preParseQuick3DAsset(const QString &file, ParseDa
     return true;
 }
 
-void ItemLibraryAssetImporter::postParseQuick3DAsset(const ParseData &pd)
+void ItemLibraryAssetImporter::postParseQuick3DAsset(ParseData &pd)
 {
     QDir outDir = pd.outDir;
     if (pd.originalAssetName != pd.assetName) {
@@ -401,7 +372,6 @@ void ItemLibraryAssetImporter::postParseQuick3DAsset(const ParseData &pd)
                     qmlInfo.append(outDir.relativeFilePath(qmlIt.filePath()));
                     qmlInfo.append('\n');
 
-                    // Generate item library icon for qml file based on root component
                     QFile qmlFile(qmlIt.filePath());
                     if (qmlFile.open(QIODevice::ReadOnly)) {
                         QString iconFileName = outDir.path() + '/'
@@ -410,6 +380,8 @@ void ItemLibraryAssetImporter::postParseQuick3DAsset(const ParseData &pd)
                         QString iconFileName2x = iconFileName + "@2x";
                         QByteArray content = qmlFile.readAll();
                         int braceIdx = content.indexOf('{');
+                        QString impVersionStr;
+                        int impVersionMajor = -1;
                         if (braceIdx != -1) {
                             int nlIdx = content.lastIndexOf('\n', braceIdx);
                             QByteArray rootItem = content.mid(nlIdx, braceIdx - nlIdx).trimmed();
@@ -423,8 +395,9 @@ void ItemLibraryAssetImporter::postParseQuick3DAsset(const ParseData &pd)
                                 out << "canBeDroppedInView3D: true" << Qt::endl;
                                 file.close();
 
-                                // Add quick3D import unless it is already added
-                                if (m_requiredImports.first().url() != "QtQuick3D") {
+                                // Assume that all assets import the same QtQuick3D version,
+                                // since they are being imported with same kit
+                                if (impVersionMajor == -1) {
                                     QByteArray import3dStr{"import QtQuick3D"};
                                     int importIdx = content.indexOf(import3dStr);
                                     if (importIdx != -1 && importIdx < braceIdx) {
@@ -433,15 +406,27 @@ void ItemLibraryAssetImporter::postParseQuick3DAsset(const ParseData &pd)
                                         QByteArray versionStr = content.mid(importIdx, nlIdx - importIdx).trimmed();
                                         // There could be 'as abc' after version, so just take first part
                                         QList<QByteArray> parts = versionStr.split(' ');
-                                        QString impVersion;
-                                        if (parts.size() >= 1)
-                                            impVersion = QString::fromUtf8(parts[0]);
-                                        m_requiredImports.prepend(Import::createLibraryImport(
-                                                                     "QtQuick3D", impVersion));
+                                        if (parts.size() >= 1) {
+                                            impVersionStr = QString::fromUtf8(parts[0]);
+                                            if (impVersionStr.isEmpty())
+                                                impVersionMajor = 6;
+                                            else
+                                                impVersionMajor = impVersionStr.left(1).toInt();
+                                        }
                                     }
                                 }
+
+                                // Add quick3D import unless it is already added
+                                if (impVersionMajor > 0
+                                    && m_requiredImports.first().url() != "QtQuick3D") {
+                                    m_requiredImports.prepend(Import::createLibraryImport(
+                                                                 "QtQuick3D", impVersionStr));
+                                }
                             }
-                            if (startIconProcess(24, iconFileName, qmlIt.filePath())) {
+                            if (impVersionMajor > 0 && impVersionMajor < 6) {
+                                pd.iconFile = iconFileName;
+                                pd.iconSource = qmlIt.filePath();
+                                m_puppetQueue.append(pd.importId);
                                 // Since icon is generated by external process, the file won't be
                                 // ready for asset gathering below, so assume its generation succeeds
                                 // and add it now.
@@ -516,7 +501,7 @@ void ItemLibraryAssetImporter::copyImportedFiles()
         notifyProgress(0, progressTitle);
 
         int counter = 0;
-        for (const auto &assetFiles : qAsConst(m_importFiles)) {
+        for (const auto &assetFiles : std::as_const(m_importFiles)) {
             // Only increase progress between entire assets instead of individual files, because
             // progress notify leads to processEvents call, which can lead to various filesystem
             // watchers triggering while library is still incomplete, leading to inconsistent model.
@@ -577,84 +562,99 @@ ItemLibraryAssetImporter::OverwriteResult ItemLibraryAssetImporter::confirmAsset
     return OverwriteResult::Skip;
 }
 
-bool ItemLibraryAssetImporter::startImportProcess(const ParseData &pd)
+void ItemLibraryAssetImporter::startNextImportProcess()
 {
+    if (m_puppetQueue.isEmpty())
+        return;
+
+    auto view = QmlDesignerPlugin::viewManager().view();
     auto doc = QmlDesignerPlugin::instance()->currentDesignDocument();
     Model *model = doc ? doc->currentModel() : nullptr;
 
-    if (model) {
-        PuppetCreator puppetCreator(doc->currentTarget(), model);
-        puppetCreator.createQml2PuppetExecutableIfMissing();
-        QStringList puppetArgs;
-        QJsonDocument optDoc(pd.options);
+    if (model && view) {
+        bool done = false;
+        while (!m_puppetQueue.isEmpty() && !done) {
+            const ParseData pd = m_parseData.value(m_puppetQueue.takeLast());
+            QStringList puppetArgs;
+            QJsonDocument optDoc(pd.options);
 
-        puppetArgs << "--import3dAsset" << pd.sourceInfo.absoluteFilePath()
-                   << pd.outDir.absolutePath() << QString::fromUtf8(optDoc.toJson());
+            puppetArgs << "--import3dAsset" << pd.sourceInfo.absoluteFilePath()
+                       << pd.outDir.absolutePath() << QString::fromUtf8(optDoc.toJson());
 
-        QProcessUniquePointer process = puppetCreator.createPuppetProcess(
-            "custom",
-            {},
-            [&] {},
-            [&](int exitCode, QProcess::ExitStatus exitStatus) {
-                importProcessFinished(exitCode, exitStatus, pd.importId);
-            },
-            puppetArgs);
+            m_currentImportId = pd.importId;
+            m_puppetProcess = PuppetStarter::createPuppetProcess(
+                view->externalDependencies().puppetStartData(*model),
+                "custom",
+                {},
+                [&] {},
+                [&](int exitCode, QProcess::ExitStatus exitStatus) {
+                    importProcessFinished(exitCode, exitStatus);
+                },
+                puppetArgs);
 
-        if (process->waitForStarted(5000)) {
-            m_qmlPuppetProcesses.push_back(std::move(process));
-            return true;
-        } else {
-            process.reset();
+            if (m_puppetProcess->waitForStarted(10000)) {
+                done = true;
+            } else {
+                addError(tr("Failed to start import 3D asset process."),
+                         pd.sourceInfo.absoluteFilePath());
+                m_parseData.remove(pd.importId);
+                m_puppetProcess.reset();
+            }
         }
     }
-    return false;
 }
 
-bool ItemLibraryAssetImporter::startIconProcess(int size, const QString &iconFile,
-                                                const QString &iconSource)
+void ItemLibraryAssetImporter::startNextIconProcess()
 {
+    if (m_puppetQueue.isEmpty())
+        return;
+
+    auto view = QmlDesignerPlugin::viewManager().view();
     auto doc = QmlDesignerPlugin::instance()->currentDesignDocument();
     Model *model = doc ? doc->currentModel() : nullptr;
 
-    if (model) {
-        PuppetCreator puppetCreator(doc->currentTarget(), model);
-        puppetCreator.createQml2PuppetExecutableIfMissing();
-        QStringList puppetArgs;
-        puppetArgs << "--rendericon" << QString::number(size) << iconFile << iconSource;
-        QProcessUniquePointer process = puppetCreator.createPuppetProcess(
-            "custom",
-            {},
-            [&] {},
-            [&](int exitCode, QProcess::ExitStatus exitStatus) {
-                iconProcessFinished(exitCode, exitStatus);
-            },
-            puppetArgs);
+    if (model && view) {
+        bool done = false;
+        while (!m_puppetQueue.isEmpty() && !done) {
+            const ParseData pd = m_parseData.value(m_puppetQueue.takeLast());
+            QStringList puppetArgs;
+            puppetArgs << "--rendericon" << QString::number(24) << pd.iconFile << pd.iconSource;
+            m_puppetProcess = PuppetStarter::createPuppetProcess(
+                view->externalDependencies().puppetStartData(*model),
+                "custom",
+                {},
+                [&] {},
+                [&](int exitCode, QProcess::ExitStatus exitStatus) {
+                    iconProcessFinished(exitCode, exitStatus);
+                },
+                puppetArgs);
 
-        if (process->waitForStarted(5000)) {
-            m_qmlPuppetProcesses.push_back(std::move(process));
-            return true;
-        } else {
-            process.reset();
+            if (m_puppetProcess->waitForStarted(10000)) {
+                done = true;
+            } else {
+                addError(tr("Failed to start icon generation process."),
+                         pd.sourceInfo.absoluteFilePath());
+                m_puppetProcess.reset();
+            }
         }
     }
-    return false;
 }
 
 void ItemLibraryAssetImporter::postImport()
 {
-    Q_ASSERT(m_qmlPuppetProcesses.empty());
+    QTC_ASSERT(m_puppetQueue.isEmpty() && !m_puppetProcess, return);
 
     if (!isCancelled()) {
-        for (const auto &pd : qAsConst(m_parseData))
+        for (auto &pd : m_parseData)
             postParseQuick3DAsset(pd);
+        startNextIconProcess();
     }
 
     if (!isCancelled()) {
         // Wait for icon generation processes to finish
-        if (m_qmlPuppetProcesses.empty()) {
+        if (m_puppetQueue.isEmpty() && !m_puppetProcess) {
             finalizeQuick3DImport();
         } else {
-            m_qmlPuppetCount = static_cast<int>(m_qmlPuppetProcesses.size());
             const QString progressTitle = tr("Generating icons.");
             addInfo(progressTitle);
             notifyProgress(0, progressTitle);
@@ -697,6 +697,7 @@ void ItemLibraryAssetImporter::finalizeQuick3DImport()
             QTimer *timer = new QTimer(parent());
             static int counter;
             counter = 0;
+
             timer->callOnTimeout([this, timer, progressTitle, model, result]() {
                 if (!isCancelled()) {
                     notifyProgress(++counter, progressTitle);
@@ -704,6 +705,7 @@ void ItemLibraryAssetImporter::finalizeQuick3DImport()
                         if (result.isCanceled() || result.isFinished())
                             counter = 49; // skip to next step
                     } else if (counter == 50) {
+                        QmlDesignerPlugin::instance()->documentManager().resetPossibleImports();
                         model->rewriterView()->textModifier()->replace(0, 0, {});
                     } else if (counter < 100) {
                         try {
@@ -711,7 +713,7 @@ void ItemLibraryAssetImporter::finalizeQuick3DImport()
                             const QList<Import> currentImports = model->imports();
                             QList<Import> newImportsToAdd;
 
-                            for (auto &imp : qAsConst(m_requiredImports)) {
+                            for (auto &imp : std::as_const(m_requiredImports)) {
                                 const bool isPos = Utils::contains(posImports, [imp](const Import &posImp) {
                                     return posImp.url() == imp.url();
                                 });

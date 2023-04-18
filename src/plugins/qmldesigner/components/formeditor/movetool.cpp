@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "movetool.h"
 
@@ -69,7 +47,8 @@ void MoveTool::clear()
     m_contentNotEditableIndicator.clear();
 
     AbstractFormEditorTool::clear();
-    view()->formEditorWidget()->graphicsView()->viewport()->unsetCursor();
+    if (view()->formEditorWidget()->graphicsView())
+        view()->formEditorWidget()->graphicsView()->viewport()->unsetCursor();
 }
 
 void MoveTool::start()
@@ -271,7 +250,7 @@ void MoveTool::mouseDoubleClickEvent(const QList<QGraphicsItem*> &itemList, QGra
 
 void MoveTool::itemsAboutToRemoved(const QList<FormEditorItem*> &removedItemList)
 {
-    foreach (FormEditorItem* removedItem, removedItemList)
+    for (FormEditorItem* removedItem : removedItemList)
         m_movingItems.removeOne(removedItem);
 }
 
@@ -304,7 +283,7 @@ bool MoveTool::haveSameParent(const QList<FormEditorItem*> &itemList)
         return false;
 
     QGraphicsItem *firstParent = itemList.constFirst()->parentItem();
-    foreach (FormEditorItem* item, itemList)
+    for (FormEditorItem* item : itemList)
     {
         if (firstParent != item->parentItem())
             return false;
@@ -316,7 +295,7 @@ bool MoveTool::haveSameParent(const QList<FormEditorItem*> &itemList)
 bool MoveTool::isAncestorOfAllItems(FormEditorItem* maybeAncestorItem,
                                     const QList<FormEditorItem*> &itemList)
 {
-    foreach (FormEditorItem* item, itemList)
+    for (FormEditorItem* item : itemList)
     {
         if (!maybeAncestorItem->isAncestorOf(item) && item != maybeAncestorItem)
             return false;
@@ -332,7 +311,7 @@ FormEditorItem* MoveTool::ancestorIfOtherItemsAreChild(const QList<FormEditorIte
         return nullptr;
 
 
-    foreach (FormEditorItem* item, itemList)
+    for (FormEditorItem* item : itemList)
     {
         if (isAncestorOfAllItems(item, itemList))
             return item;

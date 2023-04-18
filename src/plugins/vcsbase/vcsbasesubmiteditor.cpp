@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "vcsbasesubmiteditor.h"
 
@@ -32,6 +10,7 @@
 #include "submitfieldwidget.h"
 #include "submitfilemodel.h"
 #include "vcsbaseplugin.h"
+#include "vcsbasetr.h"
 #include "vcsoutputwindow.h"
 #include "vcsplugin.h"
 
@@ -64,7 +43,6 @@
 #include <QFileInfo>
 #include <QPointer>
 #include <QProcess>
-#include <QPushButton>
 #include <QSet>
 #include <QStringListModel>
 #include <QStyle>
@@ -77,7 +55,6 @@
 #include <cstring>
 
 enum { debug = 0 };
-enum { wantToolBar = 0 };
 
 // Return true if word is meaningful and can be added to a completion model
 static bool acceptsWordForCompletion(const QString &word)
@@ -138,7 +115,6 @@ public:
                                VcsBaseSubmitEditor *q);
 
     SubmitEditorWidget *m_widget;
-    QToolBar *m_toolWidget = nullptr;
     VcsBaseSubmitEditorParameters m_parameters;
     QString m_displayName;
     FilePath m_checkScriptWorkingDirectory;
@@ -148,6 +124,7 @@ public:
     QPointer<QAction> m_submitAction;
 
     NickNameDialog *m_nickNameDialog = nullptr;
+    bool m_disablePrompt = false;
 };
 
 VcsBaseSubmitEditorPrivate::VcsBaseSubmitEditorPrivate(SubmitEditorWidget *editorWidget,
@@ -174,7 +151,7 @@ void VcsBaseSubmitEditor::setParameters(const VcsBaseSubmitEditorParameters &par
     d->m_file.setMimeType(QLatin1String(parameters.mimeType));
 
     setWidget(d->m_widget);
-    document()->setPreferredDisplayName(QCoreApplication::translate("VCS", d->m_parameters.displayName));
+    document()->setPreferredDisplayName(Tr::tr(d->m_parameters.displayName));
 
     // Message font according to settings
     CompletingTextEdit *descriptionEdit = d->m_widget->descriptionEdit();
@@ -208,14 +185,14 @@ void VcsBaseSubmitEditor::setParameters(const VcsBaseSubmitEditorParameters &par
         d->m_widget->addDescriptionEditContextMenuAction(sep);
         // Run check action
         if (!settings.submitMessageCheckScript.value().isEmpty()) {
-            auto checkAction = new QAction(tr("Check Message"), this);
+            auto checkAction = new QAction(Tr::tr("Check Message"), this);
             connect(checkAction, &QAction::triggered,
                     this, &VcsBaseSubmitEditor::slotCheckSubmitMessage);
             d->m_widget->addDescriptionEditContextMenuAction(checkAction);
         }
         // Insert nick
         if (!settings.nickNameMailMap.value().isEmpty()) {
-            auto insertAction = new QAction(tr("Insert Name..."), this);
+            auto insertAction = new QAction(Tr::tr("Insert Name..."), this);
             connect(insertAction, &QAction::triggered, this, &VcsBaseSubmitEditor::slotInsertNickName);
             d->m_widget->addDescriptionEditContextMenuAction(insertAction);
         }
@@ -229,7 +206,7 @@ void VcsBaseSubmitEditor::setParameters(const VcsBaseSubmitEditorParameters &par
     connect(VcsPlugin::instance(), &VcsPlugin::settingsChanged,
             this, &VcsBaseSubmitEditor::slotUpdateEditorSettings);
     connect(Core::EditorManager::instance(), &Core::EditorManager::currentEditorChanged,
-            this, [this]() {
+            this, [this] {
                 if (Core::EditorManager::currentEditor() == this)
                     updateFileModel();
             });
@@ -246,7 +223,6 @@ void VcsBaseSubmitEditor::setParameters(const VcsBaseSubmitEditorParameters &par
 
 VcsBaseSubmitEditor::~VcsBaseSubmitEditor()
 {
-    delete d->m_toolWidget;
     delete d->m_widget;
     delete d;
 }
@@ -263,7 +239,7 @@ static inline QStringList fieldTexts(const QString &fileContents)
 {
     QStringList rc;
     const QStringList rawFields = fileContents.trimmed().split(QLatin1Char('\n'));
-    foreach (const QString &field, rawFields) {
+    for (const QString &field : rawFields) {
         const QString trimmedField = field.trimmed();
         if (!trimmedField.isEmpty())
             rc.push_back(trimmedField);
@@ -350,46 +326,14 @@ Core::IDocument *VcsBaseSubmitEditor::document() const
     return &d->m_file;
 }
 
-QString VcsBaseSubmitEditor::checkScriptWorkingDirectory() const
+FilePath VcsBaseSubmitEditor::checkScriptWorkingDirectory() const
 {
-    return d->m_checkScriptWorkingDirectory.toString();
+    return d->m_checkScriptWorkingDirectory;
 }
 
 void VcsBaseSubmitEditor::setCheckScriptWorkingDirectory(const FilePath &s)
 {
     d->m_checkScriptWorkingDirectory = s;
-}
-
-static QToolBar *createToolBar(const QWidget *someWidget, QAction *submitAction, QAction *diffAction)
-{
-    // Create
-    auto toolBar = new QToolBar;
-    toolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    const int size = someWidget->style()->pixelMetric(QStyle::PM_SmallIconSize);
-    toolBar->setIconSize(QSize(size, size));
-    toolBar->addSeparator();
-
-    if (submitAction)
-        toolBar->addAction(submitAction);
-    if (diffAction)
-        toolBar->addAction(diffAction);
-    return toolBar;
-}
-
-QWidget *VcsBaseSubmitEditor::toolBar()
-{
-    if (!wantToolBar)
-        return nullptr;
-
-    if (d->m_toolWidget)
-        return d->m_toolWidget;
-
-    if (!d->m_diffAction && !d->m_submitAction)
-        return nullptr;
-
-    // Create
-    d->m_toolWidget = createToolBar(d->m_widget, d->m_submitAction, d->m_diffAction);
-    return d->m_toolWidget;
 }
 
 QStringList VcsBaseSubmitEditor::checkedFiles() const
@@ -402,8 +346,7 @@ static QSet<FilePath> filesFromModel(SubmitFileModel *model)
     QSet<FilePath> result;
     result.reserve(model->rowCount());
     for (int row = 0; row < model->rowCount(); ++row) {
-        result.insert(FilePath::fromString(
-            QFileInfo(model->repositoryRoot(), model->file(row)).absoluteFilePath()));
+        result.insert(model->repositoryRoot().resolvePath(model->file(row)).absoluteFilePath());
     }
     return result;
 }
@@ -501,94 +444,55 @@ void VcsBaseSubmitEditor::setDescriptionMandatory(bool v)
 
 enum { checkDialogMinimumWidth = 500 };
 
-static QString withUnusedMnemonic(QString string, const QList<QPushButton *> &otherButtons)
+void VcsBaseSubmitEditor::accept(VcsBasePluginPrivate *plugin)
 {
-    QSet<QChar> mnemonics;
-    for (QPushButton *button : otherButtons) {
-        const QString text = button->text();
-        const int ampersandPos = text.indexOf('&');
-        if (ampersandPos >= 0 && ampersandPos < text.size() - 1)
-            mnemonics.insert(text.at(ampersandPos + 1));
-    }
-    for (int i = 0, total = string.length(); i < total; ++i) {
-        if (!mnemonics.contains(string.at(i)))
-            return string.insert(i, '&');
-    }
-    return string;
-}
-
-VcsBaseSubmitEditor::PromptSubmitResult
-        VcsBaseSubmitEditor::promptSubmit(VcsBasePluginPrivate *plugin,
-                                          bool *promptSettingOld,
-                                          bool forcePrompt,
-                                          bool canCommitOnFailure,
-                                          BoolAspect *promptSetting)
-{
-    BoolAspect dummySetting;
-    if (!promptSetting && !promptSettingOld)
-        promptSetting = &dummySetting;
     auto submitWidget = static_cast<SubmitEditorWidget *>(this->widget());
 
     Core::EditorManager::activateEditor(this, Core::EditorManager::IgnoreNavigationHistory);
 
-    if (!submitWidget->isEnabled())
-        return SubmitDiscarded;
-
     QString errorMessage;
+    const bool canCommit = checkSubmitMessage(&errorMessage) && submitWidget->canSubmit(&errorMessage);
+    if (!canCommit) {
+        VcsOutputWindow::appendError(
+                    Tr::tr("Cannot %1%2.",
+                       "%2 is an optional error message with ': ' prefix. Don't add space in front.")
+                    .arg(plugin->commitDisplayName().toLower(),
+                         errorMessage.isEmpty() ? errorMessage : ": " + errorMessage));
+    } else if (plugin->activateCommit()) {
+        close();
+    }
+}
 
-    const bool value = promptSettingOld ? *promptSettingOld : promptSetting->value();
-    const bool prompt = forcePrompt || value;
+void VcsBaseSubmitEditor::close()
+{
+    d->m_disablePrompt = true;
+    Core::EditorManager::closeDocuments({document()});
+}
 
-    // Pop up a message depending on whether the check succeeded and the
-    // user wants to be prompted
-    bool canCommit = checkSubmitMessage(&errorMessage) && submitWidget->canSubmit(&errorMessage);
-    if (canCommit && !prompt)
-        return SubmitConfirmed;
-    CheckableMessageBox mb(Core::ICore::dialogParent());
+bool VcsBaseSubmitEditor::promptSubmit(VcsBasePluginPrivate *plugin)
+{
+    if (d->m_disablePrompt)
+        return true;
+
+    Core::EditorManager::activateEditor(this, Core::EditorManager::IgnoreNavigationHistory);
+
+    auto submitWidget = static_cast<SubmitEditorWidget *>(this->widget());
+    if (!submitWidget->isEnabled() || !submitWidget->isEdited())
+        return true;
+
     const QString commitName = plugin->commitDisplayName();
-    mb.setWindowTitle(tr("Close %1 %2 Editor").arg(plugin->displayName(), commitName));
-    mb.setIcon(QMessageBox::Question);
-    QString message;
-    if (canCommit) {
-        message = tr("What do you want to do with these changes?");
-    } else {
-        message = tr("Cannot %1%2.\nWhat do you want to do?",
-                     "%2 is an optional error message with ': ' prefix. Don't add space in front.")
-                .arg(commitName.toLower(),
-                     errorMessage.isEmpty() ? errorMessage : ": " + errorMessage);
-    }
-    mb.setText(message);
-    mb.setCheckBoxText(tr("Prompt to %1").arg(commitName.toLower()));
-    mb.setChecked(value);
-    // Provide check box to turn off prompt ONLY if it was not forced
-    mb.setCheckBoxVisible(value && !forcePrompt);
-    QDialogButtonBox::StandardButtons buttons = QDialogButtonBox::Close | QDialogButtonBox::Cancel;
-    if (canCommit || canCommitOnFailure)
-        buttons |= QDialogButtonBox::Ok;
-    mb.setStandardButtons(buttons);
-    QPushButton *cancelButton = mb.button(QDialogButtonBox::Cancel);
+    QMessageBox mb(Core::ICore::dialogParent());
+    mb.setWindowTitle(Tr::tr("Close %1 %2 Editor").arg(plugin->displayName(), commitName));
+    mb.setIcon(QMessageBox::Warning);
+    mb.setText(Tr::tr("Closing this editor will abort the %1.")
+                   .arg(commitName.toLower()));
+    mb.setStandardButtons(QMessageBox::Close | QMessageBox::Cancel);
     // On Windows there is no mnemonic for Close. Set it explicitly.
-    mb.button(QDialogButtonBox::Close)->setText(tr("&Close"));
-    cancelButton->setText(tr("&Keep Editing"));
-    // forcePrompt is true when the editor is closed, and false when triggered by the submit action
-    if (forcePrompt)
-        cancelButton->setDefault(true);
-    if (QPushButton *commitButton = mb.button(QDialogButtonBox::Ok)) {
-        commitButton->setText(withUnusedMnemonic(commitName,
-                              {cancelButton, mb.button(QDialogButtonBox::Close)}));
-    }
-    if (mb.exec() == QDialog::Accepted) {
-        if (promptSettingOld)
-            *promptSettingOld = mb.isChecked();
-        else
-            promptSetting->setValue(mb.isChecked());
-    }
-    QAbstractButton *chosen = mb.clickedButton();
-    if (!chosen || chosen == cancelButton)
-        return SubmitCanceled;
-    if (chosen == mb.button(QDialogButtonBox::Close))
-        return SubmitDiscarded;
-    return SubmitConfirmed;
+    mb.button(QMessageBox::Close)->setText(Tr::tr("&Close"));
+    mb.button(QMessageBox::Cancel)->setText(Tr::tr("&Keep Editing"));
+    mb.setDefaultButton(QMessageBox::Cancel);
+    mb.exec();
+    return mb.result() == QMessageBox::Close;
 }
 
 QString VcsBaseSubmitEditor::promptForNickName()
@@ -620,7 +524,7 @@ void VcsBaseSubmitEditor::slotCheckSubmitMessage()
 {
     QString errorMessage;
     if (!checkSubmitMessage(&errorMessage)) {
-        QMessageBox msgBox(QMessageBox::Warning, tr("Submit Message Check Failed"),
+        QMessageBox msgBox(QMessageBox::Warning, Tr::tr("Submit Message Check Failed"),
                            errorMessage, QMessageBox::Ok, d->m_widget);
         msgBox.setMinimumWidth(checkDialogMinimumWidth);
         msgBox.exec();
@@ -642,15 +546,15 @@ static QString msgCheckScript(const FilePath &workingDir, const QString &cmd)
 {
     const QString nativeCmd = QDir::toNativeSeparators(cmd);
     return workingDir.isEmpty() ?
-           VcsBaseSubmitEditor::tr("Executing %1").arg(nativeCmd) :
-           VcsBaseSubmitEditor::tr("Executing [%1] %2").
+           Tr::tr("Executing %1").arg(nativeCmd) :
+           Tr::tr("Executing [%1] %2").
            arg(workingDir.toUserOutput(), nativeCmd);
 }
 
 bool VcsBaseSubmitEditor::runSubmitMessageCheckScript(const QString &checkScript, QString *errorMessage) const
 {
     // Write out message
-    TempFileSaver saver(Utils::TemporaryDirectory::masterDirectoryPath() + "/msgXXXXXX.txt");
+    TempFileSaver saver(TemporaryDirectory::masterDirectoryPath() + "/msgXXXXXX.txt");
     saver.write(fileContents());
     if (!saver.finalize(errorMessage))
         return false;
@@ -662,39 +566,19 @@ bool VcsBaseSubmitEditor::runSubmitMessageCheckScript(const QString &checkScript
         checkProcess.setWorkingDirectory(d->m_checkScriptWorkingDirectory);
     checkProcess.setCommand({FilePath::fromString(checkScript), {saver.filePath().toString()}});
     checkProcess.start();
-    if (!checkProcess.waitForStarted()) {
-        *errorMessage = tr("The check script \"%1\" could not be started: %2").arg(checkScript, checkProcess.errorString());
-        return false;
-    }
-    QByteArray stdOutData;
-    QByteArray stdErrData;
-    if (!checkProcess.readDataFromProcess(30, &stdOutData, &stdErrData, false)) {
-        checkProcess.stopProcess();
-        *errorMessage = tr("The check script \"%1\" timed out.").
-                        arg(QDir::toNativeSeparators(checkScript));
-        return false;
-    }
-    if (checkProcess.exitStatus() != QProcess::NormalExit) {
-        *errorMessage = tr("The check script \"%1\" crashed.").
-                        arg(QDir::toNativeSeparators(checkScript));
-        return false;
-    }
-    if (!stdOutData.isEmpty())
-        VcsOutputWindow::appendSilently(QString::fromLocal8Bit(stdOutData));
-    const QString stdErr = QString::fromLocal8Bit(stdErrData);
+    const bool succeeded = checkProcess.waitForFinished();
+
+    const QString stdOut = checkProcess.stdOut();
+    if (!stdOut.isEmpty())
+        VcsOutputWindow::appendSilently(stdOut);
+    const QString stdErr = checkProcess.stdErr();
     if (!stdErr.isEmpty())
         VcsOutputWindow::appendSilently(stdErr);
-    const int exitCode = checkProcess.exitCode();
-    if (exitCode != 0) {
-        const QString exMessage = tr("The check script returned exit code %1.").
-                                  arg(exitCode);
-        VcsOutputWindow::appendError(exMessage);
-        *errorMessage = stdErr;
-        if (errorMessage->isEmpty())
-            *errorMessage = exMessage;
-        return false;
-    }
-    return true;
+
+    if (!succeeded)
+        *errorMessage = checkProcess.exitMessage();
+
+    return succeeded;
 }
 
 QIcon VcsBaseSubmitEditor::diffIcon()
@@ -717,13 +601,12 @@ QIcon VcsBaseSubmitEditor::submitIcon()
 
 // Reduce a list of untracked files reported by a VCS down to the files
 // that are actually part of the current project(s).
-void VcsBaseSubmitEditor::filterUntrackedFilesOfProject(const QString &repositoryDirectory,
+void VcsBaseSubmitEditor::filterUntrackedFilesOfProject(const FilePath &repositoryDirectory,
                                                         QStringList *untrackedFiles)
 {
-    const QDir repoDir(repositoryDirectory);
     for (QStringList::iterator it = untrackedFiles->begin(); it != untrackedFiles->end(); ) {
-        const QString path = repoDir.absoluteFilePath(*it);
-        if (ProjectExplorer::SessionManager::projectForFile(FilePath::fromString(path)))
+        const FilePath path = repositoryDirectory.resolvePath(*it).absoluteFilePath();
+        if (ProjectExplorer::SessionManager::projectForFile(path))
             ++it;
         else
             it = untrackedFiles->erase(it);

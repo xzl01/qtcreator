@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlprofilertraceclient_test.h"
+
+#include "../qmlprofilertr.h"
 #include <qmldebug/qpacketprotocol.h>
 #include <QtTest>
 
@@ -77,9 +57,13 @@ void QmlProfilerTraceClientTest::testMessageReceived()
 
         modelManager.replayQmlEvents([&](const QmlEvent &event, const QmlEventType &type) {
             qint64 timestamp;
-            qint32 message;
-            qint32 rangeType;
+            quint8 message;
+            quint8 rangeType;
             checkStream >> timestamp >> message >> rangeType;
+            QVERIFY(message != MaximumMessage);
+            QVERIFY(rangeType != MaximumRangeType);
+            QVERIFY(type.message() != MaximumMessage);
+            QVERIFY(type.rangeType() != MaximumRangeType);
             QCOMPARE(event.timestamp(), timestamp);
             QCOMPARE(type.message(), static_cast<Message>(message));
             QCOMPARE(type.rangeType(), static_cast<RangeType>(rangeType));
@@ -88,7 +72,7 @@ void QmlProfilerTraceClientTest::testMessageReceived()
             traceClient.clear();
         }, [this, &lastError](const QString &message) {
             QVERIFY(!message.isEmpty());
-            if (lastError == QmlProfilerModelManager::tr("Read past end in temporary trace file.")) {
+            if (lastError == Tr::tr("Read past end in temporary trace file.")) {
                 // Ignore read-past-end errors: Our test traces are somewhat dirty and don't end on
                 //                              packet boundaries
                 modelManager.clearAll();

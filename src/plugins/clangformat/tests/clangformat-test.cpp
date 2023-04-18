@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangformat-test.h"
 
@@ -29,11 +7,12 @@
 
 #include <texteditor/tabsettings.h>
 #include <utils/fileutils.h>
-#include <utils/optional.h>
 
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QtTest>
+
+#include <optional>
 
 namespace ClangFormat::Internal {
 
@@ -43,7 +22,7 @@ public:
     ClangFormatTestIndenter(QTextDocument *doc) : ClangFormatBaseIndenter(doc) {}
 
 private:
-    Utils::optional<TextEditor::TabSettings> tabSettings() const override { return {}; }
+    std::optional<TextEditor::TabSettings> tabSettings() const override { return {}; }
 };
 
 class ClangFormatExtendedTestIndenter : public ClangFormatTestIndenter
@@ -52,6 +31,7 @@ public:
     ClangFormatExtendedTestIndenter(QTextDocument *doc) : ClangFormatTestIndenter(doc) {}
 
 private:
+    bool formatCodeInsteadOfIndent() const override { return true; }
     bool formatWhileTyping() const override { return true; }
 };
 
@@ -652,6 +632,96 @@ void ClangFormatTest::testClassIndentStructure()
     m_indenter->indent(*m_cursor, QChar::Null, TextEditor::TabSettings());
     QCOMPARE(documentLines(),
              (std::vector<QString>{"class test {", "    Q_OBJECT", "public:", "};"}));
+}
+
+void ClangFormatTest::testIndentInitializeVector()
+{
+    insertLines({
+        "class Test {",
+        "public:",
+        "    Test();",
+        "};",
+        "",
+        "Test::Test()",
+        "{",
+        "    QVector<int> list = {",
+        "        1,",
+        "        2,",
+        "        3,",
+        "    };",
+        "    QVector<int> list_2 = {",
+        "        1,",
+        "        2,",
+        "        3,",
+        "    };",
+        "}",
+        "",
+        "int main()",
+        "{",
+        "}"
+    });
+    m_indenter->indent(*m_cursor, QChar::Null, TextEditor::TabSettings());
+    QCOMPARE(documentLines(),
+             (std::vector<QString>{
+                 "class Test {",
+                 "public:",
+                 "    Test();",
+                 "};",
+                 "",
+                 "Test::Test()",
+                 "{",
+                 "    QVector<int> list = {",
+                 "        1,",
+                 "        2,",
+                 "        3,",
+                 "    };",
+                 "    QVector<int> list_2 = {",
+                 "        1,",
+                 "        2,",
+                 "        3,",
+                 "    };",
+                 "}",
+                 "",
+                 "int main()",
+                 "{",
+                 "}"
+             }));
+}
+
+void ClangFormatTest::testIndentFunctionArgumentOnNewLine()
+{
+    insertLines(
+        {"Bar foo(",
+         "a,",
+         ")"
+        });
+    m_indenter->indentBlock(m_doc->findBlockByNumber(1), QChar::Null, TextEditor::TabSettings());
+    QCOMPARE(documentLines(),
+             (std::vector<QString>{
+                "Bar foo(",
+                "    a,",
+                ")"
+              }));
+}
+
+void ClangFormatTest::testIndentCommentOnNewLine()
+{
+    insertLines(
+        {"/*!",
+         "    \\qmlproperty double Type::property",
+         " ",
+         "    \\brief The property of Type.",
+         "*/"
+        });
+    m_indenter->indent(*m_cursor, QChar::Null, TextEditor::TabSettings());
+    QCOMPARE(documentLines(),
+             (std::vector<QString>{
+                 "/*!",
+                 "    \\qmlproperty double Type::property",
+                 " ",
+                 "    \\brief The property of Type.",
+                 "*/"
+             }));
 }
 
 } // namespace ClangFormat::Internal

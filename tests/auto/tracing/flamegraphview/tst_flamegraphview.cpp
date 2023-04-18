@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "testflamegraphmodel.h"
 
@@ -32,6 +10,7 @@
 
 #include <QObject>
 #include <QQmlContext>
+#include <QQmlEngine>
 #include <QQuickWidget>
 #include <QtTest>
 
@@ -72,28 +51,20 @@ private:
 
 void tst_FlameGraphView::initMain()
 {
-    if (Utils::HostOsInfo::isWindowsHost()) {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
+    if (Utils::HostOsInfo::isWindowsHost())
         qputenv("QSG_RHI_BACKEND", "opengl");
-#endif // Qt >= 6.2
-    }
 }
 
 void tst_FlameGraphView::initTestCase()
 {
     model.fill();
-#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
-    qmlRegisterType<FlameGraph::FlameGraph>("QtCreator.Tracing", 1, 0, "FlameGraph");
-    qmlRegisterUncreatableType<TestFlameGraphModel>(
-                "QtCreator.TstTracingFlameGraphView", 1, 0, "TestFlameGraphModel",
-                QLatin1String("use the context property"));
-#endif // Qt < 6.2
 
+    widget.engine()->addImportPath(":/qt/qml/");
     Timeline::TimelineTheme::setupTheme(widget.engine());
 
     widget.rootContext()->setContextProperty(QStringLiteral("flameGraphModel"), &model);
     widget.setSource(QUrl(QStringLiteral(
-                              "qrc:/QtCreator/TstTracingFlameGraphView/TestFlameGraphView.qml")));
+                              "qrc:/qt/qml/QtCreator/TstTracingFlameGraphView/TestFlameGraphView.qml")));
 
     widget.setResizeMode(QQuickWidget::SizeRootObjectToView);
     widget.setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -106,26 +77,27 @@ void tst_FlameGraphView::initTestCase()
 void tst_FlameGraphView::testZoom()
 {
     auto selectedTypeId = [&]() {
-        return widget.rootObject()->property("selectedTypeId").toInt();
+        const QQuickItem *item = widget.rootObject();
+        return item ? item->property("selectedTypeId").toInt() : -1;
     };
 
     QWindow *window = widget.windowHandle();
 
     QCOMPARE(selectedTypeId(), -1);
-    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(widget.width() - 15,
-                                                                     widget.height() - 15));
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(widget.width() - 25,
+                                                                     widget.height() - 25));
     QTRY_VERIFY(selectedTypeId() != -1);
     const int typeId1 = selectedTypeId();
 
-    QTest::mouseDClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(15, widget.height() - 15));
+    QTest::mouseDClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(25, widget.height() - 25));
     QTRY_VERIFY(selectedTypeId() != typeId1);
     QVERIFY(selectedTypeId() != -1);
 
     QTest::mouseDClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(widget.width() / 2,
                                                                       widget.height() / 2));
     QTRY_COMPARE(selectedTypeId(), -1);
-    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(widget.width() - 15,
-                                                                     widget.height() - 15));
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(widget.width() - 25,
+                                                                     widget.height() - 25));
     QTRY_COMPARE(selectedTypeId(), typeId1);
 }
 

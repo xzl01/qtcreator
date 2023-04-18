@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppinsertvirtualmethods.h"
 
 #include "cppcodestylesettings.h"
+#include "cppeditortr.h"
 #include "cppquickfixassistant.h"
 #include "cpptoolsreuse.h"
 #include "functionutils.h"
@@ -68,6 +47,7 @@
 
 using namespace CPlusPlus;
 using namespace TextEditor;
+using namespace Utils;
 
 namespace CppEditor {
 namespace Internal {
@@ -218,7 +198,7 @@ ClassItem::~ClassItem()
 
 Qt::ItemFlags ClassItem::flags() const
 {
-    foreach (FunctionItem *func, functions) {
+    for (FunctionItem *func : std::as_const(functions)) {
         if (!func->alreadyFound)
             return Qt::ItemIsSelectable | Qt::ItemIsUserCheckable | Qt::ItemIsEnabled;
     }
@@ -231,7 +211,7 @@ Qt::CheckState ClassItem::checkState() const
     if (functions.isEmpty())
         return Qt::Unchecked;
     Qt::CheckState state = functions.first()->checkState();
-    foreach (FunctionItem *function, functions) {
+    for (FunctionItem *function : std::as_const(functions)) {
         Qt::CheckState functionState = function->checkState();
         if (functionState != state)
             return Qt::PartiallyChecked;
@@ -280,7 +260,7 @@ QStringList defaultOverrideReplacements()
 QStringList sortedAndTrimmedStringListWithoutEmptyElements(const QStringList &list)
 {
     QStringList result;
-    foreach (const QString &replacement, list) {
+    for (const QString &replacement : list) {
         const QString trimmedReplacement = replacement.trimmed();
         if (!trimmedReplacement.isEmpty())
             result << trimmedReplacement;
@@ -491,7 +471,7 @@ public:
                 }
             } else {
                 auto classItem = static_cast<ClassItem *>(item);
-                foreach (FunctionItem *funcItem, classItem->functions) {
+                for (FunctionItem *funcItem : std::as_const(classItem->functions)) {
                     if (funcItem->alreadyFound || funcItem->checked == checked)
                         continue;
                     QModelIndex funcIndex = createIndex(funcItem->row, 0, funcItem);
@@ -530,8 +510,7 @@ public:
         : CppQuickFixOperation(interface, 0)
         , m_factory(factory)
     {
-        setDescription(QCoreApplication::translate(
-                           "CppEditor::QuickFix", "Insert Virtual Functions of Base Classes"));
+        setDescription(Tr::tr("Insert Virtual Functions of Base Classes"));
 
         const QList<AST *> &path = interface.path();
         const int pathSize = path.size();
@@ -578,8 +557,9 @@ public:
             ClassOrNamespace *clazz = baseClassQueue.dequeue();
             visitedBaseClasses.insert(clazz);
             const QList<ClassOrNamespace *> bases = clazz->usings();
-            foreach (ClassOrNamespace *baseClass, bases) {
-                foreach (Symbol *symbol, baseClass->symbols()) {
+            for (const ClassOrNamespace *baseClass : bases) {
+                const QList<Symbol *> symbols = baseClass->symbols();
+                for (Symbol *symbol : symbols) {
                     Class *base = symbol->asClass();
                     if (base
                             && (clazz = interface.context().lookupType(symbol))
@@ -597,7 +577,7 @@ public:
         Overview printer = CppCodeStyleSettings::currentProjectCodeStyleOverview();
         printer.showFunctionSignatures = true;
         QHash<const Function *, FunctionItem *> virtualFunctions;
-        foreach (const Class *clazz, baseClasses) {
+        for (const Class *clazz : std::as_const(baseClasses)) {
             ClassItem *itemBase = new ClassItem(printer.prettyName(clazz->name()), clazz);
             for (Scope::iterator it = clazz->memberBegin(); it != clazz->memberEnd(); ++it) {
                 if (const Function *func = (*it)->type()->asFunctionType()) {
@@ -613,7 +593,7 @@ public:
                         continue;
 
                     if (func->isFinal()) {
-                        for (const Function *firstVirtual : qAsConst(firstVirtuals)) {
+                        for (const Function *firstVirtual : std::as_const(firstVirtuals)) {
                             if (FunctionItem *first = virtualFunctions[firstVirtual]) {
                                 FunctionItem *next = nullptr;
                                 for (FunctionItem *removed = first; next != first; removed = next) {
@@ -631,7 +611,7 @@ public:
                     //   - virtual void *qt_metacast(const char *);
                     //   - virtual int qt_metacall(QMetaObject::Call, int, void **);
                     bool skip = false;
-                    for (const Function *firstVirtual : qAsConst(firstVirtuals)) {
+                    for (const Function *firstVirtual : std::as_const(firstVirtuals)) {
                         if (printer.prettyName(firstVirtual->enclosingClass()->name()) == "QObject"
                                 && magicQObjectFunctions().contains(
                                     printer.prettyName(func->name()))) {
@@ -674,7 +654,7 @@ public:
                         factory->setHasReimplementedFunctions(true);
                         funcItem->reimplemented = true;
                         funcItem->alreadyFound = funcExistsInClass;
-                        for (const Function *firstVirtual : qAsConst(firstVirtuals)) {
+                        for (const Function *firstVirtual : std::as_const(firstVirtuals)) {
                             if (FunctionItem *first = virtualFunctions[firstVirtual]) {
                                 if (!first->alreadyFound) {
                                     while (first->checked != isPureVirtual) {
@@ -724,8 +704,8 @@ public:
             return;
 
         bool isHeaderFile = false;
-        m_cppFileName = correspondingHeaderOrSource(interface.filePath().toString(), &isHeaderFile);
-        m_factory->setHasImplementationFile(isHeaderFile && !m_cppFileName.isEmpty());
+        m_cppFilePath = correspondingHeaderOrSource(interface.filePath(), &isHeaderFile);
+        m_factory->setHasImplementationFile(isHeaderFile && !m_cppFilePath.isEmpty());
 
         m_valid = true;
     }
@@ -794,14 +774,14 @@ public:
         UseMinimalNames useMinimalNames(targetCoN);
         Control *control = context().bindings()->control().data();
         QList<const Function *> insertedFunctions;
-        foreach (ClassItem *classItem, m_factory->classFunctionModel->classes) {
+        for (ClassItem *classItem : std::as_const(m_factory->classFunctionModel->classes)) {
             if (classItem->checkState() == Qt::Unchecked)
                 continue;
 
             // Insert Declarations (+ definitions)
             QString lastAccessSpecString;
             bool first = true;
-            foreach (FunctionItem *funcItem, classItem->functions) {
+            for (FunctionItem *funcItem : std::as_const(classItem->functions)) {
                 if (funcItem->reimplemented || funcItem->alreadyFound || !funcItem->checked)
                     continue;
 
@@ -902,8 +882,7 @@ public:
             if (!clazz)
                 return;
 
-            CppRefactoringFilePtr implementationFile = refactoring.file(
-                Utils::FilePath::fromString(m_cppFileName));
+            CppRefactoringFilePtr implementationFile = refactoring.file(m_cppFilePath);
             Utils::ChangeSet implementationChangeSet;
             const int insertPos = qMax(0, implementationFile->document()->characterCount() - 1);
 
@@ -953,7 +932,7 @@ private:
     InsertVirtualMethodsDialog *m_factory = nullptr;
     const ClassSpecifierAST *m_classAST = nullptr;
     bool m_valid = false;
-    QString m_cppFileName;
+    FilePath m_cppFilePath;
     int m_insertPosDecl = 0;
     int m_insertPosOutside = 0;
     unsigned m_functionCount = 0;
@@ -1029,35 +1008,35 @@ void InsertVirtualMethodsDialog::initGui()
     if (m_view)
         return;
 
-    setWindowTitle(tr("Insert Virtual Functions"));
+    setWindowTitle(Tr::tr("Insert Virtual Functions"));
     auto globalVerticalLayout = new QVBoxLayout;
 
     // View
-    QGroupBox *groupBoxView = new QGroupBox(tr("&Functions to insert:"), this);
+    QGroupBox *groupBoxView = new QGroupBox(Tr::tr("&Functions to insert:"), this);
     auto groupBoxViewLayout = new QVBoxLayout(groupBoxView);
     m_filter = new QLineEdit(this);
     m_filter->setClearButtonEnabled(true);
-    m_filter->setPlaceholderText(tr("Filter"));
+    m_filter->setPlaceholderText(Tr::tr("Filter"));
     groupBoxViewLayout->addWidget(m_filter);
     m_view = new QTreeView(this);
     m_view->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_view->setHeaderHidden(true);
     groupBoxViewLayout->addWidget(m_view);
     m_hideReimplementedFunctions =
-            new QCheckBox(tr("&Hide reimplemented functions"), this);
+            new QCheckBox(Tr::tr("&Hide reimplemented functions"), this);
     groupBoxViewLayout->addWidget(m_hideReimplementedFunctions);
 
     // Insertion options
-    QGroupBox *groupBoxImplementation = new QGroupBox(tr("&Insertion options:"), this);
+    QGroupBox *groupBoxImplementation = new QGroupBox(Tr::tr("&Insertion options:"), this);
     auto groupBoxImplementationLayout = new QVBoxLayout(groupBoxImplementation);
     m_insertMode = new QComboBox(this);
-    m_insertMode->addItem(tr("Insert only declarations"), ModeOnlyDeclarations);
-    m_insertMode->addItem(tr("Insert definitions inside class"), ModeInsideClass);
-    m_insertMode->addItem(tr("Insert definitions outside class"), ModeOutsideClass);
-    m_insertMode->addItem(tr("Insert definitions in implementation file"), ModeImplementationFile);
-    m_virtualKeyword = new QCheckBox(tr("Add \"&virtual\" to function declaration"), this);
+    m_insertMode->addItem(Tr::tr("Insert only declarations"), ModeOnlyDeclarations);
+    m_insertMode->addItem(Tr::tr("Insert definitions inside class"), ModeInsideClass);
+    m_insertMode->addItem(Tr::tr("Insert definitions outside class"), ModeOutsideClass);
+    m_insertMode->addItem(Tr::tr("Insert definitions in implementation file"), ModeImplementationFile);
+    m_virtualKeyword = new QCheckBox(Tr::tr("Add \"&virtual\" to function declaration"), this);
     m_overrideReplacementCheckBox = new QCheckBox(
-                tr("Add \"override\" equivalent to function declaration:"), this);
+                Tr::tr("Add \"override\" equivalent to function declaration:"), this);
     m_overrideReplacementComboBox = new QComboBox(this);
     QSizePolicy sizePolicy = m_overrideReplacementComboBox->sizePolicy();
     sizePolicy.setHorizontalPolicy(QSizePolicy::Expanding);
@@ -1068,8 +1047,8 @@ void InsertVirtualMethodsDialog::initGui()
 
     auto clearUserAddedReplacements = new QAction(this);
     clearUserAddedReplacements->setIcon(Utils::Icons::CLEAN_TOOLBAR.icon());
-    clearUserAddedReplacements->setText(tr("Clear Added \"override\" Equivalents"));
-    connect(clearUserAddedReplacements, &QAction::triggered, [this]() {
+    clearUserAddedReplacements->setText(Tr::tr("Clear Added \"override\" Equivalents"));
+    connect(clearUserAddedReplacements, &QAction::triggered, [this] {
        m_availableOverrideReplacements = defaultOverrideReplacements();
        updateOverrideReplacementsComboBox();
        m_clearUserAddedReplacementsButton->setEnabled(false);
@@ -1137,7 +1116,7 @@ void InsertVirtualMethodsDialog::initData()
 
     if (m_hasImplementationFile) {
         if (m_insertMode->count() == 3) {
-            m_insertMode->addItem(tr("Insert definitions in implementation file"),
+            m_insertMode->addItem(Tr::tr("Insert definitions in implementation file"),
                                   ModeImplementationFile);
         }
     } else {
@@ -1219,7 +1198,7 @@ void InsertVirtualMethodsDialog::setHideReimplementedFunctions(bool hide)
 void InsertVirtualMethodsDialog::updateOverrideReplacementsComboBox()
 {
     m_overrideReplacementComboBox->clear();
-    foreach (const QString &replacement, m_availableOverrideReplacements)
+    for (const QString &replacement : std::as_const(m_availableOverrideReplacements))
         m_overrideReplacementComboBox->addItem(replacement);
 }
 

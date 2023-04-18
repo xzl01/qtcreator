@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qtdesignerformclasscodegenerator.h"
 #include "formtemplatewizardpage.h"
@@ -39,16 +17,17 @@
 #include <QFileInfo>
 #include <QDebug>
 
+using namespace Utils;
+
 static const char uiMemberC[] = "ui";
 static const char uiNamespaceC[] = "Ui";
 
 namespace Designer {
-namespace Internal {
 
 // Generation code
 
 // Write out how to access the Ui class in the source code.
-static inline void writeUiMemberAccess(const QtSupport::CodeGenSettings &fp, QTextStream &str)
+static void writeUiMemberAccess(const QtSupport::CodeGenSettings &fp, QTextStream &str)
 {
     switch (fp.embedding) {
     case QtSupport::CodeGenSettings::PointerAggregatedUiClass:
@@ -61,8 +40,6 @@ static inline void writeUiMemberAccess(const QtSupport::CodeGenSettings &fp, QTe
         break;
     }
 }
-
-} // namespace Internal
 
 bool QtDesignerFormClassCodeGenerator::generateCpp(const FormClassWizardParameters &parameters,
                                                    QString *header, QString *source, int indentation)
@@ -94,9 +71,11 @@ bool QtDesignerFormClassCodeGenerator::generateCpp(const FormClassWizardParamete
     const QString unqualifiedClassName = namespaceList.takeLast();
 
     const QString headerLicense =
-            CppEditor::AbstractEditorSupport::licenseTemplate(parameters.headerFile, parameters.className);
+            CppEditor::AbstractEditorSupport::licenseTemplate(
+                FilePath::fromString(parameters.headerFile), parameters.className);
     const QString sourceLicense =
-            CppEditor::AbstractEditorSupport::licenseTemplate(parameters.sourceFile, parameters.className);
+            CppEditor::AbstractEditorSupport::licenseTemplate(
+                FilePath::fromString(parameters.sourceFile), parameters.className);
     // Include guards
     const QString guard = Utils::headerGuard(parameters.headerFile, namespaceList);
 
@@ -187,7 +166,7 @@ bool QtDesignerFormClassCodeGenerator::generateCpp(const FormClassWizardParamete
     if (generationParameters.embedding == QtSupport::CodeGenSettings::PointerAggregatedUiClass)
         sourceStr << ",\n"  << namespaceIndent << indent <<  uiMemberC << "(new " << uiClassName << ")";
     sourceStr <<  '\n' << namespaceIndent << "{\n" <<  namespaceIndent << indent;
-    Internal::writeUiMemberAccess(generationParameters, sourceStr);
+    writeUiMemberAccess(generationParameters, sourceStr);
     sourceStr <<  "setupUi(this);\n" << namespaceIndent << "}\n";
     // Deleting destructor for ptr
     if (generationParameters.embedding == QtSupport::CodeGenSettings::PointerAggregatedUiClass) {
@@ -203,7 +182,7 @@ bool QtDesignerFormClassCodeGenerator::generateCpp(const FormClassWizardParamete
         << namespaceIndent << indent << formBaseClass << "::changeEvent(e);\n"
         << namespaceIndent << indent << "switch (e->type()) {\n" << namespaceIndent << indent << "case QEvent::LanguageChange:\n"
         << namespaceIndent << indent << indent;
-        Internal::writeUiMemberAccess(generationParameters, sourceStr);
+        writeUiMemberAccess(generationParameters, sourceStr);
         sourceStr << "retranslateUi(this);\n"
                   << namespaceIndent << indent <<  indent << "break;\n"
                   << namespaceIndent << indent << "default:\n"

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljsdocument.h"
 #include "qmljsbind.h"
@@ -87,20 +65,19 @@ using namespace QmlJS::AST;
     threads finish and new information becomes available.
 */
 
-Document::Document(const QString &fileName, Dialect language)
+Document::Document(const Utils::FilePath &fileName, Dialect language)
     : _engine(nullptr)
     , _ast(nullptr)
     , _bind(nullptr)
-    , _fileName(QDir::cleanPath(fileName))
+    , _fileName(fileName.cleanPath())
     , _editorRevision(0)
     , _language(language)
     , _parsedCorrectly(false)
 {
-    QFileInfo fileInfo(fileName);
-    _path = QDir::cleanPath(fileInfo.absolutePath());
+    _path = fileName.absoluteFilePath().parentDir().cleanPath();
 
     if (language.isQmlLikeLanguage()) {
-        _componentName = fileInfo.baseName();
+        _componentName = fileName.baseName();
 
         if (! _componentName.isEmpty()) {
             // ### TODO: check the component name.
@@ -120,7 +97,7 @@ Document::~Document()
         delete _engine;
 }
 
-Document::MutablePtr Document::create(const QString &fileName, Dialect language)
+Document::MutablePtr Document::create(const Utils::FilePath &fileName, Dialect language)
 {
     Document::MutablePtr doc(new Document(fileName, language));
     doc->_ptr = doc;
@@ -149,7 +126,7 @@ void Document::setLanguage(Dialect l)
 
 QString Document::importId() const
 {
-    return _fileName;
+    return _fileName.toString();
 }
 
 QByteArray Document::fingerprint() const
@@ -213,13 +190,13 @@ void Document::setEditorRevision(int revision)
     _editorRevision = revision;
 }
 
-QString Document::fileName() const
+Utils::FilePath Document::fileName() const
 {
     return _fileName;
 
 }
 
-QString Document::path() const
+Utils::FilePath Document::path() const
 {
     return _path;
 }
@@ -244,7 +221,7 @@ class CollectDirectives : public Directives
     QList<SourceLocation> _locations;
 
 public:
-    CollectDirectives(const QString &documentPath)
+    CollectDirectives(const Utils::FilePath &documentPath)
         : documentPath(documentPath)
         , isLibrary(false)
 
@@ -272,7 +249,7 @@ public:
 
     virtual QList<SourceLocation> locations() { return _locations; }
 
-    const QString documentPath;
+    const Utils::FilePath documentPath;
     bool isLibrary;
     QList<ImportInfo> imports;
 };
@@ -395,7 +372,7 @@ QByteArray LibraryInfo::calculateFingerprint() const
     hash.addData(reinterpret_cast<const char *>(&_status), sizeof(_status));
     int len = _components.size();
     hash.addData(reinterpret_cast<const char *>(&len), sizeof(len));
-    foreach (const QmlDirParser::Component &component, _components) {
+    for (const QmlDirParser::Component &component : _components) {
         len = component.fileName.size();
         hash.addData(reinterpret_cast<const char *>(&len), sizeof(len));
         hash.addData(reinterpret_cast<const char *>(component.fileName.constData()),
@@ -411,7 +388,7 @@ QByteArray LibraryInfo::calculateFingerprint() const
     }
     len = _plugins.size();
     hash.addData(reinterpret_cast<const char *>(&len), sizeof(len));
-    foreach (const QmlDirParser::Plugin &plugin, _plugins) {
+    for (const QmlDirParser::Plugin &plugin : _plugins) {
         len = plugin.path.size();
         hash.addData(reinterpret_cast<const char *>(&len), sizeof(len));
         hash.addData(reinterpret_cast<const char *>(plugin.path.constData()), len * sizeofQChar);
@@ -421,7 +398,7 @@ QByteArray LibraryInfo::calculateFingerprint() const
     }
     len = _typeinfos.size();
     hash.addData(reinterpret_cast<const char *>(&len), sizeof(len));
-    foreach (const QString &typeinfo, _typeinfos) {
+    for (const QString &typeinfo : _typeinfos) {
         len = typeinfo.size();
         hash.addData(reinterpret_cast<const char *>(&len), sizeof(len));
         hash.addData(reinterpret_cast<const char *>(typeinfo.constData()),
@@ -430,10 +407,10 @@ QByteArray LibraryInfo::calculateFingerprint() const
     len = _metaObjects.size();
     hash.addData(reinterpret_cast<const char *>(&len), sizeof(len));
     QList<QByteArray> metaFingerprints;
-    foreach (const LanguageUtils::FakeMetaObject::ConstPtr &metaObject, _metaObjects)
+    for (const LanguageUtils::FakeMetaObject::ConstPtr &metaObject : _metaObjects)
         metaFingerprints.append(metaObject->fingerprint());
     std::sort(metaFingerprints.begin(), metaFingerprints.end());
-    foreach (const QByteArray &fp, metaFingerprints)
+    for (const QByteArray &fp : std::as_const(metaFingerprints))
         hash.addData(fp);
     hash.addData(reinterpret_cast<const char *>(&_dumpStatus), sizeof(_dumpStatus));
     len = _dumpError.size(); // localization dependent (avoid?)
@@ -442,12 +419,12 @@ QByteArray LibraryInfo::calculateFingerprint() const
 
     len = _moduleApis.size();
     hash.addData(reinterpret_cast<const char *>(&len), sizeof(len));
-    foreach (const ModuleApiInfo &moduleInfo, _moduleApis)
+    for (const ModuleApiInfo &moduleInfo : _moduleApis)
         moduleInfo.addToHash(hash); // make it order independent?
 
     len = _imports.size();
     hash.addData(reinterpret_cast<const char *>(&len), sizeof(len));
-    foreach (const QmlDirParser::Import &import, _imports)
+    for (const QmlDirParser::Import &import : _imports)
         hash.addData(import.module.toUtf8()); // import order matters, keep order-dependent
 
     QByteArray res(hash.result());
@@ -471,48 +448,49 @@ Snapshot::~Snapshot()
 void Snapshot::insert(const Document::Ptr &document, bool allowInvalid)
 {
     if (document && (allowInvalid || document->qmlProgram() || document->jsProgram())) {
-        const QString fileName = document->fileName();
-        const QString path = document->path();
+        const Utils::FilePath fileName = document->fileName();
+        const Utils::FilePath path = document->path();
         remove(fileName);
         _documentsByPath[path].append(document);
         _documents.insert(fileName, document);
         CoreImport cImport;
         cImport.importId = document->importId();
         cImport.language = document->language();
-        cImport.addPossibleExport(Export(ImportKey(ImportType::File, fileName),
-                                          {}, true, QFileInfo(fileName).baseName()));
+        cImport.addPossibleExport(
+            Export(ImportKey(ImportType::File, fileName.toString()), {}, true, fileName.baseName()));
         cImport.fingerprint = document->fingerprint();
         _dependencies.addCoreImport(cImport);
     }
 }
 
-void Snapshot::insertLibraryInfo(const QString &path, const LibraryInfo &info)
+void Snapshot::insertLibraryInfo(const Utils::FilePath &path, const LibraryInfo &info)
 {
     QTC_CHECK(!path.isEmpty());
     QTC_CHECK(info.fingerprint() == info.calculateFingerprint());
-    _libraries.insert(QDir::cleanPath(path), info);
+    _libraries.insert(path.cleanPath(), info);
     if (!info.wasFound()) return;
     CoreImport cImport;
-    cImport.importId = path;
+    cImport.importId = path.toString();
     cImport.language = Dialect::AnyLanguage;
     QSet<ImportKey> packages;
-    foreach (const ModuleApiInfo &moduleInfo, info.moduleApis()) {
+    for (const ModuleApiInfo &moduleInfo : info.moduleApis()) {
         ImportKey iKey(ImportType::Library, moduleInfo.uri, moduleInfo.version.majorVersion(),
                        moduleInfo.version.minorVersion());
         packages.insert(iKey);
     }
-    foreach (const LanguageUtils::FakeMetaObject::ConstPtr &metaO, info.metaObjects()) {
-        foreach (const LanguageUtils::FakeMetaObject::Export &e, metaO->exports()) {
+    const QList<LanguageUtils::FakeMetaObject::ConstPtr> metaObjects = info.metaObjects();
+    for (const LanguageUtils::FakeMetaObject::ConstPtr &metaO : metaObjects) {
+        for (const LanguageUtils::FakeMetaObject::Export &e : metaO->exports()) {
             ImportKey iKey(ImportType::Library, e.package, e.version.majorVersion(),
                            e.version.minorVersion());
             packages.insert(iKey);
         }
     }
 
-    QStringList splitPath = path.split(QLatin1Char('/'));
+    QStringList splitPath = path.path().split(QLatin1Char('/'));
     const QRegularExpression vNr(QLatin1String("^(.+)\\.([0-9]+)(?:\\.([0-9]+))?$"));
     const QRegularExpression safeName(QLatin1String("^[a-zA-Z_][[a-zA-Z0-9_]*$"));
-    foreach (const ImportKey &importKey, packages) {
+    for (const ImportKey &importKey : std::as_const(packages)) {
         if (importKey.splitPath.size() == 1 && importKey.splitPath.at(0).isEmpty() && splitPath.length() > 0) {
             // relocatable
             QStringList myPath = splitPath;
@@ -526,12 +504,16 @@ void Snapshot::insertLibraryInfo(const QString &path, const LibraryInfo &info)
                     break;
                 ImportKey iKey(ImportType::Library, QStringList(myPath.mid(iPath)).join(QLatin1Char('.')),
                                importKey.majorVersion, importKey.minorVersion);
-                cImport.addPossibleExport(Export(iKey, (iPath == 1) ? QLatin1String("/") :
-                     QStringList(myPath.mid(0, iPath)).join(QLatin1Char('/')), true));
+                Utils::FilePath newP = path.withNewPath(
+                            (iPath == 1)
+                                 ? QLatin1String("/")
+                                 : QStringList(myPath.mid(0, iPath)).join(QLatin1Char('/')));
+                cImport.addPossibleExport(Export(iKey, newP, true));
             }
         } else {
-            QString requiredPath = QStringList(splitPath.mid(0, splitPath.size() - importKey.splitPath.size()))
-                    .join(QLatin1String("/"));
+            Utils::FilePath requiredPath = path.withNewPath(
+                QStringList(splitPath.mid(0, splitPath.size() - importKey.splitPath.size()))
+                    .join(QLatin1String("/")));
             cImport.addPossibleExport(Export(importKey, requiredPath, true));
         }
     }
@@ -541,7 +523,7 @@ void Snapshot::insertLibraryInfo(const QString &path, const LibraryInfo &info)
         int majorVersion = LanguageUtils::ComponentVersion::NoVersion;
         int minorVersion = LanguageUtils::ComponentVersion::NoVersion;
 
-        foreach (const QmlDirParser::Component &component, info.components()) {
+        for (const QmlDirParser::Component &component : info.components()) {
             if (component.majorVersion > majorVersion)
                 majorVersion = component.majorVersion;
             if (component.minorVersion > minorVersion)
@@ -567,12 +549,15 @@ void Snapshot::insertLibraryInfo(const QString &path, const LibraryInfo &info)
                 break;
             ImportKey iKey(ImportType::Library, QStringList(splitPath.mid(iPath)).join(QLatin1Char('.')),
                            majorVersion, minorVersion);
-            cImport.addPossibleExport(Export(iKey, (iPath == 1) ? QLatin1String("/") :
-                QStringList(splitPath.mid(0, iPath)).join(QLatin1Char('/')), true));
+            Utils::FilePath newP = path.withNewPath(
+                        iPath == 1
+                             ? QLatin1String("/")
+                             : QStringList(splitPath.mid(0, iPath)).join(QLatin1Char('/')));
+            cImport.addPossibleExport(Export(iKey, newP, true));
         }
     }
-    foreach (const QmlDirParser::Component &component, info.components()) {
-        foreach (const Export &e, cImport.possibleExports)
+    for (const QmlDirParser::Component &component : info.components()) {
+        for (const Export &e : std::as_const(cImport.possibleExports))
             _dependencies.addExport(component.fileName, e.exportName, e.pathRequired, e.typeName);
     }
 
@@ -580,11 +565,11 @@ void Snapshot::insertLibraryInfo(const QString &path, const LibraryInfo &info)
     _dependencies.addCoreImport(cImport);
 }
 
-void Snapshot::remove(const QString &fileName)
+void Snapshot::remove(const Utils::FilePath &fileName)
 {
     Document::Ptr doc = _documents.value(fileName);
     if (!doc.isNull()) {
-        const QString &path = doc->path();
+        const Utils::FilePath &path = doc->path();
 
         QList<Document::Ptr> docs = _documentsByPath.value(path);
         docs.removeAll(doc);
@@ -604,9 +589,9 @@ QmlJS::ImportDependencies *Snapshot::importDependencies()
     return &_dependencies;
 }
 
-Document::MutablePtr Snapshot::documentFromSource(
-        const QString &code, const QString &fileName,
-        Dialect language) const
+Document::MutablePtr Snapshot::documentFromSource(const QString &code,
+                                                  const Utils::FilePath &fileName,
+                                                  Dialect language) const
 {
     Document::MutablePtr newDoc = Document::create(fileName, language);
 
@@ -617,24 +602,19 @@ Document::MutablePtr Snapshot::documentFromSource(
     return newDoc;
 }
 
-Document::Ptr Snapshot::document(const QString &fileName) const
+Document::Ptr Snapshot::document(const Utils::FilePath &fileName) const
 {
-    return _documents.value(QDir::cleanPath(fileName));
+    return _documents.value(fileName.cleanPath());
 }
 
-QList<Document::Ptr> Snapshot::documentsInDirectory(const QString &path) const
+QList<Document::Ptr> Snapshot::documentsInDirectory(const Utils::FilePath &path) const
 {
-    return _documentsByPath.value(QDir::cleanPath(path));
-}
-
-LibraryInfo Snapshot::libraryInfo(const QString &path) const
-{
-    return _libraries.value(QDir::cleanPath(path));
+    return _documentsByPath.value(path.cleanPath());
 }
 
 LibraryInfo Snapshot::libraryInfo(const Utils::FilePath &path) const
 {
-    return _libraries.value(path.cleanPath().toString());
+    return _libraries.value(path.cleanPath());
 }
 
 void ModuleApiInfo::addToHash(QCryptographicHash &hash) const

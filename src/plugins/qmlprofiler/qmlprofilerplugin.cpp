@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlprofilerplugin.h"
 #include "qmlprofilerrunconfigurationaspect.h"
 #include "qmlprofilerruncontrol.h"
 #include "qmlprofilersettings.h"
 #include "qmlprofilertool.h"
-#include "qmlprofilertimelinemodel.h"
 #include "qmlprofileractions.h"
 
 #ifdef WITH_TESTS
@@ -65,6 +42,7 @@
 
 #include <projectexplorer/environmentaspect.h>
 #include <projectexplorer/kitinformation.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/runconfiguration.h>
 #include <projectexplorer/target.h>
 
@@ -73,8 +51,7 @@
 
 using namespace ProjectExplorer;
 
-namespace QmlProfiler {
-namespace Internal {
+namespace QmlProfiler::Internal {
 
 Q_GLOBAL_STATIC(QmlProfilerSettings, qmlProfilerGlobalSettings)
 
@@ -86,25 +63,39 @@ public:
     QmlProfilerActions m_actions;
 
     // The full local profiler.
-    RunWorkerFactory localQmlProfilerFactory {
-        RunWorkerFactory::make<LocalQmlProfilerSupport>(),
-        {ProjectExplorer::Constants::QML_PROFILER_RUN_MODE},
-        {},
-        {ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE}
-    };
-
+    LocalQmlProfilerRunWorkerFactory localQmlProfilerRunWorkerFactory;
     // The bits plugged in in remote setups.
-    RunWorkerFactory qmlProfilerWorkerFactory {
-        RunWorkerFactory::make<QmlProfilerRunner>(),
-        {ProjectExplorer::Constants::QML_PROFILER_RUNNER},
-        {},
-        {}
-    };
+    QmlProfilerRunWorkerFactory qmlProfilerRunWorkerFactory;
 };
 
 bool QmlProfilerPlugin::initialize(const QStringList &arguments, QString *errorString)
 {
     Q_UNUSED(arguments)
+
+#ifdef WITH_TESTS
+    addTest<DebugMessagesModelTest>();
+    addTest<FlameGraphModelTest>();
+    addTest<FlameGraphViewTest>();
+    addTest<InputEventsModelTest>();
+    addTest<LocalQmlProfilerRunnerTest>();
+    addTest<MemoryUsageModelTest>();
+    addTest<PixmapCacheModelTest>();
+    addTest<QmlEventTest>();
+    addTest<QmlEventLocationTest>();
+    addTest<QmlEventTypeTest>();
+    addTest<QmlNoteTest>();
+    addTest<QmlProfilerAnimationsModelTest>();
+    addTest<QmlProfilerAttachDialogTest>();
+    addTest<QmlProfilerBindingLoopsRenderPassTest>();
+    addTest<QmlProfilerClientManagerTest>();
+    addTest<QmlProfilerDetailsRewriterTest>();
+    addTest<QmlProfilerToolTest>();
+    addTest<QmlProfilerTraceClientTest>();
+    addTest<QmlProfilerTraceViewTest>();
+
+    addTest<QQmlEngine>(); // Trigger debug connector to be started
+#endif
+
     return Utils::HostOsInfo::canCreateOpenGLContext(errorString);
 }
 
@@ -133,34 +124,4 @@ QmlProfilerSettings *QmlProfilerPlugin::globalSettings()
     return qmlProfilerGlobalSettings();
 }
 
-QVector<QObject *> QmlProfiler::Internal::QmlProfilerPlugin::createTestObjects() const
-{
-    QVector<QObject *> tests;
-#ifdef WITH_TESTS
-    tests << new DebugMessagesModelTest;
-    tests << new FlameGraphModelTest;
-    tests << new FlameGraphViewTest;
-    tests << new InputEventsModelTest;
-    tests << new LocalQmlProfilerRunnerTest;
-    tests << new MemoryUsageModelTest;
-    tests << new PixmapCacheModelTest;
-    tests << new QmlEventTest;
-    tests << new QmlEventLocationTest;
-    tests << new QmlEventTypeTest;
-    tests << new QmlNoteTest;
-    tests << new QmlProfilerAnimationsModelTest;
-    tests << new QmlProfilerAttachDialogTest;
-    tests << new QmlProfilerBindingLoopsRenderPassTest;
-    tests << new QmlProfilerClientManagerTest;
-    tests << new QmlProfilerDetailsRewriterTest;
-    tests << new QmlProfilerToolTest;
-    tests << new QmlProfilerTraceClientTest;
-    tests << new QmlProfilerTraceViewTest;
-
-    tests << new QQmlEngine; // Trigger debug connector to be started
-#endif
-    return tests;
-}
-
-} // namespace Internal
-} // namespace QmlProfiler
+} // QmlProfiler::Internal

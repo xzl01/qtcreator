@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debuggermainwindow.h"
 #include "debuggerconstants.h"
-#include "debuggerinternalconstants.h"
+#include "debuggertr.h"
 #include "enginemanager.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
@@ -192,7 +170,7 @@ DebuggerMainWindowPrivate::DebuggerMainWindowPrivate(DebuggerMainWindow *parent)
     m_perspectiveChooser->setObjectName("PerspectiveChooser");
     m_perspectiveChooser->setProperty("panelwidget", true);
     m_perspectiveChooser->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    connect(m_perspectiveChooser, QOverload<int>::of(&QComboBox::activated), this, [this](int item) {
+    connect(m_perspectiveChooser, &QComboBox::activated, this, [this](int item) {
         Perspective *perspective = Perspective::findPerspective(m_perspectiveChooser->itemData(item).toString());
         QTC_ASSERT(perspective, return);
         if (auto subPerspective = Perspective::findPerspective(perspective->d->m_lastActiveSubPerspectiveId))
@@ -204,7 +182,7 @@ DebuggerMainWindowPrivate::DebuggerMainWindowPrivate(DebuggerMainWindow *parent)
     m_perspectiveMenu = new QMenu;
     connect(m_perspectiveMenu, &QMenu::aboutToShow, this, [this] {
         m_perspectiveMenu->clear();
-        for (Perspective *perspective : qAsConst(m_perspectives)) {
+        for (Perspective *perspective : std::as_const(m_perspectives)) {
             m_perspectiveMenu->addAction(perspective->d->m_name, perspective, [perspective] {
                 if (auto subPerspective = Perspective::findPerspective(
                         perspective->d->m_lastActiveSubPerspectiveId))
@@ -216,11 +194,11 @@ DebuggerMainWindowPrivate::DebuggerMainWindowPrivate(DebuggerMainWindow *parent)
     });
 
     auto viewButton = new QToolButton;
-    viewButton->setText(DebuggerMainWindow::tr("&Views"));
+    viewButton->setText(Tr::tr("&Views"));
 
     auto closeButton = new QToolButton();
     closeButton->setIcon(Utils::Icons::CLOSE_SPLIT_BOTTOM.icon());
-    closeButton->setToolTip(DebuggerMainWindow::tr("Leave Debug Mode"));
+    closeButton->setToolTip(Tr::tr("Leave Debug Mode"));
 
     auto toolbar = new Utils::StyledBar;
     toolbar->setProperty("topBorder", true);
@@ -255,10 +233,10 @@ DebuggerMainWindowPrivate::DebuggerMainWindowPrivate(DebuggerMainWindow *parent)
     scrolledToolbar->setFrameStyle(QFrame::NoFrame);
     scrolledToolbar->setWidgetResizable(true);
     scrolledToolbar->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrolledToolbar->setFixedHeight(StyleHelper::navigationWidgetHeight());
+    scrolledToolbar->setFixedHeight(toolbar->height());
     scrolledToolbar->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
-    auto dock = new QDockWidget(DebuggerMainWindow::tr("Toolbar"), q);
+    auto dock = new QDockWidget(Tr::tr("Toolbar"), q);
     dock->setObjectName("Toolbar");
     dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
     dock->setAllowedAreas(Qt::BottomDockWidgetArea);
@@ -585,7 +563,7 @@ void DebuggerMainWindowPrivate::setCentralWidget(QWidget *widget)
         q->showCentralWidgetAction()->setText(widget->windowTitle());
     } else {
         m_centralWidgetStack->addWidget(m_editorPlaceHolder);
-        q->showCentralWidgetAction()->setText(DebuggerMainWindow::tr("Editor"));
+        q->showCentralWidgetAction()->setText(Tr::tr("Editor"));
     }
 }
 
@@ -755,7 +733,7 @@ void PerspectivePrivate::populatePerspective()
         theMainWindow->showCentralWidgetAction()->setText(m_centralWidget->windowTitle());
     } else {
         theMainWindow->d->m_centralWidgetStack->addWidget(theMainWindow->d->m_editorPlaceHolder);
-        theMainWindow->showCentralWidgetAction()->setText(DebuggerMainWindow::tr("Editor"));
+        theMainWindow->showCentralWidgetAction()->setText(Tr::tr("Editor"));
     }
 
     ICore::addAdditionalContext(context());
@@ -875,11 +853,11 @@ void Perspective::registerNextPrevShortcuts(QAction *next, QAction *prev)
     static const char nextId[] = "Analyzer.nextitem";
     static const char prevId[] = "Analyzer.previtem";
 
-    next->setText(DebuggerMainWindow::tr("Next Item"));
+    next->setText(Tr::tr("Next Item"));
     Command * const nextCmd = ActionManager::registerAction(next, nextId,
                                                             Context(Id::fromString(id())));
     nextCmd->augmentActionWithShortcutToolTip(next);
-    prev->setText(DebuggerMainWindow::tr("Previous Item"));
+    prev->setText(Tr::tr("Previous Item"));
     Command * const prevCmd = ActionManager::registerAction(prev, prevId,
                                                             Context(Id::fromString(id())));
     prevCmd->augmentActionWithShortcutToolTip(prev);
@@ -897,7 +875,7 @@ Context PerspectivePrivate::context() const
 
 PerspectivePrivate::~PerspectivePrivate()
 {
-    for (const DockOperation &op : qAsConst(m_dockOperations))
+    for (const DockOperation &op : std::as_const(m_dockOperations))
         delete op.widget;
 }
 
@@ -1021,7 +999,7 @@ void PerspectivePrivate::restoreLayout()
         if (op.operationType != Perspective::Raise) {
             op.ensureDockExists();
             QTC_ASSERT(op.dock, continue);
-            const bool active = op.visibleByDefault ^ op.changedByUser();
+            const bool active = op.visibleByDefault != op.changedByUser();
             op.dock->setVisible(active);
             qCDebug(perspectivesLog) << "RESTORE DOCK " << op.name() << "ACTIVE: " << active
                                      << (active == op.visibleByDefault ? "DEFAULT USER" : "*** NON-DEFAULT USER");

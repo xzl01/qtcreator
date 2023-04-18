@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "commandmappings.h"
-#include "commandsfile.h"
 
+#include <coreplugin/coreplugintr.h>
 #include <coreplugin/dialogs/shortcutsettings.h>
 
 #include <utils/headerviewstretcher.h>
@@ -55,7 +33,7 @@ public:
         : q(parent)
     {
         groupBox = new QGroupBox(parent);
-        groupBox->setTitle(CommandMappings::tr("Command Mappings"));
+        groupBox->setTitle(::Core::Tr::tr("Command Mappings"));
 
         filterEdit = new FancyLineEdit(groupBox);
         filterEdit->setFiltering(true);
@@ -67,19 +45,19 @@ public:
         commandList->setColumnCount(3);
 
         QTreeWidgetItem *item = commandList->headerItem();
-        item->setText(2, CommandMappings::tr("Target"));
-        item->setText(1, CommandMappings::tr("Label"));
-        item->setText(0, CommandMappings::tr("Command"));
+        item->setText(2, ::Core::Tr::tr("Target"));
+        item->setText(1, ::Core::Tr::tr("Label"));
+        item->setText(0, ::Core::Tr::tr("Command"));
 
-        defaultButton = new QPushButton(CommandMappings::tr("Reset All"), groupBox);
-        defaultButton->setToolTip(CommandMappings::tr("Reset all to default."));
+        defaultButton = new QPushButton(::Core::Tr::tr("Reset All"), groupBox);
+        defaultButton->setToolTip(::Core::Tr::tr("Reset all to default."));
 
-        resetButton = new QPushButton(CommandMappings::tr("Reset"), groupBox);
-        resetButton->setToolTip(CommandMappings::tr("Reset to default."));
+        resetButton = new QPushButton(::Core::Tr::tr("Reset"), groupBox);
+        resetButton->setToolTip(::Core::Tr::tr("Reset to default."));
         resetButton->setVisible(false);
 
-        importButton = new QPushButton(CommandMappings::tr("Import..."), groupBox);
-        exportButton = new QPushButton(CommandMappings::tr("Export..."), groupBox);
+        importButton = new QPushButton(::Core::Tr::tr("Import..."), groupBox);
+        exportButton = new QPushButton(::Core::Tr::tr("Export..."), groupBox);
 
         auto hboxLayout1 = new QHBoxLayout();
         hboxLayout1->addWidget(defaultButton);
@@ -169,7 +147,7 @@ void CommandMappings::setPageTitle(const QString &s)
 
 void CommandMappings::setTargetHeader(const QString &s)
 {
-    d->commandList->setHeaderLabels({tr("Command"), tr("Label"), s});
+    d->commandList->setHeaderLabels({::Core::Tr::tr("Command"), ::Core::Tr::tr("Label"), s});
 }
 
 void CommandMappings::filterChanged(const QString &f)

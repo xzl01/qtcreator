@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "languageclientformatter.h"
 
 #include "client.h"
+#include "dynamiccapabilities.h"
 #include "languageclientutils.h"
 
 #include <texteditor/tabsettings.h>
 #include <texteditor/textdocument.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
 
 #include <QTextDocument>
 
@@ -70,14 +49,15 @@ static const FormattingOptions formattingOptions(const TextEditor::TabSettings &
 QFutureWatcher<ChangeSet> *LanguageClientFormatter::format(
         const QTextCursor &cursor, const TextEditor::TabSettings &tabSettings)
 {
+    QTC_ASSERT(m_client, return nullptr);
     cancelCurrentRequest();
     m_progress = QFutureInterface<ChangeSet>();
 
     const FilePath &filePath = m_document->filePath();
     const DynamicCapabilities dynamicCapabilities = m_client->dynamicCapabilities();
     const QString method(DocumentRangeFormattingRequest::methodName);
-    if (optional<bool> registered = dynamicCapabilities.isRegistered(method)) {
-        if (!registered.value())
+    if (std::optional<bool> registered = dynamicCapabilities.isRegistered(method)) {
+        if (!*registered)
             return nullptr;
         const TextDocumentRegistrationOptions option(dynamicCapabilities.option(method).toObject());
         if (option.isValid()
@@ -85,15 +65,15 @@ QFutureWatcher<ChangeSet> *LanguageClientFormatter::format(
             return nullptr;
         }
     } else {
-        const Utils::optional<Utils::variant<bool, WorkDoneProgressOptions>> &provider
+        const std::optional<std::variant<bool, WorkDoneProgressOptions>> &provider
             = m_client->capabilities().documentRangeFormattingProvider();
         if (!provider.has_value())
             return nullptr;
-        if (Utils::holds_alternative<bool>(*provider) && !Utils::get<bool>(*provider))
+        if (std::holds_alternative<bool>(*provider) && !std::get<bool>(*provider))
             return nullptr;
     }
     DocumentRangeFormattingParams params;
-    const DocumentUri uri = DocumentUri::fromFilePath(filePath);
+    const DocumentUri uri = m_client->hostPathToServerUri(filePath);
     params.setTextDocument(TextDocumentIdentifier(uri));
     params.setOptions(formattingOptions(tabSettings));
     if (!cursor.hasSelection()) {
@@ -108,7 +88,7 @@ QFutureWatcher<ChangeSet> *LanguageClientFormatter::format(
         handleResponse(response);
     });
     m_currentRequest = request.id();
-    m_client->sendContent(request);
+    m_client->sendMessage(request);
     // ignore first contents changed, because this function is called inside a begin/endEdit block
     m_ignoreCancel = true;
     m_progress.reportStarted();
@@ -122,22 +102,23 @@ QFutureWatcher<ChangeSet> *LanguageClientFormatter::format(
 
 void LanguageClientFormatter::cancelCurrentRequest()
 {
-    if (m_currentRequest.has_value()) {
+    if (QTC_GUARD(m_client) && m_currentRequest.has_value()) {
         m_progress.reportCanceled();
         m_progress.reportFinished();
         m_client->cancelRequest(*m_currentRequest);
         m_ignoreCancel = false;
-        m_currentRequest = nullopt;
+        m_currentRequest = std::nullopt;
     }
 }
 
 void LanguageClientFormatter::handleResponse(const DocumentRangeFormattingRequest::Response &response)
 {
-    m_currentRequest = nullopt;
-    if (const optional<DocumentRangeFormattingRequest::Response::Error> &error = response.error())
+    m_currentRequest = std::nullopt;
+    const std::optional<DocumentRangeFormattingRequest::Response::Error> &error = response.error();
+    if (QTC_GUARD(m_client) && error)
         m_client->log(*error);
     ChangeSet changeSet;
-    if (optional<LanguageClientArray<TextEdit>> result = response.result()) {
+    if (std::optional<LanguageClientArray<TextEdit>> result = response.result()) {
         if (!result->isNull())
             changeSet = editsToChangeSet(result->toList(), m_document->document());
     }

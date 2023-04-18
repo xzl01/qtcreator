@@ -8,7 +8,6 @@ Project {
     references: [
         "advanceddockingsystem/advanceddockingsystem.qbs",
         "aggregation/aggregation.qbs",
-        "clangsupport/clangsupport.qbs",
         "cplusplus/cplusplus.qbs",
         "extensionsystem/extensionsystem.qbs",
         "glsl/glsl.qbs",
@@ -21,7 +20,6 @@ Project {
         "qmldebug/qmldebug.qbs",
         "qtcreatorcdbext/qtcreatorcdbext.qbs",
         "sqlite/sqlite.qbs",
-        "ssh/ssh.qbs",
         "tracing/tracing.qbs",
         "utils/process_stub.qbs",
         "utils/process_ctrlc_stub.qbs",

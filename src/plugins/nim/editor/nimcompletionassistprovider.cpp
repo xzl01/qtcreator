@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
-** Contact: http://www.qt.io/licensing
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nimcompletionassistprovider.h"
 #include "suggest/nimsuggestcache.h"
@@ -65,25 +43,24 @@ class NimCompletionAssistProcessor : public QObject, public TextEditor::IAssistP
     Q_OBJECT
 
 public:
-    TextEditor::IAssistProposal *perform(const TextEditor::AssistInterface *interface) final
+    TextEditor::IAssistProposal *perform() final
     {
         QTC_ASSERT(this->thread() == qApp->thread(), return nullptr);
 
-        if (interface->reason() == IdleEditor && !acceptsIdleEditor(interface))
+        if (interface()->reason() == IdleEditor && !acceptsIdleEditor(interface()))
             return nullptr;
 
-        Suggest::NimSuggest *suggest = nimSuggestInstance(interface);
+        Suggest::NimSuggest *suggest = nimSuggestInstance(interface());
         QTC_ASSERT(suggest, return nullptr);
 
         if (suggest->executablePath().isEmpty() || suggest->projectFile().isEmpty())
             return nullptr;
 
         if (!suggest->isReady()) {
-            m_interface = interface;
-            QObject::connect(suggest, &Suggest::NimSuggest::readyChanged,
-                             this, &NimCompletionAssistProcessor::onNimSuggestReady);
+            QObject::connect(suggest, &Suggest::NimSuggest::readyChanged, this,
+                             [this, suggest](bool ready) { onNimSuggestReady(suggest, ready); });
         } else {
-            doPerform(interface, suggest);
+            doPerform(interface(), suggest);
         }
 
         m_running = true;
@@ -96,17 +73,15 @@ public:
     }
 
 private:
-    void onNimSuggestReady(bool ready)
+    void onNimSuggestReady(Suggest::NimSuggest *suggest, bool ready)
     {
-        auto suggest = dynamic_cast<Suggest::NimSuggest *>(sender());
-        QTC_ASSERT(suggest, return);
-        QTC_ASSERT(m_interface, return);
+        QTC_ASSERT(interface(), return);
 
-        if (!ready || !suggest) {
+        if (!ready) {
             m_running = false;
             setAsyncProposalAvailable(nullptr);
         } else {
-            doPerform(m_interface, suggest);
+            doPerform(interface(), suggest);
         }
     }
 
@@ -255,7 +230,6 @@ private:
     std::weak_ptr<Suggest::NimSuggest> m_suggest;
     std::shared_ptr<Suggest::NimSuggestClientRequest> m_request;
     std::unique_ptr<QTemporaryFile> m_dirtyFile;
-    const TextEditor::AssistInterface *m_interface = nullptr;
 };
 
 
@@ -272,11 +246,6 @@ int NimCompletionAssistProvider::activationCharSequenceLength() const
 bool NimCompletionAssistProvider::isActivationCharSequence(const QString &sequence) const
 {
     return !sequence.isEmpty() && isActivationChar(sequence.at(0));
-}
-
-IAssistProvider::RunType NimCompletionAssistProvider::runType() const
-{
-    return RunType::Asynchronous;
 }
 
 }

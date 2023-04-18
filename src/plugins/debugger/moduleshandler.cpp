@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "moduleshandler.h"
 
@@ -29,10 +7,12 @@
 #include "debuggerconstants.h"
 #include "debuggercore.h"
 #include "debuggerengine.h"
+#include "debuggertr.h"
 
 #include <utils/basetreeview.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
+#include <utils/qtcprocess.h>
 #include <utils/treemodel.h>
 
 #include <QCoreApplication>
@@ -44,13 +24,10 @@
 
 using namespace Utils;
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 class ModuleItem : public TreeItem
 {
-    Q_DECLARE_TR_FUNCTIONS(Debuggger::Internal::ModulesHandler)
-
 public:
     QVariant data(int column, int role) const override;
 
@@ -84,39 +61,39 @@ QVariant ModuleItem::data(int column, int role) const
     case 2:
         if (role == Qt::DisplayRole)
             switch (module.symbolsRead) {
-            case Module::UnknownReadState: return tr("Unknown");
-            case Module::ReadFailed:       return tr("No");
-            case Module::ReadOk:           return tr("Yes");
+            case Module::UnknownReadState: return Tr::tr("Unknown");
+            case Module::ReadFailed:       return Tr::tr("No");
+            case Module::ReadOk:           return Tr::tr("Yes");
             }
         break;
     case 3:
         if (role == Qt::DisplayRole)
             switch (module.elfData.symbolsType) {
-            case UnknownSymbols: return tr("Unknown");
-            case NoSymbols:      return tr("None");
-            case PlainSymbols:   return tr("Plain");
-            case FastSymbols:    return tr("Fast");
-            case LinkedSymbols:  return tr("debuglnk");
-            case BuildIdSymbols: return tr("buildid");
+            case UnknownSymbols: return Tr::tr("Unknown");
+            case NoSymbols:      return Tr::tr("None");
+            case PlainSymbols:   return Tr::tr("Plain");
+            case FastSymbols:    return Tr::tr("Fast");
+            case LinkedSymbols:  return Tr::tr("debuglnk");
+            case BuildIdSymbols: return Tr::tr("buildid");
             }
         else if (role == Qt::ToolTipRole)
             switch (module.elfData.symbolsType) {
             case UnknownSymbols:
-                return tr("It is unknown whether this module contains debug "
+                return Tr::tr("It is unknown whether this module contains debug "
                           "information.\nUse \"Examine Symbols\" from the "
                           "context menu to initiate a check.");
             case NoSymbols:
-                return tr("This module neither contains nor references debug "
+                return Tr::tr("This module neither contains nor references debug "
                           "information.\nStepping into the module or setting "
                           "breakpoints by file and line will not work.");
             case PlainSymbols:
             case FastSymbols:
-                return tr("This module contains debug information.\nStepping "
+                return Tr::tr("This module contains debug information.\nStepping "
                           "into the module or setting breakpoints by file and "
                           "line is expected to work.");
             case LinkedSymbols:
             case BuildIdSymbols:
-                return tr("This module does not contain debug information "
+                return Tr::tr("This module does not contain debug information "
                           "itself, but contains a reference to external "
                           "debug information.");
             }
@@ -131,7 +108,7 @@ QVariant ModuleItem::data(int column, int role) const
             if (module.endAddress)
                 return QString("0x" + QString::number(module.endAddress, 16));
             //: End address of loaded module
-            return tr("<unknown>", "address");
+            return Tr::tr("<unknown>", "address");
         }
         break;
     }
@@ -146,8 +123,6 @@ QVariant ModuleItem::data(int column, int role) const
 
 class ModulesModel : public TreeModel<TypedTreeItem<ModuleItem>, ModuleItem>
 {
-    Q_DECLARE_TR_FUNCTIONS(Debuggger::Internal::ModulesHandler)
-
 public:
     bool setData(const QModelIndex &idx, const QVariant &data, int role) override
     {
@@ -179,46 +154,46 @@ bool ModulesModel::contextMenuEvent(const ItemViewEvent &ev)
 
     auto menu = new QMenu;
 
-    addAction(this, menu, tr("Update Module List"),
+    addAction(this, menu, Tr::tr("Update Module List"),
               enabled && canReload,
               [this] { engine->reloadModules(); });
 
-    addAction(this, menu, tr("Show Source Files for Module \"%1\"").arg(moduleName),
-              tr("Show Source Files for Module"),
+    addAction(this, menu, Tr::tr("Show Source Files for Module \"%1\"").arg(moduleName),
+              Tr::tr("Show Source Files for Module"),
               moduleNameValid && enabled && canReload,
               [this, modulePath] { engine->loadSymbols(modulePath); });
 
     // FIXME: Dependencies only available on Windows, when "depends" is installed.
-    addAction(this, menu, tr("Show Dependencies of \"%1\"").arg(moduleName),
-              tr("Show Dependencies"),
+    addAction(this, menu, Tr::tr("Show Dependencies of \"%1\"").arg(moduleName),
+              Tr::tr("Show Dependencies"),
               moduleNameValid && !moduleName.isEmpty() && HostOsInfo::isWindowsHost(),
               [modulePath] { QtcProcess::startDetached({{"depends"}, {modulePath}}); });
 
-    addAction(this, menu, tr("Load Symbols for All Modules"),
+    addAction(this, menu, Tr::tr("Load Symbols for All Modules"),
               enabled && canLoadSymbols,
               [this] { engine->loadAllSymbols(); });
 
-    addAction(this, menu, tr("Examine All Modules"),
+    addAction(this, menu, Tr::tr("Examine All Modules"),
               enabled && canLoadSymbols,
               [this] { engine->examineModules(); });
 
-    addAction(this, menu, tr("Load Symbols for Module \"%1\"").arg(moduleName),
-              tr("Load Symbols for Module"),
+    addAction(this, menu, Tr::tr("Load Symbols for Module \"%1\"").arg(moduleName),
+              Tr::tr("Load Symbols for Module"),
               moduleNameValid && canLoadSymbols,
               [this, modulePath] { engine->loadSymbols(modulePath); });
 
-    addAction(this, menu, tr("Edit File \"%1\"").arg(moduleName),
-              tr("Edit File"),
+    addAction(this, menu, Tr::tr("Edit File \"%1\"").arg(moduleName),
+              Tr::tr("Edit File"),
               moduleNameValid,
               [this, modulePath] { engine->gotoLocation(FilePath::fromString(modulePath)); });
 
-    addAction(this, menu, tr("Show Symbols in File \"%1\"").arg(moduleName),
-              tr("Show Symbols"),
+    addAction(this, menu, Tr::tr("Show Symbols in File \"%1\"").arg(moduleName),
+              Tr::tr("Show Symbols"),
               canShowSymbols && moduleNameValid,
               [this, modulePath] { engine->requestModuleSymbols(modulePath); });
 
-    addAction(this, menu, tr("Show Sections in File \"%1\"").arg(moduleName),
-              tr("Show Sections"),
+    addAction(this, menu, Tr::tr("Show Sections in File \"%1\"").arg(moduleName),
+              Tr::tr("Show Sections"),
               canShowSymbols && moduleNameValid,
               [this, modulePath] { engine->requestModuleSections(modulePath); });
 
@@ -242,12 +217,12 @@ ModulesHandler::ModulesHandler(DebuggerEngine *engine)
     m_model->engine = engine;
     m_model->setObjectName("ModulesModel");
     m_model->setHeader(QStringList({
-        tr("Module Name") + pad,
-        tr("Module Path") + pad,
-        tr("Symbols Read") + pad,
-        tr("Symbols Type") + pad,
-        tr("Start Address") + pad,
-        tr("End Address") + pad}));
+        Tr::tr("Module Name") + pad,
+        Tr::tr("Module Path") + pad,
+        Tr::tr("Symbols Read") + pad,
+        Tr::tr("Symbols Type") + pad,
+        Tr::tr("Start Address") + pad,
+        Tr::tr("End Address") + pad}));
 
     m_proxyModel = new QSortFilterProxyModel(this);
     m_proxyModel->setObjectName("ModulesProxyModel");
@@ -306,7 +281,7 @@ void ModulesHandler::updateModule(const Module &module)
     }
 
     try { // MinGW occasionallly throws std::bad_alloc.
-        ElfReader reader(FilePath::fromString(path));
+        ElfReader reader(FilePath::fromUserInput(path));
         item->module.elfData = reader.readHeaders();
         item->update();
     } catch(...) {
@@ -332,5 +307,4 @@ void ModulesHandler::endUpdateAll()
         m_model->destroyItem(item);
 }
 
-} // namespace Internal
-} // namespace Debugger
+} // namespace Debugger::Internal

@@ -1,28 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Author: Frank Osterfeld, KDAB (frank.osterfeld@kdab.com)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "valgrindmemcheckparsertest.h"
 
@@ -31,9 +8,9 @@
 #include "xmlprotocol/stack.h"
 #include "xmlprotocol/suppression.h"
 
-#include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/runconfiguration.h>
+#include <projectexplorer/runcontrol.h>
 
 #include <QFile>
 #include <QFileInfo>
@@ -115,7 +92,7 @@ static QString dataFile(const QString &file)
 static QString extraDataFile(const QString &file)
 {
     // Clone test data from: https://git.qt.io/chstenge/creator-test-data
-    static QString prefix = QString::fromLocal8Bit(qgetenv("QTC_TEST_EXTRADATALOCATION"));
+    static QString prefix = qtcEnvironmentVariable("QTC_TEST_EXTRADATALOCATION");
     if (prefix.isEmpty())
         return QString();
 
@@ -308,13 +285,11 @@ void ValgrindMemcheckParserTest::testMemcheckSample1()
         expectedErrors << error;
     }
 
-    QVector<QPair<qint64,qint64> > expectedErrorCounts;
-    expectedErrorCounts.push_back(QPair<qint64,qint64>(9, 2));
-
-    QVector<QPair<QString,qint64> > expectedSuppCounts;
-    expectedSuppCounts.push_back(qMakePair(QString("X on SUSE11 writev uninit padding"), static_cast<qint64>(12)));
-    expectedSuppCounts.push_back(qMakePair(QString("dl-hack3-cond-1"), static_cast<qint64>(2)));
-    expectedSuppCounts.push_back(qMakePair(QString("glibc-2.5.x-on-SUSE-10.2-(PPC)-2a"), static_cast<qint64>(2)));
+    const QVector<QPair<qint64,qint64>> expectedErrorCounts{{9, 2}};
+    const QVector<QPair<QString,qint64>> expectedSuppCounts{
+        {QString("X on SUSE11 writev uninit padding"), 12},
+        {QString("dl-hack3-cond-1"), 2},
+        {QString("glibc-2.5.x-on-SUSE-10.2-(PPC)-2a"), 2}};
 
     Parser parser;
     Recorder rec(&parser);
@@ -483,8 +458,6 @@ void ValgrindMemcheckParserTest::testParserStop()
                                 "-i", dataFile("memcheck-output-sample1.xml"), "--wait", "5" }});
     runner.setProcessChannelMode(QProcess::ForwardedChannels);
 
-    runner.setDevice(ProjectExplorer::DeviceManager::instance()->defaultDevice(
-                         ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE));
     runner.start();
     QTest::qWait(500);
     runner.stop();
@@ -505,8 +478,6 @@ void ValgrindMemcheckParserTest::testRealValgrind()
     ValgrindRunner runner;
     runner.setValgrindCommand({"valgrind", {}});
     runner.setDebuggee(debuggee);
-    runner.setDevice(ProjectExplorer::DeviceManager::instance()->defaultDevice(
-                         ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE));
     RunnerDumper dumper(&runner);
     runner.start();
     runner.waitForFinished();
@@ -544,8 +515,6 @@ void ValgrindMemcheckParserTest::testValgrindStartError()
     ValgrindRunner runner;
     runner.setValgrindCommand({FilePath::fromString(valgrindExe), valgrindArgs});
     runner.setDebuggee(debuggeeExecutable);
-    runner.setDevice(ProjectExplorer::DeviceManager::instance()->defaultDevice(
-                         ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE));
     RunnerDumper dumper(&runner);
     runner.start();
     runner.waitForFinished();

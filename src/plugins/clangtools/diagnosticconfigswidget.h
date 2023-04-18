@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,23 +9,16 @@
 
 #include <memory>
 
-namespace ClangTools {
-namespace Internal {
-class Diagnostic;
+namespace ClangTools::Internal {
 
-// Not UI-related, but requires the tree model (or else a huge refactoring or code duplication).
-QString removeClangTidyCheck(const QString &checks, const QString &check);
-QString removeClazyCheck(const QString &checks, const QString &check);
-void disableChecks(const QList<Diagnostic> &diagnostics);
-
-namespace Ui {
-class ClazyChecks;
-class TidyChecks;
-}
-
-class TidyChecksTreeModel;
-class ClazyChecksTreeModel;
 class ClazyChecksSortFilterModel;
+class ClazyChecksTreeModel;
+class ClazyChecksWidget;
+class Diagnostic;
+class TidyChecksTreeModel;
+class TidyChecksWidget;
+
+void disableChecks(const QList<Diagnostic> &diagnostics);
 
 // Like CppEditor::ClangDiagnosticConfigsWidget, but with tabs/widgets for clang-tidy and clazy
 class DiagnosticConfigsWidget : public CppEditor::ClangDiagnosticConfigsWidget
@@ -82,18 +53,15 @@ private:
 
 private:
     // Clang-Tidy
-    std::unique_ptr<Ui::TidyChecks> m_tidyChecks;
-    QWidget *m_tidyChecksWidget = nullptr;
+    TidyChecksWidget *m_tidyChecks = nullptr;
     std::unique_ptr<TidyChecksTreeModel> m_tidyTreeModel;
     ClangTidyInfo m_tidyInfo;
 
     // Clazy
-    std::unique_ptr<Ui::ClazyChecks> m_clazyChecks;
-    QWidget *m_clazyChecksWidget = nullptr;
-    std::unique_ptr<ClazyChecksTreeModel> m_clazyTreeModel;
+    ClazyChecksWidget *m_clazyChecks = nullptr;
     ClazyChecksSortFilterModel *m_clazySortFilterProxyModel = nullptr;
+    std::unique_ptr<ClazyChecksTreeModel> m_clazyTreeModel;
     ClazyStandaloneInfo m_clazyInfo;
 };
 
-} // namespace Internal
-} // namespace ClangTools
+} // ClangTools::Internal

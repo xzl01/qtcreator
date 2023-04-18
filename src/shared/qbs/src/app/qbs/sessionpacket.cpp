@@ -82,7 +82,7 @@ SessionPacket::Status SessionPacket::parseInput(QByteArray &input)
 QJsonObject SessionPacket::retrievePacket()
 {
     QBS_ASSERT(isComplete(), return QJsonObject());
-    const auto packet = QJsonDocument::fromJson(QByteArray::fromBase64(m_payload)).object();
+    auto packet = QJsonDocument::fromJson(QByteArray::fromBase64(m_payload)).object();
     m_payload.clear();
     m_expectedPayloadLength = -1;
     return packet;
@@ -99,7 +99,7 @@ QJsonObject SessionPacket::helloMessage()
 {
     return QJsonObject{
         {StringConstants::type(), QLatin1String("hello")},
-        {QLatin1String("api-level"), 2},
+        {QLatin1String("api-level"), 3},
         {QLatin1String("api-compat-level"), 2}
     };
 }

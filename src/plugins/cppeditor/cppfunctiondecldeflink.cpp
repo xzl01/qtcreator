@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppfunctiondecldeflink.h"
 
 #include "cppcodestylesettings.h"
 #include "cppeditorconstants.h"
+#include "cppeditortr.h"
 #include "cppeditorwidget.h"
 #include "cpplocalsymbols.h"
 #include "cppquickfixassistant.h"
@@ -169,10 +148,7 @@ static QSharedPointer<FunctionDeclDefLink> findLinkHelper(QSharedPointer<Functio
         return noResult;
 
     // parse the target file to get the linked decl/def
-    const QString targetFileName = QString::fromUtf8(
-                target->fileName(), target->fileNameLength());
-    CppRefactoringFileConstPtr targetFile = changes.fileNoEditor(
-        Utils::FilePath::fromString(targetFileName));
+    CppRefactoringFileConstPtr targetFile = changes.fileNoEditor(target->filePath());
     if (!targetFile->isValid())
         return noResult;
 
@@ -220,8 +196,7 @@ void FunctionDeclDefLinkFinder::startFindLinkAt(
 
     // find the start/end offsets
     CppRefactoringChanges refactoringChanges(snapshot);
-    CppRefactoringFilePtr sourceFile = refactoringChanges.file(
-        Utils::FilePath::fromString(doc->fileName()));
+    CppRefactoringFilePtr sourceFile = refactoringChanges.file(doc->filePath());
     sourceFile->setCppDocument(doc);
     int start, end;
     declDefLinkStartEnd(sourceFile, parent, funcDecl, &start, &end);
@@ -296,7 +271,7 @@ void FunctionDeclDefLink::apply(CppEditorWidget *editor, bool jumpToMatch)
         newTargetFile->apply();
     } else {
         ToolTip::show(editor->toolTipPosition(linkSelection),
-                     tr("Target file was changed, could not apply changes"));
+                      Tr::tr("Target file was changed, could not apply changes"));
     }
 }
 
@@ -331,9 +306,9 @@ void FunctionDeclDefLink::showMarker(CppEditorWidget *editor)
 
     QString message;
     if (targetDeclaration->asFunctionDefinition())
-        message = tr("Apply changes to definition");
+        message = Tr::tr("Apply changes to definition");
     else
-        message = tr("Apply changes to declaration");
+        message = Tr::tr("Apply changes to declaration");
 
     Core::Command *quickfixCommand = Core::ActionManager::command(TextEditor::Constants::QUICKFIX_THIS);
     if (quickfixCommand)
@@ -355,7 +330,7 @@ void FunctionDeclDefLink::showMarker(CppEditorWidget *editor)
 static int declaredParameterCount(Function *function)
 {
     int argc = function->argumentCount();
-    if (argc == 0 && function->memberCount() > 0 && function->memberAt(0)->type().type()->isVoidType())
+    if (argc == 0 && function->memberCount() > 0 && function->memberAt(0)->type().type()->asVoidType())
         return 1;
     return argc;
 }
@@ -547,7 +522,7 @@ ChangeSet FunctionDeclDefLink::changes(const Snapshot &snapshot, int targetOffse
     newDeclText.append(QLatin1String("{}"));
     const QByteArray newDeclTextPreprocessed = typeOfExpression.preprocess(newDeclText.toUtf8());
 
-    Document::Ptr newDeclDoc = Document::create(QLatin1String("<decl>"));
+    Document::Ptr newDeclDoc = Document::create(FilePath::fromPathPart(u"<decl>"));
     newDeclDoc->setUtf8Source(newDeclTextPreprocessed);
     newDeclDoc->parse(Document::ParseDeclaration);
     newDeclDoc->check();
@@ -883,7 +858,7 @@ ChangeSet FunctionDeclDefLink::changes(const Snapshot &snapshot, int targetOffse
             for (auto it = renamedTargetParameters.cbegin(), end = renamedTargetParameters.cend();
                     it != end; ++it) {
                 const QList<SemanticInfo::Use> &uses = localSymbols.uses.value(it.key());
-                foreach (const SemanticInfo::Use &use, uses) {
+                for (const SemanticInfo::Use &use : uses) {
                     if (use.isInvalid())
                         continue;
                     const int useStart = targetFile->position(use.line, use.column);

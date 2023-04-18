@@ -1,35 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "subcomponentmanager.h"
-
-#include <itemlibraryimport.h>
-#include <qmldesignerconstants.h>
-
-#include "model.h"
 #include "metainforeader.h"
+
+#include <externaldependenciesinterface.h>
+#include <invalidmetainfoexception.h>
+#include <model.h>
+#include <qmldesignerconstants.h>
 
 #include <utils/algorithm.h>
 #include <utils/hostosinfo.h>
@@ -60,10 +38,12 @@ QT_END_NAMESPACE
 
 namespace QmlDesigner {
 static const QString s_qmlFilePattern = QStringLiteral("*.qml");
+constexpr const char AppFileName[] = "App.qml";
 
-SubComponentManager::SubComponentManager(Model *model, QObject *parent)
-    : QObject(parent),
-      m_model(model)
+SubComponentManager::SubComponentManager(Model *model,
+                                         ExternalDependenciesInterface &externalDependencies)
+    : m_model(model)
+    , m_externalDependencies{externalDependencies}
 {
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged,
             this, [this](const QString &path) { parseDirectory(path); });
@@ -143,7 +123,8 @@ void SubComponentManager::removeImport(int index)
         if (!m_dirToQualifier.contains(canonicalDirPath))
             m_watcher.removePath(canonicalDirPath);
 
-//        foreach (const QFileInfo &monitoredFile, watchedFiles(canonicalDirPath)) { ### todo: proper support for import as
+//        const QList<QFileInfo> files = watchedFiles(canonicalDirPath);
+//        for (const QFileInfo &monitoredFile : files) { ### todo: proper support for import as
 //            if (!m_dirToQualifier.contains(canonicalDirPath))
 //                unregisterQmlFile(monitoredFile, import.qualifier());
 //        }
@@ -173,7 +154,7 @@ void SubComponentManager::parseDirectories()
     for (const auto &assetPath : assetPaths)
         parseDirectory(assetPath);
 
-    foreach (const Import &import, m_imports) {
+    for (const Import &import : std::as_const(m_imports)) {
         if (import.isFileImport()) {
             QFileInfo dirInfo = QFileInfo(m_filePath.resolved(import.file()).toLocalFile());
             if (dirInfo.exists() && dirInfo.isDir()) {
@@ -184,7 +165,8 @@ void SubComponentManager::parseDirectories()
             QString url = import.url();
             url.replace(QLatin1Char('.'), QLatin1Char('/'));
             QFileInfo dirInfo = QFileInfo(url);
-            foreach (const QString &path, importPaths()) {
+            const QStringList paths = importPaths();
+            for (const QString &path : paths) {
                 QString fullUrl  = path + QLatin1Char('/') + url;
                 dirInfo = QFileInfo(fullUrl);
 
@@ -222,7 +204,8 @@ void SubComponentManager::parseDirectory(const QString &canonicalDirPath, bool a
         designerDir.setNameFilters(filter);
 
         QStringList metaFiles = designerDir.entryList(QDir::Files);
-        foreach (const QFileInfo &metaInfoFile, designerDir.entryInfoList(QDir::Files)) {
+        const QFileInfoList metaInfoList = designerDir.entryInfoList(QDir::Files);
+        for (const QFileInfo &metaInfoFile : metaInfoList) {
             if (model() && model()->metaInfo().itemLibraryInfo()) {
                 Internal::MetaInfoReader reader(model()->metaInfo());
                 reader.setQualifcation(qualification);
@@ -250,11 +233,18 @@ void SubComponentManager::parseDirectory(const QString &canonicalDirPath, bool a
 
     QFileInfoList monitoredList = watchedFiles(canonicalDirPath);
     QFileInfoList newList;
-    foreach (const QFileInfo &qmlFile, dir.entryInfoList()) {
+    const QFileInfoList qmlFileList = dir.entryInfoList();
+    const QString appFilePath = m_filePathDir.absoluteFilePath(AppFileName);
+
+    for (const QFileInfo &qmlFile : qmlFileList) {
         if (QFileInfo(m_filePath.toLocalFile()) == qmlFile) {
             // do not parse main file
             continue;
         }
+
+        if (qmlFile.absoluteFilePath() == appFilePath)
+            continue;
+
         if (!qmlFile.fileName().at(0).isUpper()) {
             // QML sub components must be upper case
             continue;
@@ -279,7 +269,8 @@ void SubComponentManager::parseDirectory(const QString &canonicalDirPath, bool a
             continue;
         }
         if (oldFileInfo < newFileInfo) {
-            foreach (const QString &qualifier, m_dirToQualifier.value(canonicalDirPath))
+            const QString qualifiers = m_dirToQualifier.value(canonicalDirPath);
+            for (const QChar &qualifier : qualifiers)
                 unregisterQmlFile(oldFileInfo, qualifier);
             m_watcher.removePath(oldFileInfo.filePath());
             ++oldIter;
@@ -291,7 +282,8 @@ void SubComponentManager::parseDirectory(const QString &canonicalDirPath, bool a
     }
 
     while (oldIter != monitoredList.constEnd()) {
-        foreach (const QString &qualifier, m_dirToQualifier.value(canonicalDirPath))
+        const QString qualifiers = m_dirToQualifier.value(canonicalDirPath);
+        for (const QChar &qualifier : qualifiers)
             unregisterQmlFile(*oldIter, qualifier);
         ++oldIter;
     }
@@ -315,7 +307,8 @@ void SubComponentManager::parseFile(const QString &canonicalFilePath, bool addTo
 
     const QFileInfo fi(canonicalFilePath);
     const QString dir = fi.path();
-    foreach (const QString &qualifier, m_dirToQualifier.values(dir)) {
+    const QStringList qualifiers = m_dirToQualifier.values(dir);
+    for (const QString &qualifier : qualifiers) {
         registerQmlFile(fi, qualifier, addToLibrary);
     }
     registerQmlFile(fi, qualification, addToLibrary);
@@ -331,7 +324,8 @@ QFileInfoList SubComponentManager::watchedFiles(const QString &canonicalDirPath)
 {
     QFileInfoList files;
 
-    foreach (const QString &monitoredFile, m_watcher.files()) {
+    const QStringList monitoredFiles = m_watcher.files();
+    for (const QString &monitoredFile : monitoredFiles) {
         QFileInfo fileInfo(monitoredFile);
         if (fileInfo.dir().absolutePath() == canonicalDirPath)
             files.append(fileInfo);
@@ -371,9 +365,7 @@ void SubComponentManager::registerQmlFile(const QFileInfo &fileInfo, const QStri
     ItemLibraryEntry itemLibraryEntry;
     itemLibraryEntry.setType(componentName.toUtf8());
     itemLibraryEntry.setName(baseComponentName);
-#ifndef QMLDESIGNER_TEST
-    itemLibraryEntry.setCategory(ItemLibraryImport::userComponentsTitle());
-#endif
+    itemLibraryEntry.setCategory(m_externalDependencies.itemLibraryImportUserComponentsTitle());
     itemLibraryEntry.setCustomComponentSource(fileInfo.absoluteFilePath());
     if (!qualifier.isEmpty())
         itemLibraryEntry.setRequiredImport(fixedQualifier);
@@ -403,7 +395,7 @@ void SubComponentManager::parseQuick3DAssetsDir(const QString &quick3DAssetsPath
         asset.prepend(QString(Constants::QUICK_3D_ASSETS_FOLDER).mid(1) + '.');
 
     // Create item library entries for Quick3D assets that are imported by document
-    for (auto &import : qAsConst(m_imports)) {
+    for (auto &import : std::as_const(m_imports)) {
         if (import.isLibraryImport() && assets.contains(import.url())) {
             assets.removeOne(import.url());
             parseQuick3DAssetsItem(import.url(), quick3DAssetsPath);
@@ -445,10 +437,9 @@ void SubComponentManager::parseQuick3DAssetsItem(const QString &importUrl, const
         QString iconPath = qmlIt.fileInfo().absolutePath() + '/'
                 + Constants::QUICK_3D_ASSET_ICON_DIR + '/' + name
                 + Constants::QUICK_3D_ASSET_LIBRARY_ICON_SUFFIX;
-        if (!QFileInfo::exists(iconPath))
-            iconPath = defaultIconPath;
-        itemLibraryEntry.setLibraryEntryIconPath(iconPath);
-        itemLibraryEntry.setTypeIcon(QIcon(iconPath));
+        if (QFileInfo::exists(iconPath))
+            itemLibraryEntry.setLibraryEntryIconPath(iconPath);
+        itemLibraryEntry.setTypeIcon(QIcon(defaultIconPath));
 
         // load hints file if exists
         QFile hintsFile(qmlIt.fileInfo().absolutePath() + '/' + name + ".hints");

@@ -71,6 +71,9 @@ public:
     const TypeNames &allowedChildTypes() const { return m_allowedChildTypes; }
     bool isChildTypeAllowed(ItemType type) const;
 
+    ErrorInfo checkForDeprecation(DeprecationWarningMode mode, const QString &name,
+                                  const CodeLocation &loc, Logger &logger) const;
+
 private:
     ItemType m_type;
     Properties m_properties;

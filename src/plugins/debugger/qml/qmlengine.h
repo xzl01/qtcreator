@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,16 +9,13 @@
 #include <qmldebug/qmloutputparser.h>
 #include <qmljs/qmljsdocument.h>
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 class QmlEnginePrivate;
 class QmlInspectorAgent;
 
 class QmlEngine : public DebuggerEngine
 {
-    Q_OBJECT
-
 public:
     QmlEngine();
     ~QmlEngine() override;
@@ -63,7 +38,6 @@ private:
     void connectionEstablished();
     void connectionStartupFailed();
     void appStartupFailed(const QString &errorMessage);
-    void appMessage(const QString &msg, Utils::OutputFormat);
 
     void setState(DebuggerState state, bool forced) override;
 
@@ -123,8 +97,8 @@ private:
     Core::Context languageContext() const override;
 
     void closeConnection();
-    void startApplicationLauncher();
-    void stopApplicationLauncher();
+    void startProcess();
+    void stopProcess();
 
     void connectionFailed();
 
@@ -138,5 +112,4 @@ private:
     QmlEnginePrivate *d;
 };
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal

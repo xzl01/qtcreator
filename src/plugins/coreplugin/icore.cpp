@@ -1,41 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "icore.h"
 
-#include "windowsupport.h"
+#include "coreplugintr.h"
 #include "dialogs/settingsdialog.h"
+#include "windowsupport.h"
 
 #include <app/app_version.h>
+
 #include <extensionsystem/pluginmanager.h>
 
-#include <utils/qtcassert.h>
 #include <utils/algorithm.h>
+#include <utils/environment.h>
+#include <utils/fileutils.h>
+#include <utils/qtcassert.h>
 
 #include <QApplication>
 #include <QDebug>
+#include <QLibraryInfo>
 #include <QStandardPaths>
 #include <QSysInfo>
 
@@ -213,13 +196,15 @@ ICore::ICore(MainWindow *mainwindow)
     // Save settings once after all plugins are initialized:
     connect(PluginManager::instance(), &PluginManager::initializationDone,
             this, [] { ICore::saveSettings(ICore::InitializationDone); });
-    connect(PluginManager::instance(), &PluginManager::testsFinished, [this] (int failedTests) {
+    connect(PluginManager::instance(), &PluginManager::testsFinished,
+            this, [this](int failedTests) {
         emit coreAboutToClose();
         if (failedTests != 0)
             qWarning("Test run was not successful: %d test(s) failed.", failedTests);
         QCoreApplication::exit(failedTests);
     });
-    connect(PluginManager::instance(), &PluginManager::scenarioFinished, [this] (int exitCode) {
+    connect(PluginManager::instance(), &PluginManager::scenarioFinished,
+            this, [this](int exitCode) {
         emit coreAboutToClose();
         QCoreApplication::exit(exitCode);
     });
@@ -306,7 +291,7 @@ bool ICore::showOptionsDialog(const Id page, QWidget *parent)
 */
 QString ICore::msgShowOptionsDialog()
 {
-    return QCoreApplication::translate("Core", "Configure...", "msgShowOptionsDialog");
+    return Tr::tr("Configure...", "msgShowOptionsDialog");
 }
 
 /*!
@@ -318,11 +303,9 @@ QString ICore::msgShowOptionsDialog()
 QString ICore::msgShowOptionsDialogToolTip()
 {
     if (Utils::HostOsInfo::isMacHost())
-        return QCoreApplication::translate("Core", "Open Preferences dialog.",
-                                           "msgShowOptionsDialogToolTip (mac version)");
+        return Tr::tr("Open Preferences dialog.", "msgShowOptionsDialogToolTip (mac version)");
     else
-        return QCoreApplication::translate("Core", "Open Options dialog.",
-                                           "msgShowOptionsDialogToolTip (non-mac version)");
+        return Tr::tr("Open Options dialog.", "msgShowOptionsDialogToolTip (non-mac version)");
 }
 
 /*!
@@ -346,6 +329,7 @@ bool ICore::showWarningWithOptions(const QString &title, const QString &text,
         parent = m_mainwindow;
     QMessageBox msgBox(QMessageBox::Warning, title, text,
                        QMessageBox::Ok, parent);
+    msgBox.setEscapeButton(QMessageBox::Ok);
     if (!details.isEmpty())
         msgBox.setDetailedText(details);
     QAbstractButton *settingsButton = nullptr;
@@ -616,6 +600,8 @@ static QString compilerString()
 #elif defined(Q_CC_MSVC)
     if (_MSC_VER > 1999)
         return QLatin1String("MSVC <unknown>");
+    if (_MSC_VER >= 1930)
+        return QLatin1String("MSVC 2022");
     if (_MSC_VER >= 1920)
         return QLatin1String("MSVC 2019");
     if (_MSC_VER >= 1910)
@@ -634,10 +620,10 @@ QString ICore::versionString()
 {
     QString ideVersionDescription;
     if (QLatin1String(Constants::IDE_VERSION_LONG) != QLatin1String(Constants::IDE_VERSION_DISPLAY))
-        ideVersionDescription = tr(" (%1)").arg(QLatin1String(Constants::IDE_VERSION_LONG));
-    return tr("%1 %2%3").arg(QLatin1String(Constants::IDE_DISPLAY_NAME),
-                             QLatin1String(Constants::IDE_VERSION_DISPLAY),
-                             ideVersionDescription);
+        ideVersionDescription = Tr::tr(" (%1)").arg(QLatin1String(Constants::IDE_VERSION_LONG));
+    return Tr::tr("%1 %2%3").arg(QLatin1String(Constants::IDE_DISPLAY_NAME),
+                                 QLatin1String(Constants::IDE_VERSION_DISPLAY),
+                                 ideVersionDescription);
 }
 
 /*!
@@ -645,9 +631,9 @@ QString ICore::versionString()
 */
 QString ICore::buildCompatibilityString()
 {
-    return tr("Based on Qt %1 (%2, %3 bit)").arg(QLatin1String(qVersion()),
+    return Tr::tr("Based on Qt %1 (%2, %3)").arg(QLatin1String(qVersion()),
                                                  compilerString(),
-                                                 QString::number(QSysInfo::WordSize));
+                                                 QSysInfo::buildCpuArchitecture());
 }
 
 /*!
@@ -704,7 +690,7 @@ QWidget *ICore::dialogParent()
     QWidget *active = QApplication::activeModalWidget();
     if (!active)
         active = QApplication::activeWindow();
-    if (!active || (active && active->windowFlags().testFlag(Qt::SplashScreen)))
+    if (!active || (active && active->windowFlags().testAnyFlags(Qt::SplashScreen | Qt::Popup)))
         active = m_mainwindow;
     return active;
 }
@@ -736,7 +722,9 @@ void ICore::raiseWindow(QWidget *widget)
     if (!widget)
         return;
     QWidget *window = widget->window();
-    if (window && window == m_mainwindow) {
+    if (!window)
+        return;
+    if (window == m_mainwindow) {
         m_mainwindow->raiseWindow();
     } else {
         window->raise();
@@ -828,6 +816,11 @@ void ICore::registerWindow(QWidget *window, const Context &context)
     new WindowSupport(window, context); // deletes itself when widget is destroyed
 }
 
+void ICore::restartTrimmer()
+{
+    m_mainwindow->restartTrimmer();
+}
+
 /*!
     Opens files using \a filePaths and \a flags like it would be
     done if they were given to \QC on the command line, or
@@ -869,9 +862,9 @@ QString ICore::systemInformation()
      return result;
 }
 
-static const QByteArray &screenShotsPath()
+static const QString &screenShotsPath()
 {
-    static const QByteArray path = qgetenv("QTC_SCREENSHOTS_PATH");
+    static const QString path = qtcEnvironmentVariable("QTC_SCREENSHOTS_PATH");
     return path;
 }
 

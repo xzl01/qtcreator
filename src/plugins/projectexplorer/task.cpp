@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "task.h"
 
 #include "fileinsessionfinder.h"
 #include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 
 #include <app/app_version.h>
 #include <texteditor/textmark.h>
@@ -81,7 +60,7 @@ Task::Task(TaskType type_, const QString &description,
 Task Task::compilerMissingTask()
 {
     return BuildSystemTask(Task::Error,
-                           tr("%1 needs a compiler set up to build. "
+                           Tr::tr("%1 needs a compiler set up to build. "
                               "Configure a compiler in the kit options.")
                            .arg(Core::Constants::IDE_DISPLAY_NAME));
 }
@@ -107,6 +86,7 @@ void Task::clear()
     file = Utils::FilePath();
     line = -1;
     movedLine = -1;
+    column = 0;
     category = Utils::Id();
     m_icon = QIcon();
     formats.clear();
@@ -171,7 +151,7 @@ bool operator<(const Task &a, const Task &b)
 }
 
 
-Utils::QHashValueType qHash(const Task &task)
+size_t qHash(const Task &task)
 {
     return task.taskId;
 }
@@ -185,10 +165,10 @@ QString toHtml(const Tasks &issues)
         str << "<b>";
         switch (t.type) {
         case Task::Error:
-            str << QCoreApplication::translate("ProjectExplorer::Kit", "Error:") << " ";
+            str << Tr::tr("Error:") << " ";
             break;
         case Task::Warning:
-            str << QCoreApplication::translate("ProjectExplorer::Kit", "Warning:") << " ";
+            str << Tr::tr("Warning:") << " ";
             break;
         case Task::Unknown:
         default:

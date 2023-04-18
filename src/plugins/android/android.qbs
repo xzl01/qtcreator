@@ -18,9 +18,8 @@ Project {
         Depends { name: "app_version_header" }
 
         files: [
-            "android_global.h",
+            "android_global.h", "androidtr.h",
             "android.qrc",
-            "addnewavddialog.ui",
             "androidavdmanager.cpp",
             "androidavdmanager.h",
             "androidconfigurations.cpp",
@@ -28,7 +27,6 @@ Project {
             "androidconstants.h",
             "androidcreatekeystorecertificate.cpp",
             "androidcreatekeystorecertificate.h",
-            "androidcreatekeystorecertificate.ui",
             "androidbuildapkstep.cpp",
             "androidbuildapkstep.h",
             "androiddeployqtstep.cpp",
@@ -84,17 +82,12 @@ Project {
             "androidsdkmanager.h",
             "androidsdkmanagerwidget.cpp",
             "androidsdkmanagerwidget.h",
-            "androidsdkmanagerwidget.ui",
             "androidsdkmodel.cpp",
             "androidsdkmodel.h",
             "androidsdkpackage.cpp",
             "androidsdkpackage.h",
-            "androidservicewidget.cpp",
-            "androidservicewidget.h",
-            "androidservicewidget_p.h",
             "androidsettingswidget.cpp",
             "androidsettingswidget.h",
-            "androidsettingswidget.ui",
             "androidsignaloperation.cpp",
             "androidsignaloperation.h",
             "androidtoolchain.cpp",
@@ -118,7 +111,9 @@ Project {
             "splashscreencontainerwidget.cpp",
             "splashscreencontainerwidget.h",
             "splashscreenwidget.cpp",
-            "splashscreenwidget.h"
+            "splashscreenwidget.h",
+            "sdkmanageroutputparser.cpp",
+            "sdkmanageroutputparser.h"
         ]
 
         Group {
@@ -126,6 +121,10 @@ Project {
             condition: qtc.testsEnabled
             files: [
                 "android_tst.qrc",
+                "androidsdkmanager_test.cpp",
+                "androidsdkmanager_test.h",
+                "sdkmanageroutputparser_test.cpp",
+                "sdkmanageroutputparser_test.h",
             ]
         }
     }

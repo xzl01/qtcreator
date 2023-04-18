@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cpptoolstestcase.h"
 
@@ -34,19 +12,24 @@
 #include "projectinfo.h"
 
 #include <coreplugin/editormanager/editormanager.h>
+
+#include <cplusplus/CppDocument.h>
+
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/session.h>
+
 #include <texteditor/texteditor.h>
 #include <texteditor/codeassist/iassistproposal.h>
 #include <texteditor/codeassist/iassistproposalmodel.h>
 #include <texteditor/storagesettings.h>
 
-#include <cplusplus/CppDocument.h>
+#include <utils/environment.h>
 #include <utils/executeondestruction.h>
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
+#include <utils/qtcassert.h>
 #include <utils/temporarydirectory.h>
 
 #include <QtTest>
@@ -101,15 +84,15 @@ TestDocumentPtr CppTestDocument::create(const QByteArray &fileName, const QByteA
     return doc;
 }
 
-QString CppTestDocument::filePath() const
+FilePath CppTestDocument::filePath() const
 {
     if (!m_baseDirectory.isEmpty())
-        return QDir::cleanPath(m_baseDirectory + QLatin1Char('/') + m_fileName);
+        return FilePath::fromString(QDir::cleanPath(m_baseDirectory + '/' + m_fileName));
 
     if (!QFileInfo(m_fileName).isAbsolute())
-        return Utils::TemporaryDirectory::masterDirectoryPath() + '/' + m_fileName;
+        return FilePath::fromString(TemporaryDirectory::masterDirectoryPath() + '/' + m_fileName);
 
-    return m_fileName;
+    return FilePath::fromString(m_fileName);
 }
 
 bool CppTestDocument::writeToDisk() const
@@ -194,11 +177,11 @@ static bool closeEditorsWithoutGarbageCollectorInvocation(const QList<Core::IEdi
     return closeEditorsSucceeded;
 }
 
-static bool snapshotContains(const CPlusPlus::Snapshot &snapshot, const QSet<QString> &filePaths)
+static bool snapshotContains(const CPlusPlus::Snapshot &snapshot, const QSet<FilePath> &filePaths)
 {
-    for (const QString &filePath : filePaths) {
+    for (const FilePath &filePath : filePaths) {
         if (!snapshot.contains(filePath)) {
-            qWarning() << "Missing file in snapshot:" << qPrintable(filePath);
+            qWarning() << "Missing file in snapshot:" << qPrintable(filePath.toString());
             return false;
         }
     }
@@ -229,11 +212,11 @@ bool TestCase::succeededSoFar() const
     return m_succeededSoFar;
 }
 
-bool TestCase::openCppEditor(const QString &fileName, TextEditor::BaseTextEditor **editor,
+bool TestCase::openCppEditor(const FilePath &filePath, TextEditor::BaseTextEditor **editor,
                              CppEditorWidget **editorWidget)
 {
     if (const auto e = dynamic_cast<TextEditor::BaseTextEditor *>(
-            Core::EditorManager::openEditor(FilePath::fromString(fileName)))) {
+            Core::EditorManager::openEditor(filePath))) {
         if (editor) {
             *editor = e;
             TextEditor::StorageSettings s = e->textDocument()->storageSettings();
@@ -285,7 +268,7 @@ static bool waitForProcessedEditorDocument_internal(CppEditorDocumentHandle *edi
     }
 }
 
-bool TestCase::waitForProcessedEditorDocument(const QString &filePath, int timeOutInMs)
+bool TestCase::waitForProcessedEditorDocument(const FilePath &filePath, int timeOutInMs)
 {
     auto *editorDocument = CppModelManager::instance()->cppEditorDocument(filePath);
     return waitForProcessedEditorDocument_internal(editorDocument, timeOutInMs);
@@ -298,7 +281,7 @@ CPlusPlus::Document::Ptr TestCase::waitForRehighlightedSemanticDocument(CppEdito
     return editorWidget->semanticInfo().doc;
 }
 
-bool TestCase::parseFiles(const QSet<QString> &filePaths)
+bool TestCase::parseFiles(const QSet<FilePath> &filePaths)
 {
     CppModelManager::instance()->updateSourceFiles(filePaths).waitForFinished();
     QCoreApplication::processEvents();
@@ -316,7 +299,7 @@ bool TestCase::parseFiles(const QSet<QString> &filePaths)
 
 bool TestCase::parseFiles(const QString &filePath)
 {
-    return parseFiles(QSet<QString>() << filePath);
+    return parseFiles({FilePath::fromString(filePath)});
 }
 
 void TestCase::closeEditorAtEndOfTestCase(Core::IEditor *editor)
@@ -330,21 +313,21 @@ bool TestCase::closeEditorWithoutGarbageCollectorInvocation(Core::IEditor *edito
     return closeEditorsWithoutGarbageCollectorInvocation({editor});
 }
 
-CPlusPlus::Document::Ptr TestCase::waitForFileInGlobalSnapshot(const QString &filePath,
+CPlusPlus::Document::Ptr TestCase::waitForFileInGlobalSnapshot(const FilePath &filePath,
                                                                int timeOutInMs)
 {
-    const auto documents = waitForFilesInGlobalSnapshot(QStringList(filePath), timeOutInMs);
+    const auto documents = waitForFilesInGlobalSnapshot({filePath}, timeOutInMs);
     return documents.isEmpty() ? CPlusPlus::Document::Ptr() : documents.first();
 }
 
-QList<CPlusPlus::Document::Ptr> TestCase::waitForFilesInGlobalSnapshot(const QStringList &filePaths,
+QList<CPlusPlus::Document::Ptr> TestCase::waitForFilesInGlobalSnapshot(const FilePaths &filePaths,
                                                                        int timeOutInMs)
 {
     QElapsedTimer t;
     t.start();
 
     QList<CPlusPlus::Document::Ptr> result;
-    for (const QString &filePath : filePaths) {
+    for (const FilePath &filePath : filePaths) {
         forever {
             if (CPlusPlus::Document::Ptr document = globalSnapshot().document(filePath)) {
                 result.append(document);
@@ -372,11 +355,11 @@ bool TestCase::waitUntilProjectIsFullyOpened(Project *project, int timeOutInMs)
         timeOutInMs);
 }
 
-bool TestCase::writeFile(const QString &filePath, const QByteArray &contents)
+bool TestCase::writeFile(const FilePath &filePath, const QByteArray &contents)
 {
-    Utils::FileSaver saver(Utils::FilePath::fromString(filePath));
+    Utils::FileSaver saver(filePath);
     if (!saver.write(contents) || !saver.finalize()) {
-        qWarning() << "Failed to write file to disk:" << qPrintable(filePath);
+        qWarning() << "Failed to write file to disk:" << qPrintable(filePath.toUserOutput());
         return false;
     }
     return true;
@@ -399,7 +382,7 @@ ProjectOpenerAndCloser::~ProjectOpenerAndCloser()
         hasGcFinished = true;
     });
 
-    foreach (Project *project, m_openProjects)
+    for (Project *project : std::as_const(m_openProjects))
         ProjectExplorerPlugin::unloadProject(project);
 
     QElapsedTimer t;
@@ -408,11 +391,11 @@ ProjectOpenerAndCloser::~ProjectOpenerAndCloser()
         QCoreApplication::processEvents();
 }
 
-ProjectInfo::ConstPtr ProjectOpenerAndCloser::open(const QString &projectFile,
+ProjectInfo::ConstPtr ProjectOpenerAndCloser::open(const FilePath &projectFile,
         bool configureAsExampleProject, Kit *kit)
 {
     ProjectExplorerPlugin::OpenProjectResult result =
-            ProjectExplorerPlugin::openProject(FilePath::fromString(projectFile));
+            ProjectExplorerPlugin::openProject(projectFile);
     if (!result) {
         qWarning() << result.errorMessage() << result.alreadyOpen();
         return {};
@@ -436,15 +419,15 @@ TemporaryDir::TemporaryDir()
 {
 }
 
-QString TemporaryDir::createFile(const QByteArray &relativePath, const QByteArray &contents)
+FilePath TemporaryDir::createFile(const QByteArray &relativePath, const QByteArray &contents)
 {
     const QString relativePathString = QString::fromUtf8(relativePath);
     if (relativePathString.isEmpty() || QFileInfo(relativePathString).isAbsolute())
-        return QString();
+        return {};
 
-    const QString filePath = m_temporaryDir.filePath(relativePathString).path();
+    const FilePath filePath = m_temporaryDir.filePath(relativePathString);
     if (!TestCase::writeFile(filePath, contents))
-        return QString();
+        return {};
     return filePath;
 }
 
@@ -493,16 +476,16 @@ TemporaryCopiedDir::TemporaryCopiedDir(const QString &sourceDirPath)
     }
 }
 
-QString TemporaryCopiedDir::absolutePath(const QByteArray &relativePath) const
+FilePath TemporaryCopiedDir::absolutePath(const QString &relativePath) const
 {
-    return m_temporaryDir.filePath(QString::fromUtf8(relativePath)).path();
+    return m_temporaryDir.filePath(relativePath);
 }
 
 int clangdIndexingTimeout()
 {
-    const QByteArray timeoutAsByteArray = qgetenv("QTC_CLANGD_INDEXING_TIMEOUT");
     bool isConversionOk = false;
-    const int intervalAsInt = timeoutAsByteArray.toInt(&isConversionOk);
+    const int intervalAsInt = qtcEnvironmentVariableIntValue("QTC_CLANGD_INDEXING_TIMEOUT",
+                                                             &isConversionOk);
     if (!isConversionOk)
         return Utils::HostOsInfo::isWindowsHost() ? 20000 : 10000;
     return intervalAsInt;

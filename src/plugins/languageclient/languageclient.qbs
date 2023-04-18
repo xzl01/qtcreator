@@ -17,7 +17,11 @@ QtcPlugin {
     Depends { name: "Core" }
     Depends { name: "TextEditor" }
 
+    Depends { name: "app_version_header" }
+
     files: [
+        "callhierarchy.cpp",
+        "callhierarchy.h",
         "client.cpp",
         "client.h",
         "diagnosticmanager.cpp",
@@ -27,7 +31,7 @@ QtcPlugin {
         "dynamiccapabilities.cpp",
         "dynamiccapabilities.h",
         "languageclient.qrc",
-        "languageclient_global.h",
+        "languageclient_global.h", "languageclienttr.h",
         "languageclientformatter.cpp",
         "languageclientformatter.h",
         "languageclienthoverhandler.cpp",

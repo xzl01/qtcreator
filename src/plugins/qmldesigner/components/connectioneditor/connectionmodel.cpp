@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "connectionmodel.h"
 #include "connectionview.h"
@@ -319,7 +297,7 @@ void ConnectionModel::addConnection()
 
     if (rootModelNode.isValid() && rootModelNode.metaInfo().isValid()) {
 
-        NodeMetaInfo nodeMetaInfo = connectionView()->model()->metaInfo("QtQuick.Connections");
+        NodeMetaInfo nodeMetaInfo = connectionView()->model()->qtQuickConnectionsMetaInfo();
 
         if (nodeMetaInfo.isValid()) {
             connectionView()->executeInTransaction("ConnectionModel::addConnection", [=, &rootModelNode](){
@@ -474,8 +452,7 @@ QStringList ConnectionModel::getPossibleSignalsForConnection(const ModelNode &co
 
     auto getAliasMetaSignals = [&](QString aliasPart, NodeMetaInfo metaInfo) {
         if (metaInfo.isValid() && metaInfo.hasProperty(aliasPart.toUtf8())) {
-            NodeMetaInfo propertyMetaInfo = connectionView()->model()->metaInfo(
-                        metaInfo.propertyTypeName(aliasPart.toUtf8()));
+            NodeMetaInfo propertyMetaInfo = metaInfo.property(aliasPart.toUtf8()).propertyType();
             if (propertyMetaInfo.isValid()) {
                 return propertyNameListToStringList(propertyMetaInfo.signalNames());
             }

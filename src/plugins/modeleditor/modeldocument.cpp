@@ -1,34 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jochen Becher
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Jochen Becher
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "modeldocument.h"
 
+#include "extdocumentcontroller.h"
 #include "modeleditor_constants.h"
 #include "modeleditor_plugin.h"
+#include "modeleditortr.h"
 #include "modelsmanager.h"
-#include "extdocumentcontroller.h"
 
 #include "qmt/config/configcontroller.h"
 #include "qmt/infrastructure/ioexceptions.h"
@@ -79,7 +58,7 @@ Core::IDocument::OpenResult ModelDocument::open(QString *errorString,
 bool ModelDocument::save(QString *errorString, const Utils::FilePath &filePath, bool autoSave)
 {
     if (!d->documentController) {
-        *errorString = tr("No model loaded. Cannot save.");
+        *errorString = Tr::tr("No model loaded. Cannot save.");
         return false;
     }
 
@@ -129,7 +108,7 @@ bool ModelDocument::reload(QString *errorString, Core::IDocument::ReloadFlag fla
         *errorString = ex.errorMessage();
         return false;
     } catch (const qmt::Exception &ex) {
-        *errorString = tr("Could not open \"%1\" for reading: %2.").arg(filePath().toString()).arg(ex.errorMessage());
+        *errorString = Tr::tr("Could not open \"%1\" for reading: %2.").arg(filePath().toString()).arg(ex.errorMessage());
         return false;
     }
     emit contentSet();
@@ -153,7 +132,7 @@ Core::IDocument::OpenResult ModelDocument::load(QString *errorString, const QStr
         *errorString = ex.errorMessage();
         return OpenResult::ReadError;
     } catch (const qmt::Exception &ex) {
-        *errorString = tr("Could not open \"%1\" for reading: %2.").arg(fileName).arg(ex.errorMessage());
+        *errorString = Tr::tr("Could not open \"%1\" for reading: %2.").arg(fileName).arg(ex.errorMessage());
         return OpenResult::CannotHandle;
     }
 

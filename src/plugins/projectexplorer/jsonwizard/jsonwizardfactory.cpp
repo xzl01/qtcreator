@@ -1,35 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "jsonwizardfactory.h"
 
 #include "jsonwizard.h"
 #include "jsonwizardgeneratorfactory.h"
 #include "jsonwizardpagefactory.h"
-
 #include "../projectexplorerconstants.h"
+#include "../projectexplorertr.h"
 
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/icontext.h>
@@ -40,6 +18,8 @@
 #include <extensionsystem/pluginmanager.h>
 
 #include <utils/algorithm.h>
+#include <utils/environment.h>
+#include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
 #include <utils/wizard.h>
@@ -59,7 +39,6 @@ using namespace Utils;
 namespace ProjectExplorer {
 
 const char WIZARD_PATH[] = "templates/wizards";
-const char WIZARD_FILE[] = "wizard.json";
 
 const char VERSION_KEY[] = "version";
 const char ENABLED_EXPRESSION_KEY[] = "enabled";
@@ -112,7 +91,8 @@ static QString supportedTypeIds(const QList<T *> &factories)
 {
     QStringList tmp;
     for (const T *f : factories) {
-        foreach (Id i, f->supportedIds())
+        const QList<Id> ids = f->supportedIds();
+        for (const Id i : ids)
             tmp.append(i.toString());
     }
     return tmp.join(QLatin1String("', '"));
@@ -123,22 +103,21 @@ static JsonWizardFactory::Generator parseGenerator(const QVariant &value, QStrin
     JsonWizardFactory::Generator gen;
 
     if (value.type() != QVariant::Map) {
-        *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizardFactory", "Generator is not a object.");
+        *errorMessage = Tr::tr("Generator is not a object.");
         return gen;
     }
 
     QVariantMap data = value.toMap();
     QString strVal = data.value(QLatin1String(TYPE_ID_KEY)).toString();
     if (strVal.isEmpty()) {
-        *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizardFactory", "Generator has no typeId set.");
+        *errorMessage = Tr::tr("Generator has no typeId set.");
         return gen;
     }
     Id typeId = Id::fromString(QLatin1String(Constants::GENERATOR_ID_PREFIX) + strVal);
     JsonWizardGeneratorFactory *factory
             = findOr(s_generatorFactories, nullptr, [typeId](JsonWizardGeneratorFactory *f) { return f->canCreate(typeId); });
     if (!factory) {
-        *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizardFactory",
-                                                    "TypeId \"%1\" of generator is unknown. Supported typeIds are: \"%2\".")
+        *errorMessage = Tr::tr("TypeId \"%1\" of generator is unknown. Supported typeIds are: \"%2\".")
                 .arg(strVal)
                 .arg(supportedTypeIds(s_generatorFactories).replace(QLatin1String(Constants::GENERATOR_ID_PREFIX), QLatin1String("")));
         return gen;
@@ -165,15 +144,15 @@ QVariantMap JsonWizardFactory::loadDefaultValues(const QString &fileName)
         return {};
     }
 
-    QList <Core::IWizardFactory *> result;
-    foreach (const Utils::FilePath &path, searchPaths()) {
+    const Utils::FilePaths paths = searchPaths();
+    for (const Utils::FilePath &path : paths) {
         if (path.isEmpty())
             continue;
 
         FilePath dir = FilePath::fromString(path.toString());
         if (!dir.exists()) {
             if (verbose())
-                verboseLog.append(tr("Path \"%1\" does not exist when checking Json wizard search paths.\n")
+                verboseLog.append(Tr::tr("Path \"%1\" does not exist when checking Json wizard search paths.\n")
                                   .arg(path.toUserOutput()));
             continue;
         }
@@ -184,7 +163,7 @@ QVariantMap JsonWizardFactory::loadDefaultValues(const QString &fileName)
         while (!dirs.isEmpty()) {
             const FilePath current = dirs.takeFirst();
             if (verbose())
-                verboseLog.append(tr("Checking \"%1\" for %2.\n")
+                verboseLog.append(Tr::tr("Checking \"%1\" for %2.\n")
                                   .arg(QDir::toNativeSeparators(current.absolutePath().toString()))
                                   .arg(fileName));
             if (current.pathAppended(fileName).exists()) {
@@ -206,7 +185,7 @@ QVariantMap JsonWizardFactory::loadDefaultValues(const QString &fileName)
                             ++column;
                         }
                     }
-                    verboseLog.append(tr("* Failed to parse \"%1\":%2:%3: %4\n")
+                    verboseLog.append(Tr::tr("* Failed to parse \"%1\":%2:%3: %4\n")
                                       .arg(configFile.fileName())
                                       .arg(line).arg(column)
                                       .arg(error.errorString()));
@@ -214,13 +193,13 @@ QVariantMap JsonWizardFactory::loadDefaultValues(const QString &fileName)
                 }
 
                 if (!json.isObject()) {
-                    verboseLog.append(tr("* Did not find a JSON object in \"%1\".\n")
+                    verboseLog.append(Tr::tr("* Did not find a JSON object in \"%1\".\n")
                                       .arg(configFile.fileName()));
                     continue;
                 }
 
                 if (verbose())
-                    verboseLog.append(tr("* Configuration found and parsed.\n"));
+                    verboseLog.append(Tr::tr("* Configuration found and parsed.\n"));
 
                 return json.object().toVariantMap();
             }
@@ -230,7 +209,7 @@ QVariantMap JsonWizardFactory::loadDefaultValues(const QString &fileName)
                 dirs.swap(subDirs);
                 dirs.append(subDirs);
             } else if (verbose()) {
-                verboseLog.append(tr("JsonWizard: \"%1\" not found\n").arg(fileName));
+                verboseLog.append(Tr::tr("JsonWizard: \"%1\" not found\n").arg(fileName));
             }
         }
     }
@@ -247,18 +226,8 @@ QVariant JsonWizardFactory::mergeDataValueMaps(const QVariant &valueMap, const Q
 {
     QVariantMap retVal;
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-    const QVariantMap &map = defaultValueMap.toMap();
-    for (auto it = map.begin(), end = map.end(); it != end; ++it)
-        retVal.insert(it.key(), it.value());
-
-    const QVariantMap &map2 = valueMap.toMap();
-    for (auto it = map2.begin(), end = map2.end(); it != end; ++it)
-        retVal.insert(it.key(), it.value());
-#else
     retVal.insert(defaultValueMap.toMap());
     retVal.insert(valueMap.toMap());
-#endif
     return retVal;
 }
 
@@ -328,7 +297,7 @@ std::pair<int, QStringList> JsonWizardFactory::screenSizeInfoFromPage(const QStr
     if (values.isEmpty())
         return {};
 
-    return std::make_pair(index, values);
+    return {index, values};
 }
 
 JsonWizardFactory::Page JsonWizardFactory::parsePage(const QVariant &value, QString *errorMessage)
@@ -336,7 +305,7 @@ JsonWizardFactory::Page JsonWizardFactory::parsePage(const QVariant &value, QStr
     JsonWizardFactory::Page p;
 
     if (value.type() != QVariant::Map) {
-        *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizardFactory", "Page is not an object.");
+        *errorMessage = Tr::tr("Page is not an object.");
         return p;
     }
 
@@ -348,7 +317,7 @@ JsonWizardFactory::Page JsonWizardFactory::parsePage(const QVariant &value, QStr
 
     const QString strVal = getDataValue(QLatin1String(TYPE_ID_KEY), data, defaultData).toString();
     if (strVal.isEmpty()) {
-        *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizardFactory", "Page has no typeId set.");
+        *errorMessage = Tr::tr("Page has no typeId set.");
         return p;
     }
     Id typeId = Id::fromString(QLatin1String(Constants::PAGE_ID_PREFIX) + strVal);
@@ -356,8 +325,7 @@ JsonWizardFactory::Page JsonWizardFactory::parsePage(const QVariant &value, QStr
     JsonWizardPageFactory *factory
             = Utils::findOr(s_pageFactories, nullptr, [typeId](JsonWizardPageFactory *f) { return f->canCreate(typeId); });
     if (!factory) {
-        *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizardFactory",
-                                                    "TypeId \"%1\" of page is unknown. Supported typeIds are: \"%2\".")
+        *errorMessage = Tr::tr("TypeId \"%1\" of page is unknown. Supported typeIds are: \"%2\".")
                 .arg(strVal)
                 .arg(supportedTypeIds(s_pageFactories).replace(QLatin1String(Constants::PAGE_ID_PREFIX), QLatin1String("")));
         return p;
@@ -370,7 +338,7 @@ JsonWizardFactory::Page JsonWizardFactory::parsePage(const QVariant &value, QStr
     bool ok;
     int index = getDataValue(QLatin1String(PAGE_INDEX_KEY), data, defaultData, -1).toInt(&ok);
     if (!ok) {
-        *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizardFactory", "Page with typeId \"%1\" has invalid \"index\".")
+        *errorMessage = Tr::tr("Page with typeId \"%1\" has invalid \"index\".")
                 .arg(typeId.toString());
         return p;
     }
@@ -405,94 +373,73 @@ JsonWizardFactory::Page JsonWizardFactory::parsePage(const QVariant &value, QStr
 //FIXME: loadDefaultValues() has an almost identical loop. Make the loop return the results instead of
 //internal processing and create a separate function for it. Then process the results in
 //loadDefaultValues() and loadDefaultValues()
-QList<Core::IWizardFactory *> JsonWizardFactory::createWizardFactories()
+void JsonWizardFactory::createWizardFactories()
 {
-    QString errorMessage;
     QString verboseLog;
-    const QString wizardFileName = QLatin1String(WIZARD_FILE);
+    const QString wizardFileName = QLatin1String("wizard.json");
 
-    QList <Core::IWizardFactory *> result;
-    foreach (const FilePath &path, searchPaths()) {
+    const FilePaths paths = searchPaths();
+    for (const FilePath &path : paths) {
         if (path.isEmpty())
             continue;
 
         if (!path.exists()) {
             if (verbose())
-                verboseLog.append(tr("Path \"%1\" does not exist when checking Json wizard search paths.\n")
+                verboseLog.append(Tr::tr("Path \"%1\" does not exist when checking Json wizard search paths.\n")
                                   .arg(path.toUserOutput()));
             continue;
         }
 
         const FileFilter filter {
-            {}, QDir::Dirs|QDir::Readable|QDir::NoDotAndDotDot, QDirIterator::NoIteratorFlags
+            {wizardFileName}, QDir::Files|QDir::Readable|QDir::NoDotAndDotDot, QDirIterator::Subdirectories
         };
         const QDir::SortFlags sortflags = QDir::Name|QDir::IgnoreCase;
-        FilePaths dirs = path.dirEntries(filter, sortflags);
+        const FilePaths wizardFiles = path.dirEntries(filter, sortflags);
 
-        while (!dirs.isEmpty()) {
-            const FilePath currentDir = dirs.takeFirst();
-            if (verbose())
-                verboseLog.append(tr("Checking \"%1\" for %2.\n")
-                                  .arg(currentDir.toUserOutput())
-                                  .arg(wizardFileName));
-            const FilePath currentFile = currentDir / wizardFileName;
-            if (currentFile.exists()) {
-                QJsonParseError error;
-                const QByteArray fileData = currentFile.fileContents();
-                const QJsonDocument json = QJsonDocument::fromJson(fileData, &error);
+        for (const FilePath &currentFile : wizardFiles) {
+            QJsonParseError error;
+            const QByteArray fileData = currentFile.fileContents().value_or(QByteArray());
+            const QJsonDocument json = QJsonDocument::fromJson(fileData, &error);
 
-                if (error.error != QJsonParseError::NoError) {
-                    int line = 1;
-                    int column = 1;
-                    for (int i = 0; i < error.offset; ++i) {
-                        if (fileData.at(i) == '\n') {
-                            ++line;
-                            column = 1;
-                        } else {
-                            ++column;
-                        }
+            if (error.error != QJsonParseError::NoError) {
+                int line = 1;
+                int column = 1;
+                for (int i = 0; i < error.offset; ++i) {
+                    if (fileData.at(i) == '\n') {
+                        ++line;
+                        column = 1;
+                    } else {
+                        ++column;
                     }
-                    verboseLog.append(tr("* Failed to parse \"%1\":%2:%3: %4\n")
-                                      .arg(currentFile.fileName())
-                                      .arg(line).arg(column)
-                                      .arg(error.errorString()));
-                    continue;
                 }
-
-                if (!json.isObject()) {
-                    verboseLog.append(tr("* Did not find a JSON object in \"%1\".\n")
-                                      .arg(currentFile.fileName()));
-                    continue;
-                }
-
-                if (verbose())
-                    verboseLog.append(tr("* Configuration found and parsed.\n"));
-
-                QVariantMap data = json.object().toVariantMap();
-
-                int version = data.value(QLatin1String(VERSION_KEY), 0).toInt();
-                if (version < 1 || version > 1) {
-                    verboseLog.append(tr("* Version %1 not supported.\n").arg(version));
-                    continue;
-                }
-
-                JsonWizardFactory *factory = createWizardFactory(data, currentDir, &errorMessage);
-                if (!factory) {
-                    verboseLog.append(tr("* Failed to create: %1\n").arg(errorMessage));
-                    continue;
-                }
-
-                result << factory;
-            } else {
-                FilePaths subDirs = currentDir.dirEntries(filter, sortflags);
-                if (!subDirs.isEmpty()) {
-                    // There is no QList::prepend(QList)...
-                    dirs.swap(subDirs);
-                    dirs.append(subDirs);
-                } else if (verbose()) {
-                    verboseLog.append(tr("JsonWizard: \"%1\" not found\n").arg(wizardFileName));
-                }
+                verboseLog.append(Tr::tr("* Failed to parse \"%1\":%2:%3: %4\n")
+                                  .arg(currentFile.fileName())
+                                  .arg(line).arg(column)
+                                  .arg(error.errorString()));
+                continue;
             }
+
+            if (!json.isObject()) {
+                verboseLog.append(Tr::tr("* Did not find a JSON object in \"%1\".\n")
+                                  .arg(currentFile.fileName()));
+                continue;
+            }
+
+            if (verbose())
+                verboseLog.append(Tr::tr("* Configuration found and parsed.\n"));
+
+            QVariantMap data = json.object().toVariantMap();
+
+            int version = data.value(QLatin1String(VERSION_KEY), 0).toInt();
+            if (version < 1 || version > 1) {
+                verboseLog.append(Tr::tr("* Version %1 not supported.\n").arg(version));
+                continue;
+            }
+
+            IWizardFactory::registerFactoryCreator([data, currentFile] {
+                QString errorMessage;
+                return createWizardFactory(data, currentFile.parentDir(), &errorMessage);
+            });
         }
     }
 
@@ -500,8 +447,6 @@ QList<Core::IWizardFactory *> JsonWizardFactory::createWizardFactories()
         qWarning("%s", qPrintable(verboseLog));
         Core::MessageManager::writeDisrupting(verboseLog);
     }
-
-    return result;
 }
 
 JsonWizardFactory *JsonWizardFactory::createWizardFactory(const QVariantMap &data,
@@ -512,6 +457,8 @@ JsonWizardFactory *JsonWizardFactory::createWizardFactory(const QVariantMap &dat
     if (!factory->initialize(data, baseDir, errorMessage)) {
         delete factory;
         factory = nullptr;
+        if (verbose())
+            Core::MessageManager::writeDisrupting(*errorMessage);
     }
     return factory;
 }
@@ -520,7 +467,7 @@ static QStringList environmentTemplatesPaths()
 {
     QStringList paths;
 
-    QString envTempPath = QString::fromLocal8Bit(qgetenv("QTCREATOR_TEMPLATES_PATH"));
+    QString envTempPath = qtcEnvironmentVariable("QTCREATOR_TEMPLATES_PATH");
 
     if (!envTempPath.isEmpty()) {
         for (const QString &path : envTempPath
@@ -536,10 +483,18 @@ static QStringList environmentTemplatesPaths()
 
 FilePaths &JsonWizardFactory::searchPaths()
 {
-    static FilePaths m_searchPaths = {Core::ICore::userResourcePath(WIZARD_PATH),
-                                      Core::ICore::resourcePath(WIZARD_PATH)};
-    for (const QString &environmentTemplateDirName : environmentTemplatesPaths())
-        m_searchPaths << FilePath::fromString(environmentTemplateDirName);
+    static FilePaths m_searchPaths;
+    static bool searchPathsInitialized = false;
+    if (!searchPathsInitialized) {
+        searchPathsInitialized = true;
+        m_searchPaths = {Core::ICore::userResourcePath(WIZARD_PATH),
+                         Core::ICore::resourcePath(WIZARD_PATH)};
+        for (const QString &environmentTemplateDirName : environmentTemplatesPaths())
+            m_searchPaths << FilePath::fromString(environmentTemplateDirName);
+        m_searchPaths << Utils::transform(
+            Core::ICore::settings()->value("Wizards/SearchPaths").toStringList(),
+            [](const QString &s) { return FilePath::fromUserInput(s); });
+    }
 
     return m_searchPaths;
 }
@@ -630,13 +585,13 @@ Wizard *JsonWizardFactory::runWizardImpl(const FilePath &path, QWidget *parent,
     wizard->setValue(QStringLiteral("id"), id().toString());
 
     MacroExpander *expander = wizard->expander();
-    for (const JsonWizard::OptionDefinition &od : qAsConst(m_options)) {
+    for (const JsonWizard::OptionDefinition &od : std::as_const(m_options)) {
         if (od.condition(*expander))
             wizard->setValue(od.key(), od.value(*expander));
     }
 
     bool havePage = false;
-    for (const Page &data : qAsConst(m_pages)) {
+    for (const Page &data : std::as_const(m_pages)) {
         QTC_ASSERT(data.isValid(), continue);
 
         if (!JsonWizard::boolFromVariant(data.enabled, wizard->expander()))
@@ -664,7 +619,7 @@ Wizard *JsonWizardFactory::runWizardImpl(const FilePath &path, QWidget *parent,
         }
     }
 
-    for (const Generator &data : qAsConst(m_generators)) {
+    for (const Generator &data : std::as_const(m_generators)) {
         QTC_ASSERT(data.isValid(), continue);
         JsonWizardGeneratorFactory *factory = Utils::findOr(s_generatorFactories, nullptr,
                                                             [&data](JsonWizardGeneratorFactory *f) {
@@ -692,13 +647,13 @@ QList<QVariant> JsonWizardFactory::objectOrList(const QVariant &data, QString *e
 {
     QList<QVariant> result;
     if (data.isNull())
-        *errorMessage = tr("key not found.");
+        *errorMessage = Tr::tr("key not found.");
     else if (data.type() == QVariant::Map)
         result.append(data);
     else if (data.type() == QVariant::List)
         result = data.toList();
     else
-        *errorMessage = tr("Expected an object or a list.");
+        *errorMessage = Tr::tr("Expected an object or a list.");
     return result;
 }
 
@@ -711,14 +666,14 @@ QString JsonWizardFactory::localizedString(const QVariant &value)
         const QString locale = languageSetting().toLower();
         QStringList locales;
         locales << locale << QLatin1String("en") << QLatin1String("C") << tmp.keys();
-        for (const QString &locale : qAsConst(locales)) {
+        for (const QString &locale : std::as_const(locales)) {
             QString result = tmp.value(locale, QString()).toString();
             if (!result.isEmpty())
                 return result;
         }
         return QString();
     }
-    return QCoreApplication::translate("ProjectExplorer::JsonWizard", value.toByteArray());
+    return Tr::tr(value.toByteArray());
 }
 
 bool JsonWizardFactory::isAvailable(Id platformId) const
@@ -728,11 +683,11 @@ bool JsonWizardFactory::isAvailable(Id platformId) const
 
     MacroExpander expander;
     MacroExpander *e = &expander;
-    expander.registerVariable("Platform", tr("The platform selected for the wizard."),
+    expander.registerVariable("Platform", Tr::tr("The platform selected for the wizard."),
                               [platformId]() { return platformId.toString(); });
-    expander.registerVariable("Features", tr("The features available to this wizard."),
+    expander.registerVariable("Features", Tr::tr("The features available to this wizard."),
                               [e, platformId]() { return JsonWizard::stringListToArrayString(Id::toStringList(availableFeatures(platformId)), e); });
-    expander.registerVariable("Plugins", tr("The plugins loaded."), [e]() {
+    expander.registerVariable("Plugins", Tr::tr("The plugins loaded."), [e]() {
         return JsonWizard::stringListToArrayString(Id::toStringList(pluginFeatures()), e);
     });
     Core::JsExpander jsExpander;
@@ -772,11 +727,11 @@ bool JsonWizardFactory::initialize(const QVariantMap &data, const FilePath &base
             && strVal != QLatin1String("class")
             && strVal != QLatin1String("file")
             && strVal != QLatin1String("project")) {
-        *errorMessage = tr("\"kind\" value \"%1\" is not \"class\" (deprecated), \"file\" or \"project\".").arg(strVal);
+        *errorMessage = Tr::tr("\"kind\" value \"%1\" is not \"class\" (deprecated), \"file\" or \"project\".").arg(strVal);
         return false;
     }
     if ((strVal == QLatin1String("file") || strVal == QLatin1String("class")) && !projectTypes.isEmpty()) {
-        *errorMessage = tr("\"kind\" is \"file\" or \"class\" (deprecated) and \"%1\" is also set.").arg(QLatin1String(SUPPORTED_PROJECTS));
+        *errorMessage = Tr::tr("\"kind\" is \"file\" or \"class\" (deprecated) and \"%1\" is also set.").arg(QLatin1String(SUPPORTED_PROJECTS));
         return false;
     }
     if (strVal == QLatin1String("project") && projectTypes.isEmpty())
@@ -786,24 +741,28 @@ bool JsonWizardFactory::initialize(const QVariantMap &data, const FilePath &base
 
     strVal = data.value(QLatin1String(ID_KEY)).toString();
     if (strVal.isEmpty()) {
-        *errorMessage = tr("No id set.");
+        *errorMessage = Tr::tr("No id set.");
         return false;
     }
     setId(Id::fromString(strVal));
 
     strVal = data.value(QLatin1String(CATEGORY_KEY)).toString();
     if (strVal.isEmpty()) {
-        *errorMessage = tr("No category is set.");
+        *errorMessage = Tr::tr("No category is set.");
         return false;
     }
     setCategory(strVal);
 
-    strVal = data.value(QLatin1String(ICON_KEY)).toString();
-    const FilePath iconPath = baseDir.resolvePath(strVal);
-    if (!iconPath.exists()) {
-        *errorMessage = tr("Icon file \"%1\" not found.").arg(iconPath.toUserOutput());
-        return false;
+    FilePath iconPath;
+    if (data.contains(QLatin1String(ICON_KEY))) {
+        strVal = data.value(QLatin1String(ICON_KEY)).toString();
+        iconPath = baseDir.resolvePath(strVal);
+        if (!iconPath.exists()) {
+            *errorMessage = Tr::tr("Icon file \"%1\" not found.").arg(iconPath.toUserOutput());
+            return false;
+        }
     }
+
     const QString iconText = data.value(QLatin1String(ICON_TEXT_KEY)).toString();
     const bool iconIsThemed = data.value(QLatin1String(ICON_KIND_KEY)).toString()
             .compare("Themed", Qt::CaseInsensitive) == 0;
@@ -819,7 +778,7 @@ bool JsonWizardFactory::initialize(const QVariantMap &data, const FilePath &base
     if (!strVal.isEmpty()) {
         const FilePath imagePath = baseDir.resolvePath(strVal);
         if (!imagePath.exists()) {
-            *errorMessage = tr("Image file \"%1\" not found.").arg(imagePath.toUserOutput());
+            *errorMessage = Tr::tr("Image file \"%1\" not found.").arg(imagePath.toUserOutput());
             return false;
         }
         setDescriptionImage(imagePath.toString());
@@ -835,21 +794,21 @@ bool JsonWizardFactory::initialize(const QVariantMap &data, const FilePath &base
 
     strVal = localizedString(data.value(QLatin1String(DISPLAY_NAME_KEY)));
     if (strVal.isEmpty()) {
-        *errorMessage = tr("No displayName set.");
+        *errorMessage = Tr::tr("No displayName set.");
         return false;
     }
     setDisplayName(strVal);
 
     strVal = localizedString(data.value(QLatin1String(CATEGORY_NAME_KEY)));
     if (strVal.isEmpty()) {
-        *errorMessage = tr("No displayCategory set.");
+        *errorMessage = Tr::tr("No displayCategory set.");
         return false;
     }
     setDisplayCategory(strVal);
 
     strVal = localizedString(data.value(QLatin1String(DESCRIPTION_KEY)));
     if (strVal.isEmpty()) {
-        *errorMessage = tr("No description set.");
+        *errorMessage = Tr::tr("No description set.");
         return false;
     }
     setDescription(strVal);
@@ -857,11 +816,11 @@ bool JsonWizardFactory::initialize(const QVariantMap &data, const FilePath &base
     // Generator:
     QVariantList list = objectOrList(data.value(QLatin1String(GENERATOR_KEY)), errorMessage);
     if (!errorMessage->isEmpty()) {
-        *errorMessage = tr("When parsing \"generators\": %1").arg(*errorMessage);
+        *errorMessage = Tr::tr("When parsing \"generators\": %1").arg(*errorMessage);
         return false;
     }
 
-    for (const QVariant &v : qAsConst(list)) {
+    for (const QVariant &v : std::as_const(list)) {
         Generator gen = parseGenerator(v, errorMessage);
         if (gen.isValid())
             m_generators.append(gen);
@@ -872,11 +831,11 @@ bool JsonWizardFactory::initialize(const QVariantMap &data, const FilePath &base
     // Pages:
     list = objectOrList(data.value(QLatin1String(PAGES_KEY)), errorMessage);
     if (!errorMessage->isEmpty()) {
-        *errorMessage = tr("When parsing \"pages\": %1").arg(*errorMessage);
+        *errorMessage = Tr::tr("When parsing \"pages\": %1").arg(*errorMessage);
         return false;
     }
 
-    for (const QVariant &v : qAsConst(list)) {
+    for (const QVariant &v : std::as_const(list)) {
         Page p = parsePage(v, errorMessage);
         if (p.isValid())
             m_pages.append(p);

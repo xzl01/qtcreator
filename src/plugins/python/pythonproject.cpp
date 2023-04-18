@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "pythonproject.h"
 
 #include "pythonconstants.h"
+#include "pythontr.h"
 
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/buildtargetinfo.h>
@@ -48,14 +27,15 @@
 
 #include <qmljs/qmljsmodelmanagerinterface.h>
 
+#include <utils/algorithm.h>
 #include <utils/fileutils.h>
+#include <utils/mimeutils.h>
 
 using namespace Core;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Python {
-namespace Internal {
+namespace Python::Internal {
 
 class PythonBuildSystem : public BuildSystem
 {
@@ -63,12 +43,12 @@ public:
     explicit PythonBuildSystem(Target *target);
 
     bool supportsAction(Node *context, ProjectAction action, const Node *node) const override;
-    bool addFiles(Node *, const Utils::FilePaths &filePaths, Utils::FilePaths *) override;
-    RemovedFilesFromProject removeFiles(Node *, const Utils::FilePaths &filePaths, Utils::FilePaths *) override;
-    bool deleteFiles(Node *, const Utils::FilePaths &) override;
+    bool addFiles(Node *, const FilePaths &filePaths, FilePaths *) override;
+    RemovedFilesFromProject removeFiles(Node *, const FilePaths &filePaths, FilePaths *) override;
+    bool deleteFiles(Node *, const FilePaths &) override;
     bool renameFile(Node *,
-                    const Utils::FilePath &oldFilePath,
-                    const Utils::FilePath &newFilePath) override;
+                    const FilePath &oldFilePath,
+                    const FilePath &newFilePath) override;
     QString name() const override { return QLatin1String("python"); }
 
     bool saveRawFileList(const QStringList &rawFileList);
@@ -112,7 +92,7 @@ static QJsonObject readObjJson(const FilePath &projectFile, QString *errorMessag
 {
     QFile file(projectFile.toString());
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        *errorMessage = PythonProject::tr("Unable to open \"%1\" for reading: %2")
+        *errorMessage = Tr::tr("Unable to open \"%1\" for reading: %2")
                             .arg(projectFile.toUserOutput(), file.errorString());
         return QJsonObject();
     }
@@ -122,7 +102,7 @@ static QJsonObject readObjJson(const FilePath &projectFile, QString *errorMessag
     // This assumes the project file is formed with only one field called
     // 'files' that has a list associated of the files to include in the project.
     if (content.isEmpty()) {
-        *errorMessage = PythonProject::tr("Unable to read \"%1\": The file is empty.")
+        *errorMessage = Tr::tr("Unable to read \"%1\": The file is empty.")
                             .arg(projectFile.toUserOutput());
         return QJsonObject();
     }
@@ -131,7 +111,7 @@ static QJsonObject readObjJson(const FilePath &projectFile, QString *errorMessag
     const QJsonDocument doc = QJsonDocument::fromJson(content, &error);
     if (doc.isNull()) {
         const int line = content.left(error.offset).count('\n') + 1;
-        *errorMessage = PythonProject::tr("Unable to parse \"%1\":%2: %3")
+        *errorMessage = Tr::tr("Unable to parse \"%1\":%2: %3")
                             .arg(projectFile.toUserOutput()).arg(line)
                             .arg(error.errorString());
         return QJsonObject();
@@ -205,7 +185,7 @@ static QStringList readImportPathsJson(const FilePath &projectFile, QString *err
 class PythonProjectNode : public ProjectNode
 {
 public:
-    PythonProjectNode(const Utils::FilePath &path)
+    PythonProjectNode(const FilePath &path)
         : ProjectNode(path)
     {
         setDisplayName(path.completeBaseName());
@@ -220,7 +200,6 @@ PythonProject::PythonProject(const FilePath &fileName)
     setProjectLanguages(Context(ProjectExplorer::Constants::PYTHON_LANGUAGE_ID));
     setDisplayName(fileName.completeBaseName());
 
-    setNeedsBuildConfigurations(false);
     setBuildSystemCreator([](Target *t) { return new PythonBuildSystem(t); });
 }
 
@@ -242,24 +221,26 @@ static FileType getFileType(const FilePath &f)
 void PythonBuildSystem::triggerParsing()
 {
     ParseGuard guard = guardParsingRun();
-
     parse();
 
     const QDir baseDir(projectDirectory().toString());
     QList<BuildTargetInfo> appTargets;
 
     auto newRoot = std::make_unique<PythonProjectNode>(projectDirectory());
-    for (const QString &f : qAsConst(m_files)) {
+    for (const QString &f : std::as_const(m_files)) {
         const QString displayName = baseDir.relativeFilePath(f);
         const FilePath filePath = FilePath::fromString(f);
         const FileType fileType = getFileType(filePath);
 
         newRoot->addNestedNode(std::make_unique<PythonFileNode>(filePath, displayName, fileType));
-        if (fileType == FileType::Source) {
+        const MimeType mt = mimeTypeForFile(filePath, MimeMatchMode::MatchExtension);
+        if (mt.matchesName(Constants::C_PY_MIMETYPE) || mt.matchesName(Constants::C_PY3_MIMETYPE)) {
             BuildTargetInfo bti;
+            bti.displayName = displayName;
             bti.buildKey = f;
             bti.targetFilePath = filePath;
             bti.projectFilePath = projectFilePath();
+            bti.isQtcRunnable = filePath.fileName() == "main.py";
             appTargets.append(bti);
         }
     }
@@ -269,10 +250,11 @@ void PythonBuildSystem::triggerParsing()
 
     auto modelManager = QmlJS::ModelManagerInterface::instance();
     if (modelManager) {
-        auto projectInfo = modelManager->defaultProjectInfoForProject(project());
+        const auto hiddenRccFolders = project()->files(Project::HiddenRccFolders);
+        auto projectInfo = modelManager->defaultProjectInfoForProject(project(), hiddenRccFolders);
 
-        for (const QString &importPath : qAsConst(m_qmlImportPaths)) {
-            const Utils::FilePath filePath = Utils::FilePath::fromString(importPath);
+        for (const QString &importPath : std::as_const(m_qmlImportPaths)) {
+            const FilePath filePath = FilePath::fromString(importPath);
             projectInfo.importPaths.maybeInsert(filePath, QmlJS::Dialect::Qml);
         }
 
@@ -328,7 +310,7 @@ bool PythonBuildSystem::writePyProjectFile(const QString &fileName, QString &con
 {
     QFile file(fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        *errorMessage = PythonProject::tr("Unable to open \"%1\" for reading: %2")
+        *errorMessage = Tr::tr("Unable to open \"%1\" for reading: %2")
                         .arg(fileName, file.errorString());
         return false;
     }
@@ -452,7 +434,7 @@ static void expandEnvironmentVariables(const QProcessEnvironment &env, QString &
  * absolute paths back to their original \a paths.
  */
 QStringList PythonBuildSystem::processEntries(const QStringList &paths,
-                                          QHash<QString, QString> *map) const
+                                              QHash<QString, QString> *map) const
 {
     const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     const QDir projectDir(projectDirectory().toString());
@@ -494,8 +476,8 @@ Project::RestoreResult PythonProject::fromMap(const QVariantMap &map, QString *e
 PythonBuildSystem::PythonBuildSystem(Target *target)
     : BuildSystem(target)
 {
-    connect(target->project(), &Project::projectFileIsDirty, this, [this]() { triggerParsing(); });
-    QTimer::singleShot(0, this, &PythonBuildSystem::triggerParsing);
+    connect(target->project(), &Project::projectFileIsDirty, this, [this] { triggerParsing(); });
+    triggerParsing();
 }
 
 bool PythonBuildSystem::supportsAction(Node *context, ProjectAction action, const Node *node) const
@@ -512,5 +494,4 @@ bool PythonBuildSystem::supportsAction(Node *context, ProjectAction action, cons
     return BuildSystem::supportsAction(context, action, node);
 }
 
-} // namespace Internal
-} // namespace Python
+} // Python::Internal

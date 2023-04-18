@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cpptoolssettings.h"
 
 #include "cppeditorconstants.h"
+#include "cppeditortr.h"
 #include "cppcodestylepreferences.h"
 #include "cppcodestylepreferencesfactory.h"
 
@@ -44,8 +23,6 @@
 
 static const char idKey[] = "CppGlobal";
 const bool kSortEditorDocumentOutlineDefault = true;
-const bool kShowHeaderErrorInfoBarDefault = true;
-const bool kShowNoProjectInfoBarDefault = true;
 
 using namespace Core;
 using namespace TextEditor;
@@ -85,7 +62,7 @@ CppToolsSettings::CppToolsSettings()
     // global code style settings
     d->m_globalCodeStyle = new CppCodeStylePreferences(this);
     d->m_globalCodeStyle->setDelegatingPool(pool);
-    d->m_globalCodeStyle->setDisplayName(tr("Global", "Settings"));
+    d->m_globalCodeStyle->setDisplayName(Tr::tr("Global", "Settings"));
     d->m_globalCodeStyle->setId(idKey);
     pool->addCodeStyle(d->m_globalCodeStyle);
     TextEditorSettings::registerCodeStyle(Constants::CPP_SETTINGS_ID, d->m_globalCodeStyle);
@@ -119,7 +96,7 @@ CppToolsSettings::CppToolsSettings()
     // Qt style
     auto qtCodeStyle = new CppCodeStylePreferences;
     qtCodeStyle->setId("qt");
-    qtCodeStyle->setDisplayName(tr("Qt"));
+    qtCodeStyle->setDisplayName(Tr::tr("Qt"));
     qtCodeStyle->setReadOnly(true);
     TabSettings qtTabSettings;
     qtTabSettings.m_tabPolicy = TabSettings::SpacesOnlyTabPolicy;
@@ -132,7 +109,7 @@ CppToolsSettings::CppToolsSettings()
     // GNU style
     auto gnuCodeStyle = new CppCodeStylePreferences;
     gnuCodeStyle->setId("gnu");
-    gnuCodeStyle->setDisplayName(tr("GNU"));
+    gnuCodeStyle->setDisplayName(Tr::tr("GNU"));
     gnuCodeStyle->setReadOnly(true);
     TabSettings gnuTabSettings;
     gnuTabSettings.m_tabPolicy = TabSettings::MixedTabPolicy;
@@ -193,7 +170,7 @@ CppToolsSettings::CppToolsSettings()
             QVariant v;
             v.setValue(legacyCodeStyleSettings);
             ICodeStylePreferences *oldCreator = pool->createCodeStyle(
-                     "legacy", legacyTabSettings, v, tr("Old Creator"));
+                     "legacy", legacyTabSettings, v, Tr::tr("Old Creator"));
 
             // change the current delegate and save
             d->m_globalCodeStyle->setCurrentDelegate(oldCreator);
@@ -263,48 +240,6 @@ void CppToolsSettings::setSortedEditorDocumentOutline(bool sorted)
                                            sorted,
                                            kSortEditorDocumentOutlineDefault);
     emit editorDocumentOutlineSortingChanged(sorted);
-}
-
-static QString showHeaderErrorInfoBarKey()
-{
-    return QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP)
-         + QLatin1Char('/')
-         + QLatin1String(Constants::CPPEDITOR_SHOW_INFO_BAR_FOR_HEADER_ERRORS);
-}
-
-bool CppToolsSettings::showHeaderErrorInfoBar() const
-{
-    return ICore::settings()
-        ->value(showHeaderErrorInfoBarKey(), kShowHeaderErrorInfoBarDefault)
-        .toBool();
-}
-
-void CppToolsSettings::setShowHeaderErrorInfoBar(bool show)
-{
-    ICore::settings()->setValueWithDefault(showHeaderErrorInfoBarKey(),
-                                           show,
-                                           kShowHeaderErrorInfoBarDefault);
-    emit showHeaderErrorInfoBarChanged(show);
-}
-
-static QString showNoProjectInfoBarKey()
-{
-    return QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP)
-         + QLatin1Char('/')
-         + QLatin1String(Constants::CPPEDITOR_SHOW_INFO_BAR_FOR_FOR_NO_PROJECT);
-}
-
-bool CppToolsSettings::showNoProjectInfoBar() const
-{
-    return ICore::settings()->value(showNoProjectInfoBarKey(), kShowNoProjectInfoBarDefault).toBool();
-}
-
-void CppToolsSettings::setShowNoProjectInfoBar(bool show)
-{
-    ICore::settings()->setValueWithDefault(showNoProjectInfoBarKey(),
-                                           show,
-                                           kShowNoProjectInfoBarDefault);
-    emit showNoProjectInfoBarChanged(show);
 }
 
 } // namespace CppEditor

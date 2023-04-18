@@ -1,27 +1,5 @@
-############################################################################
-#
-# Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import tempfile
 
@@ -180,7 +158,7 @@ def invokeMenuItem(menu, item, *subItems):
         except:
             nativeMouseClick(waitForObject(":Qt Creator_Core::Internal::MainWindow", 1000), 20, 20, 0, Qt.LeftButton)
     # Use Locator for menu items which wouldn't work on macOS
-    if menu == "Tools" and item == "Options..." or menu == "File" and item == "Exit":
+    if menu == "Edit" and item == "Preferences..." or menu == "File" and item == "Exit":
         selectFromLocator("t %s" % item, item)
         return
     menuObject = waitForObjectItem(":Qt Creator.QtCreator.MenuBar_QMenuBar", menu)
@@ -269,7 +247,7 @@ def selectFromFileDialog(fileName, waitForFile=False, ignoreFinalSnooze=False):
 # add Qt documentations from given paths
 # param which a list/tuple of the paths to the qch files to be added
 def addHelpDocumentation(which):
-    invokeMenuItem("Tools", "Options...")
+    invokeMenuItem("Edit", "Preferences...")
     mouseClick(waitForObjectItem(":Options_QListView", "Help"))
     waitForObject("{container=':Options.qt_tabwidget_tabbar_QTabBar' type='TabItem' text='Documentation'}")
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Documentation")
@@ -295,18 +273,19 @@ def addCurrentCreatorDocumentation():
     if not os.path.exists(docPath):
         test.fatal("Missing current Qt Creator documentation (expected in %s)" % docPath)
         return
-    invokeMenuItem("Tools", "Options...")
+    invokeMenuItem("Edit", "Preferences...")
     mouseClick(waitForObjectItem(":Options_QListView", "Help"))
     waitForObject("{container=':Options.qt_tabwidget_tabbar_QTabBar' type='TabItem' text='Documentation'}")
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Documentation")
     clickButton(waitForObject("{type='QPushButton' name='addButton' visible='1' text='Add...'}"))
     selectFromFileDialog(docPath)
     try:
-        waitForObject("{type='QMessageBox' unnamed='1' visible='1' "
-                      "text~='Unable to register documentation.*'}", 3000)
+        windowStr = ("{type='QMessageBox' unnamed='1' visible='1' "
+                      "text~='Unable to register documentation.*'}")
+        waitForObject(windowStr, 3000)
         test.passes("Qt Creator's documentation found already registered.")
         clickButton(waitForObject("{type='QPushButton' text='OK' unnamed='1' visible='1' "
-                                  "container={name='groupBox' type='QGroupBox' visible='1'}}"))
+                                  "window=%s}" % windowStr))
     except:
         test.fail("Added Qt Creator's documentation explicitly.")
     clickButton(waitForObject(":Options.OK_QPushButton"))
@@ -347,10 +326,6 @@ def __checkParentAccess__(filePath):
 # options dialog and returns a dict holding the kits as keys
 # and a list of information of its configured Qt
 def getConfiguredKits():
-    def __retrieveQtVersionName__(target, version):
-        treeView = waitForObject(":qtdirList_QTreeView")
-        return str(treeView.currentIndex().data().toString())
-    # end of internal function for iterateQtVersions
     def __setQtVersionForKit__(kit, kitName, kitsQtVersionName):
         mouseClick(waitForObjectItem(":BuildAndRun_QTreeView", kit))
         qtVersionStr = str(waitForObjectExists(":Kits_QtVersion_QComboBox").currentText)
@@ -361,18 +336,15 @@ def getConfiguredKits():
     # end of internal function for iterate kits
 
     kitsWithQtVersionName = {}
-    result = {}
+    result = []
     # collect kits and their Qt versions
-    targetsQtVersions, qtVersionNames = iterateQtVersions(True, False, __retrieveQtVersionName__)
+    qtVersionNames = iterateQtVersions()
     # update collected Qt versions with their configured device and version
-    iterateKits(True, True, __setQtVersionForKit__, kitsWithQtVersionName)
+    iterateKits(False, True, __setQtVersionForKit__, kitsWithQtVersionName)
     # merge defined target names with their configured Qt versions and devices
-    for kit, qtVersion in kitsWithQtVersionName.iteritems():
-        if kit in ('Fremantle', 'Harmattan', 'Qt Simulator'):
-            test.verify(qtVersion == 'None',
-                        "The outdated kit '%s' should not have a Qt version" % kit)
-        elif qtVersion in qtVersionNames:
-            result[kit] = targetsQtVersions[qtVersionNames.index(qtVersion)].items()[0]
+    for kit, qtVersion in kitsWithQtVersionName.items():
+        if qtVersion in qtVersionNames:
+            result.append(kit)
         else:
             test.fail("Qt version '%s' for kit '%s' can't be found in qtVersionNames."
                       % (qtVersion, kit))
@@ -400,35 +372,14 @@ def regexVerify(text, expectedTexts):
             return True
     return False
 
+
 # function that opens Options Dialog and parses the configured Qt versions
-# param keepOptionsOpen set to True if the Options dialog should stay open when
-#       leaving this function
-# param alreadyOnOptionsDialog set to True if you already have opened the Options Dialog
-#       (if False this function will open it via the MenuBar -> Tools -> Options...)
-# param additionalFunction pass a function or name of a defined function to execute
-#       for each correctly configured item on the list of Qt versions
-#       (Qt versions having no assigned toolchain, failing qmake,... will be skipped)
-#       this function must take at least 2 parameters - the first is the target name
-#       and the second the version of the current selected Qt version item
-# param argsForAdditionalFunc you can specify as much parameters as you want to pass
-#       to additionalFunction from the outside
-# the function returns a list of dict holding target-version mappings if used without
-# additionalFunction
-# WATCH OUT! if you're using the additionalFunction parameter - this function will
-# return the list mentioned above as well as the returned value(s) from
-# additionalFunction. You MUST call this function like
-# result, additionalResult = _iterateQtVersions(...)
-# where additionalResult is the result of all executions of additionalFunction which
-# means it is a list of results.
-def iterateQtVersions(keepOptionsOpen=False, alreadyOnOptionsDialog=False,
-                      additionalFunction=None, *argsForAdditionalFunc):
-    result = []
-    additionalResult = []
-    if not alreadyOnOptionsDialog:
-        invokeMenuItem("Tools", "Options...")
+# the function returns a list of the found Qt versions
+def iterateQtVersions():
+    qtVersionNames = []
+    invokeMenuItem("Edit", "Preferences...")
     mouseClick(waitForObjectItem(":Options_QListView", "Kits"))
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Qt Versions")
-    pattern = re.compile("Qt version (?P<version>.*?) for (?P<target>.*)")
     treeView = waitForObject(":qtdirList_QTreeView")
     model = treeView.model()
     for rootIndex in dumpIndices(model):
@@ -436,56 +387,33 @@ def iterateQtVersions(keepOptionsOpen=False, alreadyOnOptionsDialog=False,
         for subIndex in dumpIndices(model, rootIndex):
             subChildText = str(subIndex.data()).replace(".", "\\.").replace("_", "\\_")
             treeView.scrollTo(subIndex)
-            mouseClick(waitForObjectItem(treeView, ".".join([rootChildText,subChildText])))
-            currentText = str(waitForObject(":QtSupport__Internal__QtVersionManager.QLabel").text)
-            matches = pattern.match(currentText)
-            if matches:
-                target = matches.group("target").strip()
-                version = matches.group("version").strip()
-                result.append({target:version})
-                if additionalFunction:
-                    try:
-                        if isString(additionalFunction):
-                            currResult = globals()[additionalFunction](target, version, *argsForAdditionalFunc)
-                        else:
-                            currResult = additionalFunction(target, version, *argsForAdditionalFunc)
-                    except:
-                        t,v,_ = sys.exc_info()
-                        currResult = None
-                        test.fatal("Function to additionally execute on Options Dialog could not be found or "
-                                   "an exception occurred while executing it.", "%s(%s)" % (str(t), str(v)))
-                    additionalResult.append(currResult)
-    if not keepOptionsOpen:
-        clickButton(waitForObject(":Options.Cancel_QPushButton"))
-    if additionalFunction:
-        return result, additionalResult
-    else:
-        return result
+            mouseClick(waitForObjectItem(treeView, ".".join([rootChildText, subChildText])))
+            qtVersionNames.append(str(treeView.currentIndex().data().toString()))
+    return qtVersionNames
+
 
 # function that opens Options Dialog (if necessary) and parses the configured Kits
-# param keepOptionsOpen set to True if the Options dialog should stay open when
-#       leaving this function
+# param clickOkWhenDone set to True if the Options dialog should be closed by clicking the
+#       "OK" button. If False, the dialog will stay open
 # param alreadyOnOptionsDialog set to True if you already have opened the Options Dialog
-#       (if False this functions will open it via the MenuBar -> Tools -> Options...)
+#       (if False this function will open it via the MenuBar -> Edit -> Preferences...)
 # param additionalFunction pass a function or name of a defined function to execute
 #       for each configured item on the list of Kits
-#       this function must take at least 2 parameters - the first is the item (QModelIndex)
-#       of the current Kit (if you need to click on it) and the second the Kit name itself
-# param argsForAdditionalFunc you can specify as much parameters as you want to pass
+#       this function must take at least 2 parameters - the first is the full string
+#       of the kit which can be used in waitForObjectItem(), the second the Kit name itself
+# param argsForAdditionalFunc you can specify as many parameters as you want to pass
 #       to additionalFunction from the outside
-# the function returns a list of Kit names if used without an additional function
-# WATCH OUT! if you're using the additionalFunction parameter - this function will
-# return the list mentioned above as well as the returned value(s) from
+# this function will return a list of Kit names as well as the returned value(s) from
 # additionalFunction. You MUST call this function like
-# result, additionalResult = _iterateQtVersions(...)
+# result, additionalResult = iterateKits(...)
 # where additionalResult is the result of all executions of additionalFunction which
 # means it is a list of results.
-def iterateKits(keepOptionsOpen=False, alreadyOnOptionsDialog=False,
-                additionalFunction=None, *argsForAdditionalFunc):
+def iterateKits(clickOkWhenDone, alreadyOnOptionsDialog,
+                additionalFunction, *argsForAdditionalFunc):
     result = []
     additionalResult = []
     if not alreadyOnOptionsDialog:
-        invokeMenuItem("Tools", "Options...")
+        invokeMenuItem("Edit", "Preferences...")
     mouseClick(waitForObjectItem(":Options_QListView", "Kits"))
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Kits")
     treeView = waitForObject(":BuildAndRun_QTreeView")
@@ -498,31 +426,22 @@ def iterateKits(keepOptionsOpen=False, alreadyOnOptionsDialog=False,
     test.compare(manual.data().toString(), "Manual", "Verifying label for target section")
     for section in [autoDetected, manual]:
         for currentItem in dumpItems(model, section):
-            kitName = currentItem
-            if (kitName.endswith(" (default)")):
-                kitName = kitName.rsplit(" (default)", 1)[0]
+            kitName = currentItem.rsplit(" (default)", 1)[0]
             result.append(kitName)
-            item = ".".join([str(section.data().toString()),
-                             currentItem.replace(".", "\\.")])
-            if additionalFunction:
-                try:
-                    if isString(additionalFunction):
-                        currResult = globals()[additionalFunction](item, kitName, *argsForAdditionalFunc)
-                    else:
-                        currResult = additionalFunction(item, kitName, *argsForAdditionalFunc)
-                except:
-                    t,v,_ = sys.exc_info()
-                    currResult = None
-                    test.fatal("Function to additionally execute on Options Dialog could not be "
-                               "found or an exception occurred while executing it.", "%s(%s)" %
-                               (str(t), str(v)))
-                additionalResult.append(currResult)
-    if not keepOptionsOpen:
-        clickButton(waitForObject(":Options.Cancel_QPushButton"))
-    if additionalFunction:
-        return result, additionalResult
-    else:
-        return result
+            try:
+                item = ".".join([str(section.data().toString()),
+                                 currentItem.replace(".", "\\.")])
+                currResult = additionalFunction(item, kitName, *argsForAdditionalFunc)
+            except:
+                t, v, _ = sys.exc_info()
+                currResult = None
+                test.fatal("Function to additionally execute on Options Dialog could not be "
+                           "found or an exception occurred while executing it.", "%s(%s)" %
+                           (str(t), str(v)))
+            additionalResult.append(currResult)
+    if clickOkWhenDone:
+        clickButton(waitForObject(":Options.OK_QPushButton"))
+    return result, additionalResult
 
 # set a help viewer that will always be used, regardless of Creator's width
 
@@ -530,7 +449,7 @@ class HelpViewer:
     HELPMODE, SIDEBYSIDE, EXTERNALWINDOW = range(3)
 
 def setFixedHelpViewer(helpViewer):
-    invokeMenuItem("Tools", "Options...")
+    invokeMenuItem("Edit", "Preferences...")
     mouseClick(waitForObjectItem(":Options_QListView", "Help"))
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "General")
     mode = "Always Show "
@@ -642,11 +561,11 @@ def openVcsLog():
         waitForObject("{text='Version Control' type='QLabel' unnamed='1' visible='1' "
                       "window=':Qt Creator_Core::Internal::MainWindow'}", 2000)
     except:
-        invokeMenuItem("View", "Output Panes", "Version Control")
+        invokeMenuItem("View", "Output", "Version Control")
 
 def openGeneralMessages():
     if not object.exists(":Qt Creator_Core::OutputWindow"):
-        invokeMenuItem("View", "Output Panes", "General Messages")
+        invokeMenuItem("View", "Output", "General Messages")
 
 # function that retrieves a specific child object by its class
 # this is sometimes the best way to avoid using waitForObject() on objects that

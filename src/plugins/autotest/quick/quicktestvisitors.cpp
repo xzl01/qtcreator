@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "quicktestvisitors.h"
 
@@ -40,16 +18,19 @@ namespace Internal {
 
 static QStringList specialFunctions({"initTestCase", "cleanupTestCase", "init", "cleanup"});
 
-TestQmlVisitor::TestQmlVisitor(QmlJS::Document::Ptr doc, const QmlJS::Snapshot &snapshot)
+TestQmlVisitor::TestQmlVisitor(QmlJS::Document::Ptr doc,
+                               const QmlJS::Snapshot &snapshot,
+                               bool checkForDerivedTest)
     : m_currentDoc(doc)
     , m_snapshot(snapshot)
+    , m_checkForDerivedTest(checkForDerivedTest)
 {
 }
 
 static bool documentImportsQtTest(const QmlJS::Document *doc)
 {
     if (const QmlJS::Bind *bind = doc->bind()) {
-        return Utils::anyOf(bind->imports(), [] (const QmlJS::ImportInfo &info) {
+        return Utils::anyOf(bind->imports(), [](const QmlJS::ImportInfo &info) {
             return info.isValid() && info.name() == "QtTest";
         });
     }
@@ -90,8 +71,10 @@ bool TestQmlVisitor::visit(QmlJS::AST::UiObjectDefinition *ast)
     const QStringView name = ast->qualifiedTypeNameId->name;
     m_objectIsTestStack.push(false);
     if (name != QLatin1String("TestCase")) {
-        if (!isDerivedFromTestCase(ast->qualifiedTypeNameId, m_currentDoc, m_snapshot))
+        if (!m_checkForDerivedTest
+            || !isDerivedFromTestCase(ast->qualifiedTypeNameId, m_currentDoc, m_snapshot)) {
             return true;
+        }
     } else if (!documentImportsQtTest(m_currentDoc.data())) {
         return true; // find nested TestCase items as well
     }
@@ -99,7 +82,7 @@ bool TestQmlVisitor::visit(QmlJS::AST::UiObjectDefinition *ast)
     m_objectIsTestStack.top() = true;
     const auto sourceLocation = ast->firstSourceLocation();
     QuickTestCaseSpec currentSpec;
-    currentSpec.m_locationAndType.m_filePath = Utils::FilePath::fromString(m_currentDoc->fileName());
+    currentSpec.m_locationAndType.m_filePath = m_currentDoc->fileName();
     currentSpec.m_locationAndType.m_line = sourceLocation.startLine;
     currentSpec.m_locationAndType.m_column = sourceLocation.startColumn - 1;
     currentSpec.m_locationAndType.m_type = TestTreeItem::TestCase;
@@ -143,7 +126,7 @@ bool TestQmlVisitor::visit(QmlJS::AST::FunctionDeclaration *ast)
         const auto sourceLocation = ast->firstSourceLocation();
         TestCodeLocationAndType locationAndType;
         locationAndType.m_name = name;
-        locationAndType.m_filePath = Utils::FilePath::fromString(m_currentDoc->fileName());
+        locationAndType.m_filePath = m_currentDoc->fileName();
         locationAndType.m_line = sourceLocation.startLine;
         locationAndType.m_column = sourceLocation.startColumn - 1;
         if (specialFunctions.contains(name))

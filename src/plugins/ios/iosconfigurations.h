@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <projectexplorer/abi.h>
 #include <projectexplorer/toolchain.h>
-#include <utils/fileutils.h>
+
+#include <utils/filepath.h>
 
 #include <QDateTime>
 #include <QObject>
@@ -42,14 +21,12 @@ class QSettings;
 class QFileSystemWatcher;
 QT_END_NAMESPACE
 
-namespace Ios {
-namespace Internal {
+namespace Ios::Internal {
 
 class DevelopmentTeam;
 
 class ProvisioningProfile
 {
-    Q_DECLARE_TR_FUNCTIONS(ProvisioningProfile)
 public:
     std::shared_ptr<DevelopmentTeam> developmentTeam() { return m_team; }
     QString identifier() const;
@@ -72,7 +49,6 @@ using ProvisioningProfiles = QList<ProvisioningProfilePtr>;
 
 class DevelopmentTeam
 {
-    Q_DECLARE_TR_FUNCTIONS(DevelopmentTeam)
 public:
     QString identifier() const;
     QString displayName() const;
@@ -143,7 +119,8 @@ private:
     ProvisioningProfiles m_provisioningProfiles;
     DevelopmentTeams m_developerTeams;
 };
+
 QDebug &operator<<(QDebug &stream, std::shared_ptr<ProvisioningProfile> profile);
 QDebug &operator<<(QDebug &stream, std::shared_ptr<DevelopmentTeam> team);
-} // namespace Internal
-} // namespace Ios
+
+} // Ios::Internal

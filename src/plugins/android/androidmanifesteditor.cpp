@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "androidmanifesteditor.h"
-#include "androidmanifestdocument.h"
-#include "androidmanifesteditorwidget.h"
 #include "androidconstants.h"
+#include "androidmanifestdocument.h"
+#include "androidmanifesteditor.h"
+#include "androidmanifesteditorwidget.h"
+#include "androidtr.h"
 
 #include <texteditor/texteditorconstants.h>
 
@@ -45,12 +24,12 @@ AndroidManifestEditor::AndroidManifestEditor(AndroidManifestEditorWidget *editor
     connect(m_actionGroup, &QActionGroup::triggered,
             this, &AndroidManifestEditor::changeEditorPage);
 
-    QAction *generalAction = m_toolBar->addAction(tr("General"));
+    QAction *generalAction = m_toolBar->addAction(Tr::tr("General"));
     generalAction->setData(AndroidManifestEditorWidget::General);
     generalAction->setCheckable(true);
     m_actionGroup->addAction(generalAction);
 
-    QAction *sourceAction = m_toolBar->addAction(tr("XML Source"));
+    QAction *sourceAction = m_toolBar->addAction(Tr::tr("XML Source"));
     sourceAction->setData(AndroidManifestEditorWidget::Source);
     sourceAction->setCheckable(true);
     m_actionGroup->addAction(sourceAction);
@@ -99,7 +78,8 @@ void AndroidManifestEditor::gotoLine(int line, int column, bool centerLine)
 void AndroidManifestEditor::changeEditorPage(QAction *action)
 {
     if (!widget()->setActivePage(static_cast<AndroidManifestEditorWidget::EditorPage>(action->data().toInt()))) {
-        foreach (QAction *action, m_actionGroup->actions()) {
+        const QList<QAction *> actions = m_actionGroup->actions();
+        for (QAction *action : actions) {
             if (action->data().toInt() == widget()->activePage()) {
                 action->setChecked(true);
                 break;

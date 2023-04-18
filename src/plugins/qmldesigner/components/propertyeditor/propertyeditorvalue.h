@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -82,6 +60,7 @@ class PropertyEditorValue : public QObject
     Q_PROPERTY(bool isBound READ isBound NOTIFY isBoundChanged FINAL)
     Q_PROPERTY(bool isValid READ isValid NOTIFY isValidChanged FINAL)
     Q_PROPERTY(bool isTranslated READ isTranslated NOTIFY expressionChanged FINAL)
+    Q_PROPERTY(bool hasActiveDrag READ hasActiveDrag WRITE setHasActiveDrag NOTIFY hasActiveDragChanged FINAL)
 
     Q_PROPERTY(bool isIdList READ isIdList NOTIFY expressionChanged FINAL)
     Q_PROPERTY(QStringList expressionAsList READ getExpressionAsList NOTIFY expressionChanged FINAL)
@@ -117,6 +96,9 @@ public:
 
     bool isTranslated() const;
 
+    bool hasActiveDrag() const;
+    void setHasActiveDrag(bool val);
+
     bool isAvailable() const;
 
     QmlDesigner::PropertyName name() const;
@@ -130,7 +112,7 @@ public:
 
     static void registerDeclarativeTypes();
 
-    Q_INVOKABLE void exportPopertyAsAlias();
+    Q_INVOKABLE void exportPropertyAsAlias();
     Q_INVOKABLE bool hasPropertyAlias() const;
     Q_INVOKABLE bool isAttachedProperty() const;
     Q_INVOKABLE void removeAliasExport();
@@ -143,6 +125,7 @@ public:
     Q_INVOKABLE bool idListAdd(const QString &value);
     Q_INVOKABLE bool idListRemove(int idx);
     Q_INVOKABLE bool idListReplace(int idx, const QString &value);
+    Q_INVOKABLE void commitDrop(const QString &dropData);
 
 public slots:
     void resetValue();
@@ -152,8 +135,12 @@ signals:
     void valueChanged(const QString &name, const QVariant&);
     void valueChangedQml();
 
-    void expressionChanged(const QString &name);
-    void exportPopertyAsAliasRequested(const QString &name);
+    void expressionChanged(const QString &name); //HACK - We use the same notifer
+                                                 //for the backend and frontend.
+                                                 //If name is empty the signal is
+                                                 //used for QML.
+
+    void exportPropertyAsAliasRequested(const QString &name);
     void removeAliasExportRequested(const QString &name);
 
     void modelStateChanged();
@@ -162,6 +149,7 @@ signals:
     void isBoundChanged();
     void isValidChanged();
     void isExplicitChanged();
+    void hasActiveDragChanged();
 
 private:
     QStringList generateStringList(const QString &string) const;
@@ -174,10 +162,10 @@ private:
     bool m_isInSubState;
     bool m_isInModel;
     bool m_isBound;
+    bool m_hasActiveDrag = false;
     bool m_isValid; // if the property value belongs to a non-existing complexProperty it is invalid
     PropertyEditorNodeWrapper *m_complexNode;
 };
 
 QML_DECLARE_TYPE(PropertyEditorValue)
 QML_DECLARE_TYPE(PropertyEditorNodeWrapper)
-QML_DECLARE_TYPE(QQmlPropertyMap)

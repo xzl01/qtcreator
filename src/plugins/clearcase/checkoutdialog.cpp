@@ -1,76 +1,92 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 AudioCodes Ltd.
-** Author: Orgad Shaneh <orgad.shaneh@audiocodes.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 AudioCodes Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "checkoutdialog.h"
-#include "ui_checkoutdialog.h"
+
 #include "activityselector.h"
+#include "clearcasetr.h"
 
-#include <QList>
-#include <QPair>
-#include <QPalette>
+#include <utils/layoutbuilder.h>
+
+#include <QAbstractButton>
+#include <QApplication>
+#include <QCheckBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QPlainTextEdit>
 #include <QPushButton>
+#include <QVBoxLayout>
 
-namespace ClearCase {
-namespace Internal {
+namespace ClearCase::Internal {
 
 CheckOutDialog::CheckOutDialog(const QString &fileName, bool isUcm, bool showComment,
                                QWidget *parent) :
-    QDialog(parent), ui(new Ui::CheckOutDialog)
+    QDialog(parent)
 {
-    ui->setupUi(this);
-    ui->lblFileName->setText(fileName);
+    resize(352, 317);
+    setWindowTitle(Tr::tr("Check Out"));
+
+    auto lblFileName = new QLabel(fileName);
+    lblFileName->setTextInteractionFlags(Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse);
+
+    m_txtComment = new QPlainTextEdit(this);
+    m_txtComment->setTabChangesFocus(true);
+
+    m_lblComment = new QLabel(Tr::tr("&Checkout comment:"));
+    m_lblComment->setBuddy(m_txtComment);
+
+    m_chkReserved = new QCheckBox(Tr::tr("&Reserved"));
+    m_chkReserved->setChecked(true);
+
+    m_chkUnreserved = new QCheckBox(Tr::tr("&Unreserved if already reserved"));
+
+    m_chkPTime = new QCheckBox(Tr::tr("&Preserve file modification time"));
+
+    m_hijackedCheckBox = new QCheckBox(Tr::tr("Use &Hijacked file"));
+    m_hijackedCheckBox->setChecked(true);
+
+    auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+
+    using namespace Utils::Layouting;
+
+    Column {
+        lblFileName,
+        m_lblComment,
+        m_txtComment,
+        m_chkReserved,
+        Row { Space(16), m_chkUnreserved },
+        m_chkPTime,
+        m_hijackedCheckBox,
+        buttonBox
+    }.attachTo(this);
+
+    m_verticalLayout = static_cast<QVBoxLayout *>(layout());
 
     if (isUcm) {
         m_actSelector = new ActivitySelector(this);
 
-        ui->verticalLayout->insertWidget(0, m_actSelector);
-
-        auto line = new QFrame(this);
-        line->setFrameShape(QFrame::HLine);
-        line->setFrameShadow(QFrame::Sunken);
-
-        ui->verticalLayout->insertWidget(1, line);
+        m_verticalLayout->insertWidget(0, m_actSelector);
+        m_verticalLayout->insertWidget(1, Utils::Layouting::createHr());
     }
 
     if (!showComment)
         hideComment();
 
-    ui->buttonBox->button(QDialogButtonBox::Ok)->setFocus();
+    buttonBox->button(QDialogButtonBox::Ok)->setFocus();
+
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(m_chkReserved, &QAbstractButton::toggled, this, &CheckOutDialog::toggleUnreserved);
 }
 
-CheckOutDialog::~CheckOutDialog()
-{
-    delete ui;
-}
+CheckOutDialog::~CheckOutDialog() = default;
 
 void CheckOutDialog::hideComment()
 {
-    ui->lblComment->hide();
-    ui->txtComment->hide();
-    ui->verticalLayout->invalidate();
+    m_lblComment->hide();
+    m_txtComment->hide();
+    m_verticalLayout->invalidate();
     adjustSize();
 }
 
@@ -81,41 +97,40 @@ QString CheckOutDialog::activity() const
 
 QString CheckOutDialog::comment() const
 {
-    return ui->txtComment->toPlainText();
+    return m_txtComment->toPlainText();
 }
 
 bool CheckOutDialog::isReserved() const
 {
-    return ui->chkReserved->isChecked();
+    return m_chkReserved->isChecked();
 }
 
 bool CheckOutDialog::isUnreserved() const
 {
-    return ui->chkUnreserved->isChecked();
+    return m_chkUnreserved->isChecked();
 }
 
 bool CheckOutDialog::isPreserveTime() const
 {
-    return ui->chkPTime->isChecked();
+    return m_chkPTime->isChecked();
 }
 
 bool CheckOutDialog::isUseHijacked() const
 {
-    return ui->hijackedCheckBox->isChecked();
+    return m_hijackedCheckBox->isChecked();
 }
 
 void CheckOutDialog::hideHijack()
 {
-    ui->hijackedCheckBox->setVisible(false);
-    ui->hijackedCheckBox->setChecked(false);
+    m_hijackedCheckBox->setVisible(false);
+    m_hijackedCheckBox->setChecked(false);
 }
 
 void CheckOutDialog::toggleUnreserved(bool checked)
 {
-    ui->chkUnreserved->setEnabled(checked);
+    m_chkUnreserved->setEnabled(checked);
     if (!checked)
-        ui->chkUnreserved->setChecked(false);
+        m_chkUnreserved->setChecked(false);
 }
 
-} // namespace Internal
-} // namespace ClearCase
+} // ClearCase::Internal

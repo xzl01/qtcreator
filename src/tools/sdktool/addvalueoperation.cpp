@@ -1,29 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Copyright (C) 2019 Christoph Schlosser, B/S/H/ <christoph.schlosser@bshg.com>
-**
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// Copyright (C) 2019 Christoph Schlosser, B/S/H/ <christoph.schlosser@bshg.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "addvalueoperation.h"
 #include "addkeysoperation.h"
@@ -32,6 +9,15 @@
 
 #include <iomanip>
 #include <iostream>
+
+#ifdef WITH_TESTS
+#include <QTest>
+#endif
+
+#include <QLoggingCategory>
+#include <QRegularExpression>
+
+Q_LOGGING_CATEGORY(addvaluelog, "qtc.sdktool.operations.addvalue", QtWarningMsg)
 
 namespace {
 constexpr auto SUCCESS = 0;
@@ -111,7 +97,7 @@ int AddValueOperation::execute() const
 }
 
 #ifdef WITH_TESTS
-bool AddValueOperation::test() const
+void AddValueOperation::unittest()
 {
     QVariantList testDataList;
     testDataList.append(QLatin1String("Some String"));
@@ -127,40 +113,44 @@ bool AddValueOperation::test() const
     QVariantMap testMap;
 
     // add to empty map
-    bool result = AddValueData{"some key", valueList}.appendListToMap(testMap);
+    AddValueData d;
+    d.m_key = "some key";
+    d.m_values = valueList;
 
-    if (result)
-        return false;
+    QTest::ignoreMessage(QtCriticalMsg,
+                         QRegularExpression("Error: Could not retrieve value for key .*."));
+
+    QVERIFY(!d.appendListToMap(testMap));
 
     testMap.insert(QLatin1String("someEmptyThing"), QVariantMap());
     testMap.insert(QLatin1String("aKey"), "withAString");
 
     // append to a value
-    result = AddValueData{"aKey", valueList}.appendListToMap(testMap);
+    d.m_key = "aKey";
 
-    if (result)
-        return false;
+    QTest::ignoreMessage(QtCriticalMsg,
+                         QRegularExpression("Error: Data stored in .* is not a QVariantList."));
+
+    QVERIFY(!d.appendListToMap(testMap));
 
     testMap = AddKeysData{testKvpList}.addKeys(testMap);
 
     // quick sanity check
-    if (testMap.count() != 3 && testDataList.count() != 2 && testKvpList.count() != 3)
-        return false;
+    QCOMPARE(testMap.count(), 3);
+    QCOMPARE(testDataList.count(), 2);
+    QCOMPARE(testKvpList.count(), 3);
 
     // successful adding of values
-    result = AddValueData{"test/bar", valueList}.appendListToMap(testMap);
-    if (!result)
-        return false;
+    d.m_key = "test/bar";
+    QVERIFY(d.appendListToMap(testMap));
 
     const auto newList = qvariant_cast<QVariantList>(GetOperation::get(testMap, "test/bar"));
-    if (newList.count() != (testDataList.count() + valueList.count()))
-        return false;
+    QCOMPARE(newList.count(), (testDataList.count() + valueList.count()));
 
-    if (!newList.contains(1860) || !newList.contains(QString("Some String"))
-        || !newList.contains("ELIL") || !newList.contains(-1))
-        return false;
-
-    return true;
+    QVERIFY(newList.contains(1860));
+    QVERIFY(newList.contains(QString("Some String")));
+    QVERIFY(newList.contains("ELIL"));
+    QVERIFY(newList.contains(-1));
 }
 #endif
 
@@ -169,14 +159,14 @@ bool AddValueData::appendListToMap(QVariantMap &map) const
     const QVariant data = GetOperation::get(map, m_key);
 
     if (!data.isValid() || data.isNull()) {
-        std::cerr << "Error: Could not retrieve value for key " << std::quoted(m_key.toStdString())
-                  << std::endl;
+        qCCritical(addvaluelog) << "Error: Could not retrieve value for key"
+                                << m_key;
         return false;
     }
 
     if (data.type() != QVariant::List) {
-        std::cerr << "Error: Data stored in " << std::quoted(m_key.toStdString())
-                  << " is not a QVariantList." << std::endl;
+        qCCritical(addvaluelog) << "Error: Data stored in" << m_key
+                                << "is not a QVariantList.";
         return false;
     }
 

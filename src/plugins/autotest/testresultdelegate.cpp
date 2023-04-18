@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "testresultdelegate.h"
 
@@ -72,9 +50,9 @@ void TestResultDelegate::paint(QPainter *painter, const QStyleOptionViewItem &op
     painter->fillRect(opt.rect, background);
     painter->setPen(foreground);
 
-    LayoutPositions positions(opt, resultFilterModel);
-    const TestResult *testResult = resultFilterModel->testResult(index);
-    QTC_ASSERT(testResult, painter->restore();return);
+    const LayoutPositions positions(opt, resultFilterModel);
+    const TestResult testResult = resultFilterModel->testResult(index);
+    QTC_ASSERT(testResult.isValid(), painter->restore(); return);
 
     const QWidget *widget = dynamic_cast<const QWidget*>(painter->device());
     QWindow *window = widget ? widget->window()->windowHandle() : nullptr;
@@ -91,15 +69,15 @@ void TestResultDelegate::paint(QPainter *painter, const QStyleOptionViewItem &op
         painter->drawText(positions.typeAreaLeft(), positions.top() + fm.ascent(), typeStr);
     } else {
         QPen tmp = painter->pen();
-        if (testResult->result() == ResultType::TestStart)
+        if (testResult.result() == ResultType::TestStart)
             painter->setPen(opt.palette.mid().color());
         else
-            painter->setPen(TestResult::colorForType(testResult->result()));
+            painter->setPen(TestResult::colorForType(testResult.result()));
         painter->drawText(positions.typeAreaLeft(), positions.top() + fm.ascent(), typeStr);
         painter->setPen(tmp);
     }
 
-    QString output = testResult->outputString(selected);
+    QString output = testResult.outputString(selected);
 
     if (selected) {
         limitTextOutput(output);
@@ -114,12 +92,12 @@ void TestResultDelegate::paint(QPainter *painter, const QStyleOptionViewItem &op
                           fm.elidedText(output.left(2000), Qt::ElideRight, positions.textAreaWidth()));
     }
 
-    const QString file = testResult->fileName().fileName();
+    const QString file = testResult.fileName().fileName();
     painter->setClipRect(positions.fileArea());
     painter->drawText(positions.fileAreaLeft(), positions.top() + fm.ascent(), file);
 
-    if (testResult->line()) {
-        QString line = QString::number(testResult->line());
+    if (testResult.line()) {
+        QString line = QString::number(testResult.line());
         painter->setClipRect(positions.lineArea());
         painter->drawText(positions.lineAreaLeft(), positions.top() + fm.ascent(), line);
     }
@@ -151,9 +129,9 @@ QSize TestResultDelegate::sizeHint(const QStyleOptionViewItem &option, const QMo
     s.setWidth(opt.rect.width() - indentation);
 
     if (selected) {
-        const TestResult *testResult = resultFilterModel->testResult(index);
-        QTC_ASSERT(testResult, return QSize());
-        QString output = testResult->outputString(selected);
+        const TestResult testResult = resultFilterModel->testResult(index);
+        QTC_ASSERT(testResult.isValid(), return {});
+        QString output = testResult.outputString(selected);
         limitTextOutput(output);
         output.replace('\n', QChar::LineSeparator);
         recalculateTextLayout(index, output, opt.font, positions.textAreaWidth() - indentation);
@@ -177,12 +155,9 @@ void TestResultDelegate::currentChanged(const QModelIndex &current, const QModel
 
 void TestResultDelegate::clearCache()
 {
-    const QModelIndex current = m_lastProcessedIndex;
     m_lastProcessedIndex = QModelIndex();
     m_lastProcessedFont = QFont();
     m_lastWidth = -1;
-    if (current.isValid())
-        emit sizeHintChanged(current);
 }
 
 void TestResultDelegate::limitTextOutput(QString &output) const

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -159,7 +137,7 @@ private:
 
 void Project::setPaths(const QStringList &paths)
 {
-    foreach (const QString &path, paths)
+    for (const QString &path : paths)
         m_items.append(path);
 }
 
@@ -220,7 +198,8 @@ void Project::handleBinary(const QString &item)
     // "}] (gdb)
     int first = input.indexOf(QLatin1Char('{'));
     input = input.mid(first, input.lastIndexOf(QLatin1Char('}')) - first);
-    foreach (QString item, input.split(QLatin1String("},{"))) {
+    const QStringList items = input.split(QLatin1String("},{"));
+    for (QString item : items) {
         //qDebug() << "ITEM: " << item;
         int full = item.indexOf(QLatin1String(",fullname=\""));
         if (full != -1)
@@ -299,17 +278,17 @@ void Project::writeProFile()
     if (m_subdirs.isEmpty()) {
         ts << "TEMPLATE = app\n";
         ts << "TARGET = " << QFileInfo(m_outputFileName).baseName() << "\n";
-        foreach (const FileClass &fc, m_fileClasses)
+        for (const FileClass &fc : std::as_const(m_fileClasses))
             fc.writeProBlock(ts);
         ts << "\nPATHS *=";
-        foreach (const QDir &dir, m_items)
+        for (const QDir dir : std::as_const(m_items))
             ts << " \\\n    " << dir.path();
         ts << "\n\nDEPENDPATH *= $$PATHS\n";
         ts << "\nINCLUDEPATH *= $$PATHS\n";
     } else {
         ts << "TEMPLATE = subdirs\n";
         ts << "SUBDIRS = ";
-        foreach (const QString &subdir, m_subdirs)
+        for (const QString &subdir : std::as_const(m_subdirs))
             ts << " \\\n    " << subdir;
         ts << "\n";
     }

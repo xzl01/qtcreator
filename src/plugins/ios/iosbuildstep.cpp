@@ -1,30 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "iosbuildstep.h"
+
 #include "iosconstants.h"
+#include "iostr.h"
 
 #include <projectexplorer/abstractprocessstep.h>
 #include <projectexplorer/buildconfiguration.h>
@@ -39,7 +19,7 @@
 #include <projectexplorer/target.h>
 #include <projectexplorer/toolchain.h>
 
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 
@@ -53,8 +33,7 @@ using namespace Core;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Ios {
-namespace Internal {
+namespace Ios::Internal {
 
 const char IOS_BUILD_STEP_ID[] = "Ios.IosBuildStep";
 const char BUILD_USE_DEFAULT_ARGS_KEY[] = "Ios.IosBuildStep.XcodeArgumentsUseDefault";
@@ -63,10 +42,8 @@ const char CLEAN_KEY[] = "Ios.IosBuildStep.Clean";
 
 class IosBuildStep final : public AbstractProcessStep
 {
-    Q_DECLARE_TR_FUNCTIONS(Ios::Internal::IosBuildStep)
-
 public:
-    IosBuildStep(BuildStepList *stepList, Utils::Id id);
+    IosBuildStep(BuildStepList *stepList, Id id);
 
 private:
     QWidget *createConfigWidget() final;
@@ -79,7 +56,6 @@ private:
 
     bool init() final;
     void setupOutputFormatter(Utils::OutputFormatter *formatter) final;
-    void doRun() final;
     bool fromMap(const QVariantMap &map) final;
     QVariantMap toMap() const final;
 
@@ -92,17 +68,17 @@ QWidget *IosBuildStep::createConfigWidget()
 {
     auto widget = new QWidget;
 
-    auto buildArgumentsLabel = new QLabel(tr("Base arguments:"), widget);
+    auto buildArgumentsLabel = new QLabel(Tr::tr("Base arguments:"), widget);
 
     auto buildArgumentsTextEdit = new QPlainTextEdit(widget);
     buildArgumentsTextEdit->setPlainText(ProcessArgs::joinArgs(baseArguments()));
 
     auto resetDefaultsButton = new QPushButton(widget);
     resetDefaultsButton->setLayoutDirection(Qt::RightToLeft);
-    resetDefaultsButton->setText(tr("Reset Defaults"));
+    resetDefaultsButton->setText(Tr::tr("Reset Defaults"));
     resetDefaultsButton->setEnabled(!m_useDefaultArguments);
 
-    auto extraArgumentsLabel = new QLabel(tr("Extra arguments:"), widget);
+    auto extraArgumentsLabel = new QLabel(Tr::tr("Extra arguments:"), widget);
 
     auto extraArgumentsLineEdit = new QLineEdit(widget);
     extraArgumentsLineEdit->setText(ProcessArgs::joinArgs(m_extraArguments));
@@ -114,7 +90,7 @@ QWidget *IosBuildStep::createConfigWidget()
     gridLayout->addWidget(extraArgumentsLabel, 2, 0, 1, 1);
     gridLayout->addWidget(extraArgumentsLineEdit, 2, 1, 1, 1);
 
-    setDisplayName(tr("iOS build", "iOS BuildStep display name."));
+    setDisplayName(Tr::tr("iOS build", "iOS BuildStep display name."));
 
     auto updateDetails = [this] {
         ProcessParameters param;
@@ -136,7 +112,7 @@ QWidget *IosBuildStep::createConfigWidget()
         resetDefaultsButton->setEnabled(!m_useDefaultArguments);
     });
 
-    connect(extraArgumentsLineEdit, &QLineEdit::editingFinished, [=] {
+    connect(extraArgumentsLineEdit, &QLineEdit::editingFinished, this, [=] {
         setExtraArguments(ProcessArgs::splitArgs(extraArgumentsLineEdit->text()));
     });
 
@@ -249,11 +225,6 @@ FilePath IosBuildStep::buildCommand() const
     return "xcodebuild"; // add path?
 }
 
-void IosBuildStep::doRun()
-{
-    AbstractProcessStep::doRun();
-}
-
 void IosBuildStep::setBaseArguments(const QStringList &args)
 {
     m_baseBuildArguments = args;
@@ -283,8 +254,7 @@ IosBuildStepFactory::IosBuildStepFactory()
                              Constants::IOS_SIMULATOR_TYPE});
     setSupportedStepLists({ProjectExplorer::Constants::BUILDSTEPS_CLEAN,
                            ProjectExplorer::Constants::BUILDSTEPS_BUILD});
-    setDisplayName(IosBuildStep::tr("xcodebuild"));
+    setDisplayName(Tr::tr("xcodebuild"));
 }
 
-} // namespace Internal
-} // namespace Ios
+} // Ios::Internal

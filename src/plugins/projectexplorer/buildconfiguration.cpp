@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "buildconfiguration.h"
 
@@ -34,25 +12,26 @@
 #include "environmentwidget.h"
 #include "kit.h"
 #include "kitinformation.h"
-#include "kitmanager.h"
 #include "namedwidget.h"
 #include "projectexplorerconstants.h"
 #include "projectexplorer.h"
+#include "projectexplorertr.h"
 #include "project.h"
 #include "projecttree.h"
 #include "session.h"
 #include "target.h"
-#include "toolchain.h"
 
+#include <coreplugin/fileutils.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/idocument.h>
 
+#include <projectexplorer/devicesupport/idevice.h>
+
 #include <utils/algorithm.h>
 #include <utils/detailswidget.h>
-#include <utils/macroexpander.h>
-#include <utils/mimetypes/mimedatabase.h>
-#include <utils/mimetypes/mimetype.h>
 #include <utils/layoutbuilder.h>
+#include <utils/macroexpander.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
 #include <utils/variablechooser.h>
 
@@ -66,8 +45,6 @@ using namespace Utils;
 
 const char BUILD_STEP_LIST_COUNT[] = "ProjectExplorer.BuildConfiguration.BuildStepListCount";
 const char BUILD_STEP_LIST_PREFIX[] = "ProjectExplorer.BuildConfiguration.BuildStepList.";
-const char CLEAR_SYSTEM_ENVIRONMENT_KEY[] = "ProjectExplorer.BuildConfiguration.ClearSystemEnvironment";
-const char USER_ENVIRONMENT_CHANGES_KEY[] = "ProjectExplorer.BuildConfiguration.UserEnvironmentChanges";
 const char CUSTOM_PARSERS_KEY[] = "ProjectExplorer.BuildConfiguration.CustomParsers";
 const char PARSE_STD_OUT_KEY[] = "ProjectExplorer.BuildConfiguration.ParseStandardOutput";
 
@@ -78,19 +55,24 @@ namespace Internal {
 
 class BuildEnvironmentWidget : public NamedWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::BuildEnvironmentWidget)
 
 public:
     explicit BuildEnvironmentWidget(BuildConfiguration *bc)
-        : NamedWidget(tr("Build Environment"))
+        : NamedWidget(Tr::tr("Build Environment"))
     {
-        auto clearBox = new QCheckBox(tr("Clear system environment"), this);
+        auto clearBox = new QCheckBox(Tr::tr("Clear system environment"), this);
         clearBox->setChecked(!bc->useSystemEnvironment());
 
         auto envWidget = new EnvironmentWidget(this, EnvironmentWidget::TypeLocal, clearBox);
         envWidget->setBaseEnvironment(bc->baseEnvironment());
         envWidget->setBaseEnvironmentText(bc->baseEnvironmentText());
         envWidget->setUserChanges(bc->userEnvironmentChanges());
+
+        const EnvironmentWidget::OpenTerminalFunc openTerminalFunc
+                = [bc](const Utils::Environment &env) {
+            Core::FileUtils::openTerminal(bc->buildDirectory(), env);
+        };
+        envWidget->setOpenTerminalFunc(openTerminalFunc);
 
         connect(envWidget, &EnvironmentWidget::userChangesChanged, this, [bc, envWidget] {
             bc->setUserEnvironmentChanges(envWidget->userChanges());
@@ -116,15 +98,14 @@ public:
 
 class CustomParsersBuildWidget : public NamedWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::CustomParsersBuildWidget)
 public:
-    CustomParsersBuildWidget(BuildConfiguration *bc) : NamedWidget(tr("Custom Output Parsers"))
+    CustomParsersBuildWidget(BuildConfiguration *bc) : NamedWidget(Tr::tr("Custom Output Parsers"))
     {
         const auto layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
 
-        const auto pasteStdOutCB = new QCheckBox(tr("Parse standard output during build"), this);
-        pasteStdOutCB->setToolTip(tr("Makes output parsers look for diagnostics "
+        const auto pasteStdOutCB = new QCheckBox(Tr::tr("Parse standard output during build"), this);
+        pasteStdOutCB->setToolTip(Tr::tr("Makes output parsers look for diagnostics "
                                      "on stdout rather than stderr."));
         pasteStdOutCB->setChecked(bc->parseStdOut());
         layout->addWidget(pasteStdOutCB);
@@ -179,28 +160,20 @@ BuildConfiguration::BuildConfiguration(Target *target, Utils::Id id)
     QTC_CHECK(target && target == this->target());
 
     MacroExpander *expander = macroExpander();
-    expander->setDisplayName(tr("Build Settings"));
+    expander->setDisplayName(Tr::tr("Build Settings"));
     expander->setAccumulating(true);
     expander->registerSubProvider([target] { return target->macroExpander(); });
 
-    expander->registerVariable("buildDir", tr("Build directory"),
+    expander->registerVariable("buildDir", Tr::tr("Build directory"),
             [this] { return buildDirectory().toUserOutput(); });
 
-    // TODO: Remove "Current" variants in ~4.16.
-    expander->registerVariable(Constants::VAR_CURRENTBUILD_NAME, tr("Name of current build"),
-            [this] { return displayName(); }, false);
-
-    expander->registerVariable("BuildConfig:Name", tr("Name of the build configuration"),
+    expander->registerVariable("BuildConfig:Name", Tr::tr("Name of the build configuration"),
             [this] { return displayName(); });
 
-    expander->registerPrefix(Constants::VAR_CURRENTBUILD_ENV,
-                             tr("Variables in the current build environment"),
-                             [this](const QString &var) { return environment().expandedValueForKey(var); }, false);
     expander->registerPrefix("BuildConfig:Env",
-                             tr("Variables in the build configuration's environment"),
+                             Tr::tr("Variables in the build configuration's environment"),
                              [this](const QString &var) { return environment().expandedValueForKey(var); });
 
-    updateCacheAndEmitEnvironmentChanged();
     connect(Core::ICore::instance(), &Core::ICore::systemEnvironmentChanged,
             this, &BuildConfiguration::updateCacheAndEmitEnvironmentChanged);
     connect(target, &Target::kitChanged,
@@ -215,18 +188,18 @@ BuildConfiguration::BuildConfiguration(Target *target, Utils::Id id)
 
     d->m_buildDirectoryAspect = addAspect<BuildDirectoryAspect>(this);
     d->m_buildDirectoryAspect->setBaseFileName(target->project()->projectDirectory());
-    d->m_buildDirectoryAspect->setEnvironmentChange(EnvironmentChange::fromFixedEnvironment(environment()));
+    d->m_buildDirectoryAspect->setEnvironment(environment());
     d->m_buildDirectoryAspect->setMacroExpanderProvider([this] { return macroExpander(); });
     connect(d->m_buildDirectoryAspect, &StringAspect::changed,
             this, &BuildConfiguration::emitBuildDirectoryChanged);
     connect(this, &BuildConfiguration::environmentChanged, this, [this] {
-        d->m_buildDirectoryAspect->setEnvironmentChange(EnvironmentChange::fromFixedEnvironment(environment()));
+        d->m_buildDirectoryAspect->setEnvironment(environment());
         emit this->target()->buildEnvironmentChanged(this);
     });
 
     d->m_tooltipAspect = addAspect<StringAspect>();
-    d->m_tooltipAspect->setLabelText(tr("Tooltip in target selector:"));
-    d->m_tooltipAspect->setToolTip(tr("Appears as a tooltip when hovering the build configuration"));
+    d->m_tooltipAspect->setLabelText(Tr::tr("Tooltip in target selector:"));
+    d->m_tooltipAspect->setToolTip(Tr::tr("Appears as a tooltip when hovering the build configuration"));
     d->m_tooltipAspect->setDisplayStyle(StringAspect::LineEditDisplay);
     d->m_tooltipAspect->setSettingsKey("ProjectExplorer.BuildConfiguration.Tooltip");
     connect(d->m_tooltipAspect, &StringAspect::changed, this, [this] {
@@ -284,26 +257,26 @@ void BuildConfiguration::addConfigWidgets(const std::function<void(NamedWidget *
     adder(new Internal::BuildStepListWidget(buildSteps()));
     adder(new Internal::BuildStepListWidget(cleanSteps()));
 
-    QList<NamedWidget *> subConfigWidgets = createSubConfigWidgets();
-    foreach (NamedWidget *subConfigWidget, subConfigWidgets)
+    const QList<NamedWidget *> subConfigWidgets = createSubConfigWidgets();
+    for (NamedWidget *subConfigWidget : subConfigWidgets)
         adder(subConfigWidget);
 }
 
 void BuildConfiguration::doInitialize(const BuildInfo &info)
 {
+    updateCacheAndEmitEnvironmentChanged();
+
     setDisplayName(info.displayName);
     setDefaultDisplayName(info.displayName);
     setBuildDirectory(info.buildDirectory);
 
     d->m_initialBuildType = info.buildType;
 
-    for (Utils::Id id : qAsConst(d->m_initialBuildSteps))
+    for (Utils::Id id : std::as_const(d->m_initialBuildSteps))
         d->m_buildSteps.appendStep(id);
 
-    for (Utils::Id id : qAsConst(d->m_initialCleanSteps))
+    for (Utils::Id id : std::as_const(d->m_initialCleanSteps))
         d->m_cleanSteps.appendStep(id);
-
-    acquaintAspects();
 
     if (d->m_initializer)
         d->m_initializer(info);
@@ -350,7 +323,7 @@ NamedWidget *BuildConfiguration::createConfigWidget()
         if (aspect->isVisible())
             aspect->addToLayout(builder.finishRow());
     }
-    builder.attachTo(widget, false);
+    builder.attachTo(widget, Layouting::WithoutMargins);
 
     return named;
 }
@@ -393,8 +366,9 @@ QVariantMap BuildConfiguration::toMap() const
 {
     QVariantMap map = ProjectConfiguration::toMap();
 
-    map.insert(QLatin1String(CLEAR_SYSTEM_ENVIRONMENT_KEY), d->m_clearSystemEnvironment);
-    map.insert(QLatin1String(USER_ENVIRONMENT_CHANGES_KEY), EnvironmentItem::toStringList(d->m_userEnvironmentChanges));
+    map.insert(QLatin1String(Constants::CLEAR_SYSTEM_ENVIRONMENT_KEY), d->m_clearSystemEnvironment);
+    map.insert(QLatin1String(Constants::USER_ENVIRONMENT_CHANGES_KEY),
+               EnvironmentItem::toStringList(d->m_userEnvironmentChanges));
 
     map.insert(QLatin1String(BUILD_STEP_LIST_COUNT), 2);
     map.insert(QLatin1String(BUILD_STEP_LIST_PREFIX) + QString::number(0), d->m_buildSteps.toMap());
@@ -408,8 +382,10 @@ QVariantMap BuildConfiguration::toMap() const
 
 bool BuildConfiguration::fromMap(const QVariantMap &map)
 {
-    d->m_clearSystemEnvironment = map.value(QLatin1String(CLEAR_SYSTEM_ENVIRONMENT_KEY)).toBool();
-    d->m_userEnvironmentChanges = EnvironmentItem::fromStringList(map.value(QLatin1String(USER_ENVIRONMENT_CHANGES_KEY)).toStringList());
+    d->m_clearSystemEnvironment = map.value(QLatin1String(Constants::CLEAR_SYSTEM_ENVIRONMENT_KEY))
+                                      .toBool();
+    d->m_userEnvironmentChanges = EnvironmentItem::fromStringList(
+        map.value(QLatin1String(Constants::USER_ENVIRONMENT_CHANGES_KEY)).toStringList());
 
     updateCacheAndEmitEnvironmentChanged();
 
@@ -489,8 +465,10 @@ void BuildConfiguration::setBuildDirectorySettingsKey(const QString &key)
 Environment BuildConfiguration::baseEnvironment() const
 {
     Environment result;
-    if (useSystemEnvironment())
-        result = Environment::systemEnvironment();
+    if (useSystemEnvironment()) {
+        ProjectExplorer::IDevice::ConstPtr devicePtr = BuildDeviceKitAspect::device(kit());
+        result = devicePtr ? devicePtr->systemEnvironment() : Environment::systemEnvironment();
+    }
     addToEnvironment(result);
     kit()->addToBuildEnvironment(result);
     result.modify(project()->additionalEnvironment());
@@ -500,9 +478,9 @@ Environment BuildConfiguration::baseEnvironment() const
 QString BuildConfiguration::baseEnvironmentText() const
 {
     if (useSystemEnvironment())
-        return tr("System Environment");
+        return Tr::tr("System Environment");
     else
-        return tr("Clean Environment");
+        return Tr::tr("Clean Environment");
 }
 
 Environment BuildConfiguration::environment() const
@@ -562,7 +540,7 @@ bool BuildConfiguration::isEnabled() const
 QString BuildConfiguration::disabledReason() const
 {
     if (!buildSystem()->hasParsingData())
-        return (tr("The project was not parsed successfully."));
+        return (Tr::tr("The project was not parsed successfully."));
     return QString();
 }
 
@@ -608,38 +586,29 @@ FilePath BuildConfiguration::buildDirectoryFromTemplate(const FilePath &projectD
                                                         const Kit *kit,
                                                         const QString &bcName,
                                                         BuildType buildType,
-                                                        SpaceHandling spaceHandling)
+                                                        const QString &buildSystem)
 {
     MacroExpander exp;
 
     qCDebug(bcLog) << Q_FUNC_INFO << projectDir << mainFilePath << projectName << bcName;
 
-    // TODO: Remove "Current" variants in ~4.16
-    exp.registerFileVariables(Constants::VAR_CURRENTPROJECT_PREFIX,
-                              QCoreApplication::translate("ProjectExplorer", "Main file of current project"),
-                              [mainFilePath] { return mainFilePath; }, false);
     exp.registerFileVariables("Project",
-                              QCoreApplication::translate("ProjectExplorer", "Main file of the project"),
+                              Tr::tr("Main file of the project"),
                               [mainFilePath] { return mainFilePath; });
-    exp.registerVariable(Constants::VAR_CURRENTPROJECT_NAME,
-                         QCoreApplication::translate("ProjectExplorer", "Name of current project"),
-                         [projectName] { return projectName; }, false);
     exp.registerVariable("Project:Name",
-                         QCoreApplication::translate("ProjectExplorer", "Name of the project"),
+                         Tr::tr("Name of the project"),
                          [projectName] { return projectName; });
-    exp.registerVariable(Constants::VAR_CURRENTBUILD_NAME,
-                         QCoreApplication::translate("ProjectExplorer", "Name of current build"),
-                         [bcName] { return bcName; }, false);
     exp.registerVariable("BuildConfig:Name",
-                         QCoreApplication::translate(
-                             "ProjectExplorer", "Name of the project's active build configuration"),
+                         Tr::tr("Name of the project's active build configuration"),
                          [bcName] { return bcName; });
+    exp.registerVariable("BuildSystem:Name",
+                         Tr::tr("Name of the project's active build system"),
+                         [buildSystem] { return buildSystem; });
     exp.registerVariable("CurrentBuild:Type",
-                         QCoreApplication::translate("ProjectExplorer", "Type of current build"),
+                         Tr::tr("Type of current build"),
                          [buildType] { return buildTypeName(buildType); }, false);
     exp.registerVariable("BuildConfig:Type",
-                         QCoreApplication::translate(
-                             "ProjectExplorer", "Type of the project's active build configuration"),
+                         Tr::tr("Type of the project's active build configuration"),
                          [buildType] { return buildTypeName(buildType); });
     exp.registerSubProvider([kit] { return kit->macroExpander(); });
 
@@ -647,8 +616,7 @@ FilePath BuildConfiguration::buildDirectoryFromTemplate(const FilePath &projectD
     qCDebug(bcLog) << "build dir template:" << buildDir;
     buildDir = exp.expand(buildDir);
     qCDebug(bcLog) << "expanded build:" << buildDir;
-    if (spaceHandling == ReplaceSpaces)
-        buildDir.replace(" ", "-");
+    buildDir.replace(" ", "-");
 
     return projectDir.resolvePath(buildDir);
 }
@@ -669,8 +637,8 @@ BuildConfigurationFactory::~BuildConfigurationFactory()
     g_buildConfigurationFactories.removeOne(this);
 }
 
-const Tasks BuildConfigurationFactory::reportIssues(ProjectExplorer::Kit *kit, const QString &projectPath,
-                                                          const QString &buildDir) const
+const Tasks BuildConfigurationFactory::reportIssues(Kit *kit, const FilePath &projectPath,
+                                                    const FilePath &buildDir) const
 {
     if (m_issueReporter)
         return m_issueReporter(kit, projectPath, buildDir);
@@ -712,7 +680,7 @@ BuildConfigurationFactory *BuildConfigurationFactory::find(const Kit *k, const F
 {
     QTC_ASSERT(k, return nullptr);
     const Utils::Id deviceType = DeviceTypeKitAspect::deviceTypeId(k);
-    for (BuildConfigurationFactory *factory : qAsConst(g_buildConfigurationFactories)) {
+    for (BuildConfigurationFactory *factory : std::as_const(g_buildConfigurationFactories)) {
         if (Utils::mimeTypeForFile(projectPath).matchesName(factory->m_supportedProjectMimeTypeName)
             && factory->supportsTargetDeviceType(deviceType))
             return factory;
@@ -723,7 +691,7 @@ BuildConfigurationFactory *BuildConfigurationFactory::find(const Kit *k, const F
 // create
 BuildConfigurationFactory * BuildConfigurationFactory::find(Target *parent)
 {
-    for (BuildConfigurationFactory *factory : qAsConst(g_buildConfigurationFactories)) {
+    for (BuildConfigurationFactory *factory : std::as_const(g_buildConfigurationFactories)) {
         if (factory->canHandle(parent))
             return factory;
     }
@@ -785,14 +753,13 @@ BuildConfiguration *BuildConfigurationFactory::create(Target *parent, const Buil
 BuildConfiguration *BuildConfigurationFactory::restore(Target *parent, const QVariantMap &map)
 {
     const Utils::Id id = idFromMap(map);
-    for (BuildConfigurationFactory *factory : qAsConst(g_buildConfigurationFactories)) {
+    for (BuildConfigurationFactory *factory : std::as_const(g_buildConfigurationFactories)) {
         QTC_ASSERT(factory->m_creator, return nullptr);
         if (!factory->canHandle(parent))
             continue;
         if (!id.name().startsWith(factory->m_buildConfigId.name()))
             continue;
         BuildConfiguration *bc = factory->m_creator(parent);
-        bc->acquaintAspects();
         QTC_ASSERT(bc, return nullptr);
         if (!bc->fromMap(map)) {
             delete bc;

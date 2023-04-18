@@ -1,37 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
-** Contact: http://www.qt.io/licensing
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nimblerunconfiguration.h"
 
-#include "nimblebuildsystem.h"
+#include "nimbuildsystem.h"
 #include "nimconstants.h"
-#include "nimbleproject.h"
+#include "nimtr.h"
 
 #include <projectexplorer/localenvironmentaspect.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/runconfigurationaspects.h>
-#include <projectexplorer/runcontrol.h>
 #include <projectexplorer/target.h>
 
 #include <utils/algorithm.h>
@@ -45,16 +23,14 @@ namespace Nim {
 
 class NimbleRunConfiguration : public RunConfiguration
 {
-    Q_DECLARE_TR_FUNCTIONS(Nim::NimbleRunConfiguration)
-
 public:
     NimbleRunConfiguration(Target *target, Utils::Id id)
         : RunConfiguration(target, id)
     {
-        addAspect<LocalEnvironmentAspect>(target);
-        addAspect<ExecutableAspect>();
-        addAspect<ArgumentsAspect>();
-        addAspect<WorkingDirectoryAspect>();
+        auto envAspect = addAspect<LocalEnvironmentAspect>(target);
+        addAspect<ExecutableAspect>(target, ExecutableAspect::RunDevice);
+        addAspect<ArgumentsAspect>(macroExpander());
+        addAspect<WorkingDirectoryAspect>(macroExpander(), envAspect);
         addAspect<TerminalAspect>();
 
         setUpdater([this] {
@@ -83,19 +59,19 @@ NimbleRunConfigurationFactory::NimbleRunConfigurationFactory()
 
 class NimbleTestConfiguration : public RunConfiguration
 {
-    Q_DECLARE_TR_FUNCTIONS(Nim::NimbleTestConfiguration)
-
 public:
     NimbleTestConfiguration(ProjectExplorer::Target *target, Utils::Id id)
         : RunConfiguration(target, id)
     {
-        addAspect<ExecutableAspect>()->setExecutable(Nim::nimblePathFromKit(target->kit()));
-        addAspect<ArgumentsAspect>()->setArguments("test");
-        addAspect<WorkingDirectoryAspect>()->setDefaultWorkingDirectory(project()->projectDirectory());
+        addAspect<ExecutableAspect>(target, ExecutableAspect::BuildDevice)
+                ->setExecutable(Nim::nimblePathFromKit(target->kit()));
+        addAspect<ArgumentsAspect>(macroExpander())->setArguments("test");
+        addAspect<WorkingDirectoryAspect>(macroExpander(), nullptr)
+                ->setDefaultWorkingDirectory(project()->projectDirectory());
         addAspect<TerminalAspect>();
 
-        setDisplayName(tr("Nimble Test"));
-        setDefaultDisplayName(tr("Nimble Test"));
+        setDisplayName(Tr::tr("Nimble Test"));
+        setDefaultDisplayName(Tr::tr("Nimble Test"));
     }
 };
 

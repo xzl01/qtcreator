@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangdiagnosticconfig.h"
 #include "cpptoolsreuse.h"
@@ -52,7 +30,7 @@ void ClangDiagnosticConfig::setDisplayName(const QString &displayName)
     m_displayName = displayName;
 }
 
-QStringList ClangDiagnosticConfig::clangOptions() const
+const QStringList ClangDiagnosticConfig::clangOptions() const
 {
     return m_clangOptions;
 }
@@ -121,14 +99,9 @@ void ClangDiagnosticConfig::setClangTidyMode(TidyMode mode)
     m_clangTidyMode = mode;
 }
 
-QString ClangDiagnosticConfig::clangTidyChecks() const
-{
-    return m_clangTidyChecks;
-}
-
 QString ClangDiagnosticConfig::clangTidyChecksAsJson() const
 {
-    QString jsonString = "{Checks: '" + clangTidyChecks()
+    QString jsonString = "{Checks: '" + checks(ClangToolType::Tidy)
             + ",-clang-diagnostic-*', CheckOptions: [";
 
     // The check is either listed verbatim or covered by the "<prefix>-*" pattern.
@@ -161,16 +134,6 @@ QString ClangDiagnosticConfig::clangTidyChecksAsJson() const
     }
     jsonString += optionString;
     return jsonString += "]}";
-}
-
-void ClangDiagnosticConfig::setClangTidyChecks(const QString &checks)
-{
-    m_clangTidyChecks = checks;
-}
-
-bool ClangDiagnosticConfig::isClangTidyEnabled() const
-{
-    return m_clangTidyMode != TidyMode::UseCustomChecks || clangTidyChecks() != "-*";
 }
 
 void ClangDiagnosticConfig::setTidyCheckOptions(const QString &check,
@@ -209,18 +172,23 @@ QVariant ClangDiagnosticConfig::tidyChecksOptionsForSettings() const
     return topLevelMap;
 }
 
-QString ClangDiagnosticConfig::clazyChecks() const
+QString ClangDiagnosticConfig::checks(ClangToolType tool) const
 {
-    return m_clazyChecks;
+    return tool == ClangToolType::Tidy ? m_clangTidyChecks : m_clazyChecks;
 }
 
-void ClangDiagnosticConfig::setClazyChecks(const QString &checks)
+void ClangDiagnosticConfig::setChecks(ClangToolType tool, const QString &checks)
 {
-    m_clazyChecks = checks;
+    if (tool == ClangToolType::Tidy)
+        m_clangTidyChecks = checks;
+    else
+        m_clazyChecks = checks;
 }
 
-bool ClangDiagnosticConfig::isClazyEnabled() const
+bool ClangDiagnosticConfig::isEnabled(ClangToolType tool) const
 {
+    if (tool == ClangToolType::Tidy)
+        return m_clangTidyMode != TidyMode::UseCustomChecks || checks(ClangToolType::Tidy) != "-*";
     return m_clazyMode != ClazyMode::UseCustomChecks || !m_clazyChecks.isEmpty();
 }
 
@@ -258,10 +226,10 @@ void diagnosticConfigsToSettings(QSettings *s, const ClangDiagnosticConfigs &con
         s->setValue(diagnosticConfigWarningsKey, config.clangOptions());
         s->setValue(useBuildSystemFlagsKey, config.useBuildSystemWarnings());
         s->setValue(diagnosticConfigsTidyModeKey, int(config.clangTidyMode()));
-        s->setValue(diagnosticConfigsTidyChecksKey, config.clangTidyChecks());
+        s->setValue(diagnosticConfigsTidyChecksKey, config.checks(ClangToolType::Tidy));
         s->setValue(diagnosticConfigsTidyChecksOptionsKey, config.tidyChecksOptionsForSettings());
         s->setValue(diagnosticConfigsClazyModeKey, int(config.clazyMode()));
-        s->setValue(diagnosticConfigsClazyChecksKey, config.clazyChecks());
+        s->setValue(diagnosticConfigsClazyChecksKey, config.checks(ClangToolType::Clazy));
     }
     s->endArray();
 }
@@ -282,10 +250,10 @@ ClangDiagnosticConfigs diagnosticConfigsFromSettings(QSettings *s)
         const int tidyModeValue = s->value(diagnosticConfigsTidyModeKey).toInt();
         if (tidyModeValue == 0) { // Convert from settings of <= Qt Creator 4.10
             config.setClangTidyMode(ClangDiagnosticConfig::TidyMode::UseCustomChecks);
-            config.setClangTidyChecks("-*");
+            config.setChecks(ClangToolType::Tidy, "-*");
         } else {
             config.setClangTidyMode(static_cast<ClangDiagnosticConfig::TidyMode>(tidyModeValue));
-            config.setClangTidyChecks(s->value(diagnosticConfigsTidyChecksKey).toString());
+            config.setChecks(ClangToolType::Tidy, s->value(diagnosticConfigsTidyChecksKey).toString());
             config.setTidyChecksOptionsFromSettings(
                         s->value(diagnosticConfigsTidyChecksOptionsKey));
         }
@@ -293,7 +261,7 @@ ClangDiagnosticConfigs diagnosticConfigsFromSettings(QSettings *s)
         config.setClazyMode(static_cast<ClangDiagnosticConfig::ClazyMode>(
             s->value(diagnosticConfigsClazyModeKey).toInt()));
         const QString clazyChecks = s->value(diagnosticConfigsClazyChecksKey).toString();
-        config.setClazyChecks(convertToNewClazyChecksFormat(clazyChecks));
+        config.setChecks(ClangToolType::Clazy, convertToNewClazyChecksFormat(clazyChecks));
         configs.append(config);
     }
     s->endArray();

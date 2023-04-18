@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "editorview.h"
 
@@ -41,6 +19,7 @@
 #include <utils/infobar.h>
 #include <utils/qtcassert.h>
 #include <utils/theme/theme.h>
+#include <utils/layoutbuilder.h>
 #include <utils/link.h>
 #include <utils/utilsicons.h>
 
@@ -69,7 +48,7 @@ EditorView::EditorView(SplitterOrView *parentSplitterOrView, QWidget *parent) :
     m_toolBar(new EditorToolBar(this)),
     m_container(new QStackedWidget(this)),
     m_infoBarDisplay(new InfoBarDisplay(this)),
-    m_statusHLine(new QFrame(this)),
+    m_statusHLine(Layouting::createHr(this)),
     m_statusWidget(new QFrame(this))
 {
     auto tl = new QVBoxLayout(this);
@@ -101,8 +80,6 @@ EditorView::EditorView(SplitterOrView *parentSplitterOrView, QWidget *parent) :
     tl->addWidget(new FindToolBarPlaceHolder(this));
 
     {
-        m_statusHLine->setFrameStyle(QFrame::HLine);
-
         m_statusWidget->setFrameStyle(QFrame::NoFrame);
         m_statusWidget->setLineWidth(0);
         m_statusWidget->setAutoFillBackground(true);
@@ -407,8 +384,7 @@ void EditorView::openDroppedFiles(const QList<DropSupport::FileSpec> &files)
     };
     auto openEntry = [&](const DropSupport::FileSpec &spec) {
         if (first) {
-            first = false;
-            EditorManagerPrivate::openEditorAt(this, specToLink(spec));
+            first = !EditorManagerPrivate::openEditorAt(this, specToLink(spec));
         } else if (spec.column != -1 || spec.line != -1) {
             EditorManagerPrivate::openEditorAt(this,
                                                specToLink(spec),
@@ -466,16 +442,15 @@ QList<IEditor *> EditorView::editors() const
 
 IEditor *EditorView::editorForDocument(const IDocument *document) const
 {
-    foreach (IEditor *editor, m_editors)
-        if (editor->document() == document)
-            return editor;
-    return nullptr;
+    return Utils::findOrDefault(m_editors, Utils::equal(&IEditor::document, document));
 }
 
 void EditorView::updateEditorHistory(IEditor *editor)
 {
     updateEditorHistory(editor, m_editorHistory);
 }
+
+constexpr int navigationHistorySize = 100;
 
 void EditorView::addCurrentPositionToNavigationHistory(const QByteArray &saveState)
 {
@@ -502,8 +477,8 @@ void EditorView::addCurrentPositionToNavigationHistory(const QByteArray &saveSta
     m_navigationHistory.insert(m_currentNavigationHistoryPosition, location);
     ++m_currentNavigationHistoryPosition;
 
-    while (m_navigationHistory.size() >= 30) {
-        if (m_currentNavigationHistoryPosition > 15) {
+    while (m_navigationHistory.size() >= navigationHistorySize) {
+        if (m_currentNavigationHistoryPosition > navigationHistorySize / 2) {
             m_navigationHistory.removeFirst();
             --m_currentNavigationHistoryPosition;
         } else {
@@ -679,7 +654,7 @@ SplitterOrView::~SplitterOrView()
     m_splitter = nullptr;
 }
 
-EditorView *SplitterOrView::findFirstView()
+EditorView *SplitterOrView::findFirstView() const
 {
     if (m_splitter) {
         for (int i = 0; i < m_splitter->count(); ++i) {
@@ -692,7 +667,7 @@ EditorView *SplitterOrView::findFirstView()
     return m_view;
 }
 
-EditorView *SplitterOrView::findLastView()
+EditorView *SplitterOrView::findLastView() const
 {
     if (m_splitter) {
         for (int i = m_splitter->count() - 1; 0 < i; --i) {
@@ -919,13 +894,10 @@ QByteArray SplitterOrView::saveState() const
         // don't save state of temporary or ad-hoc editors
         if (e && (e->document()->isTemporary() || e->document()->filePath().isEmpty())) {
             // look for another editor that is more suited
-            e = nullptr;
-            foreach (IEditor *otherEditor, editors()) {
-                if (!otherEditor->document()->isTemporary() && !otherEditor->document()->filePath().isEmpty()) {
-                    e = otherEditor;
-                    break;
-                }
-            }
+            e = Utils::findOrDefault(editors(), [](IEditor *otherEditor) {
+                return !otherEditor->document()->isTemporary()
+                       && !otherEditor->document()->filePath().isEmpty();
+            });
         }
 
         if (!e) {

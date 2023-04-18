@@ -1,31 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlprofilerruncontrol.h"
 
-#include "qmlprofilerclientmanager.h"
 #include "qmlprofilertool.h"
 
 #include <coreplugin/icore.h>
@@ -52,10 +29,9 @@
 using namespace Core;
 using namespace ProjectExplorer;
 
-namespace QmlProfiler {
-namespace Internal {
+namespace QmlProfiler::Internal {
 
-static QString QmlServerUrl = "QmlServerUrl";
+const QString QmlServerUrl = "QmlServerUrl";
 
 //
 // QmlProfilerRunControlPrivate
@@ -207,7 +183,7 @@ static QUrl localServerUrl(RunControl *runControl)
     Kit *kit = runControl->kit();
     const QtSupport::QtVersion *version = QtSupport::QtKitAspect::qtVersion(kit);
     if (version) {
-        if (version->qtVersion() >= QtSupport::QtVersionNumber(5, 6, 0))
+        if (version->qtVersion() >= QVersionNumber(5, 6, 0))
             serverUrl = Utils::urlFromLocalSocket();
         else
             serverUrl = Utils::urlFromLocalHostAndFreePort();
@@ -236,8 +212,7 @@ LocalQmlProfilerSupport::LocalQmlProfilerSupport(RunControl *runControl, const Q
     // In the TCP case, it doesn't hurt either to start the profiler before.
     addStartDependency(profiler);
 
-    setStarter([this, runControl, profiler, serverUrl] {
-        Runnable debuggee = runControl->runnable();
+    setStartModifier([this, profiler, serverUrl] {
 
         QUrl serverUrl = profiler->serverUrl();
         QString code;
@@ -251,14 +226,31 @@ LocalQmlProfilerSupport::LocalQmlProfilerSupport(RunControl *runControl, const Q
         QString arguments = Utils::ProcessArgs::quoteArg(
                                 QmlDebug::qmlDebugCommandLineArguments(QmlDebug::QmlProfilerServices, code, true));
 
-        if (!debuggee.command.arguments().isEmpty())
-            arguments += ' ' + debuggee.command.arguments();
+        Utils::CommandLine cmd = commandLine();
+        const QString oldArgs = cmd.arguments();
+        cmd.setArguments(arguments);
+        cmd.addArgs(oldArgs, Utils::CommandLine::Raw);
+        setCommandLine(cmd);
 
-        debuggee.command.setArguments(arguments);
-
-        doStart(debuggee, {});
+        forceRunOnHost();
     });
 }
 
-} // namespace Internal
-} // namespace QmlProfiler
+// Factories
+
+// The bits plugged in in remote setups.
+QmlProfilerRunWorkerFactory::QmlProfilerRunWorkerFactory()
+{
+    setProduct<QmlProfilerRunner>();
+    addSupportedRunMode(ProjectExplorer::Constants::QML_PROFILER_RUNNER);
+}
+
+// The full local profiler.
+LocalQmlProfilerRunWorkerFactory::LocalQmlProfilerRunWorkerFactory()
+{
+    setProduct<LocalQmlProfilerSupport>();
+    addSupportedRunMode(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
+    addSupportedDeviceType(ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE);
+}
+
+} // QmlProfiler::Internal

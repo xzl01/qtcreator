@@ -1,35 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
+#include "auxiliarydata.h"
+#include "abstractproperty.h"
 #include "qmldesignercorelib_global.h"
+
 #include <QPointer>
 #include <QList>
 #include <QVector>
 #include <QVariant>
+
+#include <memory>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 class QTextStream;
@@ -43,14 +27,14 @@ namespace Internal {
     class InternalNode;
     class InternalProperty;
 
-    using InternalNodePointer = QSharedPointer<InternalNode>;
+    using InternalNodePointer = std::shared_ptr<InternalNode>;
     using InternalPropertyPointer = QSharedPointer<InternalProperty>;
 }
 class NodeMetaInfo;
-class AbstractProperty;
 class BindingProperty;
 class VariantProperty;
 class SignalHandlerProperty;
+class SignalDeclarationProperty;
 class Model;
 class AbstractView;
 class NodeListProperty;
@@ -64,8 +48,13 @@ class Annotation;
 QMLDESIGNERCORE_EXPORT QList<Internal::InternalNodePointer> toInternalNodeList(const QList<ModelNode> &nodeList);
 
 using PropertyListType = QList<QPair<PropertyName, QVariant> >;
+using AuxiliaryPropertyListType = QList<QPair<AuxiliaryDataKey, QVariant>>;
 
-static const PropertyName lockedProperty = {("locked")};
+inline constexpr AuxiliaryDataKeyView lockedProperty{AuxiliaryDataType::Document, "locked"};
+inline constexpr AuxiliaryDataKeyView timelineExpandedProperty{AuxiliaryDataType::Document,
+                                                               "timeline_expanded"};
+inline constexpr AuxiliaryDataKeyView transitionExpandedPropery{AuxiliaryDataType::Document,
+                                                                "transition_expanded"};
 
 class QMLDESIGNERCORE_EXPORT ModelNode
 {
@@ -91,12 +80,7 @@ public:
     ModelNode();
     ModelNode(const Internal::InternalNodePointer &internalNode, Model *model, const AbstractView *view);
     ModelNode(const ModelNode &modelNode, AbstractView *view);
-    ModelNode(const ModelNode &other);
-    ModelNode(ModelNode &&other);
     ~ModelNode();
-
-    ModelNode &operator=(const ModelNode &other);
-    ModelNode &operator=(ModelNode &&other);
 
     TypeName type() const;
     QString simplifiedTypeName() const;
@@ -105,6 +89,7 @@ public:
     int majorVersion() const;
 
     bool isValid() const;
+    explicit operator bool() const { return isValid(); }
     bool isInHierarchy() const;
 
 
@@ -115,8 +100,8 @@ public:
     bool hasParentProperty() const;
 
     QList<ModelNode> directSubModelNodes() const;
-    QList<ModelNode> directSubModelNodesOfType(const TypeName &typeName) const;
-    QList<ModelNode> subModelNodesOfType(const TypeName &typeName) const;
+    QList<ModelNode> directSubModelNodesOfType(const NodeMetaInfo &type) const;
+    QList<ModelNode> subModelNodesOfType(const NodeMetaInfo &type) const;
 
     QList<ModelNode> allSubModelNodes() const;
     QList<ModelNode> allSubModelNodesAndThisNode() const;
@@ -128,6 +113,7 @@ public:
     VariantProperty variantProperty(const PropertyName &name) const;
     BindingProperty bindingProperty(const PropertyName &name) const;
     SignalHandlerProperty signalHandlerProperty(const PropertyName &name) const;
+    SignalDeclarationProperty signalDeclarationProperty(const PropertyName &name) const;
     NodeListProperty nodeListProperty(const PropertyName &name) const;
     NodeProperty nodeProperty(const PropertyName &name) const;
     NodeAbstractProperty nodeAbstractProperty(const PropertyName &name) const;
@@ -143,12 +129,14 @@ public:
     QList<NodeListProperty> nodeListProperties() const;
     QList<BindingProperty> bindingProperties() const;
     QList<SignalHandlerProperty> signalProperties() const;
+    QList<AbstractProperty> dynamicProperties() const;
     PropertyNameList propertyNames() const;
 
     bool hasProperties() const;
     bool hasProperty(const PropertyName &name) const;
     bool hasVariantProperty(const PropertyName &name) const;
     bool hasBindingProperty(const PropertyName &name) const;
+    bool hasSignalHandlerProperty(const PropertyName &name) const;
     bool hasNodeAbstractProperty(const PropertyName &name) const;
     bool hasDefaultNodeAbstractProperty() const;
     bool hasDefaultNodeListProperty() const;
@@ -174,7 +162,7 @@ public:
     Model *model() const;
     AbstractView *view() const;
 
-    const NodeMetaInfo metaInfo() const;
+    NodeMetaInfo metaInfo() const;
     bool hasMetaInfo() const;
 
     bool isSelected() const;
@@ -187,12 +175,22 @@ public:
     static int variantUserType();
     QVariant toVariant() const;
 
-    QVariant auxiliaryData(const PropertyName &name) const;
-    void setAuxiliaryData(const PropertyName &name, const QVariant &data) const;
-    void setAuxiliaryDataWithoutLock(const PropertyName &name, const QVariant &data) const;
-    void removeAuxiliaryData(const PropertyName &name) const;
-    bool hasAuxiliaryData(const PropertyName &name) const;
-    const QHash<PropertyName, QVariant> &auxiliaryData() const;
+    std::optional<QVariant> auxiliaryData(AuxiliaryDataKeyView key) const;
+    std::optional<QVariant> auxiliaryData(AuxiliaryDataType type, Utils::SmallStringView name) const;
+    QVariant auxiliaryDataWithDefault(AuxiliaryDataType type, Utils::SmallStringView name) const;
+    QVariant auxiliaryDataWithDefault(AuxiliaryDataKeyView key) const;
+    QVariant auxiliaryDataWithDefault(AuxiliaryDataKeyDefaultValue key) const;
+    void setAuxiliaryData(AuxiliaryDataKeyView key, const QVariant &data) const;
+    void setAuxiliaryData(AuxiliaryDataType type, Utils::SmallStringView name, const QVariant &data) const;
+    void setAuxiliaryDataWithoutLock(AuxiliaryDataType type,
+                                     Utils::SmallStringView name,
+                                     const QVariant &data) const;
+    void removeAuxiliaryData(AuxiliaryDataKeyView key) const;
+    void removeAuxiliaryData(AuxiliaryDataType type, Utils::SmallStringView name) const;
+    bool hasAuxiliaryData(AuxiliaryDataKeyView key) const;
+    bool hasAuxiliaryData(AuxiliaryDataType type, Utils::SmallStringView name) const;
+    AuxiliaryDatasForType auxiliaryData(AuxiliaryDataType type) const;
+    AuxiliaryDatasView auxiliaryData() const;
 
     QString customId() const;
     bool hasCustomId() const;
@@ -224,6 +222,7 @@ public:
     void setLocked(bool value);
 
     static bool isThisOrAncestorLocked(const ModelNode &node);
+    static ModelNode lowestCommonAncestor(const QList<ModelNode> &nodes);
 
     qint32 internalId() const;
 
@@ -236,8 +235,8 @@ public:
     NodeSourceType nodeSourceType() const;
 
     bool isComponent() const;
-    bool isSubclassOf(const TypeName &typeName, int majorVersion = -1, int minorVersion = -1) const;
     QIcon typeIcon() const;
+    QString behaviorPropertyName() const;
 
     friend void swap(ModelNode &first, ModelNode &second) noexcept
     {
@@ -248,7 +247,7 @@ public:
         swap(first.m_view, second.m_view);
     }
 
-    friend auto qHash(const ModelNode &node) { return ::qHash(node.m_internalNode.data()); }
+    friend auto qHash(const ModelNode &node) { return ::qHash(node.m_internalNode.get()); }
 
 private: // functions
     Internal::InternalNodePointer internalNode() const;

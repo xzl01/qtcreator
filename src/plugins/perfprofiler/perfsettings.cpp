@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "perfconfigwidget.h"
 #include "perfprofilerconstants.h"
+#include "perfprofilertr.h"
 #include "perfsettings.h"
 
 #include <coreplugin/icore.h>
@@ -50,29 +29,29 @@ PerfSettings::PerfSettings(ProjectExplorer::Target *target)
     period.setSettingsKey("Analyzer.Perf.Frequency");
     period.setRange(250, 2147483647);
     period.setDefaultValue(250);
-    period.setLabelText(tr("Sample period:"));
+    period.setLabelText(Tr::tr("Sample period:"));
 
     registerAspect(&stackSize);
     stackSize.setSettingsKey("Analyzer.Perf.StackSize");
     stackSize.setRange(4096, 65536);
     stackSize.setDefaultValue(4096);
-    stackSize.setLabelText(tr("Stack snapshot size (kB):"));
+    stackSize.setLabelText(Tr::tr("Stack snapshot size (kB):"));
 
     registerAspect(&sampleMode);
     sampleMode.setSettingsKey("Analyzer.Perf.SampleMode");
     sampleMode.setDisplayStyle(SelectionAspect::DisplayStyle::ComboBox);
-    sampleMode.setLabelText(tr("Sample mode:"));
-    sampleMode.addOption({tr("frequency (Hz)"), {}, QString("-F")});
-    sampleMode.addOption({tr("event count"), {}, QString("-c")});
+    sampleMode.setLabelText(Tr::tr("Sample mode:"));
+    sampleMode.addOption({Tr::tr("frequency (Hz)"), {}, QString("-F")});
+    sampleMode.addOption({Tr::tr("event count"), {}, QString("-c")});
     sampleMode.setDefaultValue(0);
 
     registerAspect(&callgraphMode);
     callgraphMode.setSettingsKey("Analyzer.Perf.CallgraphMode");
     callgraphMode.setDisplayStyle(SelectionAspect::DisplayStyle::ComboBox);
-    callgraphMode.setLabelText(tr("Call graph mode:"));
-    callgraphMode.addOption({tr("dwarf"), {}, QString(Constants::PerfCallgraphDwarf)});
-    callgraphMode.addOption({tr("frame pointer"), {}, QString("fp")});
-    callgraphMode.addOption({tr("last branch record"), {}, QString("lbr")});
+    callgraphMode.setLabelText(Tr::tr("Call graph mode:"));
+    callgraphMode.addOption({Tr::tr("dwarf"), {}, QString(Constants::PerfCallgraphDwarf)});
+    callgraphMode.addOption({Tr::tr("frame pointer"), {}, QString("fp")});
+    callgraphMode.addOption({Tr::tr("last branch record"), {}, QString("lbr")});
     callgraphMode.setDefaultValue(0);
 
     registerAspect(&events);
@@ -82,7 +61,7 @@ PerfSettings::PerfSettings(ProjectExplorer::Target *target)
     registerAspect(&extraArguments);
     extraArguments.setSettingsKey("Analyzer.Perf.ExtraArguments");
     extraArguments.setDisplayStyle(StringAspect::DisplayStyle::LineEditDisplay);
-    extraArguments.setLabelText(tr("Additional arguments:"));
+    extraArguments.setLabelText(Tr::tr("Additional arguments:"));
     extraArguments.setSpan(4);
 
     connect(&callgraphMode, &SelectionAspect::volatileValueChanged, this, [this](int index) {

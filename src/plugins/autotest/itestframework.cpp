@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "itestframework.h"
 
@@ -30,6 +8,8 @@
 #include "testtreeitem.h"
 #include "testtreemodel.h"
 
+using namespace Utils;
+
 namespace Autotest {
 
 ITestBase::ITestBase(bool activeByDefault, const ITestBase::TestBaseType type)
@@ -37,15 +17,15 @@ ITestBase::ITestBase(bool activeByDefault, const ITestBase::TestBaseType type)
     , m_type(type)
 {}
 
-Utils::Id ITestBase::settingsId() const
+Id ITestBase::settingsId() const
 {
-    return Utils::Id(Constants::SETTINGSPAGE_PREFIX)
+    return Id(Constants::SETTINGSPAGE_PREFIX)
             .withSuffix(QString("%1.%2").arg(priority()).arg(QLatin1String(name())));
 }
 
-Utils::Id ITestBase::id() const
+Id ITestBase::id() const
 {
-    return Utils::Id(Constants::FRAMEWORK_PREFIX).withSuffix(name());
+    return Id(Constants::FRAMEWORK_PREFIX).withSuffix(name());
 }
 
 void ITestBase::resetRootNode()
@@ -81,6 +61,11 @@ ITestParser *ITestFramework::testParser()
     if (!m_testParser)
         m_testParser = createTestParser();
     return m_testParser;
+}
+
+QStringList ITestFramework::testNameForSymbolName(const QString &) const
+{
+    return {};
 }
 
 ITestTool::ITestTool(bool activeByDefault)

@@ -5,18 +5,29 @@
 
 include /usr/share/dpkg/architecture.mk
 
-export QT_SELECT := qt5
-
-# Upstream changelog
-upstream_changes = $(wildcard dist/changes-*)
-
 # Do not build the HelloWorld plugin, as it is not needed
 export QTC_BUILD_PLUGIN_HELLOWORLD=FALSE
 
-# The clang-N used for the build by the unversioned clang
-current_clang_pkg = $(shell dpkg -S "$(shell realpath $(shell env PATH=$$(echo "$$PATH" | sed -r -e 's|/usr/lib/ccache/?:||') which clang))" | cut -d: -f1)
 # The upstream version of a package passed as parameter
 upstream_version_of_pkg = $(shell dpkg-query -f '$${Version}' -W $(1) | sed -e 's/-[^-]*$$//')
+
+# the dwz processing for all the libraries and plugins can take a lot of memory,
+# which may be not enough on some architectures (typically 32bit), resulting in
+# dwz failing with "Could not allocate memory: Cannot allocate memory" errors;
+# hence, on architectures where we see this result, try to use a more memory
+# friendly processing for a lower number of DIEs (dwz default is 10M)
+archs_with_dwz_low_mem = armel armhf mipsel
+dwz_low_mem = 3000000
+
+archs_using_clang = mips64el mipsel
+ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH), $(archs_using_clang)))
+export CC=clang
+export CXX=clang++
+export DEB_CFLAGS_MAINT_APPEND := -gdwarf-4
+export DEB_CXXFLAGS_MAINT_APPEND := -gdwarf-4
+export DEB_LDFLAGS_MAINT_APPEND := -Wl,--as-needed
+EXTRA_CMAKE_ARGS += -DBUILD_WITH_PCH=OFF
+endif
 
 %:
 	dh $@ --builddirectory=builddir
@@ -28,7 +39,8 @@ override_dh_auto_configure:
 		-DWITH_TESTS=OFF \
 		-DBUILD_TESTING=OFF \
 		-DCLANGTOOLING_LINK_CLANG_DYLIB=ON \
-		-DWITH_DOCS=$(if $(filter qtcreator-doc, $(shell dh_listpackages)),ON,OFF)
+		-DWITH_DOCS=$(if $(filter qtcreator-doc, $(shell dh_listpackages)),ON,OFF) \
+		$(EXTRA_CMAKE_ARGS)
 
 execute_after_dh_auto_build-indep:
 	dh_auto_build -- docs
@@ -42,24 +54,25 @@ endif
 	# Not needed
 	rm debian/tmp/usr/bin/qtcreator.sh
 
+	# License files of the embedded copy of KSyntaxHighlighting
+	rm -rf debian/tmp/usr/share/qtcreator/generic-highlighter/syntax/licenses/
+
 	# Remove extra exec permissions
-	find debian/tmp -name qmldir -type f -exec chmod -x {} \;
+	find debian/tmp -name qmldir -type f -perm /111 -exec chmod -v -x {} \;
 
 execute_after_dh_install:
 	# Copied in qtcreator-doc already
 	rm -rf debian/qtcreator-data/usr/share/qtcreator/doc/
 
-override_dh_installdocs-indep:
-	dh_installdocs -pqtcreator-data $(upstream_changes)
-	dh_installdocs -i --remaining-packages
-
 override_dh_makeshlibs:
 	dh_makeshlibs -Xusr/lib/$(DEB_HOST_MULTIARCH)/qtcreator/
 
 override_dh_shlibdeps:
-	echo 'libQt5DesignerComponents 5 libqt5designercomponents5 (>= $(call upstream_version_of_pkg,libqt5designercomponents5)~)' > debian/shlibs.local
+	echo 'libQt6DesignerComponents 6 libqt6designercomponents6 (>= $(call upstream_version_of_pkg,libqt6designercomponents6)~)' > debian/shlibs.local
 	dh_shlibdeps -l$(CURDIR)/debian/qtcreator/usr/lib/$(DEB_HOST_MULTIARCH)/qtcreator
 	rm debian/shlibs.local
 
-override_dh_gencontrol-arch:
-	dh_gencontrol -a -- -V'qtcreator:clang=$(current_clang_pkg) (>= $(call upstream_version_of_pkg,$(current_clang_pkg))~)'
+ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH), $(archs_with_dwz_low_mem)))
+override_dh_dwz:
+	dh_dwz -- --low-mem-die-limit $(dwz_low_mem)
+endif

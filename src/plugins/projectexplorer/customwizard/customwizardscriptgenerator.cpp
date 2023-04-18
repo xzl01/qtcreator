@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "customwizardscriptgenerator.h"
 #include "customwizard.h"
 #include "customwizardparameters.h"
 
+#include <utils/environment.h>
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcprocess.h>
@@ -68,7 +47,7 @@ QStringList fixGeneratorScript(const QString &configFile, QString binary)
         if (!extension.isEmpty() && extension.compare(QLatin1String("exe"),
                                                       Qt::CaseInsensitive) != 0) {
             rc.push_front(QLatin1String("/C"));
-            rc.push_front(QString::fromLocal8Bit(qgetenv("COMSPEC")));
+            rc.push_front(qtcEnvironmentVariable("COMSPEC"));
             if (rc.front().isEmpty())
                 rc.front() = QLatin1String("cmd.exe");
         }
@@ -99,7 +78,7 @@ static bool
     // Arguments: Prepend 'dryrun'. Do field replacement to actual
     // argument value to expand via temporary file if specified
     CustomWizardContext::TemporaryFilePtrList temporaryFiles;
-    foreach (const GeneratorScriptArgument &argument, argumentsIn) {
+    for (const GeneratorScriptArgument &argument : argumentsIn) {
         QString value = argument.value;
         const bool nonEmptyReplacements
                 = argument.flags & GeneratorScriptArgument::WriteFile ?
@@ -115,10 +94,10 @@ static bool
         qDebug("In %s, running:\n%s\n", qPrintable(workingDirectory.toUserOutput()),
                qPrintable(cmd.toUserOutput()));
     process.setCommand(cmd);
-    process.runBlocking(QtcProcess::WithEventLoop);
-    if (process.result() != Utils::QtcProcess::FinishedWithSuccess) {
+    process.runBlocking(EventLoopMode::On);
+    if (process.result() != Utils::ProcessResult::FinishedWithSuccess) {
         *errorMessage = QString("Generator script failed: %1").arg(process.exitMessage());
-        const QString stdErr = process.stdErr();
+        const QString stdErr = process.cleanedStdErr();
         if (!stdErr.isEmpty()) {
             errorMessage->append(QLatin1Char('\n'));
             errorMessage->append(stdErr);
@@ -126,7 +105,7 @@ static bool
         return false;
     }
     if (stdOut) {
-        *stdOut = process.stdOut();
+        *stdOut = process.cleanedStdOut();
         if (CustomWizard::verbose())
             qDebug("Output: '%s'\n", qPrintable(*stdOut));
     }
@@ -155,7 +134,8 @@ Core::GeneratedFiles
     Core::GeneratedFiles files;
     // Parse the output consisting of lines with ',' separated tokens.
     // (file name + attributes matching those of the <file> element)
-    foreach (const QString &line, stdOut.split(QLatin1Char('\n'))) {
+    const QStringList lines = stdOut.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
         const QString trimmed = line.trimmed();
         if (!trimmed.isEmpty()) {
             Core::GeneratedFile file;
@@ -177,7 +157,7 @@ Core::GeneratedFiles
                             fileInfo.isAbsolute() ?
                             token :
                             (targetPath + QLatin1Char('/') + token);
-                    file.setPath(fullPath);
+                    file.setFilePath(FilePath::fromString(fullPath).cleanPath());
                 }
             }
             file.setAttributes(attributes);
@@ -187,8 +167,8 @@ Core::GeneratedFiles
     if (CustomWizard::verbose()) {
         QDebug nospace = qDebug().nospace();
         nospace << script << " generated:\n";
-        foreach (const Core::GeneratedFile &f, files)
-            nospace << ' ' << f.path() << f.attributes() << '\n';
+        for (const Core::GeneratedFile &f : std::as_const(files))
+            nospace << ' ' << f.filePath() << f.attributes() << '\n';
     }
     return files;
 }

@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "jsonwizardfilegenerator.h"
 
-#include "../projectexplorer.h"
+#include "../projectexplorertr.h"
 #include "jsonwizard.h"
 #include "jsonwizardfactory.h"
 
@@ -49,22 +27,21 @@ bool JsonWizardFileGenerator::setup(const QVariant &data, QString *errorMessage)
 {
     QTC_ASSERT(errorMessage && errorMessage->isEmpty(), return false);
 
-    QVariantList list = JsonWizardFactory::objectOrList(data, errorMessage);
+    const QVariantList list = JsonWizardFactory::objectOrList(data, errorMessage);
     if (list.isEmpty())
         return false;
 
-    foreach (const QVariant &d, list) {
+    for (const QVariant &d : list) {
         if (d.type() != QVariant::Map) {
-            *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonFieldPage",
-                                                        "Files data list entry is not an object.");
+            *errorMessage = Tr::tr("Files data list entry is not an object.");
             return false;
         }
 
         File f;
 
         const QVariantMap tmp = d.toMap();
-        f.source = tmp.value(QLatin1String("source")).toString();
-        f.target = tmp.value(QLatin1String("target")).toString();
+        f.source = Utils::FilePath::fromSettings(tmp.value(QLatin1String("source")));
+        f.target = Utils::FilePath::fromSettings(tmp.value(QLatin1String("target")));
         f.condition = tmp.value(QLatin1String("condition"), true);
         f.isBinary = tmp.value(QLatin1String("isBinary"), false);
         f.overwrite = tmp.value(QLatin1String("overwrite"), false);
@@ -77,8 +54,7 @@ bool JsonWizardFileGenerator::setup(const QVariant &data, QString *errorMessage)
             return false;
 
         if (f.source.isEmpty() && f.target.isEmpty()) {
-            *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonFieldPage",
-                                                        "Source and target are both empty.");
+            *errorMessage = Tr::tr("Source and target are both empty.");
             return false;
         }
 
@@ -99,12 +75,12 @@ Core::GeneratedFile JsonWizardFileGenerator::generateFile(const File &file,
         QIODevice::ReadOnly : (QIODevice::ReadOnly|QIODevice::Text);
 
     Utils::FileReader reader;
-    if (!reader.fetch(Utils::FilePath::fromString(file.source), openMode, errorMessage))
+    if (!reader.fetch(file.source, openMode, errorMessage))
         return Core::GeneratedFile();
 
     // Generate file information:
     Core::GeneratedFile gf;
-    gf.setPath(file.target);
+    gf.setFilePath(file.target);
 
     if (!file.keepExisting) {
         if (file.isBinary.toBool()) {
@@ -117,7 +93,7 @@ Core::GeneratedFile JsonWizardFileGenerator::generateFile(const File &file,
 
             // evaluate file options once:
             QHash<QString, QString> options;
-            foreach (const JsonWizard::OptionDefinition &od, file.options) {
+            for (const JsonWizard::OptionDefinition &od : std::as_const(file.options)) {
                 if (od.condition(*expander))
                     options.insert(od.key(), od.value(*expander));
             }
@@ -135,8 +111,8 @@ Core::GeneratedFile JsonWizardFileGenerator::generateFile(const File &file,
             gf.setContents(Utils::TemplateEngine::processText(&nested, QString::fromUtf8(reader.data()),
                                                               errorMessage));
             if (!errorMessage->isEmpty()) {
-                *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizard", "When processing \"%1\":<br>%2")
-                        .arg(file.source, *errorMessage);
+                *errorMessage = Tr::tr("When processing \"%1\":<br>%2")
+                        .arg(file.source.toUserOutput(), *errorMessage);
                 return Core::GeneratedFile();
             }
         }
@@ -160,13 +136,10 @@ Core::GeneratedFile JsonWizardFileGenerator::generateFile(const File &file,
 }
 
 Core::GeneratedFiles JsonWizardFileGenerator::fileList(Utils::MacroExpander *expander,
-                                                       const QString &wizardDir, const QString &projectDir,
+                                                       const Utils::FilePath &wizardDir, const Utils::FilePath &projectDir,
                                                        QString *errorMessage)
 {
     errorMessage->clear();
-
-    QDir wizard(wizardDir);
-    QDir project(projectDir);
 
     const QList<File> enabledFiles
             = Utils::filtered(m_fileList, [&expander](const File &f) {
@@ -175,14 +148,15 @@ Core::GeneratedFiles JsonWizardFileGenerator::fileList(Utils::MacroExpander *exp
 
     const QList<File> concreteFiles
             = Utils::transform(enabledFiles,
-                               [&expander, &wizard, &project](const File &f) -> File {
+                               [&expander, &wizardDir, &projectDir](const File &f) -> File {
                                   // Return a new file with concrete values based on input file:
                                   File file = f;
 
                                   file.keepExisting = file.source.isEmpty();
-                                  file.target = project.absoluteFilePath(expander->expand(file.target));
-                                  file.source = file.keepExisting ? file.target : wizard.absoluteFilePath(
-                                      expander->expand(file.source));
+                                  file.target = projectDir.resolvePath(expander->expand(file.target));
+                                  file.source = file.keepExisting
+                                          ? file.target
+                                          : wizardDir.resolvePath(expander->expand(file.source));
                                   file.isBinary = JsonWizard::boolFromVariant(file.isBinary, expander);
 
                                   return file;
@@ -191,18 +165,18 @@ Core::GeneratedFiles JsonWizardFileGenerator::fileList(Utils::MacroExpander *exp
     QList<File> fileList;
     QList<File> dirList;
     std::tie(fileList, dirList)
-            = Utils::partition(concreteFiles, [](const File &f) { return !QFileInfo(f.source).isDir(); });
+            = Utils::partition(concreteFiles, [](const File &f) { return !f.source.isDir(); });
 
-    const QSet<QString> knownFiles = Utils::transform<QSet>(fileList, &File::target);
+    const QSet<Utils::FilePath> knownFiles = Utils::transform<QSet>(fileList, &File::target);
 
-    foreach (const File &dir, dirList) {
-        QDir sourceDir(dir.source);
-        QDirIterator it(dir.source, QDir::NoDotAndDotDot | QDir::Files| QDir::Hidden,
-                        QDirIterator::Subdirectories);
+    for (const File &dir : std::as_const(dirList)) {
+        Utils::FilePath sourceDir(dir.source);
+        const Utils::FilePaths entries =
+                sourceDir.dirEntries(QDir::NoDotAndDotDot | QDir::Files| QDir::Hidden);
 
-        while (it.hasNext()) {
-            const QString relativeFilePath = sourceDir.relativeFilePath(it.next());
-            const QString targetPath = dir.target + QLatin1Char('/') + relativeFilePath;
+        for (const Utils::FilePath &entry : entries) {
+            const QString relativeFilePath = entry.relativeChildPath(sourceDir).path();
+            const Utils::FilePath targetPath = dir.target / relativeFilePath;
 
             if (knownFiles.contains(targetPath))
                 continue;
@@ -210,7 +184,7 @@ Core::GeneratedFiles JsonWizardFileGenerator::fileList(Utils::MacroExpander *exp
             // initialize each new file with properties (isBinary etc)
             // from the current directory json entry
             File newFile = dir;
-            newFile.source = dir.source + QLatin1Char('/') + relativeFilePath;
+            newFile.source = dir.source / relativeFilePath;
             newFile.target = targetPath;
             fileList.append(newFile);
         }
@@ -222,7 +196,8 @@ Core::GeneratedFiles JsonWizardFileGenerator::fileList(Utils::MacroExpander *exp
                                    return generateFile(f, expander, errorMessage);
                                });
 
-    if (Utils::contains(result, [](const Core::GeneratedFile &gf) { return gf.path().isEmpty(); }))
+    if (Utils::contains(result,
+                        [](const Core::GeneratedFile &gf) { return gf.filePath().isEmpty(); }))
         return Core::GeneratedFiles();
 
     return result;

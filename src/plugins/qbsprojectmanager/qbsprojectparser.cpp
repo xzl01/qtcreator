@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qbsprojectparser.h"
 
@@ -38,15 +16,14 @@
 
 using namespace Utils;
 
-namespace QbsProjectManager {
-namespace Internal {
+namespace QbsProjectManager::Internal {
 
 // --------------------------------------------------------------------
 // QbsProjectParser:
 // --------------------------------------------------------------------
 
 QbsProjectParser::QbsProjectParser(QbsBuildSystem *buildSystem, QFutureInterface<bool> *fi)
-    : m_projectFilePath(buildSystem->project()->projectFilePath().toString()),
+    : m_projectFilePath(buildSystem->project()->projectFilePath()),
       m_session(buildSystem->session()),
       m_fi(fi)
 {
@@ -62,8 +39,8 @@ QbsProjectParser::~QbsProjectParser()
     m_fi = nullptr; // we do not own m_fi, do not delete
 }
 
-void QbsProjectParser::parse(const QVariantMap &config, const Environment &env, const QString &dir,
-                             const QString &configName)
+void QbsProjectParser::parse(const QVariantMap &config, const Environment &env,
+                             const FilePath &dir, const QString &configName)
 {
     QTC_ASSERT(m_session, return);
     QTC_ASSERT(!dir.isEmpty(), return);
@@ -83,10 +60,10 @@ void QbsProjectParser::parse(const QVariantMap &config, const Environment &env, 
 
     // People don't like it when files are created as a side effect of opening a project,
     // so do not store the build graph if the build directory does not exist yet.
-    request.insert("dry-run", !QFileInfo::exists(dir));
+    request.insert("dry-run", !dir.exists());
 
-    request.insert("build-root", dir);
-    request.insert("project-file-path", m_projectFilePath);
+    request.insert("build-root", dir.path());
+    request.insert("project-file-path", m_projectFilePath.path());
     request.insert("override-build-graph-data", true);
     static const auto envToJson = [](const Environment &env) {
         QJsonObject envObj;
@@ -130,5 +107,4 @@ void QbsProjectParser::cancel()
         m_session->cancelCurrentJob();
 }
 
-} // namespace Internal
-} // namespace QbsProjectManager
+} // QbsProjectManager::Internal

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtquick-positioning.html
@@ -66,35 +44,32 @@
 
     Property bindings are created implicitly whenever a property is assigned a
     JavaScript expression. To set JavaScript expressions as values of properties
-    in the \l Properties view, select the \inlineimage icons/action-icon.png
-    (\uicontrol Actions) menu next to a property, and then select
-    \uicontrol {Set Binding}.
+    in the \l Properties view:
+    \list 1
+        \li Select the \inlineimage icons/action-icon.png
+        (\uicontrol Actions) menu next to a property, and then select
+        \uicontrol {Set Binding}.
 
-    \image qmldesigner-set-expression.png "Actions menu"
+        \image qmldesigner-set-expression.png "Actions menu"
 
-    In \uicontrol {Binding Editor}, select a component and a property from
-    lists of available components and their properties.
+        \li In \uicontrol {Binding Editor}, select a component and a property from
+        lists of available components and their properties.
 
-    \image qmldesigner-binding-editor.png "Binding Editor"
-
-    Alternatively, start typing a
-    string and press \key Ctrl+Space to display a list of properties, IDs, and
-    code snippets. When you enter a period (.) after a property name, a list of
-    available values is displayed. Press \key Enter to accept the first
-    suggestion in the list and to complete the code. For more information, see
-    \l{Completing Code}.
+        \image qmldesigner-binding-editor.png "Binding Editor"
+    \endlist
 
     When a binding is set, the \uicontrol Actions menu icon changes to
     \inlineimage icons/action-icon-binding.png
     . To remove bindings, select \uicontrol Actions > \uicontrol Reset.
 
-    You can set bindings also in \l {Connection View} > \uicontrol Bindings.
+    You can set bindings also on the \uicontrol Bindings tab in the
+    \l Connections view.
     For more information, see \l {Adding Bindings Between Properties}.
 
     For more information on the JavaScript environment provided, see
     \l{Integrating QML and JavaScript}.
 
-    Bindings are a black box for \QC and using them might have a
+    Bindings are a black box for \QDS and using them might have a
     negative impact on performance, so consider setting anchors and margins for
     components, instead. For example, instead of setting \c {parent.width} for a
     component, you could anchor the component to its sibling components on the
@@ -121,7 +96,7 @@
     (\uicontrol {Reset Anchors}) button to reset the anchors to their saved
     state.
 
-    You can specify the baseline anchor in \l{Text Editor}.
+    You can specify the baseline anchor in the \l{Code} view.
 
     For performance reasons, you can only anchor a component to its siblings
     and direct parent. By default, a component is anchored to its parent when
@@ -315,7 +290,7 @@
 
     To position several components in a \uicontrol Column, \uicontrol Row,
     \uicontrol Flow, or \uicontrol Grid, select the components in
-    \l {Form Editor}, and then select \uicontrol Position in
+    the \l {2D} view, and then select \uicontrol Position in
     the context menu.
 
     \section3 Column Positioner
@@ -363,8 +338,8 @@
     to right and top to bottom. Each component is positioned at the top-left
     corner of its cell with position (0, 0).
 
-    \QC generates the grid based on the positions of the child components in
-    \l {Form Editor}. You can modify the number of rows and columns in the
+    \QDS generates the grid based on the positions of the child components in
+    the \l {2D} view. You can modify the number of rows and columns in the
     \uicontrol Rows and \uicontrol Columns fields.
 
     \image qtquick-positioner-grid-properties.png "Grid properties"
@@ -429,7 +404,7 @@
     do not anchor the child components within layouts.
 
     To arrange several components in a column, row, grid, or
-    \uicontrol {Stack Layout}, select the components in \l {Form Editor},
+    \uicontrol {Stack Layout}, select the components in the \l {2D} view,
     and then select \uicontrol Layout in the context menu.
 
     You can also click the \inlineimage column.png
@@ -439,7 +414,7 @@
     layouts to the selected components.
 
     To make a component within a layout as wide as possible while respecting the
-    given constraints, select the component in \uicontrol {Form Editor}, and
+    given constraints, select the component in the \uicontrol {2D} view, and
     then select \uicontrol Layout > \uicontrol {Fill Width} in the context menu.
     To make the component as high as possible, select \uicontrol {Fill Height}.
 
@@ -485,7 +460,7 @@
 
     To add components to a \uicontrol {Stack Layout}, select the
     \inlineimage icons/plus.png
-    button next to the component name in \l {Form Editor}.
+    button next to the component name in the \l {2D} view.
     To move between components, select the \inlineimage icons/prev.png
     (\uicontrol Previous) and \inlineimage icons/next.png
     (\uicontrol Next) buttons.

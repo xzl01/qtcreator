@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest>
 #include <QDebug>
@@ -206,11 +184,11 @@ void tst_Semantic::function_declaration_1()
     FullySpecifiedType declTy = decl->type();
     Function *funTy = declTy->asFunctionType();
     QVERIFY(funTy);
-    QVERIFY(funTy->returnType()->isVoidType());
+    QVERIFY(funTy->returnType()->asVoidType());
     QCOMPARE(funTy->argumentCount(), 0);
     QCOMPARE(funTy->refQualifier(), Function::NoRefQualifier);
 
-    QVERIFY(decl->name()->isNameId());
+    QVERIFY(decl->name()->asNameId());
     const Identifier *funId = decl->name()->asNameId()->identifier();
     QVERIFY(funId);
 
@@ -230,7 +208,7 @@ void tst_Semantic::function_declaration_2()
     FullySpecifiedType declTy = decl->type();
     Function *funTy = declTy->asFunctionType();
     QVERIFY(funTy);
-    QVERIFY(funTy->returnType()->isVoidType());
+    QVERIFY(funTy->returnType()->asVoidType());
     QCOMPARE(funTy->argumentCount(), 1);
     QCOMPARE(funTy->refQualifier(), Function::NoRefQualifier);
 
@@ -251,7 +229,7 @@ void tst_Semantic::function_declaration_2()
 
     // check the type of the formal argument
     FullySpecifiedType argTy = arg->type();
-    QVERIFY(argTy->isReferenceType());
+    QVERIFY(argTy->asReferenceType());
     QVERIFY(argTy->asReferenceType()->elementType().isConst());
     NamedType *namedTy = argTy->asReferenceType()->elementType()->asNamedType();
     QVERIFY(namedTy);
@@ -261,7 +239,7 @@ void tst_Semantic::function_declaration_2()
     QCOMPARE(QByteArray(namedTypeId->chars(), namedTypeId->size()),
              QByteArray("QString"));
 
-    QVERIFY(decl->name()->isNameId());
+    QVERIFY(decl->name()->asNameId());
     const Identifier *funId = decl->name()->asNameId()->identifier();
     QVERIFY(funId);
 
@@ -359,7 +337,7 @@ void tst_Semantic::function_declaration_ref_qualifier()
     FullySpecifiedType declTy = decl->type();
     Function *funTy = declTy->asFunctionType();
     QVERIFY(funTy);
-    QVERIFY(funTy->returnType()->isVoidType());
+    QVERIFY(funTy->returnType()->asVoidType());
     QCOMPARE(funTy->argumentCount(), 0);
 
     // check the ref-qualifier
@@ -374,11 +352,11 @@ void tst_Semantic::function_definition_1()
 
     Function *funTy = doc->globals->memberAt(0)->asFunction();
     QVERIFY(funTy);
-    QVERIFY(funTy->returnType()->isVoidType());
+    QVERIFY(funTy->returnType()->asVoidType());
     QCOMPARE(funTy->argumentCount(), 0);
     QCOMPARE(funTy->refQualifier(), Function::NoRefQualifier);
 
-    QVERIFY(funTy->name()->isNameId());
+    QVERIFY(funTy->name()->asNameId());
     const Identifier *funId = funTy->name()->asNameId()->identifier();
     QVERIFY(funId);
 
@@ -448,7 +426,7 @@ void tst_Semantic::alias_declaration_1()
 
     QVERIFY(decl->isTypedef());
     QVERIFY(decl->type().isTypedef());
-    QVERIFY(decl->type()->isIntegerType());
+    QVERIFY(decl->type()->asIntegerType());
 }
 
 void tst_Semantic::typedef_1()
@@ -502,7 +480,7 @@ void tst_Semantic::typedef_2()
     Declaration *typedefPointDecl = doc->globals->memberAt(1)->asDeclaration();
     QVERIFY(typedefPointDecl);
     QVERIFY(typedefPointDecl->isTypedef());
-    QVERIFY(typedefPointDecl->type()->isNamedType());
+    QVERIFY(typedefPointDecl->type()->asNamedType());
     QCOMPARE(typedefPointDecl->type()->asNamedType()->name(), _pointStruct->name());
 
     Function *mainFun = doc->globals->memberAt(2)->asFunction();
@@ -527,7 +505,7 @@ void tst_Semantic::typedef_3()
     Declaration *typedefPointDecl = doc->globals->memberAt(1)->asDeclaration();
     QVERIFY(typedefPointDecl);
     QVERIFY(typedefPointDecl->isTypedef());
-    QVERIFY(typedefPointDecl->type()->isPointerType());
+    QVERIFY(typedefPointDecl->type()->asPointerType());
     QCOMPARE(typedefPointDecl->type()->asPointerType()->elementType()->asClassType(),
              _pointStruct);
 }
@@ -543,16 +521,16 @@ void tst_Semantic::const_1()
 
     Declaration *decl = doc->globals->memberAt(0)->asDeclaration();
     QVERIFY(decl);
-    QVERIFY(decl->type()->isFunctionType());
+    QVERIFY(decl->type()->asFunctionType());
     Function *funTy = decl->type()->asFunctionType();
-    QVERIFY(funTy->returnType()->isIntegerType());
+    QVERIFY(funTy->returnType()->asIntegerType());
     QCOMPARE(funTy->argumentCount(), 1);
     Argument *arg = funTy->argumentAt(0)->asArgument();
     QVERIFY(arg);
     QVERIFY(! arg->type().isConst());
-    QVERIFY(arg->type()->isPointerType());
+    QVERIFY(arg->type()->asPointerType());
     QVERIFY(arg->type()->asPointerType()->elementType().isConst());
-    QVERIFY(arg->type()->asPointerType()->elementType()->isIntegerType());
+    QVERIFY(arg->type()->asPointerType()->elementType()->asIntegerType());
 }
 
 void tst_Semantic::const_2()
@@ -566,16 +544,16 @@ void tst_Semantic::const_2()
 
     Declaration *decl = doc->globals->memberAt(0)->asDeclaration();
     QVERIFY(decl);
-    QVERIFY(decl->type()->isFunctionType());
+    QVERIFY(decl->type()->asFunctionType());
     Function *funTy = decl->type()->asFunctionType();
-    QVERIFY(funTy->returnType()->isIntegerType());
+    QVERIFY(funTy->returnType()->asIntegerType());
     QCOMPARE(funTy->argumentCount(), 1);
     Argument *arg = funTy->argumentAt(0)->asArgument();
     QVERIFY(arg);
     QVERIFY(arg->type().isConst());
-    QVERIFY(arg->type()->isPointerType());
+    QVERIFY(arg->type()->asPointerType());
     QVERIFY(! arg->type()->asPointerType()->elementType().isConst());
-    QVERIFY(arg->type()->asPointerType()->elementType()->isIntegerType());
+    QVERIFY(arg->type()->asPointerType()->elementType()->asIntegerType());
 }
 
 void tst_Semantic::pointer_to_function_1()
@@ -1041,5 +1019,5 @@ void tst_Semantic::enum_constantValueNegative()
     testEnumaratorDeclarator(e, 3, "1");
 }
 
-QTEST_MAIN(tst_Semantic)
+QTEST_GUILESS_MAIN(tst_Semantic)
 #include "tst_semantic.moc"

@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 source("../../shared/qtcreator.py")
 
@@ -41,11 +19,14 @@ def clickItemVerifyHelpCombo(button, expectedHelpComboRegex, testDetails):
                        "Verifying: '%s' button is being displayed." % getStarted)
 def buttonActive(button):
     # colors of the default theme for active button on Welcome page
-    (activeRed, activeGreen, activeBlue) = (69, 206, 85)
+    defaultActiveRGB = (69, 206, 85)
+    # colors of the dark theme for active button on Welcome page
+    darkActiveRGB = (54, 193, 72)
     # QPalette::Window (used background color of Welcome page buttons)
     enumQPaletteWindow = 10
     color = button.palette.color(enumQPaletteWindow)
-    return color.red == activeRed and color.green == activeGreen and color.blue == activeBlue
+    current = (color.red, color.green, color.blue)
+    return current == defaultActiveRGB or current == darkActiveRGB
 
 def waitForButtonsState(projectsActive, examplesActive, tutorialsActive, timeout=5000):
     projButton = getWelcomeScreenSideBarButton('Projects')[0]

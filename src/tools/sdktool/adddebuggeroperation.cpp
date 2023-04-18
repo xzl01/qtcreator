@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "adddebuggeroperation.h"
 
@@ -33,7 +11,14 @@
 
 #include "settings.h"
 
-#include <iostream>
+#ifdef WITH_TESTS
+#include <QTest>
+#endif
+
+#include <QLoggingCategory>
+#include <QRegularExpression>
+
+Q_LOGGING_CATEGORY(addDebuggerOperationLog, "qtc.sdktool.operations.adddebugger", QtWarningMsg)
 
 const char VERSION[] = "Version";
 const char COUNT[] = "DebuggerItem.Count";
@@ -96,7 +81,7 @@ bool AddDebuggerOperation::setArguments(const QStringList &args)
             bool ok;
             m_engine = next.toInt(&ok);
             if (!ok) {
-                std::cerr << "Debugger type is not an integer!" << std::endl;
+                qCCritical(addDebuggerOperationLog) << "Debugger type is not an integer!";
                 return false;
             }
             continue;
@@ -128,12 +113,10 @@ bool AddDebuggerOperation::setArguments(const QStringList &args)
         m_extra << pair;
     }
 
-
-
     if (m_id.isEmpty())
-        std::cerr << "No id given for kit." << std::endl << std::endl;
+        qCCritical(addDebuggerOperationLog) << "No id given for kit.";
     if (m_displayName.isEmpty())
-        std::cerr << "No name given for kit." << std::endl << std::endl;
+        qCCritical(addDebuggerOperationLog) << "No name given for kit.";
 
     return !m_id.isEmpty() && !m_displayName.isEmpty();
 }
@@ -153,34 +136,66 @@ int AddDebuggerOperation::execute() const
 }
 
 #ifdef WITH_TESTS
-bool AddDebuggerOperation::test() const
+void AddDebuggerOperation::unittest()
 {
     QVariantMap map = initializeDebuggers();
 
-    if (map.count() != 2
-            || !map.contains(QLatin1String(VERSION))
-            || map.value(QLatin1String(VERSION)).toInt() != 1
-            || !map.contains(QLatin1String(COUNT))
-            || map.value(QLatin1String(COUNT)).toInt() != 0)
-        return false;
+    QCOMPARE(map.count(), 2);
 
-    return true;
+    QVERIFY(map.contains(QLatin1String(VERSION)));
+    QCOMPARE(map.value(QLatin1String(VERSION)).toInt(), 1);
+    QVERIFY(map.contains(QLatin1String(COUNT)));
+    QCOMPARE(map.value(QLatin1String(COUNT)).toInt(), 0);
+
+    AddDebuggerData d;
+    d.m_id = "testId";
+    d.m_displayName = "name";
+    d.m_binary = "/tmp/bin/gdb";
+    d.m_abis = QStringList{"aarch64", "x86_64"};
+    d.m_extra = {{"ExtraKey", QVariant("ExtraValue")}};
+    map = d.addDebugger(map);
+
+    QCOMPARE(map.value(COUNT).toInt(), 1);
+    QVERIFY(map.contains(QString::fromLatin1(PREFIX) + '0'));
+
+    QVariantMap dbgData = map.value(QString::fromLatin1(PREFIX) + '0').toMap();
+    QCOMPARE(dbgData.count(), 7);
+    QCOMPARE(dbgData.value(ID).toString(), "testId");
+    QCOMPARE(dbgData.value(DISPLAYNAME).toString(), "name");
+    QCOMPARE(dbgData.value(AUTODETECTED).toBool(), true);
+    QCOMPARE(dbgData.value(ABIS).toStringList(), (QStringList{"aarch64", "x86_64"}));
+    QCOMPARE(dbgData.value(BINARY).toString(), "/tmp/bin/gdb");
+    QCOMPARE(dbgData.value(ENGINE_TYPE).toInt(), 0);
+    QCOMPARE(dbgData.value("ExtraKey").toString(), "ExtraValue");
+
+    // Ignore existing.
+    QTest::ignoreMessage(QtCriticalMsg,
+                         QRegularExpression("Error: Id .* already defined as debugger."));
+
+    AddDebuggerData d2;
+    d2.m_id = "testId";
+    d2.m_displayName = "name2";
+    d2.m_binary = "/tmp/bin/gdb";
+    d2.m_abis = QStringList{};
+    d2.m_extra = {{"ExtraKey", QVariant("ExtraValue2")}};
+    QVariantMap unchanged = d2.addDebugger(map);
+    QVERIFY(unchanged.isEmpty());
 }
 #endif
 
 QVariantMap AddDebuggerData::addDebugger(const QVariantMap &map) const
 {
     // Sanity check: Make sure autodetection source is not in use already:
-    QStringList valueKeys = FindValueOperation::findValue(map, QVariant(m_id));
+    const QStringList valueKeys = FindValueOperation::findValue(map, QVariant(m_id));
     bool hasId = false;
-    foreach (const QString &k, valueKeys) {
+    for (const QString &k : valueKeys) {
         if (k.endsWith(QString(QLatin1Char('/')) + QLatin1String(ID))) {
             hasId = true;
             break;
         }
     }
     if (hasId) {
-        std::cerr << "Error: Id " << qPrintable(m_id) << " already defined as debugger." << std::endl;
+        qCCritical(addDebuggerOperationLog) << "Error: Id" << qPrintable(m_id) << "already defined as debugger.";
         return QVariantMap();
     }
 
@@ -188,7 +203,7 @@ QVariantMap AddDebuggerData::addDebugger(const QVariantMap &map) const
     bool ok;
     int count = GetOperation::get(map, QLatin1String(COUNT)).toInt(&ok);
     if (!ok || count < 0) {
-        std::cerr << "Error: Count found in debuggers file seems wrong." << std::endl;
+        qCCritical(addDebuggerOperationLog) << "Error: Count found in debuggers file seems wrong.";
         return QVariantMap();
     }
     const QString debugger = QString::fromLatin1(PREFIX) + QString::number(count);
@@ -208,12 +223,12 @@ QVariantMap AddDebuggerData::addDebugger(const QVariantMap &map) const
     data << KeyValuePair(QStringList() << debugger << QLatin1String(ABIS), QVariant(m_abis));
     data << KeyValuePair(QStringList() << debugger << QLatin1String(ENGINE_TYPE), QVariant(m_engine));
     data << KeyValuePair(QStringList() << debugger << QLatin1String(BINARY),
-                         Utils::FilePath::fromUserInput(m_binary).toVariant());
+                         Utils::FilePath::fromUserInput(m_binary).toSettings());
 
     data << KeyValuePair(QStringList() << QLatin1String(COUNT), QVariant(count + 1));
 
     KeyValuePairList qtExtraList;
-    foreach (const KeyValuePair &pair, m_extra)
+    for (const KeyValuePair &pair : std::as_const(m_extra))
         qtExtraList << KeyValuePair(QStringList() << debugger << pair.key, pair.value);
     data.append(qtExtraList);
 

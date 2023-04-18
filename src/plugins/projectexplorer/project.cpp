@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "project.h"
 
@@ -30,13 +8,15 @@
 #include "buildsystem.h"
 #include "deployconfiguration.h"
 #include "editorconfiguration.h"
+#include "environmentaspect.h"
 #include "kit.h"
 #include "kitinformation.h"
-#include "makestep.h"
 #include "projectexplorer.h"
+#include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "projectnodes.h"
 #include "runconfiguration.h"
-#include "runcontrol.h"
+#include "runconfigurationaspects.h"
 #include "session.h"
 #include "target.h"
 #include "taskhub.h"
@@ -56,12 +36,14 @@
 
 #include <utils/algorithm.h>
 #include <utils/environment.h>
+#include <utils/fileutils.h>
 #include <utils/macroexpander.h>
 #include <utils/pointeralgorithm.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
 
 #include <QFileDialog>
+#include <QHash>
 
 #include <limits>
 
@@ -131,6 +113,10 @@ const Project::NodeMatcher Project::GeneratedFiles = [](const Node *node) {
     return isListedFileNode(node) && node->isGenerated();
 };
 
+const Project::NodeMatcher Project::HiddenRccFolders = [](const Node *node) {
+    return node->isFolderNodeType() && node->filePath().fileName() == ".rcc";
+};
+
 // --------------------------------------------------------------------
 // ProjectDocument:
 // --------------------------------------------------------------------
@@ -196,6 +182,7 @@ public:
     Context m_projectLanguages;
     QVariantMap m_pluginSettings;
     std::unique_ptr<Internal::UserFileAccessor> m_accessor;
+    QHash<Id, QPair<QString, std::function<void()>>> m_generators;
 
     QString m_displayName;
 
@@ -218,8 +205,8 @@ Project::Project(const QString &mimeType, const FilePath &fileName)
     d->m_document = std::make_unique<ProjectDocument>(mimeType, fileName, this);
     DocumentManager::addDocument(d->m_document.get());
 
-    d->m_macroExpander.setDisplayName(tr("Project"));
-    d->m_macroExpander.registerVariable("Project:Name", tr("Project Name"),
+    d->m_macroExpander.setDisplayName(Tr::tr("Project"));
+    d->m_macroExpander.registerVariable("Project:Name", Tr::tr("Project Name"),
             [this] { return displayName(); });
 
     // Only set up containernode after d is set so that it will find the project directory!
@@ -380,7 +367,7 @@ void Project::setExtraProjectFiles(const QSet<FilePath> &projectDocumentPaths,
         return toRemove.contains(d->filePath());
     });
     if (docUpdater) {
-        for (const auto &doc : qAsConst(d->m_extraProjectDocuments))
+        for (const auto &doc : std::as_const(d->m_extraProjectDocuments))
             docUpdater(doc.get());
     }
     QList<IDocument *> toRegister;
@@ -413,7 +400,7 @@ void Project::updateExtraProjectFiles(const QSet<FilePath> &projectDocumentPaths
 
 void Project::updateExtraProjectFiles(const DocUpdater &docUpdater)
 {
-    for (const auto &doc : qAsConst(d->m_extraProjectDocuments))
+    for (const auto &doc : std::as_const(d->m_extraProjectDocuments))
         docUpdater(doc.get());
 }
 
@@ -431,7 +418,7 @@ Tasks Project::projectIssues(const Kit *k) const
 {
     Tasks result;
     if (!k->isValid())
-        result.append(createProjectTask(Task::TaskType::Error, tr("Kit is not valid.")));
+        result.append(createProjectTask(Task::TaskType::Error, Tr::tr("Kit is not valid.")));
     return {};
 }
 
@@ -454,7 +441,8 @@ bool Project::copySteps(Target *sourceTarget, Target *newTarget)
         newBc->setBuildDirectory(BuildConfiguration::buildDirectoryFromTemplate(
                     project->projectDirectory(), project->projectFilePath(),
                     project->displayName(), newTarget->kit(),
-                    sourceBc->displayName(), sourceBc->buildType()));
+                    sourceBc->displayName(), sourceBc->buildType(),
+                    sourceBc->buildSystem()->name()));
         newTarget->addBuildConfiguration(newBc);
         if (sourceTarget->activeBuildConfiguration() == sourceBc)
             SessionManager::setActiveBuildConfiguration(newTarget, newBc, SetActive::NoCascade);
@@ -511,8 +499,8 @@ bool Project::copySteps(Target *sourceTarget, Target *newTarget)
     if (fatalError) {
         // That could be a more granular error message
         QMessageBox::critical(ICore::dialogParent(),
-                              tr("Incompatible Kit"),
-                              tr("Kit %1 is incompatible with kit %2.")
+                              Tr::tr("Incompatible Kit"),
+                              Tr::tr("Kit %1 is incompatible with kit %2.")
                                   .arg(sourceTarget->kit()->displayName())
                                   .arg(newTarget->kit()->displayName()));
     } else if (!buildconfigurationError.isEmpty()
@@ -521,27 +509,27 @@ bool Project::copySteps(Target *sourceTarget, Target *newTarget)
 
         QString error;
         if (!buildconfigurationError.isEmpty())
-            error += tr("Build configurations:") + QLatin1Char('\n')
+            error += Tr::tr("Build configurations:") + QLatin1Char('\n')
                     + buildconfigurationError.join(QLatin1Char('\n'));
 
         if (!deployconfigurationError.isEmpty()) {
             if (!error.isEmpty())
                 error.append(QLatin1Char('\n'));
-            error += tr("Deploy configurations:") + QLatin1Char('\n')
+            error += Tr::tr("Deploy configurations:") + QLatin1Char('\n')
                     + deployconfigurationError.join(QLatin1Char('\n'));
         }
 
         if (!runconfigurationError.isEmpty()) {
             if (!error.isEmpty())
                 error.append(QLatin1Char('\n'));
-            error += tr("Run configurations:") + QLatin1Char('\n')
+            error += Tr::tr("Run configurations:") + QLatin1Char('\n')
                     + runconfigurationError.join(QLatin1Char('\n'));
         }
 
         QMessageBox msgBox(ICore::dialogParent());
         msgBox.setIcon(QMessageBox::Warning);
-        msgBox.setWindowTitle(tr("Partially Incompatible Kit"));
-        msgBox.setText(tr("Some configurations could not be copied."));
+        msgBox.setWindowTitle(Tr::tr("Partially Incompatible Kit"));
+        msgBox.setText(Tr::tr("Some configurations could not be copied."));
         msgBox.setDetailedText(error);
         msgBox.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
         fatalError = msgBox.exec() != QDialog::Accepted;
@@ -646,7 +634,7 @@ FilePaths Project::files(const NodeMatcher &filter) const
         result.append(projectFilePath());
 
     FilePath lastAdded;
-    for (const Node *n : qAsConst(d->m_sortedNodeList)) {
+    for (const Node *n : std::as_const(d->m_sortedNodeList)) {
         if (!filter(n))
             continue;
 
@@ -717,7 +705,7 @@ void Project::changeRootProjectDirectory()
 {
     FilePath rootPath = FileUtils::getExistingDirectory(
           nullptr,
-          tr("Select the Root Directory"),
+          Tr::tr("Select the Root Directory"),
           rootProjectDirectory(),
           QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
     if (rootPath != d->m_rootProjectDirectory) {
@@ -805,8 +793,8 @@ void Project::createTargetFromMap(const QVariantMap &map, int index)
             deviceTypeId = Constants::DESKTOP_DEVICE_TYPE;
         const QString formerKitName = targetMap.value(Target::displayNameKey()).toString();
         k = KitManager::registerKit([deviceTypeId, &formerKitName](Kit *kit) {
-                const QString kitNameSuggestion = formerKitName.contains(tr("Replacement for"))
-                        ? formerKitName : tr("Replacement for \"%1\"").arg(formerKitName);
+                const QString kitNameSuggestion = formerKitName.contains(Tr::tr("Replacement for"))
+                        ? formerKitName : Tr::tr("Replacement for \"%1\"").arg(formerKitName);
                 const QString tempKitName = makeUniquelyNumbered(kitNameSuggestion,
                         transform(KitManager::kits(), &Kit::unexpandedDisplayName));
                 kit->setUnexpandedDisplayName(tempKitName);
@@ -815,7 +803,7 @@ void Project::createTargetFromMap(const QVariantMap &map, int index)
                 kit->setup();
         }, id);
         QTC_ASSERT(k, return);
-        TaskHub::addTask(BuildSystemTask(Task::Warning, tr("Project \"%1\" was configured for "
+        TaskHub::addTask(BuildSystemTask(Task::Warning, Tr::tr("Project \"%1\" was configured for "
             "kit \"%2\" with id %3, which does not exist anymore. The new kit \"%4\" was "
             "created in its place, in an attempt not to lose custom project settings.")
                 .arg(displayName(), formerKitName, id.toString(), k->displayName())));
@@ -970,18 +958,6 @@ bool Project::hasMakeInstallEquivalent() const
     return d->m_hasMakeInstallEquivalent;
 }
 
-MakeInstallCommand Project::makeInstallCommand(const Target *target, const QString &installRoot)
-{
-    QTC_ASSERT(hasMakeInstallEquivalent(), return MakeInstallCommand());
-    MakeInstallCommand cmd;
-    if (const BuildConfiguration * const bc = target->activeBuildConfiguration()) {
-        if (const auto makeStep = bc->buildSteps()->firstOfType<MakeStep>())
-            cmd.command = makeStep->makeExecutable();
-    }
-    cmd.arguments << "install" << ("INSTALL_ROOT=" + QDir::toNativeSeparators(installRoot));
-    return cmd;
-}
-
 void Project::setup(const QList<BuildInfo> &infoList)
 {
     std::vector<std::unique_ptr<Target>> toRegister;
@@ -1052,7 +1028,7 @@ QStringList Project::availableQmlPreviewTranslations(QString *errorMessage)
     const QDir languageDirectory(projectDirectory + "/i18n");
     const auto qmFiles = languageDirectory.entryList({"qml_*.qm"});
     if (qmFiles.isEmpty() && errorMessage)
-        errorMessage->append(tr("Could not find any qml_*.qm file at \"%1\"").arg(languageDirectory.absolutePath()));
+        errorMessage->append(Tr::tr("Could not find any qml_*.qm file at \"%1\"").arg(languageDirectory.absolutePath()));
     return transform(qmFiles, [](const QString &qmFile) {
         const int localeStartPosition = qmFile.lastIndexOf("_") + 1;
         const int localeEndPosition = qmFile.size() - QString(".qm").size();
@@ -1083,14 +1059,168 @@ bool Project::isEditModePreferred() const
     return true;
 }
 
+void Project::registerGenerator(Utils::Id id, const QString &displayName,
+                                const std::function<void ()> &runner)
+{
+    d->m_generators.insert(id, qMakePair(displayName, runner));
+}
+
+const QList<QPair<Id, QString>> Project::allGenerators() const
+{
+    QList<QPair<Id, QString>> generators;
+    for (auto it = d->m_generators.cbegin(); it != d->m_generators.cend(); ++it)
+        generators << qMakePair(it.key(), it.value().first);
+    if (const Target * const t = activeTarget()) {
+        if (const BuildSystem * const bs = t->buildSystem())
+            generators += bs->generators();
+    }
+    return generators;
+}
+
+void Project::runGenerator(Utils::Id id)
+{
+    const auto it = d->m_generators.constFind(id);
+    if (it != d->m_generators.constEnd()) {
+        it.value().second();
+        return;
+    }
+    if (const Target * const t = activeTarget()) {
+        if (BuildSystem * const bs = t->buildSystem())
+            bs->runGenerator(id);
+    }
+}
+
+void Project::addVariablesToMacroExpander(const QByteArray &prefix,
+                                          const QString &descriptor,
+                                          MacroExpander *expander,
+                                          const std::function<Project *()> &projectGetter)
+{
+    const auto targetGetter = [projectGetter]() -> Target * {
+        if (const Project *const project = projectGetter())
+            return project->activeTarget();
+        return nullptr;
+    };
+    const auto bcGetter = [targetGetter]() -> BuildConfiguration * {
+        if (const Target *const target = targetGetter())
+            return target->activeBuildConfiguration();
+        return nullptr;
+    };
+    const auto rcGetter = [targetGetter]() -> RunConfiguration * {
+        if (const Target *const target = targetGetter())
+            return target->activeRunConfiguration();
+        return nullptr;
+    };
+    const QByteArray fullPrefix = (prefix.endsWith(':') ? prefix : prefix + ':');
+    const QByteArray prefixWithoutColon = fullPrefix.chopped(1);
+    expander->registerVariable(fullPrefix + "Name",
+                               //: %1 is something like "Active project"
+                               Tr::tr("%1: Name.").arg(descriptor),
+                               [projectGetter]() -> QString {
+                                   if (const Project *const project = projectGetter())
+                                       return project->displayName();
+                                   return {};
+                               });
+    expander->registerFileVariables(prefixWithoutColon,
+                                    //: %1 is something like "Active project"
+                                    Tr::tr("%1: Full path to main file.").arg(descriptor),
+                                    [projectGetter]() -> FilePath {
+                                        if (const Project *const project = projectGetter())
+                                            return project->projectFilePath();
+                                        return {};
+                                    });
+    expander->registerVariable(fullPrefix + "Kit:Name",
+                               //: %1 is something like "Active project"
+                               Tr::tr("%1: The name the active kit.").arg(descriptor),
+                               [targetGetter]() -> QString {
+                                   if (const Target *const target = targetGetter())
+                                       return target->kit()->displayName();
+                                   return {};
+                               });
+    expander->registerVariable(fullPrefix + "BuildConfig:Name",
+                               //: %1 is something like "Active project"
+                               Tr::tr("%1: Name of the active build configuration.").arg(descriptor),
+                               [bcGetter]() -> QString {
+                                   if (const BuildConfiguration *const bc = bcGetter())
+                                       return bc->displayName();
+                                   return {};
+                               });
+    expander->registerVariable(fullPrefix + "BuildConfig:Type",
+                               //: %1 is something like "Active project"
+                               Tr::tr("%1: Type of the active build configuration.").arg(descriptor),
+                               [bcGetter]() -> QString {
+                                   const BuildConfiguration *const bc = bcGetter();
+                                   const BuildConfiguration::BuildType type
+                                       = bc ? bc->buildType() : BuildConfiguration::Unknown;
+                                   return BuildConfiguration::buildTypeName(type);
+                               });
+    expander
+        ->registerVariable(fullPrefix + "BuildConfig:Path",
+                           //: %1 is something like "Active project"
+                           Tr::tr("%1: Full build path of active build configuration.").arg(descriptor),
+                           [bcGetter]() -> QString {
+                               if (const BuildConfiguration *const bc = bcGetter())
+                                   return bc->buildDirectory().toUserOutput();
+                               return {};
+                           });
+    expander->registerPrefix(fullPrefix + "BuildConfig:Env",
+                             //: %1 is something like "Active project"
+                             Tr::tr("%1: Variables in the active build environment.").arg(descriptor),
+                             [bcGetter](const QString &var) {
+                                 if (BuildConfiguration *const bc = bcGetter())
+                                     return bc->environment().expandedValueForKey(var);
+                                 return QString();
+                             });
+
+    expander->registerVariable(fullPrefix + "RunConfig:Name",
+                               //: %1 is something like "Active project"
+                               Tr::tr("%1: Name of the active run configuration.").arg(descriptor),
+                               [rcGetter]() -> QString {
+                                   if (const RunConfiguration *const rc = rcGetter())
+                                       return rc->displayName();
+                                   return QString();
+                               });
+    expander->registerFileVariables(fullPrefix + "RunConfig:Executable",
+                                    //: %1 is something like "Active project"
+                                    Tr::tr("%1: Executable of the active run configuration.")
+                                        .arg(descriptor),
+                                    [rcGetter]() -> FilePath {
+                                        if (const RunConfiguration *const rc = rcGetter())
+                                            return rc->commandLine().executable();
+                                        return {};
+                                    });
+    expander->registerPrefix(fullPrefix + "RunConfig:Env",
+                             //: %1 is something like "Active project"
+                             Tr::tr("%1: Variables in the environment of the active run configuration.")
+                                 .arg(descriptor),
+                             [rcGetter](const QString &var) {
+                                 if (const RunConfiguration *const rc = rcGetter()) {
+                                     if (const auto envAspect = rc->aspect<EnvironmentAspect>())
+                                         return envAspect->environment().expandedValueForKey(var);
+                                 }
+                                 return QString();
+                             });
+    expander->registerVariable(fullPrefix + "RunConfig:WorkingDir",
+                               //: %1 is something like "Active project"
+                               Tr::tr("%1: Working directory of the active run configuration.")
+                                   .arg(descriptor),
+                               [rcGetter] {
+                                   if (const RunConfiguration *const rc = rcGetter()) {
+                                       if (const auto wdAspect
+                                           = rc->aspect<WorkingDirectoryAspect>())
+                                           return wdAspect->workingDirectory().toString();
+                                   }
+                                   return QString();
+                               });
+}
+
 #if defined(WITH_TESTS)
 
-static FilePath constructTestPath(const char *basePath)
+static FilePath constructTestPath(const QString &basePath)
 {
     FilePath drive;
     if (HostOsInfo::isWindowsHost())
         drive = "C:";
-    return drive + QLatin1String(basePath);
+    return drive.stringAppended(basePath);
 }
 
 const FilePath TEST_PROJECT_PATH = constructTestPath("/tmp/foobar/baz.project");
@@ -1291,11 +1421,10 @@ void ProjectExplorerPlugin::testProject_multipleBuildConfigs()
     // Copy project from qrc file and set it up.
     QTemporaryDir * const tempDir = TemporaryDirectory::masterTemporaryDirectory();
     QVERIFY(tempDir->isValid());
-    QString error;
     const FilePath projectDir = FilePath::fromString(tempDir->path() + "/generic-project");
-    FileUtils::copyRecursively(":/projectexplorer/testdata/generic-project",
-                               projectDir, &error);
-    QVERIFY2(error.isEmpty(), qPrintable(error));
+    const auto copyResult = FilePath(":/projectexplorer/testdata/generic-project").copyRecursively(projectDir);
+
+    QVERIFY2(copyResult, qPrintable(copyResult.error()));
     const QFileInfoList files = QDir(projectDir.toString()).entryInfoList(QDir::Files | QDir::Dirs);
     for (const QFileInfo &f : files)
         QFile(f.absoluteFilePath()).setPermissions(f.permissions() | QFile::WriteUser);

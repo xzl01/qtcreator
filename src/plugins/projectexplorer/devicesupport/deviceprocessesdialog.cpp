@@ -1,35 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "deviceprocessesdialog.h"
+
 #include "deviceprocesslist.h"
-#include <projectexplorer/kitchooser.h>
-#include <projectexplorer/kitinformation.h>
+#include "idevice.h"
+#include "../kitchooser.h"
+#include "../kitinformation.h"
+#include "../projectexplorertr.h"
 
 #include <utils/fancylineedit.h>
 #include <utils/itemviews.h>
+#include <utils/processinfo.h>
 #include <utils/qtcassert.h>
 
 #include <QDialogButtonBox>
@@ -99,10 +81,10 @@ public:
     void handleProcessListUpdated();
     void handleProcessKilled();
     void updateButtons();
-    DeviceProcessItem selectedProcess() const;
+    ProcessInfo selectedProcess() const;
 
     QDialog *q;
-    DeviceProcessList *processList;
+    std::unique_ptr<DeviceProcessList> processList;
     ProcessListFilterModel proxyModel;
     QLabel *kitLabel;
     KitChooser *kitChooser;
@@ -118,18 +100,16 @@ public:
 
 DeviceProcessesDialogPrivate::DeviceProcessesDialogPrivate(KitChooser *chooser, QDialog *parent)
     : q(parent)
-    , kitLabel(new QLabel(DeviceProcessesDialog::tr("Kit:"), parent))
+    , kitLabel(new QLabel(Tr::tr("Kit:"), parent))
     , kitChooser(chooser)
     , acceptButton(nullptr)
     , buttonBox(new QDialogButtonBox(parent))
 {
-    q->setWindowTitle(DeviceProcessesDialog::tr("List of Processes"));
+    q->setWindowTitle(Tr::tr("List of Processes"));
     q->setMinimumHeight(500);
 
-    processList = nullptr;
-
     processFilterLineEdit = new FancyLineEdit(q);
-    processFilterLineEdit->setPlaceholderText(DeviceProcessesDialog::tr("Filter"));
+    processFilterLineEdit->setPlaceholderText(Tr::tr("Filter"));
     processFilterLineEdit->setFocus(Qt::TabFocusReason);
     processFilterLineEdit->setHistoryCompleter(QLatin1String("DeviceProcessDialogFilter"),
         true /*restoreLastItemFromHistory*/);
@@ -152,8 +132,8 @@ DeviceProcessesDialogPrivate::DeviceProcessesDialogPrivate(KitChooser *chooser, 
 
     errorText = new QTextBrowser(q);
 
-    updateListButton = new QPushButton(DeviceProcessesDialog::tr("&Update List"), q);
-    killProcessButton = new QPushButton(DeviceProcessesDialog::tr("&Kill Process"), q);
+    updateListButton = new QPushButton(Tr::tr("&Update List"), q);
+    killProcessButton = new QPushButton(Tr::tr("&Kill Process"), q);
 
     buttonBox->addButton(updateListButton, QDialogButtonBox::ActionRole);
     buttonBox->addButton(killProcessButton, QDialogButtonBox::ActionRole);
@@ -161,7 +141,7 @@ DeviceProcessesDialogPrivate::DeviceProcessesDialogPrivate(KitChooser *chooser, 
     auto *leftColumn = new QFormLayout();
     leftColumn->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
     leftColumn->addRow(kitLabel, kitChooser);
-    leftColumn->addRow(DeviceProcessesDialog::tr("&Filter:"), processFilterLineEdit);
+    leftColumn->addRow(Tr::tr("&Filter:"), processFilterLineEdit);
 
 //    QVBoxLayout *rightColumn = new QVBoxLayout();
 //    rightColumn->addWidget(updateListButton);
@@ -178,13 +158,9 @@ DeviceProcessesDialogPrivate::DeviceProcessesDialogPrivate(KitChooser *chooser, 
     mainLayout->addWidget(errorText);
     mainLayout->addWidget(buttonBox);
 
-//    QFrame *line = new QFrame(this);
-//    line->setFrameShape(QFrame::HLine);
-//    line->setFrameShadow(QFrame::Sunken);
-
     proxyModel.setFilterRegularExpression(processFilterLineEdit->text());
 
-    connect(processFilterLineEdit, QOverload<const QString &>::of(&FancyLineEdit::textChanged),
+    connect(processFilterLineEdit, &FancyLineEdit::textChanged,
             &proxyModel, QOverload<const QString &>::of(&ProcessListFilterModel::setFilterRegularExpression));
     connect(procView->selectionModel(), &QItemSelectionModel::selectionChanged,
             this, &DeviceProcessesDialogPrivate::updateButtons);
@@ -206,21 +182,20 @@ DeviceProcessesDialogPrivate::DeviceProcessesDialogPrivate(KitChooser *chooser, 
 
 void DeviceProcessesDialogPrivate::setDevice(const IDevice::ConstPtr &device)
 {
-    delete processList;
-    processList = nullptr;
+    processList.reset();
     proxyModel.setSourceModel(nullptr);
     if (!device)
         return;
 
-    processList = device->createProcessListModel();
+    processList.reset(device->createProcessListModel());
     QTC_ASSERT(processList, return);
     proxyModel.setSourceModel(processList->model());
 
-    connect(processList, &DeviceProcessList::error,
+    connect(processList.get(), &DeviceProcessList::error,
             this, &DeviceProcessesDialogPrivate::handleRemoteError);
-    connect(processList, &DeviceProcessList::processListUpdated,
+    connect(processList.get(), &DeviceProcessList::processListUpdated,
             this, &DeviceProcessesDialogPrivate::handleProcessListUpdated);
-    connect(processList, &DeviceProcessList::processKilled,
+    connect(processList.get(), &DeviceProcessList::processKilled,
             this, &DeviceProcessesDialogPrivate::handleProcessKilled, Qt::QueuedConnection);
 
     updateButtons();
@@ -229,7 +204,7 @@ void DeviceProcessesDialogPrivate::setDevice(const IDevice::ConstPtr &device)
 
 void DeviceProcessesDialogPrivate::handleRemoteError(const QString &errorMsg)
 {
-    QMessageBox::critical(q, tr("Remote Error"), errorMsg);
+    QMessageBox::critical(q, Tr::tr("Remote Error"), errorMsg);
     updateListButton->setEnabled(true);
     updateButtons();
 }
@@ -279,11 +254,11 @@ void DeviceProcessesDialogPrivate::updateButtons()
     errorText->setVisible(!errorText->document()->isEmpty());
 }
 
-DeviceProcessItem DeviceProcessesDialogPrivate::selectedProcess() const
+ProcessInfo DeviceProcessesDialogPrivate::selectedProcess() const
 {
     const QModelIndexList indexes = procView->selectionModel()->selectedIndexes();
     if (indexes.empty() || !processList)
-        return DeviceProcessItem();
+        return ProcessInfo();
     return processList->at(proxyModel.mapToSource(indexes.first()).row());
 }
 
@@ -352,7 +327,7 @@ void DeviceProcessesDialog::showAllDevices()
     d->updateDevice();
 }
 
-DeviceProcessItem DeviceProcessesDialog::currentProcess() const
+ProcessInfo DeviceProcessesDialog::currentProcess() const
 {
     return d->selectedProcess();
 }

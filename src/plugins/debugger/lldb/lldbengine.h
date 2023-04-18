@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef DEBUGGER_LLDBENGINE
 #define DEBUGGER_LLDBENGINE
@@ -40,8 +18,7 @@
 #include <QMap>
 #include <QVariant>
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 /* A debugger engine interfacing the LLDB debugger
  * using its Python interface.
@@ -53,7 +30,6 @@ class LldbEngine : public CppDebuggerEngine
 
 public:
     LldbEngine();
-    ~LldbEngine() override;
 
 signals:
     void outputReady(const QString &data);
@@ -111,8 +87,8 @@ private:
     QString errorMessage(QProcess::ProcessError error) const;
     bool hasCapability(unsigned cap) const override;
 
-    void handleLldbFinished();
-    void handleLldbError(QProcess::ProcessError error);
+    void handleLldbStarted();
+    void handleLldbDone();
     void readLldbStandardOutput();
     void readLldbStandardError();
 
@@ -130,7 +106,7 @@ private:
     void runCommand(const DebuggerCommand &cmd) override;
     void debugLastCommand() override;
     void handleAttachedToCore();
-    void executeCommand(const QByteArray &command);
+    void executeCommand(const QString &command);
 
 private:
     DebuggerCommand m_lastDebuggableCommand;
@@ -148,7 +124,6 @@ private:
     DebuggerCommandSequence m_onStop;
 };
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal
 
 #endif // DEBUGGER_LLDBENGINE

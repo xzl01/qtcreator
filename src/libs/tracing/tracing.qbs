@@ -35,14 +35,16 @@ Project {
                 "timelinetracefile.cpp", "timelinetracefile.h",
                 "timelinetracemanager.cpp", "timelinetracemanager.h",
                 "timelinezoomcontrol.cpp", "timelinezoomcontrol.h",
-                "traceevent.h", "traceeventtype.h", "tracestashfile.h"
+                "traceevent.h", "traceeventtype.h", "tracestashfile.h",
+                "tracingtr.h",
             ]
         }
 
         Group {
-            name: "QML"
-            prefix: "qml/"
-            files: ["tracing.qrc"]
+            name: "Qml Files"
+            Qt.core.resourcePrefix: "qt/qml/QtCreator/Tracing/"
+            fileTags: "qt.core.resource_data"
+            files: "qml/**"
         }
 
         Group {

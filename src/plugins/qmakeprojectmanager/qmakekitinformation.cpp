@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmakekitinformation.h"
 
 #include "qmakeprojectmanagerconstants.h"
+#include "qmakeprojectmanagertr.h"
 
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/toolchain.h>
@@ -34,6 +13,7 @@
 #include <qtsupport/qtkitinformation.h>
 
 #include <utils/algorithm.h>
+#include <utils/guard.h>
 #include <utils/layoutbuilder.h>
 #include <utils/qtcassert.h>
 
@@ -48,8 +28,6 @@ namespace Internal {
 
 class QmakeKitAspectWidget final : public KitAspectWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(QmakeProjectManager::Internal::QmakeKitAspect)
-
 public:
     QmakeKitAspectWidget(Kit *k, const KitAspect *ki)
         : KitAspectWidget(k, ki), m_lineEdit(createSubWidget<QLineEdit>())
@@ -62,7 +40,7 @@ public:
     ~QmakeKitAspectWidget() override { delete m_lineEdit; }
 
 private:
-    void addToLayout(LayoutBuilder &builder) override
+    void addToLayout(Layouting::LayoutBuilder &builder) override
     {
         addMutableAction(m_lineEdit);
         builder.addItem(m_lineEdit);
@@ -72,19 +50,18 @@ private:
 
     void refresh() override
     {
-        if (!m_ignoreChange)
+        if (!m_ignoreChanges.isLocked())
             m_lineEdit->setText(QDir::toNativeSeparators(QmakeKitAspect::mkspec(m_kit)));
     }
 
     void mkspecWasChanged(const QString &text)
     {
-        m_ignoreChange = true;
+        const GuardLocker locker(m_ignoreChanges);
         QmakeKitAspect::setMkspec(m_kit, text, QmakeKitAspect::MkspecSource::User);
-        m_ignoreChange = false;
     }
 
     QLineEdit *m_lineEdit = nullptr;
-    bool m_ignoreChange = false;
+    Guard m_ignoreChanges;
 };
 
 
@@ -92,8 +69,8 @@ QmakeKitAspect::QmakeKitAspect()
 {
     setObjectName(QLatin1String("QmakeKitAspect"));
     setId(QmakeKitAspect::id());
-    setDisplayName(tr("Qt mkspec"));
-    setDescription(tr("The mkspec to use when building the project with qmake.<br>"
+    setDisplayName(Tr::tr("Qt mkspec"));
+    setDescription(Tr::tr("The mkspec to use when building the project with qmake.<br>"
                       "This setting is ignored when using other build systems."));
     setPriority(24000);
 }
@@ -105,9 +82,9 @@ Tasks QmakeKitAspect::validate(const Kit *k) const
 
     const QString mkspec = QmakeKitAspect::mkspec(k);
     if (!version && !mkspec.isEmpty())
-        result << BuildSystemTask(Task::Warning, tr("No Qt version set, so mkspec is ignored."));
+        result << BuildSystemTask(Task::Warning, Tr::tr("No Qt version set, so mkspec is ignored."));
     if (version && !version->hasMkspec(mkspec))
-        result << BuildSystemTask(Task::Error, tr("Mkspec not found for Qt version."));
+        result << BuildSystemTask(Task::Error, Tr::tr("Mkspec not found for Qt version."));
 
     return result;
 }
@@ -119,18 +96,18 @@ KitAspectWidget *QmakeKitAspect::createConfigWidget(Kit *k) const
 
 KitAspect::ItemList QmakeKitAspect::toUserOutput(const Kit *k) const
 {
-    return {qMakePair(tr("mkspec"), QDir::toNativeSeparators(mkspec(k)))};
+    return {{Tr::tr("mkspec"), QDir::toNativeSeparators(mkspec(k))}};
 }
 
 void QmakeKitAspect::addToMacroExpander(Kit *kit, MacroExpander *expander) const
 {
-    expander->registerVariable("Qmake:mkspec", tr("Mkspec configured for qmake by the kit."),
+    expander->registerVariable("Qmake:mkspec", Tr::tr("Mkspec configured for qmake by the kit."),
                 [kit]() -> QString {
                     return QDir::toNativeSeparators(mkspec(kit));
                 });
 }
 
-Utils::Id QmakeKitAspect::id()
+Id QmakeKitAspect::id()
 {
     return Constants::KIT_INFORMATION_ID;
 }

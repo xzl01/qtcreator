@@ -1,32 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "basefilefind.h"
+
+#include "refactoringchanges.h"
 #include "textdocument.h"
+#include "texteditortr.h"
 
 #include <aggregation/aggregate.h>
+
 #include <coreplugin/dialogs/readonlyfilesdialog.h>
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/editormanager/editormanager.h>
@@ -34,8 +16,7 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/progressmanager/futureprogress.h>
 #include <coreplugin/progressmanager/progressmanager.h>
-#include <texteditor/refactoringchanges.h>
-#include <texteditor/texteditor.h>
+
 #include <utils/algorithm.h>
 #include <utils/fadingindicator.h>
 #include <utils/filesearch.h>
@@ -59,13 +40,12 @@ using namespace Core;
 namespace TextEditor {
 namespace Internal {
 
-namespace {
 class InternalEngine : public TextEditor::SearchEngine
 {
 public:
     InternalEngine() : m_widget(new QWidget) {}
     ~InternalEngine() override { delete m_widget;}
-    QString title() const override { return TextEditor::SearchEngine::tr("Internal"); }
+    QString title() const override { return Tr::tr("Internal"); }
     QString toolTip() const override { return {}; }
     QWidget *widget() const override { return m_widget; }
     QVariant parameters() const override { return {}; }
@@ -94,7 +74,6 @@ public:
 private:
     QWidget *m_widget;
 };
-} // namespace
 
 class SearchEnginePrivate
 {
@@ -249,7 +228,7 @@ static void displayResult(QFutureWatcher<FileSearchResultList> *watcher,
     QList<SearchResultItem> items;
     for (const FileSearchResult &result : results) {
         SearchResultItem item;
-        item.setFilePath(Utils::FilePath::fromString(result.fileName));
+        item.setFilePath(result.fileName);
         item.setMainRange(result.lineNumber, result.matchStart, result.matchLength);
         item.setLineText(displayText(result.matchingLine));
         item.setUseTextEditorFont(true);
@@ -310,7 +289,7 @@ void BaseFileFind::runSearch(SearchResult *search)
     watcher->setPendingResultsLimit(1);
     // search is deleted if it is removed from search panel
     connect(search, &QObject::destroyed, watcher, &QFutureWatcherBase::cancel);
-    connect(search, &SearchResult::cancelled, watcher, &QFutureWatcherBase::cancel);
+    connect(search, &SearchResult::canceled, watcher, &QFutureWatcherBase::cancel);
     connect(search, &SearchResult::paused, watcher, [watcher](bool paused) {
         if (!paused || watcher->isRunning()) // guard against pausing when the search is finished
             watcher->setPaused(paused);
@@ -327,10 +306,10 @@ void BaseFileFind::runSearch(SearchResult *search)
     watcher->setFuture(future);
     d->m_futureSynchronizer.addFuture(future);
     FutureProgress *progress = ProgressManager::addTask(future,
-                                                        tr("Searching"),
+                                                        Tr::tr("Searching"),
                                                         Constants::TASK_SEARCH);
     connect(search, &SearchResult::countChanged, progress, [progress](int c) {
-        progress->setSubtitle(BaseFileFind::tr("%n found.", nullptr, c));
+        progress->setSubtitle(Tr::tr("%n found.", nullptr, c));
     });
     progress->setSubtitleVisibleInStatusBar(true);
     connect(progress, &FutureProgress::clicked, search, &SearchResult::popup);
@@ -360,7 +339,7 @@ void BaseFileFind::doReplace(const QString &text,
     const FilePaths files = replaceAll(text, items, preserveCase);
     if (!files.isEmpty()) {
         Utils::FadingIndicator::showText(ICore::dialogParent(),
-            tr("%n occurrences replaced.", nullptr, items.size()),
+            Tr::tr("%n occurrences replaced.", nullptr, items.size()),
             Utils::FadingIndicator::SmallText);
         DocumentManager::notifyFilesChangedInternally(files);
         SearchResultWindow::instance()->hide();
@@ -401,8 +380,7 @@ QList<QPair<QWidget *, QWidget *>> BaseFileFind::createPatternWidgets()
     d->m_exclusionCombo->setToolTip(msgFilePatternToolTip());
     exclusionLabel->setBuddy(d->m_exclusionCombo);
     syncComboWithSettings(d->m_exclusionCombo, d->m_exclusionSetting);
-    return { qMakePair(filterLabel,    d->m_filterCombo),
-             qMakePair(exclusionLabel, d->m_exclusionCombo) };
+    return {{filterLabel, d->m_filterCombo}, {exclusionLabel, d->m_exclusionCombo}};
 }
 
 void BaseFileFind::writeCommonSettings(QSettings *settings)
@@ -420,7 +398,7 @@ void BaseFileFind::writeCommonSettings(QSettings *settings)
         settings->setValue("currentExclusionFilter",
                            QDir::fromNativeSeparators(d->m_exclusionCombo->currentText()));
 
-    for (const SearchEngine *searchEngine : qAsConst(d->m_searchEngines))
+    for (const SearchEngine *searchEngine : std::as_const(d->m_searchEngines))
         searchEngine->writeSettings(settings);
     settings->setValue("currentSearchEngineIndex", d->m_currentSearchEngineIndex);
 }
@@ -452,7 +430,7 @@ void BaseFileFind::readCommonSettings(QSettings *settings, const QString &defaul
     if (d->m_exclusionCombo)
         syncComboWithSettings(d->m_exclusionCombo, d->m_exclusionSetting);
 
-    for (SearchEngine* searchEngine : qAsConst(d->m_searchEngines))
+    for (SearchEngine* searchEngine : std::as_const(d->m_searchEngines))
         searchEngine->readSettings(settings);
     const int currentSearchEngineIndex = settings->value("currentSearchEngineIndex", 0).toInt();
     syncSearchEngineCombo(currentSearchEngineIndex);
@@ -507,7 +485,7 @@ FilePaths BaseFileFind::replaceAll(const QString &text,
 
     QHash<FilePath, QList<SearchResultItem> > changes;
     for (const SearchResultItem &item : items)
-        changes[FilePath::fromUserInput(item.path().first())].append(item);
+        changes[FilePath::fromUserInput(item.path().constFirst())].append(item);
 
     // Checking for files without write permissions
     QSet<FilePath> roFiles;
@@ -519,7 +497,7 @@ FilePaths BaseFileFind::replaceAll(const QString &text,
     // Query the user for permissions
     if (!roFiles.isEmpty()) {
         ReadOnlyFilesDialog roDialog(Utils::toList(roFiles), ICore::dialogParent());
-        roDialog.setShowFailWarning(true, tr("Aborting replace."));
+        roDialog.setShowFailWarning(true, Tr::tr("Aborting replace."));
         if (roDialog.exec() == ReadOnlyFilesDialog::RO_Cancel)
             return {};
     }
@@ -530,10 +508,9 @@ FilePaths BaseFileFind::replaceAll(const QString &text,
 
         ChangeSet changeSet;
         RefactoringFilePtr file = refactoring.file(filePath);
-        QSet<QPair<int, int> > processed;
+        QSet<QPair<int, int>> processed;
         for (const SearchResultItem &item : changeItems) {
-            const QPair<int, int> &p = qMakePair(item.mainRange().begin.line,
-                                                 item.mainRange().begin.column);
+            const QPair<int, int> p{item.mainRange().begin.line, item.mainRange().begin.column};
             if (processed.contains(p))
                 continue;
             processed.insert(p);

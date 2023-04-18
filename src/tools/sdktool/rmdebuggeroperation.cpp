@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rmdebuggeroperation.h"
 
@@ -35,6 +13,15 @@
 #include "settings.h"
 
 #include <iostream>
+
+#ifdef WITH_TESTS
+#include <QTest>
+#endif
+
+#include <QLoggingCategory>
+#include <QRegularExpression>
+
+Q_LOGGING_CATEGORY(rmdebuggerlog, "qtc.sdktool.operations.rmdebugger", QtWarningMsg)
 
 // Qt version file stuff:
 const char PREFIX[] = "DebuggerItem.";
@@ -58,7 +45,8 @@ QString RmDebuggerOperation::helpText() const
 
 QString RmDebuggerOperation::argumentsHelpText() const
 {
-    return QLatin1String("    --id <ID>                                  id of the debugger to remove.\n");
+    return QLatin1String(
+        "    --id <ID>                                  id of the debugger to remove.\n");
 }
 
 bool RmDebuggerOperation::setArguments(const QStringList &args)
@@ -70,8 +58,9 @@ bool RmDebuggerOperation::setArguments(const QStringList &args)
 
     m_id = args.at(1);
 
-    if (m_id.isEmpty())
-        std::cerr << "No id given." << std::endl << std::endl;
+    if (m_id.isEmpty()) {
+        qCCritical(rmdebuggerlog) << "No id given.";
+    }
 
     return !m_id.isEmpty();
 }
@@ -91,51 +80,50 @@ int RmDebuggerOperation::execute() const
 }
 
 #ifdef WITH_TESTS
-bool RmDebuggerOperation::test() const
+void RmDebuggerOperation::unittest()
 {
+    AddDebuggerData d;
+    d.m_id = "id1";
+    d.m_displayName = "Name1";
+    d.m_engine = 2;
+    d.m_binary = "/tmp/debugger1";
+    d.m_abis = QStringList{"test11", "test12"};
 
-    QVariantMap map =
-            AddDebuggerData{QLatin1String("id1"), QLatin1String("Name1"),
-                2, QLatin1String("/tmp/debugger1"),
-                {"test11", "test12"}, {}}
-            .addDebugger(AddDebuggerOperation::initializeDebuggers());
-
-    map = AddDebuggerData{QLatin1String("id2"), QLatin1String("Name2"),
-                2, QLatin1String("/tmp/debugger2"),
-                {"test21", "test22"}, {}}
-            .addDebugger(map);
+    QVariantMap map = d.addDebugger(AddDebuggerOperation::initializeDebuggers());
+    d.m_id = "id2";
+    d.m_displayName = "Name2";
+    d.m_binary = "/tmp/debugger2";
+    d.m_abis = QStringList{"test21", "test22"};
+    map = d.addDebugger(map);
 
     QVariantMap result = rmDebugger(map, QLatin1String("id2"));
-    if (result.count() != 3
-            || !result.contains(QLatin1String("DebuggerItem.0"))
-            || !result.contains(QLatin1String(COUNT))
-            || result.value(QLatin1String(COUNT)).toInt() != 1
-            || !result.contains(QLatin1String(VERSION))
-            || result.value(QLatin1String(VERSION)).toInt() != 1)
-        return false;
+    QCOMPARE(result.count(), 3);
+    QVERIFY(result.contains(QLatin1String("DebuggerItem.0")));
+    QVERIFY(result.contains(QLatin1String(COUNT)));
+    QCOMPARE(result.value(QLatin1String(COUNT)).toInt(), 1);
+    QVERIFY(result.contains(QLatin1String(VERSION)));
+    QCOMPARE(result.value(QLatin1String(VERSION)).toInt(), 1);
+
+    QTest::ignoreMessage(QtCriticalMsg,
+                         QRegularExpression("Error: Id was not found"));
 
     result = rmDebugger(map, QLatin1String("unknown"));
-    if (result != map)
-        return false;
+    QVERIFY(result == map);
 
     result = rmDebugger(map, QLatin1String("id2"));
-    if (result.count() != 3
-            || !result.contains(QLatin1String("DebuggerItem.0"))
-            || !result.contains(QLatin1String(COUNT))
-            || result.value(QLatin1String(COUNT)).toInt() != 1
-            || !result.contains(QLatin1String(VERSION))
-            || result.value(QLatin1String(VERSION)).toInt() != 1)
-        return false;
+    QCOMPARE(result.count(), 3);
+    QVERIFY(result.contains(QLatin1String("DebuggerItem.0")));
+    QVERIFY(result.contains(QLatin1String(COUNT)));
+    QCOMPARE(result.value(QLatin1String(COUNT)).toInt(), 1);
+    QVERIFY(result.contains(QLatin1String(VERSION)));
+    QCOMPARE(result.value(QLatin1String(VERSION)).toInt(), 1);
 
     result = rmDebugger(result, QLatin1String("id1"));
-    if (result.count() != 2
-            || !result.contains(QLatin1String(COUNT))
-            || result.value(QLatin1String(COUNT)).toInt() != 0
-            || !result.contains(QLatin1String(VERSION))
-            || result.value(QLatin1String(VERSION)).toInt() != 1)
-        return false;
-
-    return true;
+    QCOMPARE(result.count(), 2);
+    QVERIFY(result.contains(QLatin1String(COUNT)));
+    QCOMPARE(result.value(QLatin1String(COUNT)).toInt(), 0);
+    QVERIFY(result.contains(QLatin1String(VERSION)));
+    QCOMPARE(result.value(QLatin1String(VERSION)).toInt(), 1);
 }
 #endif
 
@@ -147,7 +135,7 @@ QVariantMap RmDebuggerOperation::rmDebugger(const QVariantMap &map, const QStrin
     bool ok;
     int count = GetOperation::get(map, QLatin1String(COUNT)).toInt(&ok);
     if (!ok) {
-        std::cerr << "Error: The count found in map is not an integer." << std::endl;
+        qCCritical(rmdebuggerlog) << "Error: The count found in map is not an integer.";
         return map;
     }
 
@@ -159,7 +147,7 @@ QVariantMap RmDebuggerOperation::rmDebugger(const QVariantMap &map, const QStrin
         debuggerList << debugger;
     }
     if (debuggerList.count() == map.count() - 2) {
-        std::cerr << "Error: Id was not found." << std::endl;
+        qCCritical(rmdebuggerlog) << "Error: Id was not found.";
         return map;
     }
 
@@ -179,4 +167,3 @@ QVariantMap RmDebuggerOperation::rmDebugger(const QVariantMap &map, const QStrin
 
     return AddKeysData{data}.addKeys(result);
 }
-

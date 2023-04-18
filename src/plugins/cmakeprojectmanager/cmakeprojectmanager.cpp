@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cmakeprojectmanager.h"
 
@@ -29,8 +7,8 @@
 #include "cmakekitinformation.h"
 #include "cmakeproject.h"
 #include "cmakeprojectconstants.h"
+#include "cmakeprojectmanagertr.h"
 #include "cmakeprojectnodes.h"
-#include "fileapiparser.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -38,6 +16,7 @@
 #include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
+#include <cppeditor/cpptoolsreuse.h>
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
@@ -52,13 +31,15 @@
 #include <QMessageBox>
 
 using namespace ProjectExplorer;
-using namespace CMakeProjectManager::Internal;
+using namespace Utils;
+
+namespace CMakeProjectManager::Internal {
 
 CMakeManager::CMakeManager()
-    : m_runCMakeAction(new QAction(QIcon(), tr("Run CMake"), this))
-    , m_clearCMakeCacheAction(new QAction(QIcon(), tr("Clear CMake Configuration"), this))
-    , m_runCMakeActionContextMenu(new QAction(QIcon(), tr("Run CMake"), this))
-    , m_rescanProjectAction(new QAction(QIcon(), tr("Rescan Project"), this))
+    : m_runCMakeAction(new QAction(QIcon(), Tr::tr("Run CMake"), this))
+    , m_clearCMakeCacheAction(new QAction(QIcon(), Tr::tr("Clear CMake Configuration"), this))
+    , m_runCMakeActionContextMenu(new QAction(QIcon(), Tr::tr("Run CMake"), this))
+    , m_rescanProjectAction(new QAction(QIcon(), Tr::tr("Rescan Project"), this))
 {
     Core::ActionContainer *mbuild =
             Core::ActionManager::actionContainer(ProjectExplorer::Constants::M_BUILDPROJECT);
@@ -77,7 +58,7 @@ CMakeManager::CMakeManager()
                                                                  globalContext);
     command->setAttribute(Core::Command::CA_Hide);
     mbuild->addAction(command, ProjectExplorer::Constants::G_BUILD_BUILD);
-    connect(m_runCMakeAction, &QAction::triggered, [this]() {
+    connect(m_runCMakeAction, &QAction::triggered, this, [this] {
         runCMake(SessionManager::startupBuildSystem());
     });
 
@@ -86,7 +67,7 @@ CMakeManager::CMakeManager()
                                                   globalContext);
     command->setAttribute(Core::Command::CA_Hide);
     mbuild->addAction(command, ProjectExplorer::Constants::G_BUILD_BUILD);
-    connect(m_clearCMakeCacheAction, &QAction::triggered, [this]() {
+    connect(m_clearCMakeCacheAction, &QAction::triggered, this, [this] {
         clearCMakeCache(SessionManager::startupBuildSystem());
     });
 
@@ -96,11 +77,11 @@ CMakeManager::CMakeManager()
     command->setAttribute(Core::Command::CA_Hide);
     mproject->addAction(command, ProjectExplorer::Constants::G_PROJECT_BUILD);
     msubproject->addAction(command, ProjectExplorer::Constants::G_PROJECT_BUILD);
-    connect(m_runCMakeActionContextMenu, &QAction::triggered, [this]() {
+    connect(m_runCMakeActionContextMenu, &QAction::triggered, this, [this] {
         runCMake(ProjectTree::currentBuildSystem());
     });
 
-    m_buildFileContextMenu = new QAction(tr("Build"), this);
+    m_buildFileContextMenu = new QAction(Tr::tr("Build"), this);
     command = Core::ActionManager::registerAction(m_buildFileContextMenu,
                                                   Constants::BUILD_FILE_CONTEXT_MENU,
                                                   projectContext);
@@ -114,19 +95,19 @@ CMakeManager::CMakeManager()
                                                   globalContext);
     command->setAttribute(Core::Command::CA_Hide);
     mbuild->addAction(command, ProjectExplorer::Constants::G_BUILD_BUILD);
-    connect(m_rescanProjectAction, &QAction::triggered, [this]() {
+    connect(m_rescanProjectAction, &QAction::triggered, this, [this] {
         rescanProject(ProjectTree::currentBuildSystem());
     });
 
-    m_buildFileAction = new Utils::ParameterAction(tr("Build File"),
-                                                   tr("Build File \"%1\""),
+    m_buildFileAction = new Utils::ParameterAction(Tr::tr("Build File"),
+                                                   Tr::tr("Build File \"%1\""),
                                                    Utils::ParameterAction::AlwaysEnabled,
                                                    this);
     command = Core::ActionManager::registerAction(m_buildFileAction, Constants::BUILD_FILE);
     command->setAttribute(Core::Command::CA_Hide);
     command->setAttribute(Core::Command::CA_UpdateText);
     command->setDescription(m_buildFileAction->text());
-    command->setDefaultKeySequence(QKeySequence(tr("Ctrl+Alt+B")));
+    command->setDefaultKeySequence(QKeySequence(Tr::tr("Ctrl+Alt+B")));
     mbuild->addAction(command, ProjectExplorer::Constants::G_BUILD_BUILD);
     connect(m_buildFileAction, &QAction::triggered, this, [this] { buildFile(); });
 
@@ -239,10 +220,17 @@ void CMakeManager::buildFile(Node *node)
     CMakeTargetNode *targetNode = dynamic_cast<CMakeTargetNode *>(fileNode->parentProjectNode());
     if (!targetNode)
         return;
+    FilePath filePath = fileNode->filePath();
+    if (filePath.fileName().contains(".h")) {
+        bool wasHeader = false;
+        const FilePath sourceFile = CppEditor::correspondingHeaderOrSource(filePath, &wasHeader);
+        if (wasHeader && !sourceFile.isEmpty())
+            filePath = sourceFile;
+    }
     Target *target = project->activeTarget();
     QTC_ASSERT(target, return);
     const QString generator = CMakeGeneratorKitAspect::generator(target->kit());
-    const QString relativeSource = fileNode->filePath().relativeChildPath(targetNode->filePath()).toString();
+    const QString relativeSource = filePath.relativeChildPath(targetNode->filePath()).toString();
     const QString objExtension = Utils::HostOsInfo::isWindowsHost() ? QString(".obj") : QString(".o");
     Utils::FilePath targetBase;
     BuildConfiguration *bc = target->activeBuildConfiguration();
@@ -253,7 +241,7 @@ void CMakeManager::buildFile(Node *node)
         targetBase = relativeBuildDir / "CMakeFiles" / (targetNode->displayName() + ".dir");
     } else if (!generator.contains("Makefiles")) {
         Core::MessageManager::writeFlashing(
-            tr("Build File is not supported for generator \"%1\"").arg(generator));
+            Tr::tr("Build File is not supported for generator \"%1\"").arg(generator));
         return;
     }
 
@@ -266,3 +254,5 @@ void CMakeManager::buildFileContextMenu()
     if (Node *node = ProjectTree::currentNode())
         buildFile(node);
 }
+
+} // CMakeProjectManager::Internal

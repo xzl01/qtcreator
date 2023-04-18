@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "basemessage.h"
 
 #include "jsonrpcmessages.h"
-
-#include <utils/mimetypes/mimedatabase.h>
+#include "languageserverprotocoltr.h"
 
 #include <QBuffer>
 #include <QTextCodec>
@@ -39,13 +16,20 @@ namespace LanguageServerProtocol {
 
 Q_LOGGING_CATEGORY(parseLog, "qtc.languageserverprotocol.parse", QtWarningMsg)
 
+constexpr char headerFieldSeparator[] = ": ";
+constexpr char contentCharsetName[] = "charset";
+constexpr char defaultCharset[] = "utf-8";
+constexpr char contentLengthFieldName[] = "Content-Length";
+constexpr char headerSeparator[] = "\r\n";
+constexpr char contentTypeFieldName[] = "Content-Type";
+
 BaseMessage::BaseMessage()
-    : mimeType(JsonRpcMessageHandler::jsonRpcMimeType())
+    : mimeType(JsonRpcMessage::jsonRpcMimeType())
 { }
 
 BaseMessage::BaseMessage(const QByteArray &mimeType, const QByteArray &content,
                          int expectedLength, QTextCodec *codec)
-    : mimeType(mimeType.isEmpty() ? JsonRpcMessageHandler::jsonRpcMimeType() : mimeType)
+    : mimeType(mimeType.isEmpty() ? JsonRpcMessage::jsonRpcMimeType() : mimeType)
     , content(content)
     , contentLength(expectedLength)
     , codec(codec)
@@ -97,10 +81,9 @@ static void parseContentType(BaseMessage &message, QByteArray contentType, QStri
             if (equalindex > 0)
                 codec = QTextCodec::codecForName(charset);
             if (!codec) {
-                parseError = BaseMessage::tr("Cannot decode content with \"%1\". "
-                                "Falling back to \"%2\".")
-                        .arg(QLatin1String(charset),
-                             QLatin1String(defaultCharset));
+                parseError = Tr::tr("Cannot decode content with \"%1\". Falling back to \"%2\".")
+                                 .arg(QLatin1String(charset),
+                                      QLatin1String(defaultCharset));
             }
         }
     }
@@ -113,7 +96,7 @@ static void parseContentLength(BaseMessage &message, QByteArray contentLength, Q
     bool ok = true;
     message.contentLength = contentLength.toInt(&ok);
     if (!ok) {
-        parseError = BaseMessage::tr("Expected an integer in \"%1\", but got \"%2\".")
+        parseError = Tr::tr("Expected an integer in \"%1\", but got \"%2\".")
                 .arg(QString::fromLatin1(contentLengthFieldName), QString::fromLatin1(contentLength));
     }
 }
@@ -174,17 +157,12 @@ bool BaseMessage::isValid() const
     return contentLength >= 0;
 }
 
-QByteArray BaseMessage::toData() const
-{
-    return header() + content;
-}
-
 QByteArray BaseMessage::header() const
 {
     QByteArray header;
     header.append(lengthHeader());
     if (codec != defaultCodec()
-            || (!mimeType.isEmpty() && mimeType != JsonRpcMessageHandler::jsonRpcMimeType())) {
+            || (!mimeType.isEmpty() && mimeType != JsonRpcMessage::jsonRpcMimeType())) {
         header.append(typeHeader());
     }
     header.append(headerSeparator);

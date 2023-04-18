@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -71,10 +49,11 @@ public:
     explicit TextDocument(Utils::Id id = Utils::Id());
     ~TextDocument() override;
 
-    static QMap<QString, QString> openedTextDocumentContents();
-    static QMap<QString, QTextCodec *> openedTextDocumentEncodings();
+    static QMap<Utils::FilePath, QString> openedTextDocumentContents();
+    static QMap<Utils::FilePath, QTextCodec *> openedTextDocumentEncodings();
     static TextDocument *currentTextDocument();
     static TextDocument *textDocumentForFilePath(const Utils::FilePath &filePath);
+    static QString convertToPlainText(const QString &rawText);
 
     virtual QString plainText() const;
     virtual QString textAt(int pos, int length) const;
@@ -111,9 +90,14 @@ public:
     bool addMark(TextMark *mark);
     TextMarks marksAt(int line) const;
     void removeMark(TextMark *mark);
+    void updateLayout() const;
+    void scheduleUpdateLayout() const;
     void updateMark(TextMark *mark);
     void moveMark(TextMark *mark, int previousLine);
     void removeMarkFromMarksCache(TextMark *mark);
+    static void temporaryHideMarksAnnotation(const Utils::Id &category);
+    static void showMarksAnnotation(const Utils::Id &category);
+    static bool marksAnnotationHidden(const Utils::Id &category);
 
     // IDocument implementation.
     bool save(QString *errorString, const Utils::FilePath &filePath, bool autoSave) override;
@@ -187,7 +171,6 @@ private:
     void cleanWhitespace(QTextCursor &cursor, bool inEntireDocument, bool cleanIndentation);
     void ensureFinalNewLine(QTextCursor &cursor);
     void modificationChanged(bool modified);
-    void updateLayout() const;
 
     TextDocumentPrivate *d;
 };

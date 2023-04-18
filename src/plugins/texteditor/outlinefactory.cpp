@@ -1,29 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "outlinefactory.h"
+
+#include "texteditortr.h"
+
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/editormanager.h>
@@ -32,11 +13,10 @@
 #include <utils/utilsicons.h>
 #include <utils/qtcassert.h>
 
-#include <QToolButton>
+#include <QDebug>
 #include <QLabel>
 #include <QStackedWidget>
-
-#include <QDebug>
+#include <QToolButton>
 
 namespace TextEditor {
 
@@ -65,7 +45,7 @@ OutlineWidgetStack::OutlineWidgetStack(OutlineFactory *factory) :
     m_syncWithEditor(true),
     m_sorted(false)
 {
-    QLabel *label = new QLabel(tr("No outline available"), this);
+    QLabel *label = new QLabel(Tr::tr("No outline available"), this);
     label->setAlignment(Qt::AlignCenter);
 
     // set background to be white
@@ -78,7 +58,7 @@ OutlineWidgetStack::OutlineWidgetStack(OutlineFactory *factory) :
     m_toggleSync->setIcon(Utils::Icons::LINK_TOOLBAR.icon());
     m_toggleSync->setCheckable(true);
     m_toggleSync->setChecked(true);
-    m_toggleSync->setToolTip(tr("Synchronize with Editor"));
+    m_toggleSync->setToolTip(Tr::tr("Synchronize with Editor"));
     connect(m_toggleSync, &QAbstractButton::clicked,
             this, &OutlineWidgetStack::toggleCursorSynchronization);
 
@@ -88,7 +68,7 @@ OutlineWidgetStack::OutlineWidgetStack(OutlineFactory *factory) :
     // did not have a parent in that moment.
 
     m_filterButton->setIcon(Utils::Icons::FILTER.icon());
-    m_filterButton->setToolTip(tr("Filter tree"));
+    m_filterButton->setToolTip(Tr::tr("Filter tree"));
     m_filterButton->setPopupMode(QToolButton::InstantPopup);
     m_filterButton->setProperty("noArrow", true);
     m_filterMenu = new QMenu(m_filterButton);
@@ -98,7 +78,7 @@ OutlineWidgetStack::OutlineWidgetStack(OutlineFactory *factory) :
     m_toggleSort->setIcon(Utils::Icons::SORT_ALPHABETICALLY_TOOLBAR.icon());
     m_toggleSort->setCheckable(true);
     m_toggleSort->setChecked(false);
-    m_toggleSort->setToolTip(tr("Sort Alphabetically"));
+    m_toggleSort->setToolTip(Tr::tr("Sort Alphabetically"));
     connect(m_toggleSort, &QAbstractButton::clicked, this, &OutlineWidgetStack::toggleSort);
 
     connect(Core::EditorManager::instance(), &Core::EditorManager::currentEditorChanged,
@@ -129,7 +109,8 @@ void OutlineWidgetStack::restoreSettings(QSettings *settings, int position)
 
     bool syncWithEditor = true;
     m_widgetSettings.clear();
-    foreach (const QString &longKey, settings->allKeys()) {
+    const QStringList longKeys = settings->allKeys();
+    for (const QString &longKey : longKeys) {
         if (!longKey.startsWith(baseKey))
             continue;
 
@@ -169,10 +150,10 @@ void OutlineWidgetStack::toggleSort()
 void OutlineWidgetStack::updateFilterMenu()
 {
     m_filterMenu->clear();
-    if (auto outlineWidget = qobject_cast<IOutlineWidget*>(currentWidget())) {
-        foreach (QAction *filterAction, outlineWidget->filterMenuActions()) {
+    if (auto outlineWidget = qobject_cast<IOutlineWidget *>(currentWidget())) {
+        const QList<QAction *> filterActions = outlineWidget->filterMenuActions();
+        for (QAction *filterAction : filterActions)
             m_filterMenu->addAction(filterAction);
-        }
     }
     m_filterButton->setVisible(!m_filterMenu->actions().isEmpty());
 }
@@ -187,7 +168,7 @@ void OutlineWidgetStack::updateEditor(Core::IEditor *editor)
     IOutlineWidget *newWidget = nullptr;
 
     if (editor) {
-        for (IOutlineWidgetFactory *widgetFactory : qAsConst(g_outlineWidgetFactories)) {
+        for (IOutlineWidgetFactory *widgetFactory : std::as_const(g_outlineWidgetFactories)) {
             if (widgetFactory->supportsEditor(editor)) {
                 newWidget = widgetFactory->createWidget(editor);
                 m_toggleSort->setVisible(widgetFactory->supportsSorting());
@@ -222,7 +203,7 @@ OutlineFactory::OutlineFactory()
 {
     QTC_CHECK(g_outlineFactory.isNull());
     g_outlineFactory = this;
-    setDisplayName(tr("Outline"));
+    setDisplayName(Tr::tr("Outline"));
     setId("Outline");
     setPriority(600);
 }

@@ -450,6 +450,7 @@ function dumpMacros(compilerFilePath, tag) {
         args.push(cppLanguageOption(compilerFilePath));
 
     var p = new Process();
+    p.setWorkingDirectory(tempDir.path());
     p.exec(compilerFilePath, args, true);
     var outFile = new TextFile(outFilePath, TextFile.ReadOnly);
     return Cpp.extractMacros(outFile.readAll());
@@ -471,6 +472,7 @@ function dumpCompilerIncludePaths(compilerFilePath, tag) {
 
     var includePaths = [];
     var p = new Process();
+    p.setWorkingDirectory(tempDir.path());
     // It is possible that the process can return an error code in case the
     // compiler does not support the `--IDE3` flag. So, don't throw an error in this case.
     p.exec(compilerFilePath, args, false);
@@ -573,7 +575,7 @@ function compilerFlags(project, product, input, outputs, explicitlyDependsOn) {
             args.push("--c89");
             break;
         default:
-            // Default C language version is C11/C99 that
+            // Default C language version is C18/C11/C99 that
             // depends on the IAR version.
             break;
         }
@@ -682,7 +684,7 @@ function linkerFlags(project, product, inputs, outputs) {
     args = args.concat(Cpp.collectLibraryDependenciesArguments(product));
 
     // Linker scripts.
-    args = args.concat(Cpp.collectLinkerScriptPathsArguments(product, inputs));
+    args = args.concat(Cpp.collectLinkerScriptPathsArguments(product, inputs, true));
 
     // Silent output generation flag.
     args.push(product.cpp.linkerSilentFlag);

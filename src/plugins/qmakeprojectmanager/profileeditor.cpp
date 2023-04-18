@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "profileeditor.h"
 
@@ -32,15 +10,16 @@
 #include "qmakeproject.h"
 #include "qmakeprojectmanagerconstants.h"
 
-#include <coreplugin/fileiconprovider.h>
+#include <coreplugin/coreplugintr.h>
 #include <extensionsystem/pluginmanager.h>
-#include <qtsupport/qtsupportconstants.h>
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/projectexplorerconstants.h>
-#include <projectexplorer/target.h>
 #include <projectexplorer/session.h>
-#include <texteditor/texteditoractionhandler.h>
+#include <projectexplorer/target.h>
+#include <qtsupport/qtsupportconstants.h>
 #include <texteditor/textdocument.h>
+#include <texteditor/texteditoractionhandler.h>
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/qtcassert.h>
 #include <utils/theme/theme.h>
 
@@ -62,7 +41,7 @@ class ProFileEditorWidget : public TextEditorWidget
 {
 private:
     void findLinkAt(const QTextCursor &,
-                    Utils::ProcessLinkCallback &&processLinkCallback,
+                    const LinkHandler &processLinkCallback,
                     bool resolveTarget = true,
                     bool inNextSplit = false) override;
     void contextMenuEvent(QContextMenuEvent *) override;
@@ -125,7 +104,7 @@ QString ProFileEditorWidget::checkForPrfFile(const QString &baseName) const
 }
 
 void ProFileEditorWidget::findLinkAt(const QTextCursor &cursor,
-                                     Utils::ProcessLinkCallback &&processLinkCallback,
+                                     const LinkHandler &processLinkCallback,
                                      bool /*resolveTarget*/,
                                      bool /*inNextSplit*/)
 {
@@ -229,7 +208,7 @@ void ProFileEditorWidget::findLinkAt(const QTextCursor &cursor,
     QDir dir(textDocument()->filePath().toFileInfo().absolutePath());
     QString fileName = dir.filePath(buffer);
     QFileInfo fi(fileName);
-    if (Utils::HostOsInfo::isWindowsHost() && fileName.startsWith("//")) {
+    if (HostOsInfo::isWindowsHost() && fileName.startsWith("//")) {
         // Windows network paths are not supported here since checking for their existence can
         // lock the gui thread. See: QTCREATORBUG-26579
     } else if (fi.exists()) {
@@ -241,9 +220,9 @@ void ProFileEditorWidget::findLinkAt(const QTextCursor &cursor,
             else
                 return processLinkCallback(link);
         }
-        link.targetFilePath = Utils::FilePath::fromString(QDir::cleanPath(fileName));
+        link.targetFilePath = FilePath::fromString(QDir::cleanPath(fileName));
     } else {
-        link.targetFilePath = Utils::FilePath::fromString(checkForPrfFile(buffer));
+        link.targetFilePath = FilePath::fromString(checkForPrfFile(buffer));
     }
     if (!link.targetFilePath.isEmpty()) {
         link.linkTextStart = cursor.position() - positionInBlock + beginPos + 1;
@@ -275,7 +254,7 @@ static TextDocument *createProFileDocument()
 ProFileEditorFactory::ProFileEditorFactory()
 {
     setId(Constants::PROFILE_EDITOR_ID);
-    setDisplayName(QCoreApplication::translate("OpenWith::Editors", Constants::PROFILE_EDITOR_DISPLAY_NAME));
+    setDisplayName(::Core::Tr::tr(Constants::PROFILE_EDITOR_DISPLAY_NAME));
     addMimeType(Constants::PROFILE_MIMETYPE);
     addMimeType(Constants::PROINCLUDEFILE_MIMETYPE);
     addMimeType(Constants::PROFEATUREFILE_MIMETYPE);
@@ -290,7 +269,7 @@ ProFileEditorFactory::ProFileEditorFactory()
     completionAssistProvider->setDynamicCompletionFunction(&TextEditor::pathComplete);
     setCompletionAssistProvider(completionAssistProvider);
 
-    setCommentDefinition(Utils::CommentDefinition::HashStyle);
+    setCommentDefinition(CommentDefinition::HashStyle);
     setEditorActionHandlers(TextEditorActionHandler::UnCommentSelection
                 | TextEditorActionHandler::JumpToFileUnderCursor);
 
@@ -298,11 +277,11 @@ ProFileEditorFactory::ProFileEditorFactory()
     setSyntaxHighlighterCreator([]() { return new ProFileHighlighter; });
 
     const QString defaultOverlay = QLatin1String(ProjectExplorer::Constants::FILEOVERLAY_QT);
-    Core::FileIconProvider::registerIconOverlayForSuffix(
+    FileIconProvider::registerIconOverlayForSuffix(
                 creatorTheme()->imageFile(Theme::IconOverlayPro, defaultOverlay), "pro");
-    Core::FileIconProvider::registerIconOverlayForSuffix(
+    FileIconProvider::registerIconOverlayForSuffix(
                 creatorTheme()->imageFile(Theme::IconOverlayPri, defaultOverlay), "pri");
-    Core::FileIconProvider::registerIconOverlayForSuffix(
+    FileIconProvider::registerIconOverlayForSuffix(
                 creatorTheme()->imageFile(Theme::IconOverlayPrf, defaultOverlay), "prf");
 }
 

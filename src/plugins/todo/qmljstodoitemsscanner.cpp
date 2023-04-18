@@ -1,28 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Dmitry Savchenko
-** Copyright (C) 2016 Vasiliy Sorokin
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Dmitry Savchenko
+// Copyright (C) 2016 Vasiliy Sorokin
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljstodoitemsscanner.h"
 
@@ -45,10 +23,11 @@ QmlJsTodoItemsScanner::QmlJsTodoItemsScanner(const KeywordList &keywordList, QOb
     setParams(keywordList);
 }
 
-bool QmlJsTodoItemsScanner::shouldProcessFile(const QString &fileName)
+bool QmlJsTodoItemsScanner::shouldProcessFile(const Utils::FilePath &fileName)
 {
     QmlJS::ModelManagerInterface *modelManager = QmlJS::ModelManagerInterface::instance();
-    foreach (const QmlJS::ModelManagerInterface::ProjectInfo &info, modelManager->projectInfos()) {
+    const QList<QmlJS::ModelManagerInterface::ProjectInfo> infoList = modelManager->projectInfos();
+    for (const QmlJS::ModelManagerInterface::ProjectInfo &info : infoList) {
         if (info.sourceFiles.contains(fileName))
             return true;
     }
@@ -63,8 +42,8 @@ void QmlJsTodoItemsScanner::scannerParamsChanged()
 
     QmlJS::ModelManagerInterface *modelManager = QmlJS::ModelManagerInterface::instance();
 
-    QStringList filesToBeUpdated;
-    foreach (const QmlJS::ModelManagerInterface::ProjectInfo &info, modelManager->projectInfos())
+    Utils::FilePaths filesToBeUpdated;
+    for (const QmlJS::ModelManagerInterface::ProjectInfo &info : modelManager->projectInfos())
         filesToBeUpdated << info.sourceFiles;
 
     modelManager->updateSourceFiles(filesToBeUpdated, false);
@@ -80,7 +59,8 @@ void QmlJsTodoItemsScanner::processDocument(QmlJS::Document::Ptr doc)
 {
     QList<TodoItem> itemList;
 
-    foreach (const QmlJS::SourceLocation &sourceLocation, doc->engine()->comments()) {
+    const QList<QmlJS::SourceLocation> sourceLocations = doc->engine()->comments();
+    for (const QmlJS::SourceLocation &sourceLocation :  sourceLocations) {
         QString source = doc->source().mid(sourceLocation.begin(), sourceLocation.length).trimmed();
 
         // Process every line
@@ -89,12 +69,12 @@ void QmlJsTodoItemsScanner::processDocument(QmlJS::Document::Ptr doc)
         quint32 startLine = sourceLocation.startLine;
         for (int j = 0; j < commentLines.count(); ++j) {
             const QString &commentLine = commentLines.at(j);
-            processCommentLine(doc->fileName(), commentLine, startLine + j, itemList);
+            processCommentLine(doc->fileName().toString(), commentLine, startLine + j, itemList);
         }
 
     }
 
-    emit itemsFetched(doc->fileName(), itemList);
+    emit itemsFetched(doc->fileName().toString(), itemList);
 }
 
 }

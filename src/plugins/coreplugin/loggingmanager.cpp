@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "loggingmanager.h"
 
+#include <utils/environment.h>
 #include <utils/filepath.h>
 
 #include <QCoreApplication>
@@ -39,6 +18,8 @@
 //             same applies for indirect usages (e.g. QTC_ASSERT() and the like).
 //             Using static functions of QLoggingCategory may cause dead locks as well.
 //
+
+using namespace Utils;
 
 namespace Core {
 namespace Internal {
@@ -94,9 +75,9 @@ static bool parseLine(const QString &line, FilterRuleSpec *filterRule)
     filterRule->category = categoryName;
 
     if (match.capturedLength(2) == 0)
-        filterRule->level = Utils::nullopt;
+        filterRule->level = std::nullopt;
     else
-        filterRule->level = Utils::make_optional(parseLevel(match.captured(2).mid(1)));
+        filterRule->level = std::make_optional(parseLevel(match.captured(2).mid(1)));
 
     const QString enabled = parts.at(1);
     if (enabled == "true" || enabled == "false") {
@@ -133,12 +114,12 @@ static QList<FilterRuleSpec> fetchOriginalRules()
     if (!qtProjectString.isEmpty())
         appendRulesFromFile(qtProjectString);
 
-    iniFile = Utils::FilePath::fromString(qEnvironmentVariable("QT_LOGGING_CONF"));
+    iniFile = Utils::FilePath::fromString(qtcEnvironmentVariable("QT_LOGGING_CONF"));
     if (iniFile.exists())
         appendRulesFromFile(iniFile.toString());
 
-    if (qEnvironmentVariableIsSet("QT_LOGGING_RULES")) {
-        const QStringList rulesStrings = qEnvironmentVariable("QT_LOGGING_RULES").split(';');
+    if (qtcEnvironmentVariableIsSet("QT_LOGGING_RULES")) {
+        const QStringList rulesStrings = qtcEnvironmentVariable("QT_LOGGING_RULES").split(';');
         for (const QString &rule : rulesStrings) {
             FilterRuleSpec filterRule;
             if (parseLine(rule, &filterRule))
@@ -150,7 +131,7 @@ static QList<FilterRuleSpec> fetchOriginalRules()
 
 LoggingViewManager::LoggingViewManager(QObject *parent)
     : QObject(parent)
-    , m_originalLoggingRules(qEnvironmentVariable("QT_LOGGING_RULES"))
+    , m_originalLoggingRules(qtcEnvironmentVariable("QT_LOGGING_RULES"))
 {
     qRegisterMetaType<Core::Internal::LoggingCategoryEntry>();
     s_instance = this;
@@ -290,7 +271,7 @@ void LoggingViewManager::prefillCategories()
 
 void LoggingViewManager::resetFilterRules()
 {
-    for (const FilterRuleSpec &rule : qAsConst(m_originalRules)) {
+    for (const FilterRuleSpec &rule : std::as_const(m_originalRules)) {
         const QString level = rule.level.has_value() ? '.' + levelToString(rule.level.value())
                                                      : QString();
         const QString ruleString = rule.category + level + '=' + (rule.enabled ? "true" : "false");
@@ -304,7 +285,7 @@ bool LoggingViewManager::enabledInOriginalRules(const QMessageLogContext &contex
         return false;
     const QString category = QString::fromUtf8(context.category);
     bool result = false;
-    for (const FilterRuleSpec &rule : qAsConst(m_originalRules)) {
+    for (const FilterRuleSpec &rule : std::as_const(m_originalRules)) {
         const QRegularExpression regex(
                     QRegularExpression::wildcardToRegularExpression(rule.category));
         if (regex.match(category).hasMatch()) {

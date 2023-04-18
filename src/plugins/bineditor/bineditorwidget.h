@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -30,7 +8,6 @@
 #include "bineditorservice.h"
 
 #include <utils/filepath.h>
-#include <utils/optional.h>
 
 #include <QAbstractScrollArea>
 #include <QBasicTimer>
@@ -41,15 +18,20 @@
 #include <QTextDocument>
 #include <QTextFormat>
 
-QT_FORWARD_DECLARE_CLASS(QMenu)
-QT_FORWARD_DECLARE_CLASS(QHelpEvent)
+#include <optional>
+
+QT_BEGIN_NAMESPACE
+class QHelpEvent;
+class QMenu;
+class QTextCodec;
+QT_END_NAMESPACE
+
 
 namespace Core { class IEditor; }
 
 namespace TextEditor { class FontSettings; }
 
-namespace BinEditor {
-namespace Internal {
+namespace BinEditor::Internal {
 
 class BinEditorWidgetPrivate;
 
@@ -127,6 +109,7 @@ public:
     void copy(bool raw = false);
     void setMarkup(const QList<Markup> &markup);
     void setNewWindowRequestAllowed(bool c);
+    void setCodec(QTextCodec *codec);
 
 signals:
     void modificationChanged(bool modified);
@@ -148,6 +131,7 @@ private:
     void focusOutEvent(QFocusEvent *) override;
     void timerEvent(QTimerEvent *) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    QChar displayChar(char ch) const;
 
     friend class BinEditorWidgetPrivate;
     BinEditorWidgetPrivate *d;
@@ -155,12 +139,12 @@ private:
     using BlockMap = QMap<qint64, QByteArray>;
     BlockMap m_data;
     BlockMap m_oldData;
-    int m_blockSize;
+    int m_blockSize = 4096;
     BlockMap m_modifiedData;
     mutable QSet<qint64> m_requests;
     QByteArray m_emptyBlock;
     QByteArray m_lowerBlock;
-    qint64 m_size;
+    qint64 m_size = 0;
 
     int dataIndexOf(const QByteArray &pattern, qint64 from, bool caseSensitive = true) const;
     int dataLastIndexOf(const QByteArray &pattern, qint64 from, bool caseSensitive = true) const;
@@ -180,37 +164,37 @@ private:
     void asDouble(qint64 offset, double &value, bool old) const;
     QString toolTip(const QHelpEvent *helpEvent) const;
 
-    int m_bytesPerLine;
-    int m_unmodifiedState;
-    int m_readOnly;
-    int m_margin;
-    int m_descent;
-    int m_ascent;
-    int m_lineHeight;
-    int m_charWidth;
-    int m_labelWidth;
-    int m_textWidth;
-    int m_columnWidth;
-    qint64 m_numLines;
-    qint64 m_numVisibleLines;
+    int m_bytesPerLine = 16;
+    int m_unmodifiedState = 0;
+    int m_readOnly = false;
+    int m_margin = 0;
+    int m_descent = 0;
+    int m_ascent = 0;
+    int m_lineHeight = 0;
+    int m_charWidth = 0;
+    int m_labelWidth = 0;
+    int m_textWidth = 0;
+    int m_columnWidth = 0;
+    qint64 m_numLines = 0;
+    qint64 m_numVisibleLines = 0;
 
-    quint64 m_baseAddr;
+    quint64 m_baseAddr = 0;
 
-    bool m_cursorVisible;
-    qint64 m_cursorPosition;
-    qint64 m_anchorPosition;
-    bool m_hexCursor;
-    bool m_lowNibble;
-    bool m_isMonospacedFont;
+    qint64 m_cursorPosition = 0;
+    qint64 m_anchorPosition = 0;
+    bool m_cursorVisible = false;
+    bool m_hexCursor = true;
+    bool m_lowNibble = false;
+    bool m_isMonospacedFont = true;
+    bool m_caseSensitiveSearch = false;
 
     QByteArray m_searchPattern;
     QByteArray m_searchPatternHex;
-    bool m_caseSensitiveSearch;
 
     QBasicTimer m_cursorBlinkTimer;
 
     void init();
-    Utils::optional<qint64> posAt(const QPoint &pos, bool includeEmptyArea = true) const;
+    std::optional<qint64> posAt(const QPoint &pos, bool includeEmptyArea = true) const;
     bool inTextArea(const QPoint &pos) const;
     QRect cursorRect() const;
     void updateLines();
@@ -236,12 +220,11 @@ private:
     QStack<BinEditorEditCommand> m_undoStack, m_redoStack;
 
     QBasicTimer m_autoScrollTimer;
-    Core::IEditor *m_ieditor;
+    Core::IEditor *m_ieditor = nullptr;
     QString m_addressString;
-    int m_addressBytes;
-    bool m_canRequestNewWindow;
+    int m_addressBytes = 4;
+    bool m_canRequestNewWindow = false;
     QList<Markup> m_markup;
 };
 
-} // namespace Internal
-} // namespace BinEditor
+} // BinEditor::Internal

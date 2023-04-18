@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "doxygengenerator.h"
 
@@ -92,7 +70,7 @@ QString DoxygenGenerator::generate(QTextCursor cursor,
     while (block.isValid()) {
         const QString &text = block.text();
         const Tokens &tks = lexer(text);
-        foreach (const Token &tk, tks) {
+        for (const Token &tk : tks) {
             if (tk.is(T_SEMICOLON) || tk.is(T_LBRACE)) {
                 // No need to continue beyond this, we might already have something meaningful.
                 cursor.setPosition(block.position() + tk.utf16charsEnd(), QTextCursor::KeepAnchor);
@@ -205,7 +183,7 @@ QString DoxygenGenerator::generate(QTextCursor cursor, DeclarationAST *decl)
             }
             if (funcDecltr->symbol
                     && funcDecltr->symbol->returnType().type()
-                    && !funcDecltr->symbol->returnType()->isVoidType()
+                    && !funcDecltr->symbol->returnType()->asVoidType()
                     && !funcDecltr->symbol->returnType()->isUndefinedType()) {
                 writeContinuation(&comment);
                 writeCommand(&comment, ReturnCommand);
@@ -216,7 +194,7 @@ QString DoxygenGenerator::generate(QTextCursor cursor, DeclarationAST *decl)
         if (ClassSpecifierAST *classSpec = spec->asClassSpecifier()) {
             if (classSpec->name) {
                 QString aggregate;
-                if (classSpec->symbol->isClass())
+                if (classSpec->symbol->asClass())
                     aggregate = QLatin1String("class");
                 else if (classSpec->symbol->isStruct())
                     aggregate = QLatin1String("struct");

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bindingeditor.h"
 
@@ -113,7 +91,10 @@ void BindingEditor::setBackendValue(const QVariant &backendValue)
         const ModelNode node = propertyEditorValue->modelNode();
 
         if (node.isValid()) {
-            m_backendValueTypeName = node.metaInfo().propertyTypeName(propertyEditorValue->name());
+            m_backendValueTypeName = node.metaInfo()
+                                         .property(propertyEditorValue->name())
+                                         .propertyType()
+                                         .typeName();
 
             QString nodeId = node.id();
             if (nodeId.isEmpty())
@@ -205,14 +186,14 @@ void BindingEditor::prepareBindings()
 
     for (const auto &objnode : allNodes) {
         BindingEditorDialog::BindingOption binding;
-        for (const auto &propertyName : objnode.metaInfo().propertyNames()) {
-            TypeName propertyTypeName = objnode.metaInfo().propertyTypeName(propertyName);
+        for (const auto &property : objnode.metaInfo().properties()) {
+            const TypeName &propertyTypeName = property.propertyType().typeName();
 
             if (skipTypeFiltering
                     || (m_backendValueTypeName == propertyTypeName)
                     || isVariant(propertyTypeName)
                     || (targetTypeIsNumeric && isNumeric(propertyTypeName))) {
-                binding.properties.append(QString::fromUtf8(propertyName));
+                binding.properties.append(QString::fromUtf8(property.name()));
             }
         }
 
@@ -259,15 +240,15 @@ void BindingEditor::prepareBindings()
                 if (metaInfo.isValid()) {
                     BindingEditorDialog::BindingOption binding;
 
-                    for (const PropertyName &propertyName : metaInfo.propertyNames()) {
-                        TypeName propertyTypeName = metaInfo.propertyTypeName(propertyName);
+                    for (const auto &property : metaInfo.properties()) {
+                        TypeName propertyTypeName = property.propertyType().typeName();
 
                         if (skipTypeFiltering
                                 || (m_backendValueTypeName == propertyTypeName)
                                 || (isVariant(propertyTypeName))
                                 || (targetTypeIsNumeric && isNumeric(propertyTypeName))
                                 || (isColor(m_backendValueTypeName) && isColor(propertyTypeName))) {
-                            binding.properties.append(QString::fromUtf8(propertyName));
+                            binding.properties.append(QString::fromUtf8(property.name()));
                         }
                     }
 

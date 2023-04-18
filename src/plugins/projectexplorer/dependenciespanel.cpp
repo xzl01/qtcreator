@@ -1,37 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "dependenciespanel.h"
+
 #include "project.h"
+#include "projectexplorertr.h"
 #include "session.h"
 
-#include <coreplugin/fileiconprovider.h>
 #include <coreplugin/icore.h>
 
-#include <utils/detailswidget.h>
 #include <utils/algorithm.h>
+#include <utils/detailswidget.h>
+#include <utils/fsengine/fileiconprovider.h>
 
 #include <QDebug>
 #include <QSize>
@@ -86,7 +66,7 @@ QVariant DependenciesModel::data(const QModelIndex &index, int role) const
 {
     if (m_projects.isEmpty())
         return role == Qt::DisplayRole
-            ? tr("<No other projects in this session>")
+            ? Tr::tr("<No other projects in this session>")
             : QVariant();
 
     const Project *p = m_projects.at(index.row());
@@ -99,7 +79,7 @@ QVariant DependenciesModel::data(const QModelIndex &index, int role) const
     case Qt::CheckStateRole:
         return SessionManager::hasDependency(m_project, p) ? Qt::Checked : Qt::Unchecked;
     case Qt::DecorationRole:
-        return Core::FileIconProvider::icon(p->projectFilePath());
+        return Utils::FileIconProvider::icon(p->projectFilePath());
     default:
         return QVariant();
     }
@@ -116,8 +96,8 @@ bool DependenciesModel::setData(const QModelIndex &index, const QVariant &value,
                 emit dataChanged(index, index);
                 return true;
             } else {
-                QMessageBox::warning(Core::ICore::dialogParent(), QCoreApplication::translate("DependenciesModel", "Unable to Add Dependency"),
-                                     QCoreApplication::translate("DependenciesModel", "This would create a circular dependency."));
+                QMessageBox::warning(Core::ICore::dialogParent(), Tr::tr("Unable to Add Dependency"),
+                                     Tr::tr("This would create a circular dependency."));
             }
         } else if (c == Qt::Unchecked) {
             if (SessionManager::hasDependency(m_project, p)) {
@@ -210,10 +190,12 @@ void DependenciesView::updateSizeHint()
 // DependenciesWidget
 //
 
-DependenciesWidget::DependenciesWidget(Project *project, QWidget *parent) : QWidget(parent),
+DependenciesWidget::DependenciesWidget(Project *project, QWidget *parent) : ProjectSettingsWidget(parent),
     m_project(project),
     m_model(new DependenciesModel(project, this))
 {
+    setUseGlobalSettingsCheckBoxVisible(false);
+    setUseGlobalSettingsLabelVisible(false);
     auto vbox = new QVBoxLayout(this);
     vbox->setContentsMargins(0, 0, 0, 0);
     m_detailsContainer = new Utils::DetailsWidget(this);
@@ -231,8 +213,8 @@ DependenciesWidget::DependenciesWidget(Project *project, QWidget *parent) : QWid
     layout->addItem(new QSpacerItem(0, 0 , QSizePolicy::Expanding, QSizePolicy::Fixed), 0, 1);
 
     m_cascadeSetActiveCheckBox = new QCheckBox;
-    m_cascadeSetActiveCheckBox->setText(tr("Synchronize configuration"));
-    m_cascadeSetActiveCheckBox->setToolTip(tr("Synchronize active kit, build, and deploy configuration between projects."));
+    m_cascadeSetActiveCheckBox->setText(Tr::tr("Synchronize configuration"));
+    m_cascadeSetActiveCheckBox->setToolTip(Tr::tr("Synchronize active kit, build, and deploy configuration between projects."));
     m_cascadeSetActiveCheckBox->setChecked(SessionManager::isProjectConfigurationCascading());
     connect(m_cascadeSetActiveCheckBox, &QCheckBox::toggled,
             SessionManager::instance(), &SessionManager::setProjectConfigurationCascading);

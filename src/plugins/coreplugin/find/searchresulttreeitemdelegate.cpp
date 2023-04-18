@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "searchresulttreeitemdelegate.h"
 #include "searchresulttreeitemroles.h"
@@ -58,15 +36,29 @@ static std::pair<int, QString> lineNumberInfo(const QStyleOptionViewItem &option
             lineNumberText};
 }
 
-static QString itemText(const QModelIndex &index)
+// Aligns text by appending spaces
+static QString align(QString text)
 {
-    const QString text = index.data(Qt::DisplayRole).toString();
-    // show number of subresults in displayString
-    if (index.model()->hasChildren(index)) {
-        return text + QLatin1String(" (") + QString::number(index.model()->rowCount(index))
-               + QLatin1Char(')');
-    }
+    constexpr int minimumTextSize = 80;
+    constexpr int textSizeIncrement = 20;
+
+    int textSize = ((text.size() / textSizeIncrement) + 1) * textSizeIncrement;
+    textSize = std::max(minimumTextSize, textSize);
+    text.resize(textSize, ' ');
     return text;
+}
+
+static QPair<QString, QString> itemText(const QModelIndex &index)
+{
+    QString text = index.data(Qt::DisplayRole).toString();
+    // show number of subresults in displayString
+    if (index.model()->hasChildren(index))
+        text += " (" + QString::number(index.model()->rowCount(index)) + ')';
+
+    const auto functionName = index.data(ItemDataRoles::ContainingFunctionNameRole).toString();
+    if (!functionName.isEmpty())
+        return {align(std::move(text)), "[in " + functionName + "]"};
+    return {text, {}};
 }
 
 LayoutInfo SearchResultTreeItemDelegate::getLayoutInfo(const QStyleOptionViewItem &option,
@@ -150,7 +142,9 @@ QSize SearchResultTreeItemDelegate::sizeHint(const QStyleOptionViewItem &option,
     const LayoutInfo info = getLayoutInfo(option, index);
     const int height = index.data(Qt::SizeHintRole).value<QSize>().height();
     // get text width, see QItemDelegatePrivate::displayRect
-    const QString text = itemText(index).replace('\t', m_tabString);
+    auto texts = itemText(index);
+    const QString text = texts.first.replace('\t', m_tabString)
+                         + texts.second.replace('\t', m_tabString);
     const QRect textMaxRect(0, 0, INT_MAX / 256, height);
     const QRect textLayoutRect = textRectangle(nullptr, textMaxRect, info.option.font, text);
     const QRect textRect(info.textRect.x(), info.textRect.y(), textLayoutRect.width(), height);
@@ -198,7 +192,8 @@ void SearchResultTreeItemDelegate::drawText(QPainter *painter,
                                             const QRect &rect,
                                             const QModelIndex &index) const
 {
-    const QString text = itemText(index);
+    const auto texts = itemText(index);
+    const QString text = texts.first;
 
     const int searchTermStart = index.model()->data(index, ItemDataRoles::ResultBeginColumnNumberRole).toInt();
     int searchTermLength = index.model()->data(index, ItemDataRoles::SearchTermLengthRole).toInt();
@@ -218,6 +213,8 @@ void SearchResultTreeItemDelegate::drawText(QPainter *painter,
     const QString textAfter = text.mid(searchTermStart + searchTermLength).replace(QLatin1Char('\t'), m_tabString);
     int searchTermStartPixels = option.fontMetrics.horizontalAdvance(textBefore);
     int searchTermLengthPixels = option.fontMetrics.horizontalAdvance(textHighlight);
+    int textAfterLengthPixels = option.fontMetrics.horizontalAdvance(textAfter);
+    int containingFunctionLengthPixels = option.fontMetrics.horizontalAdvance(texts.second);
 
     // rects
     QRect beforeHighlightRect(rect);
@@ -229,6 +226,11 @@ void SearchResultTreeItemDelegate::drawText(QPainter *painter,
 
     QRect afterHighlightRect(rect);
     afterHighlightRect.setLeft(resultHighlightRect.right());
+    afterHighlightRect.setRight(afterHighlightRect.left() + textAfterLengthPixels);
+
+    QRect containingFunctionRect(rect);
+    containingFunctionRect.setLeft(afterHighlightRect.right());
+    containingFunctionRect.setRight(afterHighlightRect.right() + containingFunctionLengthPixels);
 
     // paint all highlight backgrounds
     // qitemdelegate has problems with painting background when highlighted
@@ -249,7 +251,14 @@ void SearchResultTreeItemDelegate::drawText(QPainter *painter,
     }
     const QColor highlightBackground =
             index.model()->data(index, ItemDataRoles::ResultHighlightBackgroundColor).value<QColor>();
-    painter->fillRect(resultHighlightRect.adjusted(textMargin, 0, textMargin - 1, 0), QBrush(highlightBackground));
+    painter->fillRect(resultHighlightRect.adjusted(textMargin, 0, textMargin - 1, 0),
+                      QBrush(highlightBackground));
+
+    // Background of containing function
+    const QColor funcHighlightBackground
+        = index.model()->data(index, ItemDataRoles::FunctionHighlightBackgroundColor).value<QColor>();
+    painter->fillRect(containingFunctionRect.adjusted(textMargin, 0, textMargin - 1, 0),
+                      QBrush(funcHighlightBackground));
 
     // Text before the highlighting
     QStyleOptionViewItem noHighlightOpt = baseOption;
@@ -261,12 +270,19 @@ void SearchResultTreeItemDelegate::drawText(QPainter *painter,
 
     // Highlight text
     QStyleOptionViewItem highlightOpt = noHighlightOpt;
-    const QColor highlightForeground =
-            index.model()->data(index, ItemDataRoles::ResultHighlightForegroundColor).value<QColor>();
+    const QColor highlightForeground
+        = index.model()->data(index, ItemDataRoles::ResultHighlightForegroundColor).value<QColor>();
     highlightOpt.palette.setColor(QPalette::Text, highlightForeground);
     QItemDelegate::drawDisplay(painter, highlightOpt, resultHighlightRect, textHighlight);
 
     // Text after the Highlight
     noHighlightOpt.rect = afterHighlightRect;
     QItemDelegate::drawDisplay(painter, noHighlightOpt, afterHighlightRect, textAfter);
+
+    // Containing function
+    const QColor funcHighlightForeground
+        = index.model()->data(index, ItemDataRoles::FunctionHighlightForegroundColor).value<QColor>();
+    highlightOpt.palette.setColor(QPalette::Text, funcHighlightForeground);
+    highlightOpt.rect = containingFunctionRect;
+    QItemDelegate::drawDisplay(painter, highlightOpt, containingFunctionRect, texts.second);
 }

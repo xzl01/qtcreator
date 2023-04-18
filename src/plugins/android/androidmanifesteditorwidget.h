@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,7 +7,6 @@
 
 #include <QAbstractListModel>
 #include <QGroupBox>
-#include <QGridLayout>
 #include <QTabWidget>
 #include <QStackedWidget>
 #include <QTimer>
@@ -40,7 +17,6 @@ class QDomDocument;
 class QDomElement;
 class QComboBox;
 class QPushButton;
-class QHBoxLayout;
 class QLabel;
 class QLineEdit;
 class QListView;
@@ -52,12 +28,11 @@ QT_END_NAMESPACE
 
 namespace Core { class IEditor; }
 
-namespace Android {
-namespace Internal {
+namespace Android::Internal {
+
 class AndroidManifestEditor;
 class AndroidManifestEditorIconContainerWidget;
 class AndroidManifestEditorWidget;
-class AndroidServiceWidget;
 class SplashScreenContainerWidget;
 
 class PermissionsModel: public QAbstractListModel
@@ -138,14 +113,10 @@ private:
 
     void updateInfoBar(const QString &errorMessage, int line, int column);
     void hideInfoBar();
-    void setInvalidServiceInfo();
-    void clearInvalidServiceInfo();
 
     void parseManifest(QXmlStreamReader &reader, QXmlStreamWriter &writer);
     void parseApplication(QXmlStreamReader &reader, QXmlStreamWriter &writer);
     void parseSplashScreen(QXmlStreamWriter &writer);
-    void parseService(QXmlStreamReader &reader, QXmlStreamWriter &writer);
-    void parseNewServices(QXmlStreamWriter &writer);
     void parseActivity(QXmlStreamReader &reader, QXmlStreamWriter &writer);
     bool parseMetaData(QXmlStreamReader &reader, QXmlStreamWriter &writer);
     void parseUsesSdk(QXmlStreamReader &reader, QXmlStreamWriter &writer);
@@ -153,17 +124,15 @@ private:
                                 QXmlStreamWriter &writer,
                                 const QSet<QString> &permissions);
     QString parseComment(QXmlStreamReader &reader, QXmlStreamWriter &writer);
-    void parseUnknownElement(QXmlStreamReader &reader, QXmlStreamWriter &writer, bool ignore=false);
+    void parseUnknownElement(QXmlStreamReader &reader, QXmlStreamWriter &writer);
 
     QGroupBox *createPermissionsGroupBox(QWidget *parent);
     QGroupBox *createPackageFormLayout(QWidget *parent);
     QGroupBox *createApplicationGroupBox(QWidget *parent);
     QGroupBox *createAdvancedGroupBox(QWidget *parent);
 
-    void addServiceMetadata(QXmlStreamWriter &writer);
-
-    bool m_dirty; // indicates that we need to call syncToEditor()
-    bool m_stayClean;
+    bool m_dirty = false; // indicates that we need to call syncToEditor()
+    bool m_stayClean = false;
     int m_errorLine;
     int m_errorColumn;
     QString m_currentsplashImageName[3];
@@ -194,13 +163,11 @@ private:
     QPushButton *m_removePermissionButton;
     QComboBox *m_permissionsComboBox;
 
-    // Services
-    AndroidServiceWidget *m_services;
     QTimer m_timerParseCheck;
     TextEditor::TextEditorWidget *m_textEditorWidget;
     AndroidManifestEditor *m_editor;
     QString m_androidNdkPlatform;
     QTabWidget *m_advanvedTabWidget = nullptr;
 };
-} // namespace Internal
-} // namespace Android
+
+} // Android::Internal

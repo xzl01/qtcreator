@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "designdocumentview.h"
 
@@ -31,8 +9,10 @@
 #include <modelmerger.h>
 
 #include "designdocument.h"
+#include <qmldesignerconstants.h>
 #include <qmldesignerplugin.h>
 #include <nodelistproperty.h>
+#include <nodemetainfo.h>
 
 #include <QApplication>
 #include <QPlainTextEdit>
@@ -40,12 +20,14 @@
 #include <QMimeData>
 #include <QDebug>
 
+#include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
 namespace QmlDesigner {
 
-DesignDocumentView::DesignDocumentView(QObject *parent)
-    : AbstractView(parent), m_modelMerger(new ModelMerger(this))
+DesignDocumentView::DesignDocumentView(ExternalDependenciesInterface &externalDependencies)
+    : AbstractView{externalDependencies}
+    , m_modelMerger(new ModelMerger(this))
 {
 }
 
@@ -70,7 +52,7 @@ static QStringList arrayToStringList(const QByteArray &byteArray)
 static QByteArray stringListToArray(const QStringList &stringList)
 {
     QString str;
-    foreach (const QString &subString, stringList)
+    for (const QString &subString : stringList)
         str += subString + QLatin1Char('\n');
     return str.toUtf8();
 }
@@ -83,7 +65,7 @@ void DesignDocumentView::toClipboard() const
 
     data->setText(toText());
     QStringList imports;
-    foreach (const Import &import, model()->imports())
+    for (const Import &import : model()->imports())
         imports.append(import.toImportString());
 
     data->setData(QLatin1String("QmlDesigner::imports"), stringListToArray(imports));
@@ -95,21 +77,32 @@ void DesignDocumentView::fromClipboard()
     QClipboard *clipboard = QApplication::clipboard();
     fromText(clipboard->text());
     QStringList imports = arrayToStringList(clipboard->mimeData()->data(QLatin1String("QmlDesigner::imports")));
-//    foreach (const QString &importString, imports) {
+//    for (const QString &importString, imports) {
 //        Import import(Import::createLibraryImport();
 //        model()->addImport(import); //### imports
 //    }
 }
 
+static bool hasOnly3DNodes(const ModelNode &node)
+{
+    if (node.id() == "__multi__selection__") {
+        bool hasNon3DNode = Utils::anyOf(node.directSubModelNodes(), [](const ModelNode &node) {
+            return !node.metaInfo().isQtQuick3DNode();
+        });
+
+        return !hasNon3DNode;
+    }
+    return node.metaInfo().isQtQuick3DNode();
+}
 
 QString DesignDocumentView::toText() const
 {
-    QScopedPointer<Model> outputModel(Model::create("QtQuick.Rectangle", 1, 0, model()));
+    auto outputModel = Model::create("QtQuick.Rectangle", 1, 0, model());
     outputModel->setFileUrl(model()->fileUrl());
     QPlainTextEdit textEdit;
 
     QString imports;
-    foreach (const Import &import, model()->imports()) {
+    for (const Import &import : model()->imports()) {
         if (import.isFileImport())
             imports += QStringLiteral("import ") + QStringLiteral("\"") + import.file() + QStringLiteral("\"")+ QStringLiteral(";\n");
         else
@@ -119,7 +112,8 @@ QString DesignDocumentView::toText() const
     textEdit.setPlainText(imports +  QStringLiteral("Item {\n}\n"));
     NotIndentingTextEditModifier modifier(&textEdit);
 
-    QScopedPointer<RewriterView> rewriterView(new RewriterView(RewriterView::Amend, nullptr));
+    QScopedPointer<RewriterView> rewriterView(
+        new RewriterView(externalDependencies(), RewriterView::Amend));
     rewriterView->setCheckSemanticErrors(false);
     rewriterView->setTextModifier(&modifier);
     outputModel->setRewriterView(rewriterView.data());
@@ -131,13 +125,17 @@ QString DesignDocumentView::toText() const
     ModelNode rewriterNode(rewriterView->rootModelNode());
 
     rewriterView->writeAuxiliaryData();
-    return rewriterView->extractText({rewriterNode}).value(rewriterNode) + rewriterView->getRawAuxiliaryData();
+
+    QString paste3DHeader = hasOnly3DNodes(rewriterNode) ? QString(Constants::HEADER_3DPASTE_CONTENT) : QString();
+    return paste3DHeader
+            + rewriterView->extractText({rewriterNode}).value(rewriterNode)
+            + rewriterView->getRawAuxiliaryData();
     //get the text of the root item without imports
 }
 
 void DesignDocumentView::fromText(const QString &text)
 {
-    QScopedPointer<Model> inputModel(Model::create("QtQuick.Rectangle", 1, 0, model()));
+    auto inputModel = Model::create("QtQuick.Rectangle", 1, 0, model());
     inputModel->setFileUrl(model()->fileUrl());
     QPlainTextEdit textEdit;
     QString imports;
@@ -148,7 +146,7 @@ void DesignDocumentView::fromText(const QString &text)
     textEdit.setPlainText(imports + text);
     NotIndentingTextEditModifier modifier(&textEdit);
 
-    RewriterView rewriterView;
+    RewriterView rewriterView{externalDependencies()};
     rewriterView.setCheckSemanticErrors(false);
     rewriterView.setTextModifier(&modifier);
     inputModel->setRewriterView(&rewriterView);
@@ -173,13 +171,13 @@ static Model *currentModel()
     return nullptr;
 }
 
-Model *DesignDocumentView::pasteToModel()
+ModelPointer DesignDocumentView::pasteToModel(ExternalDependenciesInterface &externalDependencies)
 {
     Model *parentModel = currentModel();
 
     QTC_ASSERT(parentModel, return nullptr);
 
-    Model *pasteModel(Model::create("empty", 1, 0, parentModel));
+    auto pasteModel = Model::create("empty", 1, 0, parentModel);
 
     Q_ASSERT(pasteModel);
 
@@ -189,7 +187,7 @@ Model *DesignDocumentView::pasteToModel()
     pasteModel->setFileUrl(parentModel->fileUrl());
     pasteModel->changeImports(parentModel->imports(), {});
 
-    DesignDocumentView view;
+    DesignDocumentView view{externalDependencies};
     pasteModel->attachView(&view);
 
     view.fromClipboard();
@@ -197,13 +195,14 @@ Model *DesignDocumentView::pasteToModel()
     return pasteModel;
 }
 
-void DesignDocumentView::copyModelNodes(const QList<ModelNode> &nodesToCopy)
+void DesignDocumentView::copyModelNodes(const QList<ModelNode> &nodesToCopy,
+                                        ExternalDependenciesInterface &externalDependencies)
 {
     Model *parentModel = currentModel();
 
     QTC_ASSERT(parentModel, return);
 
-    QScopedPointer<Model> copyModel(Model::create("QtQuick.Rectangle", 1, 0, parentModel));
+    auto copyModel = Model::create("QtQuick.Rectangle", 1, 0, parentModel);
 
     copyModel->setFileUrl(parentModel->fileUrl());
     copyModel->changeImports(parentModel->imports(), {});
@@ -215,14 +214,15 @@ void DesignDocumentView::copyModelNodes(const QList<ModelNode> &nodesToCopy)
     if (selectedNodes.isEmpty())
         return;
 
-    foreach (const ModelNode &node, selectedNodes) {
-        foreach (const ModelNode &node2, selectedNodes) {
-            if (node.isAncestorOf(node2))
-                selectedNodes.removeAll(node2);
+    QList<ModelNode> nodeList = selectedNodes;
+    for (int end = nodeList.length(), i = 0; i < end; ++i) {
+        for (int j = 0; j < end; ++j) {
+            if (nodeList.at(i).isAncestorOf(nodeList.at(j)))
+                selectedNodes.removeAll(nodeList.at(j));
         }
     }
 
-    DesignDocumentView view;
+    DesignDocumentView view{externalDependencies};
     copyModel->attachView(&view);
 
     if (selectedNodes.count() == 1) {
@@ -238,14 +238,13 @@ void DesignDocumentView::copyModelNodes(const QList<ModelNode> &nodesToCopy)
 
         view.toClipboard();
     } else { // multi items selected
-
-        foreach (ModelNode node, view.rootModelNode().directSubModelNodes()) {
+        for (ModelNode node : view.rootModelNode().directSubModelNodes()) {
             node.destroy();
         }
         view.changeRootNodeType("QtQuick.Rectangle", 2, 0);
         view.rootModelNode().setIdWithRefactoring("__multi__selection__");
 
-        foreach (const ModelNode &selectedNode, selectedNodes) {
+        for (const ModelNode &selectedNode : std::as_const(selectedNodes)) {
             ModelNode newNode(view.insertModel(selectedNode));
             view.rootModelNode().nodeListProperty("data").reparentHere(newNode);
         }

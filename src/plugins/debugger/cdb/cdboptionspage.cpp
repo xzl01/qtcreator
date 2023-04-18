@@ -1,36 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cdboptionspage.h"
-
-#include "cdbengine.h"
 
 #include <debugger/commonoptionspage.h>
 #include <debugger/debuggeractions.h>
 #include <debugger/debuggercore.h>
 #include <debugger/debuggerinternalconstants.h>
+#include <debugger/debuggertr.h>
 #include <debugger/shared/cdbsymbolpathlisteditor.h>
 
 #include <coreplugin/icore.h>
@@ -56,18 +33,12 @@ struct EventsDescription {
 // Parameters of the "sxe" command
 const EventsDescription eventDescriptions[] =
 {
-    {"eh", false, QT_TRANSLATE_NOOP("Debugger::Internal::CdbBreakEventWidget",
-                                    "C++ exception")},
-    {"ct", false, QT_TRANSLATE_NOOP("Debugger::Internal::CdbBreakEventWidget",
-                                    "Thread creation")},
-    {"et", false, QT_TRANSLATE_NOOP("Debugger::Internal::CdbBreakEventWidget",
-                                    "Thread exit")},
-    {"ld", true,  QT_TRANSLATE_NOOP("Debugger::Internal::CdbBreakEventWidget",
-                                    "Load module:")},
-    {"ud", true,  QT_TRANSLATE_NOOP("Debugger::Internal::CdbBreakEventWidget",
-                                    "Unload module:")},
-    {"out", true, QT_TRANSLATE_NOOP("Debugger::Internal::CdbBreakEventWidget",
-                                    "Output:")}
+    {"eh", false, QT_TRANSLATE_NOOP("QtC::Debugger", "C++ exception")},
+    {"ct", false, QT_TRANSLATE_NOOP("QtC::Debugger", "Thread creation")},
+    {"et", false, QT_TRANSLATE_NOOP("QtC::Debugger", "Thread exit")},
+    {"ld", true,  QT_TRANSLATE_NOOP("QtC::Debugger", "Load module:")},
+    {"ud", true,  QT_TRANSLATE_NOOP("QtC::Debugger", "Unload module:")},
+    {"out", true, QT_TRANSLATE_NOOP("QtC::Debugger", "Output:")}
 };
 
 static inline int indexOfEvent(const QString &abbrev)
@@ -86,8 +57,6 @@ static inline int indexOfEvent(const QString &abbrev)
 // events with parameters (like 'out:Needle').
 class CdbBreakEventWidget : public QWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::Internal::CdbBreakEventWidget)
-
 public:
     explicit CdbBreakEventWidget(QWidget *parent = nullptr);
 
@@ -113,7 +82,7 @@ CdbBreakEventWidget::CdbBreakEventWidget(QWidget *parent) : QWidget(parent)
     mainLayout->addLayout(leftLayout);
     const size_t eventCount = sizeof(eventDescriptions) / sizeof(EventsDescription);
     for (size_t e = 0; e < eventCount; e++) {
-        auto cb = new QCheckBox(tr(eventDescriptions[e].description));
+        auto cb = new QCheckBox(Tr::tr(eventDescriptions[e].description));
         QLineEdit *le = nullptr;
         if (eventDescriptions[e].hasParameter) {
             if (!parameterLayout) {
@@ -136,11 +105,11 @@ CdbBreakEventWidget::CdbBreakEventWidget(QWidget *parent) : QWidget(parent)
 
 void CdbBreakEventWidget::clear()
 {
-    for (QLineEdit *l : qAsConst(m_lineEdits)) {
+    for (QLineEdit *l : std::as_const(m_lineEdits)) {
         if (l)
             l->clear();
     }
-    for (QCheckBox *c : qAsConst(m_checkBoxes))
+    for (QCheckBox *c : std::as_const(m_checkBoxes))
         c->setChecked(false);
 }
 
@@ -185,8 +154,6 @@ QStringList CdbBreakEventWidget::breakEvents() const
 
 class CdbOptionsPageWidget : public Core::IOptionsPageWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::Internal::CdbOptionsPageWidget)
-
 public:
     CdbOptionsPageWidget();
 
@@ -209,33 +176,39 @@ CdbOptionsPageWidget::CdbOptionsPageWidget()
     Column {
         Row {
             Group {
-                Title(tr("Startup")),
-                s.cdbAdditionalArguments,
-                s.useCdbConsole,
-                Stretch()
+                title(Tr::tr("Startup")),
+                Column {
+                    s.cdbAdditionalArguments,
+                    s.useCdbConsole,
+                    st
+                 }
             },
 
             Group {
-                Title(tr("Various")),
-                s.ignoreFirstChanceAccessViolation,
-                s.cdbBreakOnCrtDbgReport,
-                s.cdbBreakPointCorrection,
-                s.cdbUsePythonDumper
+                title(Tr::tr("Various")),
+                Column {
+                    s.ignoreFirstChanceAccessViolation,
+                    s.cdbBreakOnCrtDbgReport,
+                    s.cdbBreakPointCorrection,
+                    s.cdbUsePythonDumper
+                }
             }
         },
 
         Group {
-            Title(tr("Break On")),
-            m_breakEventWidget
+            title(Tr::tr("Break On")),
+            Column { m_breakEventWidget }
         },
 
         Group {
-            Title(tr("Add Exceptions to Issues View")),
-            s.firstChanceExceptionTaskEntry,
-            s.secondChanceExceptionTaskEntry
+            title(Tr::tr("Add Exceptions to Issues View")),
+            Column {
+                s.firstChanceExceptionTaskEntry,
+                s.secondChanceExceptionTaskEntry
+            }
         },
 
-        Stretch()
+        st
 
     }.attachTo(this);
 }
@@ -255,7 +228,7 @@ void CdbOptionsPageWidget::finish()
 CdbOptionsPage::CdbOptionsPage()
 {
     setId("F.Debugger.Cda");
-    setDisplayName(CdbOptionsPageWidget::tr("CDB"));
+    setDisplayName(Tr::tr("CDB"));
     setCategory(Debugger::Constants::DEBUGGER_SETTINGS_CATEGORY);
     setWidgetCreator([] { return new CdbOptionsPageWidget; });
 }
@@ -265,8 +238,6 @@ CdbOptionsPage::CdbOptionsPage()
 
 class CdbPathsPageWidget : public Core::IOptionsPageWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::Internal::CdbPathsPageWidget)
-
 public:
     CdbPathsPageWidget();
 
@@ -288,9 +259,9 @@ CdbPathsPageWidget::CdbPathsPageWidget()
 
     finish();
     Column {
-        Group { Title(tr("Symbol Paths")), m_symbolPaths },
-        Group { Title(tr("Source Paths")), m_sourcePaths },
-        Stretch()
+        Group { title(Tr::tr("Symbol Paths")), Column { m_symbolPaths } },
+        Group { title(Tr::tr("Source Paths")), Column { m_sourcePaths } },
+        st
     }.attachTo(this);
 }
 
@@ -310,7 +281,7 @@ void CdbPathsPageWidget::finish()
 CdbPathsPage::CdbPathsPage()
 {
     setId("F.Debugger.Cdb");
-    setDisplayName(CdbPathsPageWidget::tr("CDB Paths"));
+    setDisplayName(Tr::tr("CDB Paths"));
     setCategory(Debugger::Constants::DEBUGGER_SETTINGS_CATEGORY);
     setWidgetCreator([] { return new CdbPathsPageWidget; });
 }

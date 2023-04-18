@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelinewidget.h"
 #include "bindingproperty.h"
@@ -36,6 +14,7 @@
 #include "timelineview.h"
 #include "navigation2d.h"
 
+#include <auxiliarydataproperties.h>
 #include <qmldesignerplugin.h>
 #include <qmlstate.h>
 #include <qmltimeline.h>
@@ -108,8 +87,8 @@ static qreal getcurrentFrame(const QmlTimeline &timeline)
     if (!timeline.isValid())
         return 0;
 
-    if (timeline.modelNode().hasAuxiliaryData("currentFrame@NodeInstance"))
-        return timeline.modelNode().auxiliaryData("currentFrame@NodeInstance").toReal();
+    if (auto data = timeline.modelNode().auxiliaryData(currentFrameProperty))
+        return data->toReal();
     return timeline.currentKeyframe();
 }
 
@@ -121,7 +100,7 @@ TimelineWidget::TimelineWidget(TimelineView *view)
     , m_scrollbar(new QScrollBar(this))
     , m_statusBar(new QLabel(this))
     , m_timelineView(view)
-    , m_graphicsScene(new TimelineGraphicsScene(this))
+    , m_graphicsScene(new TimelineGraphicsScene(this, view->externalDependencies()))
     , m_addButton(new QPushButton(this))
     , m_onboardingContainer(new QWidget(this))
     , m_loopPlayback(false)
@@ -296,8 +275,8 @@ TimelineWidget::TimelineWidget(TimelineView *view)
     };
     connect(graphicsScene()->layoutRuler(), &TimelineRulerSectionItem::playbackLoopValuesChanged, updatePlaybackLoopValues);
 
-    auto setPlaybackState = [this](QAbstractAnimation::State newState, QAbstractAnimation::State oldState) {
-        Q_UNUSED(oldState)
+    auto setPlaybackState = [this](QAbstractAnimation::State newState,
+                                   [[maybe_unused]] QAbstractAnimation::State oldState) {
         m_toolbar->setPlayState(newState == QAbstractAnimation::State::Running);
     };
     connect(m_playbackAnimation, &QVariantAnimation::stateChanged, setPlaybackState);
@@ -476,8 +455,8 @@ void TimelineWidget::setTimelineRecording(bool value)
 
 void TimelineWidget::contextHelp(const Core::IContext::HelpCallback &callback) const
 {
-    if (timelineView())
-        timelineView()->contextHelp(callback);
+    if (auto view = timelineView())
+        QmlDesignerPlugin::contextHelp(callback, view->contextHelpId());
     else
         callback({});
 }
@@ -616,15 +595,14 @@ void TimelineWidget::setFocus()
     m_graphicsView->setFocus();
 }
 
-void TimelineWidget::showEvent(QShowEvent *event)
+void TimelineWidget::showEvent([[maybe_unused]] QShowEvent *event)
 {
-    Q_UNUSED(event)
-
     int zoom = m_toolbar->scaleFactor();
 
     m_timelineView->setEnabled(true);
 
     graphicsScene()->setWidth(m_graphicsView->viewport()->width());
+    graphicsScene()->invalidateScene();
     graphicsScene()->invalidateLayout();
     graphicsScene()->invalidate();
     graphicsScene()->onShow();

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlengine.h"
 
@@ -31,23 +9,24 @@
 #include "qmlengineutils.h"
 
 #include <debugger/breakhandler.h>
+#include <debugger/console/console.h>
 #include <debugger/debuggeractions.h>
 #include <debugger/debuggercore.h>
 #include <debugger/debuggerinternalconstants.h>
-#include <debugger/debuggerruncontrol.h>
 #include <debugger/debuggertooltipmanager.h>
+#include <debugger/debuggertr.h>
 #include <debugger/sourcefileshandler.h>
 #include <debugger/stackhandler.h>
 #include <debugger/threaddata.h>
 #include <debugger/watchhandler.h>
 #include <debugger/watchwindow.h>
-#include <debugger/console/console.h>
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/helpmanager.h>
 #include <coreplugin/icore.h>
 
-#include <projectexplorer/applicationlauncher.h>
+#include <projectexplorer/projectnodes.h>
+#include <projectexplorer/projecttree.h>
 
 #include <qmljseditor/qmljseditorconstants.h>
 #include <qmljs/qmljsmodelmanagerinterface.h>
@@ -58,10 +37,12 @@
 #include <texteditor/texteditor.h>
 
 #include <app/app_version.h>
-#include <utils/treemodel.h>
+
 #include <utils/basetreeview.h>
 #include <utils/fileinprojectfinder.h>
 #include <utils/qtcassert.h>
+#include <utils/qtcprocess.h>
+#include <utils/treemodel.h>
 
 #include <QDebug>
 #include <QDir>
@@ -95,8 +76,7 @@ using namespace QmlJS;
 using namespace TextEditor;
 using namespace Utils;
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 enum Exceptions
 {
@@ -220,7 +200,7 @@ public:
 
     QHash<QString, QTextDocument*> sourceDocuments;
     InteractiveInterpreter interpreter;
-    ApplicationLauncher applicationLauncher;
+    QtcProcess process;
     QmlInspectorAgent inspectorAgent;
 
     QList<quint32> queryIds;
@@ -269,12 +249,17 @@ QmlEngine::QmlEngine()
     connect(stackHandler(), &StackHandler::currentIndexChanged,
             this, &QmlEngine::updateCurrentContext);
 
-    connect(&d->applicationLauncher, &ApplicationLauncher::processExited,
-            this, &QmlEngine::disconnected);
-    connect(&d->applicationLauncher, &ApplicationLauncher::appendMessage,
-            this, &QmlEngine::appMessage);
-    connect(&d->applicationLauncher, &ApplicationLauncher::processStarted,
-            this, &QmlEngine::handleLauncherStarted);
+    connect(&d->process, &QtcProcess::readyReadStandardOutput, this, [this] {
+        // FIXME: Redirect to RunControl
+        showMessage(d->process.readAllStandardOutput(), AppOutput);
+    });
+    connect(&d->process, &QtcProcess::readyReadStandardError, this, [this] {
+        // FIXME: Redirect to RunControl
+        showMessage(d->process.readAllStandardError(), AppOutput);
+    });
+
+    connect(&d->process, &QtcProcess::done, this, &QmlEngine::disconnected);
+    connect(&d->process, &QtcProcess::started, this, &QmlEngine::handleLauncherStarted);
 
     debuggerConsole()->populateFileFinder();
     debuggerConsole()->setScriptEvaluator([this](const QString &expr) {
@@ -329,11 +314,6 @@ void QmlEngine::handleLauncherStarted()
     tryToConnect();
 }
 
-void QmlEngine::appMessage(const QString &msg, Utils::OutputFormat /* format */)
-{
-    showMessage(msg, AppOutput); // FIXME: Redirect to RunControl
-}
-
 void QmlEngine::connectionEstablished()
 {
     connect(inspectorView(), &WatchTreeView::currentIndexChanged,
@@ -350,7 +330,7 @@ void QmlEngine::tryToConnect()
     if (state() == EngineRunRequested) {
         if (isDying()) {
             // Probably cpp is being debugged and hence we did not get the output yet.
-            appStartupFailed(tr("No application output received in time"));
+            appStartupFailed(Tr::tr("No application output received in time"));
         } else {
             beginConnection();
         }
@@ -407,7 +387,7 @@ void QmlEngine::connectionStartupFailed()
     auto infoBox = new QMessageBox(ICore::dialogParent());
     infoBox->setIcon(QMessageBox::Critical);
     infoBox->setWindowTitle(Core::Constants::IDE_DISPLAY_NAME);
-    infoBox->setText(tr("Could not connect to the in-process QML debugger."
+    infoBox->setText(Tr::tr("Could not connect to the in-process QML debugger."
                         "\nDo you want to retry?"));
     infoBox->setStandardButtons(QMessageBox::Retry | QMessageBox::Cancel |
                                 QMessageBox::Help);
@@ -422,7 +402,7 @@ void QmlEngine::connectionStartupFailed()
 
 void QmlEngine::appStartupFailed(const QString &errorMessage)
 {
-    QString error = tr("Could not connect to the in-process QML debugger. %1").arg(errorMessage);
+    QString error = Tr::tr("Could not connect to the in-process QML debugger. %1").arg(errorMessage);
 
     if (companionEngine()) {
         auto infoBox = new QMessageBox(ICore::dialogParent());
@@ -470,9 +450,10 @@ void QmlEngine::gotoLocation(const Location &location)
         // internal file from source files -> show generated .js
         QTC_ASSERT(d->sourceDocuments.contains(fileName), return);
 
-        QString titlePattern = tr("JS Source for %1").arg(fileName);
+        QString titlePattern = Tr::tr("JS Source for %1").arg(fileName);
         //Check if there are open documents with the same title
-        foreach (IDocument *document, DocumentModel::openedDocuments()) {
+        const QList<IDocument *> documents = DocumentModel::openedDocuments();
+        for (IDocument *document: documents) {
             if (document->displayName() == titlePattern) {
                 EditorManager::activateEditorForDocument(document);
                 return;
@@ -501,23 +482,23 @@ void QmlEngine::closeConnection()
     }
 }
 
-void QmlEngine::startApplicationLauncher()
+void QmlEngine::startProcess()
 {
-    if (!d->applicationLauncher.isRunning()) {
-        const Runnable runnable = runParameters().inferior;
-        showMessage(tr("Starting %1").arg(runnable.command.toUserOutput()),
-                    NormalMessageFormat);
-        d->applicationLauncher.start(runnable);
-    }
+    if (d->process.isRunning())
+        return;
+
+    d->process.setCommand(runParameters().inferior.command);
+    d->process.setWorkingDirectory(runParameters().inferior.workingDirectory);
+    d->process.setEnvironment(runParameters().inferior.environment);
+    showMessage(Tr::tr("Starting %1").arg(d->process.commandLine().toUserOutput()),
+        NormalMessageFormat);
+    d->process.start();
 }
 
-void QmlEngine::stopApplicationLauncher()
+void QmlEngine::stopProcess()
 {
-    if (d->applicationLauncher.isRunning()) {
-        disconnect(&d->applicationLauncher, &ApplicationLauncher::processExited,
-                   this, &QmlEngine::disconnected);
-        d->applicationLauncher.stop();
-    }
+    if (d->process.isRunning())
+        d->process.close();
 }
 
 void QmlEngine::shutdownInferior()
@@ -531,7 +512,7 @@ void QmlEngine::shutdownInferior()
     d->runCommand({DISCONNECT});
 
     resetLocation();
-    stopApplicationLauncher();
+    stopProcess();
     closeConnection();
 
     notifyInferiorShutdownFinished();
@@ -544,7 +525,7 @@ void QmlEngine::shutdownEngine()
     debuggerConsole()->setScriptEvaluator(ScriptEvaluator());
 
    // double check (ill engine?):
-    stopApplicationLauncher();
+    stopProcess();
 
     notifyEngineShutdownFinished();
 }
@@ -568,7 +549,7 @@ void QmlEngine::setupEngine()
         else if (runParameters().startMode == AttachToRemoteProcess)
             beginConnection();
         else
-            startApplicationLauncher();
+            startProcess();
     } else {
         tryToConnect();
     }
@@ -591,7 +572,7 @@ void QmlEngine::interruptInferior()
 {
     showMessage(INTERRUPT, LogInput);
     d->runDirectCommand(INTERRUPT);
-    showStatusMessage(tr("Waiting for JavaScript engine to interrupt on next statement."));
+    showStatusMessage(Tr::tr("Waiting for JavaScript engine to interrupt on next statement."));
 }
 
 void QmlEngine::executeStepIn(bool)
@@ -621,7 +602,7 @@ void QmlEngine::executeStepOver(bool)
 void QmlEngine::executeRunToLine(const ContextData &data)
 {
     QTC_ASSERT(state() == InferiorStopOk, qDebug() << state());
-    showStatusMessage(tr("Run to line %1 (%2) requested...")
+    showStatusMessage(Tr::tr("Run to line %1 (%2) requested...")
                           .arg(data.lineNumber)
                           .arg(data.fileName.toString()),
                       5000);
@@ -813,7 +794,7 @@ void QmlEngine::assignValueInDebugger(WatchItem *item,
             if (handler->isContentsValid() && handler->currentFrame().isUsable()) {
                 d->evaluate(exp, -1, [this](const QVariantMap &) { d->updateLocals(); });
             } else {
-                showMessage(tr("Cannot evaluate %1 in current stack frame.")
+                showMessage(Tr::tr("Cannot evaluate %1 in current stack frame.")
                             .arg(expression), ConsoleOutput);
             }
         }
@@ -893,7 +874,7 @@ static ConsoleItem *constructLogItemTree(const QVariant &result,
             std::sort(children.begin(), children.end(), compareConsoleItems);
 
         item = new ConsoleItem(ConsoleItem::DefaultType, text);
-        foreach (ConsoleItem *child, children) {
+        for (ConsoleItem *child : std::as_const(children)) {
             if (child)
                 item->appendChild(child);
         }
@@ -913,7 +894,7 @@ static ConsoleItem *constructLogItemTree(const QVariant &result,
             std::sort(children.begin(), children.end(), compareConsoleItems);
 
         item = new ConsoleItem(ConsoleItem::DefaultType, text);
-        foreach (ConsoleItem *child, children) {
+        for (ConsoleItem *child : std::as_const(children)) {
             if (child)
                 item->appendChild(child);
         }
@@ -956,7 +937,7 @@ void QmlEngine::quitDebugger()
 {
     d->automaticConnect = false;
     d->retryOnConnectFail = false;
-    stopApplicationLauncher();
+    stopProcess();
     closeConnection();
 }
 
@@ -973,7 +954,7 @@ Context QmlEngine::languageContext() const
 
 void QmlEngine::disconnected()
 {
-    showMessage(tr("QML Debugger disconnected."), StatusBar);
+    showMessage(Tr::tr("QML Debugger disconnected."), StatusBar);
     notifyInferiorExited();
 }
 
@@ -1010,8 +991,8 @@ void QmlEngine::updateCurrentContext()
         return;
     }
 
-    debuggerConsole()->setContext(tr("Context:") + ' '
-                                  + (context.isEmpty() ? tr("Global QML Context") : context));
+    debuggerConsole()->setContext(Tr::tr("Context:") + ' '
+                                  + (context.isEmpty() ? Tr::tr("Global QML Context") : context));
 }
 
 void QmlEngine::executeDebuggerCommand(const QString &command)
@@ -1098,9 +1079,10 @@ void QmlEnginePrivate::updateScriptSource(const QString &fileName, int lineOffse
     }
 
     //update open editors
-    QString titlePattern = QCoreApplication::translate("QmlEngine", "JS Source for %1").arg(fileName);
+    QString titlePattern = Tr::tr("JS Source for %1").arg(fileName);
     //Check if there are open editors with the same title
-    foreach (IDocument *doc, DocumentModel::openedDocuments()) {
+    const QList<IDocument *> documents = DocumentModel::openedDocuments();
+    for (IDocument *doc: documents) {
         if (doc->displayName() == titlePattern) {
             updateDocument(doc, document);
             break;
@@ -1119,7 +1101,7 @@ void QmlEngine::connectionFailed()
 {
     // this is only an error if we are already connected and something goes wrong.
     if (isConnected()) {
-        showMessage(tr("QML Debugger: Connection failed."), StatusBar);
+        showMessage(Tr::tr("QML Debugger: Connection failed."), StatusBar);
         notifyInferiorSpontaneousStop();
         notifyInferiorIll();
     } else {
@@ -1382,6 +1364,17 @@ void QmlEnginePrivate::scripts(int types, const QList<int> ids, bool includeSour
     runCommand(cmd);
 }
 
+static QString targetFile(const FilePath &original)
+{
+    auto projectTree = ProjectExplorer::ProjectTree::instance();
+    auto node = projectTree->nodeForFile(original);
+
+    if (auto resourceNode = dynamic_cast<ProjectExplorer::ResourceFileNode *>(node))
+        return QLatin1String("qrc:") + resourceNode->qrcPath();
+
+    return original.fileName();
+}
+
 void QmlEnginePrivate::setBreakpoint(const QString type, const QString target,
                                      bool enabled, int line, int column,
                                      const QString condition, int ignoreCount)
@@ -1411,7 +1404,7 @@ void QmlEnginePrivate::setBreakpoint(const QString type, const QString target,
         cmd.arg(ENABLED, enabled);
 
         if (type == SCRIPTREGEXP)
-            cmd.arg(TARGET, Utils::FilePath::fromString(target).fileName());
+            cmd.arg(TARGET, targetFile(FilePath::fromString(target)));
         else
             cmd.arg(TARGET, target);
 
@@ -1644,7 +1637,8 @@ void QmlEnginePrivate::runDirectCommand(const QString &type, const QByteArray &m
 void QmlEnginePrivate::memorizeRefs(const QVariant &refs)
 {
     if (refs.isValid()) {
-        foreach (const QVariant &ref, refs.toList()) {
+        const QList<QVariant> refList = refs.toList();
+        for (const QVariant &ref : refList) {
             const QVariantMap refData = ref.toMap();
             int handle = refData.value(HANDLE).toInt();
             refVals[handle] = extractData(refData);
@@ -1809,7 +1803,7 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
                         }
 
                         QMap<QString,QString> files;
-                        foreach (const QString &file, sourceFiles) {
+                        for (const QString &file : std::as_const(sourceFiles)) {
                             QString shortName = file;
                             QString fullName = engine->toFileInProject(file);
                             files.insert(shortName, fullName);
@@ -1838,6 +1832,15 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
                     QList<Breakpoint> v8Breakpoints;
 
                     const QVariantList v8BreakpointIdList = breakData.value("breakpoints").toList();
+                    if (engine->state() != InferiorStopRequested) {
+                        // skip debug break if no breakpoint and we have not done a single step as
+                        // last action - likely stopped in another file with same naming
+                        if (v8BreakpointIdList.isEmpty() && previousStepAction == Continue) {
+                            inferiorStop = false;
+                            continueDebugging(Continue);
+                        }
+                    }
+
                     for (const QVariant &breakpointId : v8BreakpointIdList) {
                         const QString responseId = QString::number(breakpointId.toInt());
                         Breakpoint bp = engine->breakHandler()->findBreakpointByResponseId(responseId);
@@ -1854,7 +1857,7 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
 
                         int newColumn = sourceLineText.indexOf('(') + 1;
 
-                        for (const Breakpoint &bp : qAsConst(v8Breakpoints)) {
+                        for (const Breakpoint &bp : std::as_const(v8Breakpoints)) {
                             QTC_ASSERT(bp, continue);
                             const BreakpointParameters &params = bp->requestedParameters();
 
@@ -1880,7 +1883,7 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
 
                     if (inferiorStop) {
                         //Update breakpoint data
-                        for (const Breakpoint &bp : qAsConst(v8Breakpoints)) {
+                        for (const Breakpoint &bp : std::as_const(v8Breakpoints)) {
                             QTC_ASSERT(bp, continue);
                             if (bp->functionName().isEmpty()) {
                                 bp->setFunctionName(invocationText);
@@ -1893,7 +1896,7 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
                         }
 
                         if (engine->state() == InferiorRunOk) {
-                            for (const Breakpoint &bp : qAsConst(v8Breakpoints)) {
+                            for (const Breakpoint &bp : std::as_const(v8Breakpoints)) {
                                 QTC_ASSERT(bp, continue);
                                 if (breakpointsTemp.contains(bp->responseId()))
                                     clearBreakpoint(bp);
@@ -2041,7 +2044,7 @@ StackFrame QmlEnginePrivate::extractStackFrame(const QVariant &bodyVal)
 
     stackFrame.function = extractString(body.value("func"));
     if (stackFrame.function.isEmpty())
-        stackFrame.function = QCoreApplication::translate("QmlEngine", "Anonymous Function");
+        stackFrame.function = Tr::tr("Anonymous Function");
     stackFrame.file = FilePath::fromString(
         engine->toFileInProject(extractString(body.value("script"))));
     stackFrame.usable = stackFrame.file.isReadableFile();
@@ -2199,10 +2202,10 @@ void QmlEnginePrivate::handleScope(const QVariantMap &response)
         setWatchItemHasChildren(item.get(), localData.hasChildren());
 
         if (localData.value.isValid() || item->wantsChildren || localData.expectedProperties == 0) {
-            WatchHandler *watchHander = engine->watchHandler();
-            if (watchHander->isExpandedIName(item->iname))
+            WatchHandler *watchHandler = engine->watchHandler();
+            if (watchHandler->isExpandedIName(item->iname))
                 itemsToLookup.insert(int(item->id), {item->iname, item->name, item->exp});
-            watchHander->insertItem(item.release());
+            watchHandler->insertItem(item.release());
         } else {
             itemsToLookup.insert(int(item->id), {item->iname, item->name, item->exp});
         }
@@ -2236,7 +2239,7 @@ void QmlEnginePrivate::constructChildLogItems(ConsoleItem *item, const QmlV8Obje
     if (debuggerSettings()->sortStructMembers.value())
         std::sort(children.begin(), children.end(), compareConsoleItems);
 
-    foreach (ConsoleItem *child, children)
+    for (ConsoleItem *child : std::as_const(children))
         item->appendChild(child);
 }
 
@@ -2362,7 +2365,7 @@ void QmlEnginePrivate::handleExecuteDebuggerCommand(const QVariantMap &response)
         debuggerConsole()->printItem(constructLogItemTree(extractData(response.value(BODY))));
 
         // Update the locals
-        foreach (int index, currentFrameScopes)
+        for (int index : std::as_const(currentFrameScopes))
             scope(index);
     } else {
         debuggerConsole()->printItem(new ConsoleItem(ConsoleItem::ErrorType,
@@ -2414,7 +2417,7 @@ void QmlEnginePrivate::stateChanged(State state)
         BreakpointManager::claimBreakpointsForEngine(engine);
 
         // Since the breakpoint claiming is deferred, we need to also defer the connecting
-        QTimer::singleShot(0, this, [this]() {
+        QTimer::singleShot(0, this, [this] {
             /// Start session.
             flushSendBuffer();
             QJsonObject parameters;
@@ -2437,7 +2440,7 @@ void QmlEnginePrivate::handleVersion(const QVariantMap &response)
 void QmlEnginePrivate::flushSendBuffer()
 {
     QTC_ASSERT(state() == Enabled, return);
-    foreach (const QByteArray &msg, sendBuffer)
+    for (const QByteArray &msg : std::as_const(sendBuffer))
         sendMessage(msg);
     sendBuffer.clear();
 }
@@ -2459,5 +2462,4 @@ DebuggerEngine *createQmlEngine()
     return new QmlEngine;
 }
 
-} // Internal
-} // Debugger
+} // Debugger::Internal

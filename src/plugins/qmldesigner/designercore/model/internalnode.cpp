@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "internalnode_p.h"
 #include "internalproperty.h"
@@ -29,94 +7,13 @@
 #include "internalnodeproperty.h"
 #include "internalnodelistproperty.h"
 
-
 #include <QDebug>
+
+#include <algorithm>
+#include <utility>
 
 namespace QmlDesigner {
 namespace Internal {
-
-/*!
-  \class QmlDesigner::Internal::InternalNode
-
-  Represents one XML element.
-  */
-
-InternalNode::InternalNode() :
-    m_majorVersion(0),
-    m_minorVersion(0),
-    m_valid(false),
-    m_internalId(-1)
-{
-}
-
-InternalNode::InternalNode(const TypeName &typeName,int majorVersion, int minorVersion, qint32 internalId):
-        m_typeName(typeName),
-        m_majorVersion(majorVersion),
-        m_minorVersion(minorVersion),
-        m_valid(true),
-        m_internalId(internalId)
-{
-
-}
-
-InternalNode::Pointer InternalNode::create(const TypeName &type,int majorVersion, int minorVersion, qint32 internalId)
-{
-    auto newPointer(new InternalNode(type, majorVersion, minorVersion, internalId));
-    InternalNode::Pointer smartPointer(newPointer);
-
-    newPointer->setInternalWeakPointer(smartPointer);
-
-    return smartPointer;
-}
-
-InternalNode::Pointer InternalNode::internalPointer() const
-{
-    return m_internalPointer.toStrongRef();
-}
-void InternalNode::setInternalWeakPointer(const Pointer &pointer)
-{
-    m_internalPointer = pointer;
-}
-
-TypeName InternalNode::type() const
-{
-    return m_typeName;
-}
-
-void InternalNode::setType(const TypeName &newType)
-{
-    m_typeName = newType;
-}
-
-int InternalNode::minorVersion() const
-{
-    return m_minorVersion;
-}
-
-int InternalNode::majorVersion() const
-{
-    return m_majorVersion;
-}
-
-void InternalNode::setMinorVersion(int number)
-{
-    m_minorVersion = number;
-}
-
-void InternalNode::setMajorVersion(int number)
-{
-    m_majorVersion = number;
-}
-
-bool InternalNode::isValid() const
-{
-    return m_valid;
-}
-
-void InternalNode::setValid(bool valid)
-{
-    m_valid = valid;
-}
 
 InternalNodeAbstractProperty::Pointer InternalNode::parentProperty() const
 {
@@ -126,70 +23,92 @@ void InternalNode::setParentProperty(const InternalNodeAbstractProperty::Pointer
 {
     InternalNodeAbstractProperty::Pointer parentProperty = m_parentProperty.toStrongRef();
     if (parentProperty)
-        parentProperty->remove(internalPointer());
+        parentProperty->remove(shared_from_this());
 
     Q_ASSERT(parent && parent->isValid());
     m_parentProperty = parent;
 
-    parent->add(internalPointer());
+    parent->add(shared_from_this());
 }
 
 void InternalNode::resetParentProperty()
 {
     InternalNodeAbstractProperty::Pointer parentProperty = m_parentProperty.toStrongRef();
     if (parentProperty)
-        parentProperty->remove(internalPointer());
+        parentProperty->remove(shared_from_this());
 
     m_parentProperty.clear();
 }
 
-QString InternalNode::id() const
+namespace {
+
+template<typename Type>
+auto find(Type &&auxiliaryDatas, AuxiliaryDataKeyView key)
 {
-    return m_id;
+    return std::find_if(auxiliaryDatas.begin(), auxiliaryDatas.end(), [&](const auto &element) {
+        return element.first == key;
+    });
 }
 
-void InternalNode::setId(const QString& id)
+} // namespace
+
+std::optional<QVariant> InternalNode::auxiliaryData(AuxiliaryDataKeyView key) const
 {
-    m_id = id;
+    auto found = find(m_auxiliaryDatas, key);
+
+    if (found != m_auxiliaryDatas.end())
+        return found->second;
+
+    return {};
 }
 
-bool InternalNode::hasId() const
+bool InternalNode::setAuxiliaryData(AuxiliaryDataKeyView key, const QVariant &data)
 {
-    return !m_id.isEmpty();
+    auto found = find(m_auxiliaryDatas, key);
+
+    if (found != m_auxiliaryDatas.end()) {
+        if (found->second == data)
+            return false;
+        found->second = data;
+    } else {
+        m_auxiliaryDatas.emplace_back(AuxiliaryDataKey{key}, data);
+    }
+
+    return true;
 }
 
-
-Utils::QHashValueType qHash(const InternalNodePointer& node)
+bool InternalNode::removeAuxiliaryData(AuxiliaryDataKeyView key)
 {
-    if (node.isNull())
-        return ::qHash(-1);
+    auto found = find(m_auxiliaryDatas, key);
 
-    return ::qHash(node->internalId());
+    if (found == m_auxiliaryDatas.end())
+        return false;
+
+    *found = std::move(m_auxiliaryDatas.back());
+
+    m_auxiliaryDatas.pop_back();
+
+    return true;
 }
 
-QVariant InternalNode::auxiliaryData(const PropertyName &name) const
+bool InternalNode::hasAuxiliaryData(AuxiliaryDataKeyView key) const
 {
-    return m_auxiliaryDataHash.value(name);
+    auto found = find(m_auxiliaryDatas, key);
+
+    return found != m_auxiliaryDatas.end();
 }
 
-void InternalNode::setAuxiliaryData(const PropertyName &name, const QVariant &data)
+AuxiliaryDatasForType InternalNode::auxiliaryData(AuxiliaryDataType type) const
 {
-    m_auxiliaryDataHash.insert(name, data);
-}
+    AuxiliaryDatasForType data;
+    data.reserve(m_auxiliaryDatas.size());
 
-void InternalNode::removeAuxiliaryData(const PropertyName &name)
-{
-    m_auxiliaryDataHash.remove(name);
-}
+    for (const auto &element : m_auxiliaryDatas) {
+        if (element.first.type == type)
+            data.emplace_back(element.first.name, element.second);
+    }
 
-bool InternalNode::hasAuxiliaryData(const PropertyName &name) const
-{
-    return m_auxiliaryDataHash.contains(name);
-}
-
-const QHash<PropertyName, QVariant> &InternalNode::auxiliaryData() const
-{
-    return m_auxiliaryDataHash;
+    return data;
 }
 
 InternalProperty::Pointer InternalNode::property(const PropertyName &name) const
@@ -215,6 +134,15 @@ InternalSignalHandlerProperty::Pointer InternalNode::signalHandlerProperty(const
     return InternalSignalHandlerProperty::Pointer();
 }
 
+InternalSignalDeclarationProperty::Pointer InternalNode::signalDeclarationProperty(const PropertyName &name) const
+{
+    InternalProperty::Pointer property =  m_namePropertyHash.value(name);
+    if (property->isSignalDeclarationProperty())
+        return property.staticCast<InternalSignalDeclarationProperty>();
+
+    return InternalSignalDeclarationProperty::Pointer();
+}
+
 InternalVariantProperty::Pointer InternalNode::variantProperty(const PropertyName &name) const
 {
     InternalProperty::Pointer property =  m_namePropertyHash.value(name);
@@ -226,13 +154,21 @@ InternalVariantProperty::Pointer InternalNode::variantProperty(const PropertyNam
 
 void InternalNode::addBindingProperty(const PropertyName &name)
 {
-    InternalProperty::Pointer newProperty(InternalBindingProperty::create(name, internalPointer()));
+    InternalProperty::Pointer newProperty(InternalBindingProperty::create(name, shared_from_this()));
     m_namePropertyHash.insert(name, newProperty);
 }
 
 void InternalNode::addSignalHandlerProperty(const PropertyName &name)
 {
-    InternalProperty::Pointer newProperty(InternalSignalHandlerProperty::create(name, internalPointer()));
+    InternalProperty::Pointer newProperty(
+        InternalSignalHandlerProperty::create(name, shared_from_this()));
+    m_namePropertyHash.insert(name, newProperty);
+}
+
+void InternalNode::addSignalDeclarationProperty(const PropertyName &name)
+{
+    InternalProperty::Pointer newProperty(
+        InternalSignalDeclarationProperty::create(name, shared_from_this()));
     m_namePropertyHash.insert(name, newProperty);
 }
 
@@ -265,20 +201,20 @@ InternalNodeProperty::Pointer InternalNode::nodeProperty(const PropertyName &nam
 
 void InternalNode::addVariantProperty(const PropertyName &name)
 {
-    InternalProperty::Pointer newProperty(InternalVariantProperty::create(name, internalPointer()));
+    InternalProperty::Pointer newProperty(InternalVariantProperty::create(name, shared_from_this()));
     m_namePropertyHash.insert(name, newProperty);
 }
 
 void InternalNode::addNodeProperty(const PropertyName &name, const TypeName &dynamicTypeName)
 {
-    InternalNodeProperty::Pointer newProperty(InternalNodeProperty::create(name, internalPointer()));
+    InternalNodeProperty::Pointer newProperty(InternalNodeProperty::create(name, shared_from_this()));
     newProperty->setDynamicTypeName(dynamicTypeName);
     m_namePropertyHash.insert(name, newProperty);
 }
 
 void InternalNode::addNodeListProperty(const PropertyName &name)
 {
-    InternalProperty::Pointer newProperty(InternalNodeListProperty::create(name, internalPointer()));
+    InternalProperty::Pointer newProperty(InternalNodeListProperty::create(name, shared_from_this()));
     m_namePropertyHash.insert(name, newProperty);
 }
 
@@ -311,7 +247,8 @@ QList<InternalProperty::Pointer> InternalNode::propertyList() const
 QList<InternalNodeAbstractProperty::Pointer> InternalNode::nodeAbstractPropertyList() const
 {
     QList<InternalNodeAbstractProperty::Pointer> abstractPropertyList;
-    foreach (const InternalProperty::Pointer &property, propertyList()) {
+    const QList<InternalProperty::Pointer> properties = propertyList();
+    for (const InternalProperty::Pointer &property : properties) {
         if (property->isNodeAbstractProperty())
             abstractPropertyList.append(property->toNodeAbstractProperty());
     }
@@ -323,7 +260,8 @@ QList<InternalNodeAbstractProperty::Pointer> InternalNode::nodeAbstractPropertyL
 QList<InternalNode::Pointer> InternalNode::allSubNodes() const
 {
     QList<InternalNode::Pointer> nodeList;
-    foreach (const InternalNodeAbstractProperty::Pointer &property, nodeAbstractPropertyList()) {
+    const QList<InternalNodeAbstractProperty::Pointer> properties = nodeAbstractPropertyList();
+    for (const InternalNodeAbstractProperty::Pointer &property : properties) {
         nodeList.append(property->allSubNodes());
     }
 
@@ -333,58 +271,13 @@ QList<InternalNode::Pointer> InternalNode::allSubNodes() const
 QList<InternalNode::Pointer> InternalNode::allDirectSubNodes() const
 {
     QList<InternalNode::Pointer> nodeList;
-    foreach (const InternalNodeAbstractProperty::Pointer &property, nodeAbstractPropertyList()) {
+    const QList<InternalNodeAbstractProperty::Pointer> properties = nodeAbstractPropertyList();
+    for (const InternalNodeAbstractProperty::Pointer &property : properties) {
         nodeList.append(property->directSubNodes());
     }
 
     return nodeList;
 }
 
-bool operator <(const InternalNode::Pointer &firstNode, const InternalNode::Pointer &secondNode)
-{
-    if (firstNode.isNull())
-        return true;
-
-    if (secondNode.isNull())
-        return false;
-
-    return firstNode->internalId() < secondNode->internalId();
-}
-
-void InternalNode::setScriptFunctions(const QStringList &scriptFunctionList)
-{
-    m_scriptFunctionList = scriptFunctionList;
-}
-
-QStringList InternalNode::scriptFunctions() const
-{
-    return m_scriptFunctionList;
-}
-
-qint32 InternalNode::internalId() const
-{
-    return m_internalId;
-}
-
-void InternalNode::setNodeSource(const QString &nodeSource)
-{
-    m_nodeSource = nodeSource;
-}
-
-QString InternalNode::nodeSource() const
-{
-    return m_nodeSource;
-}
-
-int InternalNode::nodeSourceType() const
-{
-    return m_nodeSourceType;
-}
-
-void InternalNode::setNodeSourceType(int i)
-{
-    m_nodeSourceType = i;
-}
-
-}
+} // namespace Internal
 }

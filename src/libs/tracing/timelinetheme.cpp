@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelinetheme.h"
 
@@ -61,38 +39,42 @@ public:
                                       && idElements.at(1) == QLatin1String("disabled"))
                 ? QIcon::Disabled : QIcon::Normal;
 
-        Icon icon;
+        QIcon icon;
         if (iconName == "prev")
-            icon = Icons::PREV_TOOLBAR;
+            icon = Icons::PREV_TOOLBAR.icon();
         else if (iconName == "next")
-            icon = Icons::NEXT_TOOLBAR;
+            icon = Icons::NEXT_TOOLBAR.icon();
         else if (iconName == "zoom")
-            icon = Icons::ZOOM_TOOLBAR;
+            icon = Icons::ZOOM_TOOLBAR.icon();
         else if (iconName == "rangeselection")
-            icon = Icon({{":/QtCreator/Tracing/ico_rangeselection.png", Theme::IconsBaseColor}});
+            icon = Icon({{":/qt/qml/QtCreator/Tracing/ico_rangeselection.png", Theme::IconsBaseColor}}).icon();
         else if (iconName == "rangeselected")
-            icon = Icon({{":/QtCreator/Tracing/ico_rangeselected.png", Theme::IconsBaseColor}});
+            icon = Icon({{":/qt/qml/QtCreator/Tracing/ico_rangeselected.png", Theme::IconsBaseColor}}).icon();
         else if (iconName == "selectionmode")
-            icon = Icon({{":/QtCreator/Tracing/ico_selectionmode.png", Theme::IconsBaseColor}});
+            icon = Icon({{":/qt/qml/QtCreator/Tracing/ico_selectionmode.png", Theme::IconsBaseColor}}).icon();
         else if (iconName == "edit")
-            icon = Icon({{":/QtCreator/Tracing/ico_edit.png", Theme::IconsBaseColor}});
+            icon = Icon({{":/qt/qml/QtCreator/Tracing/ico_edit.png", Theme::IconsBaseColor}}).icon();
         else if (iconName == "lock_open")
-            icon = Icons::UNLOCKED_TOOLBAR;
+            icon = Icons::UNLOCKED_TOOLBAR.icon();
         else if (iconName == "lock_closed")
-            icon = Icons::LOCKED_TOOLBAR;
+            icon = Icons::LOCKED_TOOLBAR.icon();
         else if (iconName == "range_handle")
-            icon = Icon({{":/QtCreator/Tracing/range_handle.png", Theme::IconsBaseColor}});
+            icon = Icon({{":/qt/qml/QtCreator/Tracing/range_handle.png", Theme::IconsBaseColor}}).icon();
         else if (iconName == "note")
-            icon = Icons::INFO_TOOLBAR;
+            icon = Icons::INFO_TOOLBAR.icon();
         else if (iconName == "split")
-            icon = Icons::SPLIT_HORIZONTAL_TOOLBAR;
+            icon = Icons::SPLIT_HORIZONTAL_TOOLBAR.icon();
         else if (iconName == "close_split")
-            icon = Icons::CLOSE_SPLIT_TOP;
+            icon = Icons::CLOSE_SPLIT_TOP.icon();
         else if (iconName == "close_window")
-            icon = Icons::CLOSE_TOOLBAR;
+            icon = Icons::CLOSE_TOOLBAR.icon();
+        else if (iconName == "arrowdown")
+            icon = Icons::ARROW_DOWN.icon();
+        else if (iconName == "arrowup")
+            icon = Icons::ARROW_UP.icon();
 
         const QSize iconSize(16, 16);
-        const QPixmap result = icon.icon().pixmap(iconSize, iconMode);
+        const QPixmap result = icon.pixmap(iconSize, iconMode);
 
         if (size)
             *size = result.size();
@@ -107,12 +89,6 @@ TimelineTheme::TimelineTheme(QObject *parent)
 
 void TimelineTheme::setupTheme(QQmlEngine *engine)
 {
-#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
-    static const int typeIndex = qmlRegisterSingletonType<Utils::Theme>(
-                "QtCreator.Tracing", 1, 0, "Theme",
-                [](QQmlEngine *, QJSEngine *){ return Utils::proxyTheme(); });
-    Q_UNUSED(typeIndex)
-#endif // Qt < 6.2
     engine->addImageProvider(QLatin1String("icons"), new TimelineImageIconProvider);
 }
 

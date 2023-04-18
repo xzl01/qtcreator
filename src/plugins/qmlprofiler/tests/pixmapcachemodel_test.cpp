@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "pixmapcachemodel_test.h"
+#include "../qmlprofilertr.h"
 #include <tracing/timelineformattime.h>
 #include <QtTest>
 
@@ -43,7 +22,7 @@ void PixmapCacheModelTest::initTestCase()
 
     for (int i = 0; i < MaximumPixmapEventType; ++i) {
         eventTypeIndices[i] = manager.numEventTypes();
-        manager.appendEventType(QmlEventType(PixmapCacheEvent, MaximumRangeType, i,
+        manager.appendEventType(QmlEventType(PixmapCacheEvent, UndefinedRangeType, i,
                                              QmlEventLocation("dings.png", 0, 0)));
     }
 
@@ -58,7 +37,7 @@ void PixmapCacheModelTest::initTestCase()
 
     for (int i = 0; i < MaximumPixmapEventType; ++i) {
         eventTypeIndices[i + MaximumPixmapEventType] = manager.numEventTypes();
-        manager.appendEventType(QmlEventType(PixmapCacheEvent, MaximumRangeType, i,
+        manager.appendEventType(QmlEventType(PixmapCacheEvent, UndefinedRangeType, i,
                                              QmlEventLocation("blah.png", 0, 0)));
     }
 
@@ -240,25 +219,25 @@ void PixmapCacheModelTest::testConsistency()
             break;
         case 1:
             QCOMPARE(collapsedRow, 1);
-            QVERIFY(details[QLatin1String("displayName")].toString() == model.tr("Image Cached"));
-            QVERIFY(details.contains(model.tr("Cache Size")));
+            QVERIFY(details[QLatin1String("displayName")].toString() == Tr::tr("Image Cached"));
+            QVERIFY(details.contains(Tr::tr("Cache Size")));
             break;
         default:
             QVERIFY(collapsedRow > 1);
             QCOMPARE(model.relativeHeight(i), 1.0f);
             QVERIFY(expandedRow < model.expandedRowCount());
-            QVERIFY(details[QLatin1String("displayName")].toString() == model.tr("Image Loaded"));
-            QCOMPARE(details[model.tr("Duration")].toString(),
+            QVERIFY(details[QLatin1String("displayName")].toString() == Tr::tr("Image Loaded"));
+            QCOMPARE(details[Tr::tr("Duration")].toString(),
                     Timeline::formatTime(model.duration(i)));
             // In expanded view pixmaps of the same URL but different sizes are allowed to overlap.
             // It looks bad, but that should be a rare thing.
             break;
         }
 
-        QString filename = details[PixmapCacheModel::tr("File")].toString();
+        QString filename = details[Tr::tr("File")].toString();
         QVERIFY(filename == QString("dings.png") || filename == QString("blah.png"));
-        QVERIFY(details.contains(PixmapCacheModel::tr("Width")));
-        QVERIFY(details.contains(PixmapCacheModel::tr("Height")));
+        QVERIFY(details.contains(Tr::tr("Width")));
+        QVERIFY(details.contains(Tr::tr("Height")));
     }
 }
 
@@ -297,7 +276,7 @@ void PixmapCacheModelTest::testLabels()
 
     const QVariantMap countRow = labels[0].toMap();
 
-    QCOMPARE(countRow[QString("description")].toString(), model.tr("Cache Size"));
+    QCOMPARE(countRow[QString("description")].toString(), Tr::tr("Cache Size"));
     QCOMPARE(countRow[QString("id")].toInt(), 0);
 
     const QVariantMap dingsRow = labels[1].toMap();

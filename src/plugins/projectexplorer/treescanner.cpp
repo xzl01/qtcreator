@@ -1,38 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Alexander Drozdov.
-** Contact: Alexander Drozdov (adrozdoff@gmail.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Alexander Drozdov.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "treescanner.h"
 
-#include "projectexplorerconstants.h"
 #include "projectnodeshelper.h"
 #include "projecttree.h"
 
 #include <coreplugin/iversioncontrol.h>
 #include <coreplugin/vcsmanager.h>
-
-#include <cppeditor/cppeditorconstants.h>
 
 #include <utils/qtcassert.h>
 #include <utils/algorithm.h>
@@ -67,8 +42,9 @@ bool TreeScanner::asyncScanForFiles(const Utils::FilePath &directory)
     if (!m_futureWatcher.isFinished())
         return false;
 
-    m_scanFuture = Utils::runAsync([this, directory](FutureInterface &fi) {
-        TreeScanner::scanForFiles(fi, directory, m_filter, m_factory);
+    m_scanFuture = Utils::runAsync(
+                [directory, filter = m_filter, factory = m_factory] (FutureInterface &fi) {
+        TreeScanner::scanForFiles(fi, directory, filter, factory);
     });
     m_futureWatcher.setFuture(m_scanFuture);
 

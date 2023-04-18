@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -38,8 +16,7 @@
 
 namespace Core { class IContext; }
 
-namespace Bookmarks {
-namespace Internal {
+namespace Bookmarks::Internal {
 
 class Bookmark;
 class BookmarksPlugin;
@@ -54,7 +31,7 @@ public:
     ~BookmarkManager() final;
 
     void updateBookmark(Bookmark *bookmark);
-    void updateBookmarkFileName(Bookmark *bookmark, const QString &oldFileName);
+    void updateBookmarkFileName(Bookmark *bookmark, const Utils::FilePath &oldFilePath);
     void deleteBookmark(Bookmark *bookmark); // Does not remove the mark
     void removeAllBookmarks();
     Bookmark *bookmarkForIndex(const QModelIndex &index) const;
@@ -124,17 +101,13 @@ private:
 
 class BookmarkView final : public Utils::ListView
 {
-    Q_OBJECT
-
 public:
     explicit BookmarkView(BookmarkManager *manager);
 
     QList<QToolButton *> createToolBarWidgets();
 
-public slots:
     void gotoBookmark(const QModelIndex &index);
 
-protected slots:
     void removeFromContextMenu();
     void removeAll();
 
@@ -151,8 +124,6 @@ private:
 
 class BookmarkViewFactory : public Core::INavigationWidgetFactory
 {
-    Q_OBJECT
-
 public:
     BookmarkViewFactory(BookmarkManager *bm);
 
@@ -164,8 +135,6 @@ private:
 
 class BookmarkDelegate : public QStyledItemDelegate
 {
-    Q_OBJECT
-
 public:
     BookmarkDelegate(QObject *parent = nullptr);
 
@@ -178,5 +147,4 @@ private:
     mutable QPixmap m_selectedPixmap;
 };
 
-} // namespace Internal
-} // namespace Bookmarks
+} // Bookmarks::Internal

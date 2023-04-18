@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "androidsdkpackage.h"
 
 #include <utils/algorithm.h>
@@ -96,6 +74,16 @@ void AndroidSdkPackage::setInstalledLocation(const Utils::FilePath &path)
         updatePackageDetails();
 }
 
+void AndroidSdkPackage::setExtension(const QString &extension)
+{
+    m_extension = extension;
+}
+
+QString AndroidSdkPackage::extension() const
+{
+    return m_extension;
+}
+
 void AndroidSdkPackage::updatePackageDetails()
 {
 
@@ -155,7 +143,7 @@ SdkPlatform::SdkPlatform(const QVersionNumber &version, const QString &sdkStyleP
 
 SdkPlatform::~SdkPlatform()
 {
-    for (SystemImage *image : qAsConst(m_systemImages))
+    for (SystemImage *image : std::as_const(m_systemImages))
         delete image;
     m_systemImages.clear();
 }
@@ -195,8 +183,8 @@ QVersionNumber SdkPlatform::version() const
 void SdkPlatform::addSystemImage(SystemImage *image)
 {
     // Ordered insert. Installed images on top with lexical comparison of the display name.
-    auto itr = m_systemImages.begin();
-    while (itr != m_systemImages.end()) {
+    auto itr = m_systemImages.cbegin();
+    while (itr != m_systemImages.cend()) {
         SystemImage *currentImage = *itr;
         if (currentImage->state() == image->state()) {
             if (currentImage->displayText() > image->displayText())

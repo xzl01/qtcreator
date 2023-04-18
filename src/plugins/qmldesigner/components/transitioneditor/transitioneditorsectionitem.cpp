@@ -1,27 +1,5 @@
-﻿/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "transitioneditorsectionitem.h"
 #include "transitioneditorgraphicsscene.h"
@@ -51,7 +29,6 @@
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
-#include <QHBoxLayout>
 #include <QMenu>
 #include <QPainter>
 #include <QPainterPath>
@@ -124,8 +101,9 @@ TransitionEditorSectionItem *TransitionEditorSectionItem::create(const ModelNode
     ModelNode target;
 
     if (animation.isValid()) {
+        auto model = animation.model();
         const QList<ModelNode> propertyAnimations = animation.subModelNodesOfType(
-            "QtQuick.PropertyAnimation");
+            model->qtQuickPropertyAnimationMetaInfo());
 
         for (const ModelNode &child : propertyAnimations) {
             if (child.hasBindingProperty("target"))
@@ -163,9 +141,9 @@ void TransitionEditorSectionItem::invalidateBar()
         qreal locMax = 0;
 
         for (const ModelNode &child : sequential.directSubModelNodes()) {
-            if (child.hasMetaInfo() && child.isSubclassOf("QtQuick.PropertyAnimation"))
+            if (child.metaInfo().isQtQuickPropertyAnimation())
                 locMax = child.variantProperty("duration").value().toDouble();
-            else if (child.hasMetaInfo() && child.isSubclassOf("QtQuick.PauseAnimation"))
+            else if (child.metaInfo().isQtQuickPauseAnimation())
                 locMin = child.variantProperty("duration").value().toDouble();
         }
 
@@ -233,7 +211,7 @@ void TransitionEditorSectionItem::moveAllDurations(qreal offset)
 {
     for (const ModelNode &sequential : m_animationNode.directSubModelNodes()) {
         for (const ModelNode &child : sequential.directSubModelNodes()) {
-            if (child.hasMetaInfo() && child.isSubclassOf("QtQuick.PauseAnimation"))
+            if (child.metaInfo().isQtQuickPauseAnimation())
                 moveDuration(child, offset);
         }
     }
@@ -243,7 +221,7 @@ void TransitionEditorSectionItem::scaleAllDurations(qreal scale)
 {
     for (const ModelNode &sequential : m_animationNode.directSubModelNodes()) {
         for (const ModelNode &child : sequential.directSubModelNodes()) {
-            if (child.hasMetaInfo() && child.isSubclassOf("QtQuick.PropertyAnimation"))
+            if (child.metaInfo().isQtQuickPropertyAnimation())
                 scaleDuration(child, scale);
         }
     }
@@ -265,7 +243,7 @@ AbstractView *TransitionEditorSectionItem::view() const
 
 bool TransitionEditorSectionItem::isSelected() const
 {
-    return m_targetNode.isValid() && m_targetNode.isSelected();
+    return m_targetNode.isSelected();
 }
 
 ModelNode TransitionEditorSectionItem::targetNode() const
@@ -458,8 +436,9 @@ void TransitionEditorSectionItem::invalidateHeight()
         height = TimelineConstants::sectionHeight;
         visible = false;
     } else {
+        auto model = m_animationNode.model();
         const QList<ModelNode> propertyAnimations = m_animationNode.subModelNodesOfType(
-            "QtQuick.PropertyAnimation");
+            model->qtQuickPropertyAnimationMetaInfo());
 
         height = TimelineConstants::sectionHeight
                  + propertyAnimations.count() * TimelineConstants::sectionHeight;
@@ -480,8 +459,9 @@ void TransitionEditorSectionItem::invalidateHeight()
 void TransitionEditorSectionItem::createPropertyItems()
 {
     int yPos = TimelineConstants::sectionHeight;
+    auto model = m_animationNode.model();
     const QList<ModelNode> propertyAnimations = m_animationNode.subModelNodesOfType(
-        "QtQuick.PropertyAnimation");
+        model->qtQuickPropertyAnimationMetaInfo());
     for (const auto &anim : propertyAnimations) {
         auto item = TransitionEditorPropertyItem::create(anim, this);
         item->setY(yPos);
@@ -508,7 +488,7 @@ void TransitionEditorSectionItem::invalidateProperties()
 bool TransitionEditorSectionItem::collapsed() const
 {
     return m_targetNode.isValid()
-            && (!m_targetNode.hasAuxiliaryData("transition_expanded") || m_targetNode.locked());
+           && (!m_targetNode.hasAuxiliaryData(transitionExpandedPropery) || m_targetNode.locked());
 }
 
 qreal TransitionEditorSectionItem::rulerWidth() const
@@ -521,9 +501,9 @@ void TransitionEditorSectionItem::toggleCollapsed()
     QTC_ASSERT(m_targetNode.isValid(), return );
 
     if (collapsed())
-        m_targetNode.setAuxiliaryData("transition_expanded", true);
+        m_targetNode.setAuxiliaryData(transitionExpandedPropery, true);
     else
-        m_targetNode.removeAuxiliaryData("transition_expanded");
+        m_targetNode.removeAuxiliaryData(transitionExpandedPropery);
 
     invalidateHeight();
 }
@@ -626,12 +606,9 @@ void TransitionEditorBarItem::scrollOffsetChanged()
 }
 
 void TransitionEditorBarItem::paint(QPainter *painter,
-                                    const QStyleOptionGraphicsItem *option,
-                                    QWidget *widget)
+                                    [[maybe_unused]] const QStyleOptionGraphicsItem *option,
+                                    [[maybe_unused]] QWidget *widget)
 {
-    Q_UNUSED(option)
-    Q_UNUSED(widget)
-
     QColor brushColor = Theme::getColor(Theme::QmlDesigner_HighlightColor);
     QColor brushColorSection = Theme::getColor(Theme::QmlDesigner_HighlightColor).darker(120);
     QColor penColor = Theme::getColor(Theme::QmlDesigner_HighlightColor).lighter(140);

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -40,7 +18,7 @@ class TimelineView : public AbstractView
     Q_OBJECT
 
 public:
-    explicit TimelineView(QObject *parent = nullptr);
+    explicit TimelineView(ExternalDependenciesInterface &externalDepoendencies);
     ~TimelineView() override;
     //Abstract View
     WidgetInfo widgetInfo() override;
@@ -63,7 +41,7 @@ public:
     void selectedNodesChanged(const QList<ModelNode> &selectedNodeList,
                               const QList<ModelNode> &lastSelectedNodeList) override;
     void auxiliaryDataChanged(const ModelNode &node,
-                              const PropertyName &name,
+                              AuxiliaryDataKeyView key,
                               const QVariant &data) override;
 
     void propertiesAboutToBeRemoved(const QList<AbstractProperty> &propertyList) override;
@@ -100,7 +78,7 @@ public:
 
 private:
     TimelineWidget *createWidget();
-    TimelineWidget *m_timelineWidget = nullptr;
+    QPointer<TimelineWidget> m_timelineWidget;
     bool hasQtQuickTimelineImport();
     void ensureQtQuickTimelineImport();
 };

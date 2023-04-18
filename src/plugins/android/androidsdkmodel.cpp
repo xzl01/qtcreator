@@ -1,30 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
-#include "androidsdkmodel.h"
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 #include "androidmanager.h"
 #include "androidsdkmanager.h"
+#include "androidsdkmodel.h"
+#include "androidtr.h"
 
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
@@ -49,11 +29,11 @@ AndroidSdkModel::AndroidSdkModel(const AndroidConfig &config, AndroidSdkManager 
       m_sdkManager(sdkManager)
 {
     QTC_CHECK(m_sdkManager);
-    connect(m_sdkManager, &AndroidSdkManager::packageReloadBegin, [this]() {
+    connect(m_sdkManager, &AndroidSdkManager::packageReloadBegin, this, [this] {
         clearContainers();
         beginResetModel();
     });
-    connect(m_sdkManager, &AndroidSdkManager::packageReloadFinished, [this]() {
+    connect(m_sdkManager, &AndroidSdkManager::packageReloadFinished, this, [this] {
         refreshData();
         endResetModel();
     });
@@ -66,13 +46,13 @@ QVariant AndroidSdkModel::headerData(int section, Qt::Orientation orientation, i
     if (role == Qt::DisplayRole) {
         switch (section) {
         case packageNameColumn:
-            data = tr("Package");
+            data = Tr::tr("Package");
             break;
         case packageRevisionColumn:
-            data = tr("Revision");
+            data = Tr::tr("Revision");
             break;
         case apiLevelColumn:
-            data = tr("API");
+            data = Tr::tr("API");
             break;
         default:
             break;
@@ -163,13 +143,15 @@ QVariant AndroidSdkModel::data(const QModelIndex &index, int role) const
         // Top level tools
         if (index.row() == 0) {
             return role == Qt::DisplayRole && index.column() == packageNameColumn ?
-                        QVariant(tr("Tools")) : QVariant();
+                        QVariant(Tr::tr("Tools")) : QVariant();
         }
         // Top level platforms
         const SdkPlatform *platform = m_sdkPlatforms.at(index.row() - 1);
         if (role == Qt::DisplayRole) {
             if (index.column() == packageNameColumn) {
-                QString androidName = AndroidManager::androidNameForApiLevel(platform->apiLevel());
+                const QString androidName = AndroidManager::androidNameForApiLevel(
+                                                platform->apiLevel())
+                                            + platform->extension();
                 if (androidName.startsWith("Android"))
                     return androidName;
                 else
@@ -193,7 +175,7 @@ QVariant AndroidSdkModel::data(const QModelIndex &index, int role) const
         switch (index.column()) {
         case packageNameColumn:
             return p->type() == AndroidSdkPackage::SdkPlatformPackage ?
-                        tr("SDK Platform") : p->displayText();
+                        Tr::tr("SDK Platform") : p->displayText();
         case packageRevisionColumn:
             return p->revision().toString();
         case apiLevelColumn:
@@ -301,7 +283,7 @@ void AndroidSdkModel::selectMissingEssentials()
     }
 
     // Select SDK platform
-    for (const SdkPlatform *platform : qAsConst(m_sdkPlatforms)) {
+    for (const SdkPlatform *platform : std::as_const(m_sdkPlatforms)) {
         if (!platform->installedLocation().isEmpty()) {
             pendingPkgs.removeOne(platform->sdkStylePath());
         } else if (pendingPkgs.contains(platform->sdkStylePath()) &&

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,8 +9,11 @@
 
 #include <utils/aspects.h>
 #include <utils/commandline.h>
+#include <utils/guard.h>
 
 #include <memory>
+
+#include <QDebug>
 
 QT_BEGIN_NAMESPACE
 class QComboBox;
@@ -125,7 +106,6 @@ public:
     void setForced(bool b);
 
     enum class ArgumentFlag {
-        OmitProjectPath = 0x01,
         Expand = 0x02
     };
     Q_DECLARE_FLAGS(ArgumentFlags, ArgumentFlag);
@@ -156,16 +136,8 @@ public:
 
 protected:
     bool fromMap(const QVariantMap &map) override;
-    void processStartupFailed() override;
-    bool processSucceeded(int exitCode, QProcess::ExitStatus status) override;
 
 private:
-    void doCancel() override;
-    void finish(bool success) override;
-
-    void startOneCommand(const Utils::CommandLine &command);
-    void runNextCommand();
-
     // slots for handling buildconfiguration/step signals
     void qtVersionChanged();
     void qmakeBuildConfigChanged();
@@ -193,9 +165,6 @@ private:
     QStringList m_extraParserArgs;
 
     // last values
-    enum class State { IDLE = 0, RUN_QMAKE, RUN_MAKE_QMAKE_ALL, POST_PROCESS };
-    bool m_wasSuccess = true;
-    State m_nextState = State::IDLE;
     bool m_forced = false;
     bool m_needToRunQMake = false; // set in init(), read in run()
 
@@ -204,7 +173,7 @@ private:
     QStringList m_selectedAbis;
     Utils::OutputFormatter *m_outputFormatter = nullptr;
 
-    bool m_ignoreChange = false;
+    Utils::Guard m_ignoreChanges;
 
     QLabel *abisLabel = nullptr;
     Utils::SelectionAspect *m_buildType = nullptr;

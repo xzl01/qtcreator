@@ -1,34 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "edit3dcanvas.h"
 #include "edit3dview.h"
 #include "edit3dwidget.h"
 
-#include "nodehints.h"
-#include "qmlvisualnode.h"
+#include <bindingproperty.h>
+#include <nodemetainfo.h>
+#include <nodelistproperty.h>
+#include <variantproperty.h>
 
 #include <utils/qtcassert.h>
 
@@ -97,6 +77,9 @@ QWidget *Edit3DCanvas::busyIndicator() const
 
 void Edit3DCanvas::mousePressEvent(QMouseEvent *e)
 {
+    if (e->button() == Qt::RightButton && e->modifiers() == Qt::NoModifier)
+        m_parent->view()->startContextMenu(e->pos());
+
     m_parent->view()->sendInputEvent(e);
     QWidget::mousePressEvent(e);
 }
@@ -137,10 +120,8 @@ void Edit3DCanvas::keyReleaseEvent(QKeyEvent *e)
     QWidget::keyReleaseEvent(e);
 }
 
-void Edit3DCanvas::paintEvent(QPaintEvent *e)
+void Edit3DCanvas::paintEvent([[maybe_unused]] QPaintEvent *e)
 {
-    Q_UNUSED(e)
-
     QWidget::paintEvent(e);
 
     QPainter painter(this);
@@ -157,38 +138,6 @@ void Edit3DCanvas::resizeEvent(QResizeEvent *e)
 {
     positionBusyInidicator();
     m_parent->view()->edit3DViewResized(e->size());
-}
-
-void Edit3DCanvas::dragEnterEvent(QDragEnterEvent *e)
-{
-    // Block all drags if scene root node is locked
-    ModelNode node;
-    if (m_parent->view()->hasModelNodeForInternalId(m_activeScene))
-        node = m_parent->view()->modelNodeForInternalId(m_activeScene);
-
-    // Allow drop when there is no valid active scene, as the drop goes under the root node of
-    // the document in that case.
-    if (!node.isValid() || !ModelNode::isThisOrAncestorLocked(node)) {
-        QByteArray data = e->mimeData()->data(QStringLiteral("application/vnd.bauhaus.itemlibraryinfo"));
-        if (!data.isEmpty()) {
-            QDataStream stream(data);
-            stream >> m_itemLibraryEntry;
-            if (NodeHints::fromItemLibraryEntry(m_itemLibraryEntry).canBeDroppedInView3D())
-                e->accept();
-        }
-    }
-}
-
-void Edit3DCanvas::dropEvent(QDropEvent *e)
-{
-    Q_UNUSED(e)
-
-    auto modelNode = QmlVisualNode::createQml3DNode(m_parent->view(), m_itemLibraryEntry, m_activeScene).modelNode();
-
-    if (modelNode.isValid()) {
-        e->accept();
-        m_parent->view()->setSelectedModelNode(modelNode);
-    }
 }
 
 void Edit3DCanvas::focusOutEvent(QFocusEvent *focusEvent)

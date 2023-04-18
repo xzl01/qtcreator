@@ -1,32 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtQuick 2.1
-import QtQuick.Controls 2.0
+import QtQuick
+import QtQuick.Controls
 
-import QtCreator.Tracing 1.0
+import QtCreator.Tracing
 
 Item {
     id: selectionRangeDetails
@@ -47,8 +25,8 @@ Item {
     // keep inside view
     Connections {
         target: selectionRangeDetails.parent
-        function onWidthChanged() { fitInView(); }
-        function onHeightChanged() { fitInView(); }
+        function onWidthChanged() { selectionRangeDetails.fitInView(); }
+        function onHeightChanged() { selectionRangeDetails.fitInView(); }
     }
 
     function fitInView() {
@@ -76,7 +54,7 @@ Item {
     //title
     TimelineText {
         id: typeTitle
-        text: "  "+qsTr("Selection")
+        text: "  "+qsTranslate("QtC::Tracing", "Selection")
         font.bold: true
         height: 20
         verticalAlignment: Text.AlignVCenter
@@ -100,15 +78,18 @@ Item {
             Repeater {
                 id: details
                 property var contents: [
-                    qsTr("Start") + ":",
-                    TimeFormatter.format(startTime, referenceDuration),
-                    (qsTr("End") + ":"),
-                    TimeFormatter.format(endTime, referenceDuration),
-                    (qsTr("Duration") + ":"),
-                    TimeFormatter.format(duration, referenceDuration)
+                    qsTranslate("QtC::Tracing", "Start") + ":",
+                    TimeFormatter.format(selectionRangeDetails.startTime,
+                                         selectionRangeDetails.referenceDuration),
+                    (qsTranslate("QtC::Tracing", "End") + ":"),
+                    TimeFormatter.format(selectionRangeDetails.endTime,
+                                         selectionRangeDetails.referenceDuration),
+                    (qsTranslate("QtC::Tracing", "Duration") + ":"),
+                    TimeFormatter.format(selectionRangeDetails.duration,
+                                         selectionRangeDetails.referenceDuration)
                 ]
 
-                model: showDuration ? 6 : 2
+                model: selectionRangeDetails.showDuration ? 6 : 2
                 Detail {
                     isLabel: index % 2 === 0
                     text: details.contents[index]
@@ -134,6 +115,6 @@ Item {
         anchors.top: selectionRangeDetails.top
         implicitHeight: typeTitle.height
         onClicked: selectionRangeDetails.close()
-        ToolTip.text: qsTr("Close")
+        ToolTip.text: qsTranslate("QtC::Tracing", "Close")
     }
 }

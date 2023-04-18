@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelinesettingsmodel.h"
 
@@ -31,7 +9,6 @@
 #include <variantproperty.h>
 #include <qmlvisualnode.h>
 
-#include <utils/optional.h>
 #include <utils/qtcassert.h>
 
 #include <QComboBox>
@@ -41,9 +18,11 @@
 #include <QStyledItemDelegate>
 #include <QTimer>
 
+#include <optional>
+
 namespace QmlDesigner {
 
-static void setDataForFixedFrame(QStandardItem *item, Utils::optional<int> fixedValue)
+static void setDataForFixedFrame(QStandardItem *item, std::optional<int> fixedValue)
 {
     if (fixedValue)
         item->setData(fixedValue.value(), Qt::EditRole);
@@ -148,7 +127,7 @@ QWidget *TimelineEditorDelegate::createEditor(QWidget *parent,
     }
 
     if (comboBox) {
-        connect(comboBox, QOverload<int>::of(&QComboBox::activated), this, [=]() {
+        connect(comboBox, &QComboBox::activated, this, [=] {
             auto delegate = const_cast<TimelineEditorDelegate *>(this);
             emit delegate->commitData(comboBox);
         });
@@ -194,7 +173,7 @@ void TimelineSettingsModel::setupDelegates(QAbstractItemView *view)
     view->setItemDelegate(new TimelineEditorDelegate);
 }
 
-static Utils::optional<int> propertyValueForState(const ModelNode &modelNode,
+static std::optional<int> propertyValueForState(const ModelNode &modelNode,
                                  QmlModelState state,
                                  const PropertyName &propertyName)
 {
@@ -229,9 +208,9 @@ void TimelineSettingsModel::addState(const ModelNode &state)
     QList<QStandardItem *> items;
 
     QmlTimeline timeline = timelineView()->timelineForState(state);
-    const QString timelineId = timeline.isValid() ? timeline.modelNode().id() : QString("");
+    const QString timelineId = timeline.modelNode().id();
     ModelNode animation = animationForTimelineAndState(timeline, state);
-    const QString animationId = animation.isValid() ? animation.id() : QString("");
+    const QString animationId = animation.id();
 
     QStandardItem *stateItem = createStateItem(state);
     auto *timelinelItem = new QStandardItem(timelineId);
@@ -339,34 +318,24 @@ void TimelineSettingsModel::updateAnimation(int row)
         ModelNode oldAnimation = animationForTimelineAndState(oldTimeline, modelState);
 
         if (modelState.isBaseState()) {
-            if (oldAnimation.isValid())
-                oldAnimation.variantProperty("running").setValue(false);
-            if (animation.isValid())
-                animation.variantProperty("running").setValue(true);
-            if (timeline.isValid() && timeline.modelNode().hasProperty("currentFrame"))
-                timeline.modelNode().removeProperty("currentFrame");
+            oldAnimation.variantProperty("running").setValue(false);
+            animation.variantProperty("running").setValue(true);
+            timeline.modelNode().removeProperty("currentFrame");
         } else {
-            if (oldAnimation.isValid() && modelState.affectsModelNode(oldAnimation)) {
+            if (modelState.affectsModelNode(oldAnimation)) {
                 QmlPropertyChanges propertyChanges(modelState.propertyChanges(oldAnimation));
-                if (propertyChanges.isValid() && propertyChanges.modelNode().hasProperty("running"))
-                    propertyChanges.modelNode().removeProperty("running");
+                propertyChanges.modelNode().removeProperty("running");
             }
 
-            ModelNode baseAnimation(animationForRow(0));
-
-            if (baseAnimation.isValid()) {
+            if (ModelNode baseAnimation = animationForRow(0)) {
                 QmlPropertyChanges propertyChanges(modelState.propertyChanges(baseAnimation));
-                if (propertyChanges.isValid()) {
-                    propertyChanges.modelNode().variantProperty("running").setValue(false);
-                    if (propertyChanges.modelNode().hasProperty("currentFrame"))
-                        propertyChanges.modelNode().removeProperty("currentFrame");
-                }
+                propertyChanges.modelNode().variantProperty("running").setValue(false);
+                propertyChanges.modelNode().removeProperty("currentFrame");
             }
 
             if (animation.isValid()) { /* If animation is invalid 'none' was selected */
                 QmlPropertyChanges propertyChanges(modelState.propertyChanges(animation));
-                if (propertyChanges.isValid())
-                    propertyChanges.modelNode().variantProperty("running").setValue(true);
+                propertyChanges.modelNode().variantProperty("running").setValue(true);
             }
         }
     });
@@ -384,20 +353,17 @@ void TimelineSettingsModel::updateFixedFrameRow(int row)
         int fixedFrame = fixedFrameForRow(row);
 
         if (modelState.isBaseState()) {
-            if (animation.isValid())
-                animation.variantProperty("running").setValue(false);
-            if (timeline.isValid())
-                timeline.modelNode().variantProperty("currentFrame").setValue(fixedFrame);
+            animation.variantProperty("running").setValue(false);
+            timeline.modelNode().variantProperty("currentFrame").setValue(fixedFrame);
         } else {
-            if (animation.isValid() && modelState.affectsModelNode(animation)) {
+            if (modelState.affectsModelNode(animation)) {
                 QmlPropertyChanges propertyChanges(modelState.propertyChanges(animation));
-                if (propertyChanges.isValid() && propertyChanges.modelNode().hasProperty("running"))
+                if (propertyChanges.modelNode().hasProperty("running"))
                     propertyChanges.modelNode().removeProperty("running");
             }
 
             QmlPropertyChanges propertyChanges(modelState.propertyChanges(timeline));
-            if (propertyChanges.isValid())
-                propertyChanges.modelNode().variantProperty("currentFrame").setValue(fixedFrame);
+            propertyChanges.modelNode().variantProperty("currentFrame").setValue(fixedFrame);
         }
 
     });
@@ -415,10 +381,8 @@ void TimelineSettingsModel::resetRow(int row)
     QmlTimeline timeline(timelineForRow(row));
     ModelNode animation = animationForTimelineAndState(timeline, modelState);
 
-    if (animationItem) {
-        const QString animationId = animation.isValid() ? animation.id() : QString();
-        animationItem->setText(animationId);
-    }
+    if (animationItem)
+        animationItem->setText(animation.id());
 
     if (fixedFrameItem) {
         auto fixedValue = propertyValueForState(timeline, modelState, "currentFrame");

@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include <coreplugin/actionmanager/command_p.h>
-#include <coreplugin/actionmanager/actioncontainer_p.h>
 #include <coreplugin/icontext.h>
 
 #include <QMap>
@@ -34,37 +10,40 @@
 #include <QMultiHash>
 #include <QTimer>
 
+#include <memory>
+
 namespace Core {
+
+class Command;
 
 namespace Internal {
 
-class Action;
 class ActionContainerPrivate;
+class PresentationModeHandler;
 
 class ActionManagerPrivate : public QObject
 {
     Q_OBJECT
 
 public:
-    using IdCmdMap = QHash<Utils::Id, Action *>;
+    using IdCmdMap = QHash<Utils::Id, Command *>;
     using IdContainerMap = QHash<Utils::Id, ActionContainerPrivate *>;
 
+    ActionManagerPrivate();
     ~ActionManagerPrivate() override;
 
     void setContext(const Context &context);
     bool hasContext(int context) const;
 
     void saveSettings();
-    static void saveSettings(Action *cmd);
+    static void saveSettings(Command *cmd);
 
-    static void showShortcutPopup(const QString &shortcut);
     bool hasContext(const Context &context) const;
-    Action *overridableAction(Utils::Id id);
+    Command *overridableAction(Utils::Id id);
 
-    static void readUserSettings(Utils::Id id, Action *cmd);
+    static void readUserSettings(Utils::Id id, Command *cmd);
 
-    void containerDestroyed();
-    void actionTriggered();
+    void containerDestroyed(QObject *sender);
 
     IdCmdMap m_idCmdMap;
 
@@ -72,7 +51,7 @@ public:
 
     Context m_context;
 
-    bool m_presentationModeEnabled = false;
+    std::unique_ptr<PresentationModeHandler> m_presentationModeHandler;
 };
 
 } // namespace Internal

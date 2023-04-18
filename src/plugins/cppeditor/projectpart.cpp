@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectpart.h"
 
@@ -98,7 +76,7 @@ static HeaderPaths getHeaderPaths(const RawProjectPart &rpp,
     // Prevent duplicate include paths.
     // TODO: Do this once when finalizing the raw project part?
     std::set<QString> seenPaths;
-    for (const HeaderPath &p : qAsConst(rpp.headerPaths)) {
+    for (const HeaderPath &p : std::as_const(rpp.headerPaths)) {
         const QString cleanPath = QDir::cleanPath(p.path);
         if (seenPaths.insert(cleanPath).second)
             headerPaths << HeaderPath(cleanPath, p.type);
@@ -108,8 +86,11 @@ static HeaderPaths getHeaderPaths(const RawProjectPart &rpp,
         const HeaderPaths builtInHeaderPaths = tcInfo.headerPathsRunner(
                     flags.commandLineFlags, tcInfo.sysRootPath, tcInfo.targetTriple);
         for (const HeaderPath &header : builtInHeaderPaths) {
-            if (seenPaths.insert(header.path).second)
-                headerPaths.push_back(HeaderPath{header.path, header.type});
+            // Prevent projects from adding built-in paths as user paths.
+            erase_if(headerPaths, [&header](const HeaderPath &existing) {
+                return header.path == existing.path;
+            });
+            headerPaths.push_back(HeaderPath{header.path, header.type});
         }
     }
     return headerPaths;
@@ -127,6 +108,11 @@ static ToolChain::MacroInspectionReport getToolchainMacros(
         report.languageVersion = Utils::LanguageVersion::LatestCxx;
     }
     return report;
+}
+
+static QStringList getIncludedFiles(const RawProjectPart &rpp, const RawProjectPartFlags &flags)
+{
+    return !rpp.includedFiles.isEmpty() ? rpp.includedFiles : flags.includedFiles;
 }
 
 ProjectPart::ProjectPart(const Utils::FilePath &topLevelProject,
@@ -148,7 +134,7 @@ ProjectPart::ProjectPart(const Utils::FilePath &topLevelProject,
       languageExtensions(languageExtensions | flags.languageExtensions),
       qtVersion(rpp.qtVersion),
       files(files),
-      includedFiles(rpp.includedFiles),
+      includedFiles(getIncludedFiles(rpp, flags)),
       precompiledHeaders(rpp.precompiledHeaders),
       headerPaths(getHeaderPaths(rpp, flags, tcInfo)),
       projectMacros(getProjectMacros(rpp)),
@@ -159,8 +145,7 @@ ProjectPart::ProjectPart(const Utils::FilePath &topLevelProject,
       isMsvc2015Toolchain(tcInfo.isMsvc2015ToolChain),
       toolChainTargetTriple(tcInfo.targetTriple),
       targetTripleIsAuthoritative(tcInfo.targetTripleIsAuthoritative),
-      toolChainWordWidth(tcInfo.wordWidth == 64 ? ProjectPart::WordWidth64Bit
-                                                : ProjectPart::WordWidth32Bit),
+      toolChainAbi(tcInfo.abi),
       toolChainInstallDir(tcInfo.installDir),
       compilerFilePath(tcInfo.compilerFilePath),
       warningFlags(flags.warningFlags),
@@ -178,6 +163,7 @@ CPlusPlus::LanguageFeatures ProjectPart::deriveLanguageFeatures() const
     CPlusPlus::LanguageFeatures features;
     features.cxx11Enabled = languageVersion >= Utils::LanguageVersion::CXX11;
     features.cxx14Enabled = languageVersion >= Utils::LanguageVersion::CXX14;
+    features.cxx20Enabled = languageVersion >= Utils::LanguageVersion::CXX20;
     features.cxxEnabled = hasCxx;
     features.c99Enabled = languageVersion >= Utils::LanguageVersion::C99;
     features.objCEnabled = languageExtensions.testFlag(Utils::LanguageExtension::ObjectiveC);

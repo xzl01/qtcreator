@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -101,6 +79,7 @@ typedef am_res_t (MDEV_API *USBMuxConnectByPortPtr)(unsigned int, int, ServiceSo
 // secure Api's
 typedef am_res_t (MDEV_API *AMDeviceSecureStartServicePtr)(AMDeviceRef, CFStringRef, unsigned int *, ServiceConnRef *);
 typedef int (MDEV_API *AMDeviceSecureTransferPathPtr)(int, AMDeviceRef, CFURLRef, CFDictionaryRef, AMDeviceSecureInstallApplicationCallback, int);
+typedef int (MDEV_API *AMDeviceSecureInstallApplicationBundlePtr)(AMDeviceRef, CFURLRef, CFDictionaryRef, AMDeviceSecureInstallApplicationCallback, int zero);
 typedef int (MDEV_API *AMDeviceSecureInstallApplicationPtr)(int, AMDeviceRef, CFURLRef, CFDictionaryRef, AMDeviceSecureInstallApplicationCallback, int);
 typedef int (MDEV_API *AMDServiceConnectionGetSocketPtr)(ServiceConnRef);
 
@@ -158,6 +137,13 @@ public:
     int deviceSecureTransferApplicationPath(int, AMDeviceRef, CFURLRef,
                                             CFDictionaryRef,
                                             AMDeviceSecureInstallApplicationCallback callback, int);
+
+    int deviceSecureInstallApplicationBundle(int zero,
+                                             AMDeviceRef device,
+                                             CFURLRef url,
+                                             CFDictionaryRef options,
+                                             AMDeviceSecureInstallApplicationCallback callback);
+
     int deviceSecureInstallApplication(int zero, AMDeviceRef device, CFURLRef url,
                                        CFDictionaryRef options,
                                        AMDeviceSecureInstallApplicationCallback callback, int arg);
@@ -172,8 +158,10 @@ public:
     QStringList m_errors;
 
 private:
-    QLibrary lib;
-    QList<QLibrary *> deps;
+    template<typename T> void resolveFunction(const char *functionName, T &functionPtr);
+
+private:
+    QLibrary m_mobileDeviceLib;
     AMDSetLogLevelPtr m_AMDSetLogLevel;
     AMDeviceNotificationSubscribePtr m_AMDeviceNotificationSubscribe;
     AMDeviceNotificationUnsubscribePtr m_AMDeviceNotificationUnsubscribe;
@@ -191,6 +179,7 @@ private:
     AMDeviceMountImagePtr m_AMDeviceMountImage;
     AMDeviceSecureStartServicePtr m_AMDeviceSecureStartService;
     AMDeviceSecureTransferPathPtr m_AMDeviceSecureTransferPath;
+    AMDeviceSecureInstallApplicationBundlePtr m_AMDeviceSecureInstallApplicationBundle;
     AMDeviceSecureInstallApplicationPtr m_AMDeviceSecureInstallApplication;
     AMDServiceConnectionGetSocketPtr m_AMDServiceConnectionGetSocket;
     AMDServiceConnectionSendPtr m_AMDServiceConnectionSend;

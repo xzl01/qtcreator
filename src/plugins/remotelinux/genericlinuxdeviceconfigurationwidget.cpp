@@ -1,146 +1,201 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "genericlinuxdeviceconfigurationwidget.h"
-#include "ui_genericlinuxdeviceconfigurationwidget.h"
 
-#include <coreplugin/coreconstants.h>
-#include <utils/portlist.h>
+#include "remotelinuxtr.h"
+#include "sshkeycreationdialog.h"
+
+#include <projectexplorer/devicesupport/idevice.h>
+#include <projectexplorer/devicesupport/sshparameters.h>
+
 #include <utils/fancylineedit.h>
+#include <utils/layoutbuilder.h>
+#include <utils/pathchooser.h>
+#include <utils/portlist.h>
 #include <utils/utilsicons.h>
-#include <ssh/sshconnection.h>
-#include <ssh/sshkeycreationdialog.h>
+
+#include <QCheckBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QRadioButton>
+#include <QSpacerItem>
+#include <QSpinBox>
 
 using namespace ProjectExplorer;
-using namespace RemoteLinux;
-using namespace QSsh;
 using namespace Utils;
 
+namespace RemoteLinux::Internal {
+
 GenericLinuxDeviceConfigurationWidget::GenericLinuxDeviceConfigurationWidget(
-        const IDevice::Ptr &deviceConfig) :
-    IDeviceWidget(deviceConfig),
-    m_ui(new Ui::GenericLinuxDeviceConfigurationWidget)
+        const IDevice::Ptr &device) :
+    IDeviceWidget(device)
 {
-    m_ui->setupUi(this);
-    connect(m_ui->hostLineEdit, &QLineEdit::editingFinished,
+    resize(556, 309);
+
+    m_defaultAuthButton = new QRadioButton(Tr::tr("Default"), this);
+
+    m_keyButton = new QRadioButton(Tr::tr("Specific &key"));
+
+    m_hostLineEdit = new QLineEdit(this);
+    m_hostLineEdit->setPlaceholderText(Tr::tr("IP or host name of the device"));
+
+    m_sshPortSpinBox = new QSpinBox(this);
+    m_sshPortSpinBox->setMinimum(0);
+    m_sshPortSpinBox->setMaximum(65535);
+    m_sshPortSpinBox->setValue(22);
+
+    m_hostKeyCheckBox = new QCheckBox(Tr::tr("&Check host key"));
+
+    m_portsLineEdit = new QLineEdit(this);
+    m_portsLineEdit->setToolTip(Tr::tr("You can enter lists and ranges like this: '1024,1026-1028,1030'."));
+
+    m_portsWarningLabel = new QLabel(this);
+
+    m_timeoutSpinBox = new QSpinBox(this);
+    m_timeoutSpinBox->setMaximum(10000);
+    m_timeoutSpinBox->setSingleStep(10);
+    m_timeoutSpinBox->setValue(1000);
+    m_timeoutSpinBox->setSuffix(Tr::tr("s"));
+
+    m_userLineEdit = new QLineEdit(this);
+
+    m_keyLabel = new QLabel(Tr::tr("Private key file:"));
+
+    m_keyFileLineEdit = new PathChooser(this);
+
+    auto createKeyButton = new QPushButton(Tr::tr("Create New..."));
+
+    m_machineTypeValueLabel = new QLabel(this);
+
+    const QString hint = Tr::tr("Leave empty to look up executable in $PATH");
+    m_gdbServerLineEdit = new PathChooser(this);
+    m_gdbServerLineEdit->setExpectedKind(PathChooser::ExistingCommand);
+    m_gdbServerLineEdit->setPlaceholderText(hint);
+    m_gdbServerLineEdit->setToolTip(hint);
+
+    m_qmlRuntimeLineEdit = new PathChooser(this);
+    m_qmlRuntimeLineEdit->setExpectedKind(PathChooser::ExistingCommand);
+    m_qmlRuntimeLineEdit->setPlaceholderText(hint);
+    m_qmlRuntimeLineEdit->setToolTip(hint);
+
+    auto sshPortLabel = new QLabel(Tr::tr("&SSH port:"));
+    sshPortLabel->setBuddy(m_sshPortSpinBox);
+
+    using namespace Layouting;
+
+    Form {
+        Tr::tr("Machine type:"), m_machineTypeValueLabel, st, br,
+        Tr::tr("Authentication type:"), m_defaultAuthButton, m_keyButton, st, br,
+        Tr::tr("&Host name:"), m_hostLineEdit, sshPortLabel, m_sshPortSpinBox, m_hostKeyCheckBox, st, br,
+        Tr::tr("Free ports:"), m_portsLineEdit, m_portsWarningLabel, Tr::tr("Timeout:"), m_timeoutSpinBox, st, br,
+        Tr::tr("&Username:"), m_userLineEdit, st, br,
+        m_keyLabel, m_keyFileLineEdit, createKeyButton, br,
+        Tr::tr("GDB server executable:"), m_gdbServerLineEdit, br,
+        Tr::tr("QML runtime executable:"), m_qmlRuntimeLineEdit, br
+    }.attachTo(this);
+
+    connect(m_hostLineEdit, &QLineEdit::editingFinished,
             this, &GenericLinuxDeviceConfigurationWidget::hostNameEditingFinished);
-    connect(m_ui->userLineEdit, &QLineEdit::editingFinished,
+    connect(m_userLineEdit, &QLineEdit::editingFinished,
             this, &GenericLinuxDeviceConfigurationWidget::userNameEditingFinished);
-    connect(m_ui->keyFileLineEdit, &PathChooser::editingFinished,
+    connect(m_keyFileLineEdit, &PathChooser::editingFinished,
             this, &GenericLinuxDeviceConfigurationWidget::keyFileEditingFinished);
-    connect(m_ui->keyFileLineEdit, &PathChooser::browsingFinished,
+    connect(m_keyFileLineEdit, &PathChooser::browsingFinished,
             this, &GenericLinuxDeviceConfigurationWidget::keyFileEditingFinished);
-    connect(m_ui->keyButton, &QAbstractButton::toggled,
+    connect(m_keyButton, &QAbstractButton::toggled,
             this, &GenericLinuxDeviceConfigurationWidget::authenticationTypeChanged);
-    connect(m_ui->timeoutSpinBox, &QAbstractSpinBox::editingFinished,
+    connect(m_timeoutSpinBox, &QAbstractSpinBox::editingFinished,
             this, &GenericLinuxDeviceConfigurationWidget::timeoutEditingFinished);
-    connect(m_ui->timeoutSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+    connect(m_timeoutSpinBox, &QSpinBox::valueChanged,
             this, &GenericLinuxDeviceConfigurationWidget::timeoutEditingFinished);
-    connect(m_ui->sshPortSpinBox, &QAbstractSpinBox::editingFinished,
+    connect(m_sshPortSpinBox, &QAbstractSpinBox::editingFinished,
             this, &GenericLinuxDeviceConfigurationWidget::sshPortEditingFinished);
-    connect(m_ui->sshPortSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+    connect(m_sshPortSpinBox, &QSpinBox::valueChanged,
             this, &GenericLinuxDeviceConfigurationWidget::sshPortEditingFinished);
-    connect(m_ui->portsLineEdit, &QLineEdit::editingFinished,
+    connect(m_portsLineEdit, &QLineEdit::editingFinished,
             this, &GenericLinuxDeviceConfigurationWidget::handleFreePortsChanged);
-    connect(m_ui->createKeyButton, &QAbstractButton::clicked,
+    connect(createKeyButton, &QAbstractButton::clicked,
             this, &GenericLinuxDeviceConfigurationWidget::createNewKey);
-    connect(m_ui->gdbServerLineEdit, &QLineEdit::editingFinished,
+    connect(m_gdbServerLineEdit, &PathChooser::editingFinished,
             this, &GenericLinuxDeviceConfigurationWidget::gdbServerEditingFinished);
-    connect(m_ui->hostKeyCheckBox, &QCheckBox::toggled,
+    connect(m_qmlRuntimeLineEdit, &PathChooser::editingFinished,
+            this, &GenericLinuxDeviceConfigurationWidget::qmlRuntimeEditingFinished);
+    connect(m_hostKeyCheckBox, &QCheckBox::toggled,
             this, &GenericLinuxDeviceConfigurationWidget::hostKeyCheckingChanged);
-    m_ui->gdbServerLineEdit->setToolTip(m_ui->gdbServerLineEdit->placeholderText());
 
     initGui();
 }
 
-GenericLinuxDeviceConfigurationWidget::~GenericLinuxDeviceConfigurationWidget()
-{
-    delete m_ui;
-}
+GenericLinuxDeviceConfigurationWidget::~GenericLinuxDeviceConfigurationWidget() = default;
 
 void GenericLinuxDeviceConfigurationWidget::authenticationTypeChanged()
 {
-    SshConnectionParameters sshParams = device()->sshParameters();
-    const bool useKeyFile = m_ui->keyButton->isChecked();
+    SshParameters sshParams = device()->sshParameters();
+    const bool useKeyFile = m_keyButton->isChecked();
     sshParams.authenticationType = useKeyFile
-            ? SshConnectionParameters::AuthenticationTypeSpecificKey
-            : SshConnectionParameters::AuthenticationTypeAll;
+            ? SshParameters::AuthenticationTypeSpecificKey
+            : SshParameters::AuthenticationTypeAll;
     device()->setSshParameters(sshParams);
-    m_ui->keyFileLineEdit->setEnabled(useKeyFile);
-    m_ui->keyLabel->setEnabled(useKeyFile);
+    m_keyFileLineEdit->setEnabled(useKeyFile);
+    m_keyLabel->setEnabled(useKeyFile);
 }
 
 void GenericLinuxDeviceConfigurationWidget::hostNameEditingFinished()
 {
-    SshConnectionParameters sshParams = device()->sshParameters();
-    sshParams.setHost(m_ui->hostLineEdit->text().trimmed());
+    SshParameters sshParams = device()->sshParameters();
+    sshParams.setHost(m_hostLineEdit->text().trimmed());
     device()->setSshParameters(sshParams);
 }
 
 void GenericLinuxDeviceConfigurationWidget::sshPortEditingFinished()
 {
-    SshConnectionParameters sshParams = device()->sshParameters();
-    sshParams.setPort(m_ui->sshPortSpinBox->value());
+    SshParameters sshParams = device()->sshParameters();
+    sshParams.setPort(m_sshPortSpinBox->value());
     device()->setSshParameters(sshParams);
 }
 
 void GenericLinuxDeviceConfigurationWidget::timeoutEditingFinished()
 {
-    SshConnectionParameters sshParams = device()->sshParameters();
-    sshParams.timeout = m_ui->timeoutSpinBox->value();
+    SshParameters sshParams = device()->sshParameters();
+    sshParams.timeout = m_timeoutSpinBox->value();
     device()->setSshParameters(sshParams);
 }
 
 void GenericLinuxDeviceConfigurationWidget::userNameEditingFinished()
 {
-    SshConnectionParameters sshParams = device()->sshParameters();
-    sshParams.setUserName(m_ui->userLineEdit->text());
+    SshParameters sshParams = device()->sshParameters();
+    sshParams.setUserName(m_userLineEdit->text());
     device()->setSshParameters(sshParams);
 }
 
 void GenericLinuxDeviceConfigurationWidget::keyFileEditingFinished()
 {
-    SshConnectionParameters sshParams = device()->sshParameters();
-    sshParams.privateKeyFile = m_ui->keyFileLineEdit->filePath();
+    SshParameters sshParams = device()->sshParameters();
+    sshParams.privateKeyFile = m_keyFileLineEdit->filePath();
     device()->setSshParameters(sshParams);
 }
 
 void GenericLinuxDeviceConfigurationWidget::gdbServerEditingFinished()
 {
-    device()->setDebugServerPath(FilePath::fromString(m_ui->gdbServerLineEdit->text()));
+    device()->setDebugServerPath(m_gdbServerLineEdit->filePath());
+}
+
+void GenericLinuxDeviceConfigurationWidget::qmlRuntimeEditingFinished()
+{
+    device()->setQmlRunCommand(m_qmlRuntimeLineEdit->filePath());
 }
 
 void GenericLinuxDeviceConfigurationWidget::handleFreePortsChanged()
 {
-    device()->setFreePorts(PortList::fromString(m_ui->portsLineEdit->text()));
+    device()->setFreePorts(PortList::fromString(m_portsLineEdit->text()));
     updatePortsWarningLabel();
 }
 
 void GenericLinuxDeviceConfigurationWidget::setPrivateKey(const FilePath &path)
 {
-    m_ui->keyFileLineEdit->setFilePath(path);
+    m_keyFileLineEdit->setFilePath(path);
     keyFileEditingFinished();
 }
 
@@ -153,7 +208,7 @@ void GenericLinuxDeviceConfigurationWidget::createNewKey()
 
 void GenericLinuxDeviceConfigurationWidget::hostKeyCheckingChanged(bool doCheck)
 {
-    SshConnectionParameters sshParams = device()->sshParameters();
+    SshParameters sshParams = device()->sshParameters();
     sshParams.hostKeyCheckingMode
             = doCheck ? SshHostKeyCheckingAllowNoMatch : SshHostKeyCheckingNone;
     device()->setSshParameters(sshParams);
@@ -168,50 +223,55 @@ void GenericLinuxDeviceConfigurationWidget::updateDeviceFromUi()
     keyFileEditingFinished();
     handleFreePortsChanged();
     gdbServerEditingFinished();
+    qmlRuntimeEditingFinished();
 }
 
 void GenericLinuxDeviceConfigurationWidget::updatePortsWarningLabel()
 {
-    m_ui->portsWarningLabel->setVisible(!device()->freePorts().hasMore());
+    m_portsWarningLabel->setVisible(!device()->freePorts().hasMore());
 }
 
 void GenericLinuxDeviceConfigurationWidget::initGui()
 {
     if (device()->machineType() == IDevice::Hardware)
-        m_ui->machineTypeValueLabel->setText(tr("Physical Device"));
+        m_machineTypeValueLabel->setText(Tr::tr("Physical Device"));
     else
-        m_ui->machineTypeValueLabel->setText(tr("Emulator"));
-    m_ui->portsWarningLabel->setPixmap(Utils::Icons::CRITICAL.pixmap());
-    m_ui->portsWarningLabel->setToolTip(QLatin1String("<font color=\"red\">")
-        + tr("You will need at least one port.") + QLatin1String("</font>"));
-    m_ui->keyFileLineEdit->setExpectedKind(PathChooser::File);
-    m_ui->keyFileLineEdit->setHistoryCompleter(QLatin1String("Ssh.KeyFile.History"));
-    m_ui->keyFileLineEdit->lineEdit()->setMinimumWidth(0);
+        m_machineTypeValueLabel->setText(Tr::tr("Emulator"));
+    m_portsWarningLabel->setPixmap(Utils::Icons::CRITICAL.pixmap());
+    m_portsWarningLabel->setToolTip(QLatin1String("<font color=\"red\">")
+        + Tr::tr("You will need at least one port.") + QLatin1String("</font>"));
+    m_keyFileLineEdit->setExpectedKind(PathChooser::File);
+    m_keyFileLineEdit->setHistoryCompleter(QLatin1String("Ssh.KeyFile.History"));
+    m_keyFileLineEdit->lineEdit()->setMinimumWidth(0);
     QRegularExpressionValidator * const portsValidator
         = new QRegularExpressionValidator(QRegularExpression(PortList::regularExpression()), this);
-    m_ui->portsLineEdit->setValidator(portsValidator);
+    m_portsLineEdit->setValidator(portsValidator);
 
-    const SshConnectionParameters &sshParams = device()->sshParameters();
+    const SshParameters &sshParams = device()->sshParameters();
 
     switch (sshParams.authenticationType) {
-    case SshConnectionParameters::AuthenticationTypeSpecificKey:
-        m_ui->keyButton->setChecked(true);
+    case SshParameters::AuthenticationTypeSpecificKey:
+        m_keyButton->setChecked(true);
         break;
-    case SshConnectionParameters::AuthenticationTypeAll:
-        m_ui->defaultAuthButton->setChecked(true);
+    case SshParameters::AuthenticationTypeAll:
+        m_defaultAuthButton->setChecked(true);
         break;
     }
-    m_ui->timeoutSpinBox->setValue(sshParams.timeout);
-    m_ui->hostLineEdit->setEnabled(!device()->isAutoDetected());
-    m_ui->sshPortSpinBox->setEnabled(!device()->isAutoDetected());
-    m_ui->hostKeyCheckBox->setChecked(sshParams.hostKeyCheckingMode != SshHostKeyCheckingNone);
+    m_timeoutSpinBox->setValue(sshParams.timeout);
+    m_hostLineEdit->setEnabled(!device()->isAutoDetected());
+    m_sshPortSpinBox->setEnabled(!device()->isAutoDetected());
+    m_hostKeyCheckBox->setChecked(sshParams.hostKeyCheckingMode != SshHostKeyCheckingNone);
 
-    m_ui->hostLineEdit->setText(sshParams.host());
-    m_ui->sshPortSpinBox->setValue(sshParams.port());
-    m_ui->portsLineEdit->setText(device()->freePorts().toString());
-    m_ui->timeoutSpinBox->setValue(sshParams.timeout);
-    m_ui->userLineEdit->setText(sshParams.userName());
-    m_ui->keyFileLineEdit->setFilePath(sshParams.privateKeyFile);
-    m_ui->gdbServerLineEdit->setText(device()->debugServerPath().toString());
+    m_hostLineEdit->setText(sshParams.host());
+    m_sshPortSpinBox->setValue(sshParams.port());
+    m_portsLineEdit->setText(device()->freePorts().toString());
+    m_timeoutSpinBox->setValue(sshParams.timeout);
+    m_userLineEdit->setText(sshParams.userName());
+    m_keyFileLineEdit->setFilePath(sshParams.privateKeyFile);
+    m_gdbServerLineEdit->setFilePath(device()->debugServerPath());
+    m_qmlRuntimeLineEdit->setFilePath(device()->qmlRunCommand());
+
     updatePortsWarningLabel();
 }
+
+} // RemoteLinux::Internal

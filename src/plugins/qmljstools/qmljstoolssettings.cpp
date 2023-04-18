@@ -1,34 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "qmljstoolssettings.h"
-#include "qmljstoolsconstants.h"
+#include "qmljscodestylepreferences.h"
 #include "qmljscodestylepreferencesfactory.h"
+#include "qmljstoolsconstants.h"
+#include "qmljstoolssettings.h"
+#include "qmljstoolstr.h"
 
 #include <texteditor/texteditorsettings.h>
-#include <texteditor/simplecodestylepreferences.h>
 #include <texteditor/tabsettings.h>
 #include <texteditor/codestylepool.h>
 
@@ -44,7 +23,7 @@ namespace QmlJSTools {
 
 const char idKey[] = "QmlJSGlobal";
 
-static SimpleCodeStylePreferences *m_globalCodeStyle = nullptr;
+static QmlJSCodeStylePreferences *m_globalCodeStyle = nullptr;
 
 QmlJSToolsSettings::QmlJSToolsSettings()
 {
@@ -59,18 +38,18 @@ QmlJSToolsSettings::QmlJSToolsSettings()
     TextEditorSettings::registerCodeStylePool(Constants::QML_JS_SETTINGS_ID, pool);
 
     // global code style settings
-    m_globalCodeStyle = new SimpleCodeStylePreferences(this);
+    m_globalCodeStyle = new QmlJSCodeStylePreferences(this);
     m_globalCodeStyle->setDelegatingPool(pool);
-    m_globalCodeStyle->setDisplayName(tr("Global", "Settings"));
+    m_globalCodeStyle->setDisplayName(Tr::tr("Global", "Settings"));
     m_globalCodeStyle->setId(idKey);
     pool->addCodeStyle(m_globalCodeStyle);
     TextEditorSettings::registerCodeStyle(QmlJSTools::Constants::QML_JS_SETTINGS_ID, m_globalCodeStyle);
 
     // built-in settings
     // Qt style
-    auto qtCodeStyle = new SimpleCodeStylePreferences;
+    auto qtCodeStyle = new QmlJSCodeStylePreferences;
     qtCodeStyle->setId("qt");
-    qtCodeStyle->setDisplayName(tr("Qt"));
+    qtCodeStyle->setDisplayName(Tr::tr("Qt"));
     qtCodeStyle->setReadOnly(true);
     TabSettings qtTabSettings;
     qtTabSettings.m_tabPolicy = TabSettings::SpacesOnlyTabPolicy;
@@ -78,6 +57,9 @@ QmlJSToolsSettings::QmlJSToolsSettings()
     qtTabSettings.m_indentSize = 4;
     qtTabSettings.m_continuationAlignBehavior = TabSettings::ContinuationAlignWithIndent;
     qtCodeStyle->setTabSettings(qtTabSettings);
+    QmlJSCodeStyleSettings qtQmlJSSetings;
+    qtQmlJSSetings.lineLength = 80;
+    qtCodeStyle->setCodeStyleSettings(qtQmlJSSetings);
     pool->addCodeStyle(qtCodeStyle);
 
     // default delegate for global preferences
@@ -117,7 +99,7 @@ QmlJSToolsSettings::QmlJSToolsSettings()
 
             // create custom code style out of old settings
             ICodeStylePreferences *oldCreator = pool->createCodeStyle(
-                     "legacy", legacyTabSettings, QVariant(), tr("Old Creator"));
+                     "legacy", legacyTabSettings, QVariant(), Tr::tr("Old Creator"));
 
             // change the current delegate and save
             m_globalCodeStyle->setCurrentDelegate(oldCreator);
@@ -148,7 +130,7 @@ QmlJSToolsSettings::~QmlJSToolsSettings()
     m_globalCodeStyle = nullptr;
 }
 
-SimpleCodeStylePreferences *QmlJSToolsSettings::globalCodeStyle()
+QmlJSCodeStylePreferences *QmlJSToolsSettings::globalCodeStyle()
 {
     return m_globalCodeStyle;
 }

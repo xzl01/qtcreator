@@ -1,33 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include <utils/filepath.h>
 #include <utils/stringutils.h>
 
 #include <QtTest>
 
 //TESTED_COMPONENT=src/libs/utils
+
+using namespace Utils;
 
 class TestMacroExpander : public Utils::AbstractMacroExpander
 {
@@ -88,10 +69,16 @@ private slots:
     void testWithTildeHomePath();
     void testMacroExpander_data();
     void testMacroExpander();
-    void testStripAccelerator();
     void testStripAccelerator_data();
-    void testParseUsedPortFromNetstatOutput();
+    void testStripAccelerator();
     void testParseUsedPortFromNetstatOutput_data();
+    void testParseUsedPortFromNetstatOutput();
+    void testJoinStrings_data();
+    void testJoinStrings();
+    void testTrim_data();
+    void testTrim();
+    void testWildcardToRegularExpression_data();
+    void testWildcardToRegularExpression();
 
 private:
     TestMacroExpander mx;
@@ -99,32 +86,30 @@ private:
 
 void tst_StringUtils::testWithTildeHomePath()
 {
+    const QString home = QDir::homePath();
+    const FilePath homePath = FilePath::fromString(home);
+
 #ifndef Q_OS_WIN
     // home path itself
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath()), QString::fromLatin1("~"));
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath() + QLatin1Char('/')),
-             QString::fromLatin1("~"));
-    QCOMPARE(Utils::withTildeHomePath(QString::fromLatin1("/unclean/..") + QDir::homePath()),
-             QString::fromLatin1("~"));
+    QCOMPARE(homePath.withTildeHomePath(), QString("~"));
+    QCOMPARE(homePath.pathAppended("/").withTildeHomePath(), QString("~"));
+    QCOMPARE(FilePath::fromString("/unclean/../" + home).withTildeHomePath(), QString("~"));
     // sub of home path
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath() + QString::fromLatin1("/foo")),
-             QString::fromLatin1("~/foo"));
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath() + QString::fromLatin1("/foo/")),
-             QString::fromLatin1("~/foo"));
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath() + QString::fromLatin1("/some/path/file.txt")),
-             QString::fromLatin1("~/some/path/file.txt"));
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath() + QString::fromLatin1("/some/unclean/../path/file.txt")),
-             QString::fromLatin1("~/some/path/file.txt"));
+    QCOMPARE(homePath.pathAppended("/foo").withTildeHomePath(), QString("~/foo"));
+    QCOMPARE(homePath.pathAppended("/foo/").withTildeHomePath(), QString("~/foo"));
+    QCOMPARE(homePath.pathAppended("/some/path/file.txt").withTildeHomePath(),
+             QString("~/some/path/file.txt"));
+    QCOMPARE(homePath.pathAppended("/some/unclean/../path/file.txt").withTildeHomePath(),
+             QString("~/some/path/file.txt"));
     // not sub of home path
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath() + QString::fromLatin1("/../foo")),
-             QString(QDir::homePath() + QString::fromLatin1("/../foo")));
+    QCOMPARE(homePath.pathAppended("/../foo").withTildeHomePath(),
+             QString(home + "/../foo"));
 #else
     // windows: should return same as input
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath()), QDir::homePath());
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath() + QString::fromLatin1("/foo")),
-             QDir::homePath() + QString::fromLatin1("/foo"));
-    QCOMPARE(Utils::withTildeHomePath(QDir::homePath() + QString::fromLatin1("/../foo")),
-             Utils::withTildeHomePath(QDir::homePath() + QString::fromLatin1("/../foo")));
+    QCOMPARE(homePath.withTildeHomePath(), home);
+    QCOMPARE(homePath.pathAppended("/foo").withTildeHomePath(), home + QString("/foo"));
+    QCOMPARE(homePath.pathAppended("/../foo").withTildeHomePath(),
+             homePath.pathAppended("/../foo").withTildeHomePath());
 #endif
 }
 
@@ -190,13 +175,6 @@ void tst_StringUtils::testMacroExpander()
     QCOMPARE(in, out);
 }
 
-void tst_StringUtils::testStripAccelerator()
-{
-    QFETCH(QString, expected);
-
-    QCOMPARE(Utils::stripAccelerator(QString::fromUtf8(QTest::currentDataTag())), expected);
-}
-
 void tst_StringUtils::testStripAccelerator_data()
 {
     QTest::addColumn<QString>("expected");
@@ -214,12 +192,11 @@ void tst_StringUtils::testStripAccelerator_data()
     QTest::newRow("Test&") << "Test";
 }
 
-void tst_StringUtils::testParseUsedPortFromNetstatOutput()
+void tst_StringUtils::testStripAccelerator()
 {
-    QFETCH(QString, line);
-    QFETCH(int, port);
+    QFETCH(QString, expected);
 
-    QCOMPARE(Utils::parseUsedPortFromNetstatOutput(line.toUtf8()), port);
+    QCOMPARE(Utils::stripAccelerator(QString::fromUtf8(QTest::currentDataTag())), expected);
 }
 
 void tst_StringUtils::testParseUsedPortFromNetstatOutput_data()
@@ -267,6 +244,166 @@ void tst_StringUtils::testParseUsedPortFromNetstatOutput_data()
     QTest::newRow("QnxA") << "tcp6       0      0  *.22                   *.*                    LISTEN   "     <<    22;
 }
 
-QTEST_MAIN(tst_StringUtils)
+void tst_StringUtils::testParseUsedPortFromNetstatOutput()
+{
+    QFETCH(QString, line);
+    QFETCH(int, port);
+
+    QCOMPARE(Utils::parseUsedPortFromNetstatOutput(line.toUtf8()), port);
+}
+
+struct JoinData
+{
+    QStringList input;
+    QString output = {};
+    QChar separator = '\n';
+};
+
+void tst_StringUtils::testJoinStrings_data()
+{
+    QTest::addColumn<JoinData>("data");
+
+    QTest::newRow("0") << JoinData{};
+
+    QTest::newRow("1") << JoinData{{"one"}, "one"};
+    QTest::newRow("1_Null") << JoinData{{{}}};
+    QTest::newRow("1_Empty") << JoinData{{""}};
+
+    QTest::newRow("2") << JoinData{{"first", "second"}, "first\nsecond"};
+    QTest::newRow("2_Null") << JoinData{{{}, {}}};
+    QTest::newRow("2_Empty") << JoinData{{"", ""}};
+    QTest::newRow("2_1stNull") << JoinData{{{}, "second"}, "second"};
+    QTest::newRow("2_1stEmpty") << JoinData{{"", "second"}, "second"};
+    QTest::newRow("2_2ndNull") << JoinData{{"first", {}}, "first"};
+    QTest::newRow("2_2ndEmpty") << JoinData{{"first", ""}, "first"};
+
+    QTest::newRow("3") << JoinData{{"first", "second", "third"}, "first\nsecond\nthird"};
+    QTest::newRow("3_Null") << JoinData{{{}, {}, {}}};
+    QTest::newRow("3_Empty") << JoinData{{"", "", ""}};
+    QTest::newRow("3_1stNull") << JoinData{{{}, "second", "third"}, "second\nthird"};
+    QTest::newRow("3_1stEmpty") << JoinData{{"", "second", "third"}, "second\nthird"};
+    QTest::newRow("3_2ndNull") << JoinData{{"first", {}, "third"}, "first\nthird"};
+    QTest::newRow("3_2ndEmpty") << JoinData{{"first", "", "third"}, "first\nthird"};
+    QTest::newRow("3_3rdNull") << JoinData{{"first", "second", {}}, "first\nsecond"};
+    QTest::newRow("3_3rdEmpty") << JoinData{{"first", "second", ""}, "first\nsecond"};
+    QTest::newRow("3_1stNonNull") << JoinData{{"first", {}, {}}, "first"};
+    QTest::newRow("3_1stNonEmpty") << JoinData{{"first", "", ""}, "first"};
+    QTest::newRow("3_2ndNonNull") << JoinData{{{}, "second", {}}, "second"};
+    QTest::newRow("3_2ndNonEmpty") << JoinData{{"", "second", ""}, "second"};
+    QTest::newRow("3_2ndNonNull") << JoinData{{{}, {}, "third"}, "third"};
+    QTest::newRow("3_3ndNonEmpty") << JoinData{{"", "", "third"}, "third"};
+
+    QTest::newRow("DotSeparator") << JoinData{{"first", "second"}, "first.second", '.'};
+}
+
+void tst_StringUtils::testJoinStrings()
+{
+    QFETCH(JoinData, data);
+
+    QCOMPARE(Utils::joinStrings(data.input, data.separator), data.output);
+}
+
+struct TrimData
+{
+    QString input;
+    QString front = {};
+    QString back = {};
+    QString bothSides = {};
+    QChar ch = ' ';
+};
+
+void tst_StringUtils::testTrim_data()
+{
+    QTest::addColumn<TrimData>("data");
+
+    QTest::newRow("Empty") << TrimData{};
+    QTest::newRow("AllToRemove") << TrimData{"   "};
+    QTest::newRow("BothSides") << TrimData{" foo ", "foo ", " foo", "foo"};
+    QTest::newRow("BothSidesLong") << TrimData{"  foo  ", "foo  ", "  foo", "foo"};
+    QTest::newRow("CharInside") << TrimData{"  foo bar  ", "foo bar  ", "  foo bar", "foo bar"};
+}
+
+void tst_StringUtils::testTrim()
+{
+    QFETCH(TrimData, data);
+
+    QCOMPARE(Utils::trimFront(data.input, data.ch), data.front);
+    QCOMPARE(Utils::trimBack(data.input, data.ch), data.back);
+    QCOMPARE(Utils::trim(data.input, data.ch), data.bothSides);
+}
+
+void tst_StringUtils::testWildcardToRegularExpression_data()
+{
+    QTest::addColumn<QString>("pattern");
+    QTest::addColumn<QString>("string");
+    QTest::addColumn<bool>("matches");
+    auto addRow = [](const char *pattern, const char *string, bool matchesNonPathGlob) {
+        QTest::addRow("%s@%s", pattern, string) << pattern << string << matchesNonPathGlob;
+    };
+    addRow("*.html", "test.html", true);
+    addRow("*.html", "test.htm", false);
+    addRow("*bar*", "foobarbaz", true);
+    addRow("*", "Qt Rocks!", true);
+    addRow("*.h", "test.cpp", false);
+    addRow("*.???l", "test.html", true);
+    addRow("*?", "test.html", true);
+    addRow("*?ml", "test.html", true);
+    addRow("*[*]", "test.html", false);
+    addRow("*[?]", "test.html", false);
+    addRow("*[?]ml", "test.h?ml", true);
+    addRow("*[[]ml", "test.h[ml", true);
+    addRow("*[]]ml", "test.h]ml", true);
+    addRow("*.h[a-z]ml", "test.html", true);
+    addRow("*.h[A-Z]ml", "test.html", false);
+    addRow("*.h[A-Z]ml", "test.hTml", true);
+    addRow("*.h[!A-Z]ml", "test.hTml", false);
+    addRow("*.h[!A-Z]ml", "test.html", true);
+    addRow("*.h[!T]ml", "test.hTml", false);
+    addRow("*.h[!T]ml", "test.html", true);
+    addRow("*.h[!T]m[!L]", "test.htmL", false);
+    addRow("*.h[!T]m[!L]", "test.html", true);
+    addRow("*.h[][!]ml", "test.h]ml", true);
+    addRow("*.h[][!]ml", "test.h[ml", true);
+    addRow("*.h[][!]ml", "test.h!ml", true);
+    addRow("foo/*/bar", "foo/baz/bar", true);
+    addRow("foo/*/bar", "foo/fie/baz/bar", true);
+    addRow("foo?bar", "foo/bar", true);
+    addRow("foo/(*)/bar", "foo/baz/bar", false);
+    addRow("foo/(*)/bar", "foo/(baz)/bar", true);
+    addRow("foo/?/bar", "foo/Q/bar", true);
+    addRow("foo/?/bar", "foo/Qt/bar", false);
+    addRow("foo/(?)/bar", "foo/Q/bar", false);
+    addRow("foo/(?)/bar", "foo/(Q)/bar", true);
+    addRow("foo\\*\\bar", "foo\\baz\\bar", true);
+    addRow("foo\\*\\bar", "foo/baz/bar", false);
+    addRow("foo\\*\\bar", "foo/baz\\bar", false);
+    addRow("foo\\*\\bar", "foo\\fie\\baz\\bar", true);
+    addRow("foo\\*\\bar", "foo/fie/baz/bar", false);
+    addRow("foo/*/bar", "foo\\baz\\bar", false);
+    addRow("foo/*/bar", "foo/baz/bar", true);
+    addRow("foo/*/bar", "foo\\fie\\baz\\bar", false);
+    addRow("foo/*/bar", "foo/fie/baz/bar", true);
+    addRow("foo\\(*)\\bar", "foo\\baz\\bar", false);
+    addRow("foo\\(*)\\bar", "foo\\(baz)\\bar", true);
+    addRow("foo\\?\\bar", "foo\\Q\\bar", true);
+    addRow("foo\\?\\bar", "foo\\Qt\\bar", false);
+    addRow("foo\\(?)\\bar", "foo\\Q\\bar", false);
+    addRow("foo\\(?)\\bar", "foo\\(Q)\\bar", true);
+
+    addRow("foo*bar", "foo/fie/baz/bar", true);
+    addRow("fie*bar", "foo/fie/baz/bar", false);
+}
+
+void tst_StringUtils::testWildcardToRegularExpression()
+{
+    QFETCH(QString, pattern);
+    QFETCH(QString, string);
+    QFETCH(bool, matches);
+
+    const QRegularExpression re(Utils::wildcardToRegularExpression(pattern));
+    QCOMPARE(string.contains(re), matches);
+}
+
+QTEST_GUILESS_MAIN(tst_StringUtils)
 
 #include "tst_stringutils.moc"

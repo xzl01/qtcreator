@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangtoolsprojectsettings.h"
 #include "clangtoolsdiagnostic.h"
@@ -166,7 +144,7 @@ void ClangToolsProjectSettings::load()
     m_selectedFiles = Utils::transform<QSet>(files, toFileName);
 
     const QVariantList list = map.value(SETTINGS_KEY_SUPPRESSED_DIAGS).toList();
-    foreach (const QVariant &v, list) {
+    for (const QVariant &v : list) {
         const QVariantMap diag = v.toMap();
         const QString fp = diag.value(SETTINGS_KEY_SUPPRESSED_DIAGS_FILEPATH).toString();
         if (fp.isEmpty())
@@ -204,7 +182,7 @@ void ClangToolsProjectSettings::store()
     map.insert(SETTINGS_KEY_SELECTED_FILES, files);
 
     QVariantList list;
-    for (const SuppressedDiagnostic &diag : qAsConst(m_suppressedDiagnostics)) {
+    for (const SuppressedDiagnostic &diag : std::as_const(m_suppressedDiagnostics)) {
         QVariantMap diagMap;
         diagMap.insert(SETTINGS_KEY_SUPPRESSED_DIAGS_FILEPATH, diag.filePath.toString());
         diagMap.insert(SETTINGS_KEY_SUPPRESSED_DIAGS_MESSAGE, diag.description);

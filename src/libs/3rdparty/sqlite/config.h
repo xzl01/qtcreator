@@ -27,6 +27,10 @@
 
 #include <string.h>
 
+#if defined(SQLITE_STATIC_LIBRARY) || defined(SQLITEC_STATIC_LIBRARY)
+#include "sqlite_static_config.h"
+#endif
+
 #if __has_include(<unistd.h>)
 #include <unistd.h>
 #endif
@@ -59,7 +63,7 @@
 #define SQLITE_DEFAULT_FOREIGN_KEYS 1
 #define SQLITE_TEMP_STORE 3
 #define SQLITE_DEFAULT_WAL_SYNCHRONOUS 1
-#define SQLITE_MAX_WORKER_THREADS 1
+#define SQLITE_MAX_WORKER_THREADS 8
 #define SQLITE_DEFAULT_MEMSTATUS 0
 #define SQLITE_OMIT_DEPRECATED 1
 #define SQLITE_OMIT_DECLTYPE 1

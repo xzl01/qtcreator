@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -30,18 +8,19 @@
 
 #include <QDialog>
 #include <QFutureWatcher>
+#include <QList>
 #include <QObject>
-#include <QQueue>
+#include <QTimer>
 
 QT_BEGIN_NAMESPACE
 class QCheckBox;
 class QComboBox;
 class QDialogButtonBox;
 class QLabel;
-class QProcess;
 QT_END_NAMESPACE
 
 namespace ProjectExplorer { class Project; }
+namespace Utils { class QtcProcess; }
 
 namespace Autotest {
 
@@ -63,17 +42,15 @@ public:
 
     static TestRunner* instance();
 
-    void setSelectedTests(const QList<ITestConfiguration *> &selected);
+    void runTests(TestRunMode mode, const QList<ITestConfiguration *> &selectedTests);
     void runTest(TestRunMode mode, const ITestTreeItem *item);
     bool isTestRunning() const { return m_executingTests; }
-
-    void prepareToRunTests(TestRunMode mode);
 
 signals:
     void testRunStarted();
     void testRunFinished();
     void requestStopTestRun();
-    void testResultReady(const TestResultPtr &result);
+    void testResultReady(const TestResult &result);
     void hadDisabledTests(int disabled);
     void reportSummary(const QString &id, const QHash<ResultType, int> &summary);
 
@@ -85,27 +62,26 @@ private:
 
     int precheckTestConfigurations();
     bool currentConfigValid();
-    void setUpProcess();
     void setUpProcessEnv();
     void scheduleNext();
     void cancelCurrent(CancelReason reason);
-    void onProcessFinished();
+    void onProcessDone();
     void resetInternalPointers();
 
-    void runTests();
+    void runTestsHelper();
     void debugTests();
     void runOrDebugTests();
     void reportResult(ResultType type, const QString &description);
     bool postponeTestRunWithEmptyExecutable(ProjectExplorer::Project *project);
     void onBuildSystemUpdated();
 
-    QFutureWatcher<TestResultPtr> m_futureWatcher;
-    QFutureInterface<TestResultPtr> *m_fakeFutureInterface = nullptr;
-    QQueue<ITestConfiguration *> m_selectedTests;
+    QFutureWatcher<TestResult> m_futureWatcher;
+    QFutureInterface<TestResult> *m_fakeFutureInterface = nullptr;
+    QList<ITestConfiguration *> m_selectedTests;
     bool m_executingTests = false;
     bool m_canceled = false;
     ITestConfiguration *m_currentConfig = nullptr;
-    QProcess *m_currentProcess = nullptr;
+    Utils::QtcProcess *m_currentProcess = nullptr;
     TestOutputReader *m_currentOutputReader = nullptr;
     TestRunMode m_runMode = TestRunMode::None;
 
@@ -116,6 +92,7 @@ private:
     QMetaObject::Connection m_finishDebugConnect;
     // temporarily used for handling of switching the current target
     QMetaObject::Connection m_targetConnect;
+    QTimer m_cancelTimer;
     bool m_skipTargetsCheck = false;
 };
 

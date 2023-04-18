@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \previouspage qmldesigner-connections.html
@@ -68,8 +46,7 @@
     To connect components to signals:
 
     \list 1
-        \li Select \uicontrol View > \uicontrol Views >
-            \l {Connection View} > \uicontrol {Connections}.
+        \li Go to the \uicontrol Connections tab in the \l Connections view.
         \li Select the \inlineimage icons/plus.png
             (\uicontrol Add) button to add a connection.
         \li Double-click the value in the \uicontrol Target column to add the
@@ -104,7 +81,7 @@
     \uicontrol {Signal Handler} column, you can add it:
 
     \list 1
-        \li Right-click a component in the \l Navigator or \l {Form Editor} view
+        \li Right-click a component in the \l Navigator or \l {2D} view
             and select \uicontrol {Add New Signal Handler} in the context menu.
         \li In the \uicontrol Signal field, select the signal to handle.
             \image qmldesigner-implement-signal-handler.png "Implement Signal Handler dialog"

@@ -1,37 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Uwe Kindler
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Uwe Kindler
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "dockwidget.h"
 
@@ -204,7 +172,11 @@ namespace ADS
         d->m_tabWidget = componentsFactory()->createDockWidgetTab(this);
         d->m_toggleViewAction = new QAction(uniqueId, this);
         d->m_toggleViewAction->setCheckable(true);
-        connect(d->m_toggleViewAction, &QAction::triggered, this, &DockWidget::toggleView);
+        connect(d->m_toggleViewAction, &QAction::triggered, this, [this](bool open) {
+            // If the toggle view action mode is ActionModeShow (== m_toggleViewAction isn't
+            // checkable, see setToggleViewActionMode()), then open is always true
+            toggleView(open || !d->m_toggleViewAction->isCheckable());
+        });
         setToolbarFloatingStyle(false);
 
         if (DockManager::testConfigFlag(DockManager::FocusHighlighting))
@@ -219,10 +191,7 @@ namespace ADS
 
     void DockWidget::setToggleViewActionChecked(bool checked)
     {
-        QAction *action = d->m_toggleViewAction;
-        //action->blockSignals(true);
-        action->setChecked(checked);
-        //action->blockSignals(false);
+        d->m_toggleViewAction->setChecked(checked);
     }
 
     void DockWidget::setWidget(QWidget *widget, eInsertMode insertMode)
@@ -344,12 +313,6 @@ namespace ADS
 
     void DockWidget::toggleView(bool open)
     {
-        // If the toggle view action mode is ActionModeShow, then Open is always
-        // true if the sender is the toggle view action
-        QAction *action = qobject_cast<QAction *>(sender());
-        if (action == d->m_toggleViewAction && !d->m_toggleViewAction->isCheckable())
-            open = true;
-
         // If the dock widget state is different, then we really need to toggle
         // the state. If we are in the right state, then we simply make this
         // dock widget the current dock widget

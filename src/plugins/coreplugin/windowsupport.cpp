@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "windowsupport.h"
 
@@ -29,9 +7,11 @@
 #include "actionmanager/actionmanager.h"
 #include "actionmanager/command.h"
 #include "coreconstants.h"
+#include "coreplugintr.h"
 #include "icore.h"
 
 #include <app/app_version.h>
+
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
@@ -90,7 +70,7 @@ WindowSupport::WindowSupport(QWidget *window, const Context &context)
 
     m_windowList->addWindow(window);
 
-    connect(ICore::instance(), &ICore::coreAboutToClose, this, [this]() { m_shutdown = true; });
+    connect(ICore::instance(), &ICore::coreAboutToClose, this, [this] { m_shutdown = true; });
 }
 
 WindowSupport::~WindowSupport()
@@ -148,12 +128,12 @@ void WindowSupport::updateFullScreenAction()
 {
     if (m_window->isFullScreen()) {
         if (Utils::HostOsInfo::isMacHost())
-            m_toggleFullScreenAction->setText(tr("Exit Full Screen"));
+            m_toggleFullScreenAction->setText(Tr::tr("Exit Full Screen"));
         else
             m_toggleFullScreenAction->setChecked(true);
     } else {
         if (Utils::HostOsInfo::isMacHost())
-            m_toggleFullScreenAction->setText(tr("Enter Full Screen"));
+            m_toggleFullScreenAction->setText(Tr::tr("Enter Full Screen"));
         else
             m_toggleFullScreenAction->setChecked(false);
     }
@@ -178,14 +158,16 @@ void WindowList::addWindow(QWidget *window)
     m_windowActionIds.append(id);
     auto action = new QAction(window->windowTitle());
     m_windowActions.append(action);
-    QObject::connect(action, &QAction::triggered, [action, this]() { activateWindow(action); });
+    QObject::connect(action, &QAction::triggered,
+                     action, [action, this] { activateWindow(action); });
     action->setCheckable(true);
     action->setChecked(false);
     Command *cmd = ActionManager::registerAction(action, id);
     cmd->setAttribute(Command::CA_UpdateText);
     ActionManager::actionContainer(Constants::M_WINDOW)->addAction(cmd, Constants::G_WINDOW_LIST);
     action->setVisible(window->isVisible() || window->isMinimized()); // minimized windows are hidden but should be shown
-    QObject::connect(window, &QWidget::windowTitleChanged, [window, this]() { updateTitle(window); });
+    QObject::connect(window, &QWidget::windowTitleChanged,
+                     window, [window, this] { updateTitle(window); });
     if (m_dockMenu)
         m_dockMenu->addAction(action);
     if (window->isActiveWindow())

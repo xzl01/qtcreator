@@ -35,18 +35,20 @@ https://doc.qt.io/qtcreator-extending/coding-style.html
 
 Prerequisites:
 
-* Qt 5.15.2 or later
+* Qt 6.2 or later. The Qt version that you use to build Qt Creator defines the
+  minimum platform versions that the result supports
+  (Windows 10, RHEL/CentOS 8.4, Ubuntu 20.04, macOS 10.14 for Qt 6.2).
 * Qt WebEngine module for QtWebEngine based help viewer
 * On Windows:
-    * MinGW with GCC 7 or Visual Studio 2017 or later
+    * MinGW with GCC 9 or Visual Studio 2019 or later
     * Python 3.5 or later (optional, needed for the python enabled debug helper)
     * Debugging Tools for Windows (optional, for MSVC debugging support with CDB)
 * On Mac OS X: latest Xcode
-* On Linux: GCC 7 or later
-* LLVM/Clang 10 or later (optional, LLVM/Clang 13 is recommended.
+* On Linux: GCC 9 or later
+* LLVM/Clang 10 or later (optional, LLVM/Clang 14 is recommended.
   See [instructions](#getting-llvmclang-for-the-clang-code-model) on how to
   get LLVM.
-  The ClangFormat, ClangPchManager and ClangRefactoring use the LLVM C++ API.
+  The ClangFormat plugin uses the LLVM C++ API.
   Since the LLVM C++ API provides no compatibility guarantee,
   if later versions don't compile we don't support that version.)
 * CMake
@@ -63,6 +65,9 @@ sources are located at `/path/to/qtcreator_sources`, Qt is installed in
 Note that if you install Qt via the online installer, the path to Qt must
 include the version number and compiler ABI. The path to the online installer
 content is not enough.
+
+Note that `/path/to/Qt` doesn't imply the full path depth like:
+`$USER/Qt/6.2.4/gcc_64/lib/cmake/Qt6`, but only `$USER/Qt/6.2.4/gcc_64`.
 
 See [instructions](#getting-llvmclang-for-the-clang-code-model) on how to
 get LLVM.
@@ -82,6 +87,11 @@ sources are located at `\path\to\qtcreator_sources`, Qt is installed in
 Note that if you install Qt via the online installer, the path to Qt must
 include the version number and compiler ABI. The path to the online installer
 content is not enough.
+
+Note that `\path\to\Qt` doesn't imply the full path depth like:
+`c:\Qt\6.2.4\msvc2019_64\lib\cmake\Qt6`, but only `c:/Qt/6.2.4/msvc2019_64`.
+The usage of slashes `/` is intentional, since CMake has issues with backslashes `\`
+in `CMAKE_PREFX_PATH`, they are interpreted as escape codes.
 
 See [instructions](#getting-llvmclang-for-the-clang-code-model) on how to
 get LLVM.
@@ -138,7 +148,12 @@ optimizations but debug information with `-DCMAKE_BUILD_TYPE=RelWithDebInfo`.
 You can find more options in the generated CMakeCache.txt file. For instance,
 building of Qbs together with Qt Creator can be enabled with `-DBUILD_QBS=ON`.
 
-Installation is not needed. It is however possible, using
+Installation is not needed. You can run Qt Creator directly from the build
+directory. On Windows, make sure that your `PATH` environment variable points to
+all required DLLs, like Qt and LLVM. On Linux and macOS, the build already
+contains the necessary `RPATH`s for the dependencies.
+
+If you want to install Qt Creator anyway, that is however possible using
 
     cmake --install . --prefix /path/to/qtcreator_install
 
@@ -147,10 +162,36 @@ like Qt and LLVM, additionally run
 
     cmake --install . --prefix /path/to/qtcreator_install --component Dependencies
 
+To install development files like headers, CMake files, and `.lib` files on
+Windows, run
+
+    cmake --install . --prefix /path/to/qtcreator_install --component Devel
+
+If you used the `RelWithDebInfo` configuration and want debug information to be
+available to the installed Qt Creator, run
+
+    cmake --install . --prefix /path/to/qtcreator_install --component DebugInfo
+
+### Perf Profiler Support
+
+Support for the [perf](https://perf.wiki.kernel.org/index.php/Main_Page) profiler
+requires the `perfparser` tool that is part of the Qt Creator source package, and also
+part of the Qt Creator Git repository in form of a submodule in `src/tools/perfparser`.
+
+Compilation of `perfparser` requires ELF and DWARF development packages.
+You can either download and extract a prebuilt package from
+https://download.qt.io/development_releases/prebuilt/elfutils/ and add the
+directory to the `CMAKE_PREFIX_PATH` when configuring Qt Creator,
+or install the `libdw-dev` package on Debian-style Linux systems.
+
+You can also point Qt Creator to a separate installation of `perfparser` by
+setting the `PERFPROFILER_PARSER_FILEPATH` environment variable to the full
+path to the executable.
+
 ## Getting LLVM/Clang for the Clang Code Model
 
-The Clang Code Model depends on the LLVM/Clang libraries. The currently
-recommended LLVM/Clang version is 13.0.
+The Clang code model uses `Clangd` and the ClangFormat plugin depends on the
+LLVM/Clang libraries. The currently recommended LLVM/Clang version is 14.0.
 
 ### Prebuilt LLVM/Clang packages
 
@@ -311,37 +352,6 @@ we thank the authors who made this possible:
   see https://github.com/llvm/llvm-project/blob/main/clang/LICENSE.TXT
 
   With backported/additional patches from https://code.qt.io/cgit/clang/llvm-project.git
-
-### Optional
-
-  A single-header header-only library for representing optional (nullable)
-  objects for C++14 (and C++11 to some extent) and passing them by value.
-
-  https://github.com/akrzemi1/Optional
-
-  QtCreator/src/libs/3rdparty/optional
-
-  Copyright (C) 2011-2012 Andrzej Krzemienski
-
-  Distributed under the Boost Software License, Version 1.0
-  (see accompanying file LICENSE_1_0.txt or a copy at
-  http://www.boost.org/LICENSE_1_0.txt)
-
-  The idea and interface is based on Boost.Optional library
-  authored by Fernando Luis Cacciola Carballal
-
-### MPark.Variant
-
-  MPark.Variant is an implementation of C++17 std::variant for C++11/14/17.
-
-  https://github.com/mpark/variant
-
-  QtCreator/src/libs/3rdparty/variant
-
-  Copyright Michael Park, 2015-2017
-
-  Distributed under the Boost Software License, Version 1.0.
-  (See accompanying file LICENSE.md or copy at http://boost.org/LICENSE_1_0.txt)
 
 ### std::span implementation for C++11 and later
 
@@ -699,3 +709,15 @@ SQLite (https://www.sqlite.org) is in the Public Domain.
   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
+
+### TartanLlama/expected
+
+  Implementation of std::expected compatible with C++11/C++14/C++17.
+
+  https://github.com/TartanLlama/expected
+
+  To the extent possible under law, the author(s) have dedicated all
+  copyright and related and neighboring rights to this software to the
+  public domain worldwide. This software is distributed without any warranty.
+
+  http://creativecommons.org/publicdomain/zero/1.0/

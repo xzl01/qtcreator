@@ -110,7 +110,6 @@ set(BUILD_GRAPH_SOURCES
     rulesapplicator.h
     rulesevaluationcontext.cpp
     rulesevaluationcontext.h
-    scriptclasspropertyiterator.h
     timestampsupdater.cpp
     timestampsupdater.h
     transformer.cpp
@@ -172,7 +171,6 @@ list_transform_prepend(JS_EXTENSIONS_SOURCES jsextensions/)
 
 if(APPLE)
     set(JS_EXTENSIONS_MACOS_SOURCES
-        propertylist_darwin.h
         propertylist_darwin.mm
         propertylistutils.h
         propertylistutils.mm
@@ -194,11 +192,8 @@ set(LANGUAGE_SOURCES
     builtindeclarations.cpp
     builtindeclarations.h
     deprecationinfo.h
-    evaluationdata.h
     evaluator.cpp
     evaluator.h
-    evaluatorscriptclass.cpp
-    evaluatorscriptclass.h
     filecontext.cpp
     filecontext.h
     filecontextbase.cpp
@@ -306,6 +301,7 @@ set(TOOLS_SOURCES
     cleanoptions.cpp
     codelocation.cpp
     commandechomode.cpp
+    deprecationwarningmode.cpp
     dynamictypecheck.h
     error.cpp
     executablefinder.cpp
@@ -389,6 +385,7 @@ set(TOOLS_HEADERS
     cleanoptions.h
     codelocation.h
     commandechomode.h
+    deprecationwarningmode.h
     error.h
     generateoptions.h
     installoptions.h
@@ -433,7 +430,7 @@ add_qbs_library(qbscore
         Qt${QT_VERSION_MAJOR}::Xml
         Qt6Core5Compat
         qbspkgconfig
-        qbsscriptengine
+        qbsquickjs
     PUBLIC_DEPENDS
         Qt${QT_VERSION_MAJOR}::Core
         ${EXTERNAL_DEPENDS}
@@ -469,6 +466,4 @@ if(INSTALL_PUBLIC_HEADERS)
     install(FILES ${LOGGING_HEADERS} DESTINATION ${QBS_HEADERS_INSTALL_DIR}/logging)
     install(FILES ${LANGUAGE_HEADERS} DESTINATION ${QBS_HEADERS_INSTALL_DIR}/language)
     install(FILES ${TOOLS_HEADERS} DESTINATION ${QBS_HEADERS_INSTALL_DIR}/tools)
-    set(QMAKE_PRI_FILES use_installed_corelib.pri ../../../qbs_version.pri)
-    install(FILES ${QMAKE_PRI_FILES} DESTINATION ${QBS_HEADERS_INSTALL_DIR})
 endif()

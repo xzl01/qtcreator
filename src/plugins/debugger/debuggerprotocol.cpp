@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debuggerprotocol.h"
+#include "debuggertr.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -33,18 +12,10 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 
-#include <ctype.h>
-
 #include <utils/processhandle.h>
+#include <utils/qtcassert.h>
 
-#define QTC_ASSERT_STRINGIFY_HELPER(x) #x
-#define QTC_ASSERT_STRINGIFY(x) QTC_ASSERT_STRINGIFY_HELPER(x)
-#define QTC_ASSERT_STRING(cond) qDebug("SOFT ASSERT: \"" cond"\" in file " __FILE__ ", line " QTC_ASSERT_STRINGIFY(__LINE__))
-#define QTC_ASSERT(cond, action) if (cond) {} else { QTC_ASSERT_STRING(#cond); action; } do {} while (0)
-#define QTC_CHECK(cond) if (cond) {} else { QTC_ASSERT_STRING(#cond); } do {} while (0)
-
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 static uchar fromhex(uchar c)
 {
@@ -72,16 +43,16 @@ void DebuggerOutputParser::skipCommas()
 
 void DebuggerOutputParser::skipSpaces()
 {
-    while (from < to && isspace(from->unicode()))
+    while (from < to && QChar::isSpace(from->unicode()))
         ++from;
 }
 
-QString DebuggerOutputParser::readString(const std::function<bool(char)> &isValidChar)
+QStringView DebuggerOutputParser::readString(const std::function<bool(char)> &isValidChar)
 {
-    QString res;
+    const QChar *oldFrom = from;
     while (from < to && isValidChar(from->unicode()))
-        res += *from++;
-    return res;
+        ++from;
+    return {oldFrom, from};
 }
 
 int DebuggerOutputParser::readInt()
@@ -101,7 +72,7 @@ QChar DebuggerOutputParser::readChar()
 
 static bool isNameChar(char c)
 {
-    return c != '=' && c != ':' && c != ']' && !isspace(c);
+    return c != '=' && c != ':' && c != ']' && !QChar::isSpace(c);
 }
 
 void GdbMi::parseResultOrValue(DebuggerOutputParser &parser)
@@ -125,7 +96,7 @@ void GdbMi::parseResultOrValue(DebuggerOutputParser &parser)
         return;
     }
 
-    m_name = parser.readString(isNameChar);
+    m_name = parser.readString(isNameChar).toString();
 
     if (!parser.isAtEnd() && parser.isCurrent('=')) {
         parser.advance();
@@ -134,11 +105,9 @@ void GdbMi::parseResultOrValue(DebuggerOutputParser &parser)
 }
 
 // Reads one \ooo entity.
-static bool parseOctalEscapedHelper(DebuggerOutputParser &parser, QByteArray &buffer)
+static bool parseOctalEscapedHelper(DebuggerOutputParser &parser, DebuggerOutputParser::Buffer &buffer)
 {
     if (parser.remainingChars() < 4)
-        return false;
-    if (!parser.isCurrent('\\'))
         return false;
 
     const char c1 = parser.lookAhead(1).unicode();
@@ -152,11 +121,9 @@ static bool parseOctalEscapedHelper(DebuggerOutputParser &parser, QByteArray &bu
     return true;
 }
 
-static bool parseHexEscapedHelper(DebuggerOutputParser &parser, QByteArray &buffer)
+static bool parseHexEscapedHelper(DebuggerOutputParser &parser, DebuggerOutputParser::Buffer &buffer)
 {
     if (parser.remainingChars() < 4)
-        return false;
-    if (!parser.isCurrent('\\'))
         return false;
     if (parser.lookAhead(1) != 'x')
         return false;
@@ -171,7 +138,7 @@ static bool parseHexEscapedHelper(DebuggerOutputParser &parser, QByteArray &buff
     return true;
 }
 
-static void parseSimpleEscape(DebuggerOutputParser &parser, QString &result)
+static void parseSimpleEscape(DebuggerOutputParser &parser, DebuggerOutputParser::Buffer &buffer)
 {
     if (parser.isAtEnd()) {
         qDebug() << "MI Parse Error, unterminated backslash escape";
@@ -181,65 +148,64 @@ static void parseSimpleEscape(DebuggerOutputParser &parser, QString &result)
     const QChar c = parser.current();
     parser.advance();
     switch (c.unicode()) {
-    case 'a': result += '\a'; break;
-    case 'b': result += '\b'; break;
-    case 'f': result += '\f'; break;
-    case 'n': result += '\n'; break;
-    case 'r': result += '\r'; break;
-    case 't': result += '\t'; break;
-    case 'v': result += '\v'; break;
-    case '"': result += '"'; break;
-    case '\'': result += '\''; break;
-    case '\\': result += '\\'; break;
-    default:
-        qDebug() << "MI Parse Error, unrecognized backslash escape";
+        case 'a': buffer += '\a'; break;
+        case 'b': buffer += '\b'; break;
+        case 'f': buffer += '\f'; break;
+        case 'n': buffer += '\n'; break;
+        case 'r': buffer += '\r'; break;
+        case 't': buffer += '\t'; break;
+        case 'v': buffer += '\v'; break;
+        case '"': buffer += '"'; break;
+        case '\'': buffer += '\''; break;
+        case '\\': buffer += '\\'; break;
+        default:
+            qDebug() << "MI Parse Error, unrecognized backslash escape";
     }
 }
 
-// Reads subsequent \123 or \x12 entities and converts to Utf8,
-// *or* one escaped char, *or* one unescaped char.
-static void parseCharOrEscape(DebuggerOutputParser &parser, QString &result)
+// Reads one \123 or \x12 entity, *or* one escaped char, *or* one unescaped char.
+static void parseCharOrEscape(DebuggerOutputParser &parser, DebuggerOutputParser::Buffer &buffer)
 {
-    QByteArray buffer;
-    while (parseOctalEscapedHelper(parser, buffer))
-        ;
-    while (parseHexEscapedHelper(parser, buffer))
-        ;
-
-    if (!buffer.isEmpty()) {
-        result.append(QString::fromUtf8(buffer));
-    } else if (parser.isCurrent('\\')) {
+    if (parser.isCurrent('\\')) {
+        if (parseOctalEscapedHelper(parser, buffer))
+            return;
+        if (parseHexEscapedHelper(parser, buffer))
+            return;
         parser.advance();
-        parseSimpleEscape(parser, result);
+        parseSimpleEscape(parser, buffer);
     } else {
-        result += parser.readChar();
+        buffer += char(parser.readChar().unicode());
     }
 }
 
-QString DebuggerOutputParser::readCString()
+void DebuggerOutputParser::readCStringData(Buffer &buffer)
 {
     if (isAtEnd())
-        return QString();
+        return;
 
     if (*from != '"') {
         qDebug() << "MI Parse Error, double quote expected";
         ++from; // So we don't hang
-        return QString();
+        return;
     }
 
     ++from; // Skip initial quote.
-    QString result;
-    result.reserve(to - from);
     while (from < to) {
         if (*from == '"') {
             ++from;
-            return result;
+            return;
         }
-        parseCharOrEscape(*this, result);
+        parseCharOrEscape(*this, buffer);
     }
 
     qDebug() << "MI Parse Error, unfinished string";
-    return QString();
+}
+
+QString DebuggerOutputParser::readCString()
+{
+    Buffer buffer;
+    readCStringData(buffer);
+    return QString::fromUtf8(buffer);
 }
 
 void GdbMi::parseValue(DebuggerOutputParser &parser)
@@ -276,7 +242,6 @@ void GdbMi::parseTuple_helper(DebuggerOutputParser &parser)
 {
     parser.skipCommas();
     //qDebug() << "parseTuple_helper: " << parser.buffer();
-    QString buf = parser.buffer();
     m_type = Tuple;
     while (!parser.isAtEnd()) {
         if (parser.isCurrent('}')) {
@@ -640,31 +605,31 @@ QString decodeData(const QString &ba, const QString &encoding)
         return quoteUnprintableLatin1(ba); // The common case.
 
     if (encoding == "empty")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<empty>");
+        return Tr::tr("<empty>");
     if (encoding == "minimumitemcount")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<at least %n items>", nullptr, ba.toInt());
+        return Tr::tr("<at least %n items>", nullptr, ba.toInt());
     if (encoding == "undefined")
         return QLatin1String("Undefined");
     if (encoding == "null")
         return QLatin1String("Null");
     if (encoding == "itemcount")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<%n items>", nullptr, ba.toInt());
+        return Tr::tr("<%n items>", nullptr, ba.toInt());
     if (encoding == "notaccessible")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<not accessible>");
+        return Tr::tr("<not accessible>");
     if (encoding == "optimizedout")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<optimized out>");
+        return Tr::tr("<optimized out>");
     if (encoding == "nullreference")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<null reference>");
+        return Tr::tr("<null reference>");
     if (encoding == "emptystructure")
         return QLatin1String("{...}");
     if (encoding == "uninitialized")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<uninitialized>");
+        return Tr::tr("<uninitialized>");
     if (encoding == "invalid")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<invalid>");
+        return Tr::tr("<invalid>");
     if (encoding == "notcallable")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<not callable>");
+        return Tr::tr("<not callable>");
     if (encoding == "outofscope")
-        return QCoreApplication::translate("Debugger::Internal::WatchHandler", "<out of scope>");
+        return Tr::tr("<out of scope>");
 
     DebuggerEncoding enc(encoding);
     QString result;
@@ -781,7 +746,7 @@ QString decodeData(const QString &ba, const QString &encoding)
             return dateTime.toString();
         }
         qDebug() << "ENCODING ERROR: " << enc.type;
-        return QCoreApplication::translate("Debugger", "<Encoding error>");
+        return Tr::tr("<Encoding error>");
     }
 
     if (enc.quotes) {
@@ -864,11 +829,6 @@ void DebuggerCommand::arg(const char *name, bool value)
 void DebuggerCommand::arg(const char *name, const QJsonValue &value)
 {
     args = addToJsonObject(args, name, value);
-}
-
-void DebuggerCommand::arg(const char *name, const Utils::FilePath &filePath)
-{
-    args = addToJsonObject(args, name, filePath.toString());
 }
 
 static QJsonValue translateJsonToPython(const QJsonValue &value)
@@ -982,5 +942,4 @@ QString toHex(const QString &str)
     return QString::fromUtf8(str.toUtf8().toHex());
 }
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal

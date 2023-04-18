@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "kitmanager.h"
 
@@ -30,10 +8,8 @@
 #include "kit.h"
 #include "kitfeatureprovider.h"
 #include "kitinformation.h"
-#include "kitmanagerconfigwidget.h"
-#include "project.h"
 #include "projectexplorerconstants.h"
-#include "task.h"
+#include "projectexplorertr.h"
 #include "toolchainmanager.h"
 
 #include <coreplugin/icore.h>
@@ -289,6 +265,14 @@ void KitManager::restoreKits()
                 bestTc = tc;
                 continue;
             }
+
+            if (bestTc->priority() > tc->priority())
+                continue;
+            if (bestTc->priority() < tc->priority()) {
+                bestTc = tc;
+                continue;
+            }
+
             const QString bestFilePath = bestTc->compilerCommand().toString();
             const QString currentFilePath = tc->compilerCommand().toString();
             if (bestFilePath.contains("icecc"))
@@ -304,12 +288,24 @@ void KitManager::restoreKits()
                 bestTc = tc;
                 continue;
             }
+
             if (bestFilePath.length() > currentFilePath.length())
                 bestTc = tc;
         }
 
         static const auto isHostKit = [](const Kit *kit) {
-            return kitMatchesAbiList(kit, {Abi::hostAbi()});
+            const Abi hostAbi = Abi::hostAbi();
+            if (HostOsInfo::isMacHost() && hostAbi.architecture() == Abi::ArmArchitecture) {
+                const Abi x86Abi(Abi::X86Architecture,
+                                 hostAbi.os(),
+                                 hostAbi.osFlavor(),
+                                 hostAbi.binaryFormat(),
+                                 hostAbi.wordWidth());
+
+                return kitMatchesAbiList(kit, {hostAbi, x86Abi});
+            }
+
+            return kitMatchesAbiList(kit, {hostAbi});
         };
 
         static const auto deviceTypeForKit = [](const Kit *kit) {
@@ -355,7 +351,7 @@ void KitManager::restoreKits()
                 continue;
             }
             if (isHostKit(kit.get()))
-                kit->setUnexpandedDisplayName(tr("Desktop (%1)").arg(it.key().toString()));
+                kit->setUnexpandedDisplayName(Tr::tr("Desktop (%1)").arg(it.key().toString()));
             else
                 kit->setUnexpandedDisplayName(it.key().toString());
             DeviceTypeKitAspect::setDeviceTypeId(kit.get(), deviceTypeForKit(kit.get()));
@@ -407,7 +403,7 @@ void KitManager::restoreKits()
         }
 
         if (hostKits.size() == 1)
-            hostKits.first()->setUnexpandedDisplayName(tr("Desktop"));
+            hostKits.first()->setUnexpandedDisplayName(Tr::tr("Desktop"));
     }
 
     Kit *k = kitForBinary;
@@ -438,7 +434,8 @@ void KitManager::saveKits()
     data.insert(QLatin1String(KIT_FILE_VERSION_KEY), 1);
 
     int count = 0;
-    foreach (Kit *k, kits()) {
+    const QList<Kit *> kits = KitManager::kits();
+    for (Kit *k : kits) {
         QVariantMap tmp = k->toMap();
         if (tmp.isEmpty())
             continue;
@@ -736,7 +733,7 @@ KitAspectWidget::KitAspectWidget(Kit *kit, const KitAspect *ki)
     : m_kit(kit), m_kitInformation(ki)
 {
     const Id id = ki->id();
-    m_mutableAction = new QAction(tr("Mark as Mutable"));
+    m_mutableAction = new QAction(Tr::tr("Mark as Mutable"));
     m_mutableAction->setCheckable(true);
     m_mutableAction->setChecked(m_kit->isMutable(id));
     m_mutableAction->setEnabled(!m_kit->isSticky(id));
@@ -759,7 +756,7 @@ void KitAspectWidget::addToLayoutWithLabel(QWidget *parent)
         emit labelLinkActivated(link);
     });
 
-    LayoutExtender builder(parent->layout());
+    Layouting::LayoutExtender builder(parent->layout(), Layouting::WithFormAlignment);
     builder.finishRow();
     builder.addItem(label);
     addToLayout(builder);
@@ -783,7 +780,7 @@ QWidget *KitAspectWidget::createManageButton(Id pageId)
 
 QString KitAspectWidget::msgManage()
 {
-    return tr("Manage...");
+    return Tr::tr("Manage...");
 }
 
 // --------------------------------------------------------------------

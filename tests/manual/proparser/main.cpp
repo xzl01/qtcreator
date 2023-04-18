@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmakeglobals.h"
 #include "qmakevfs.h"
@@ -80,9 +58,9 @@ static int evaluate(const QString &fileName, const QString &in_pwd, const QStrin
 #endif
     visitor.setOutputDir(out_pwd);
 
-    ProFile *pro;
-    if (!(pro = parser->parsedProFile(fileName))) {
-        if (!QFile::exists(fileName)) {
+    ProFile *pro = parser->parsedProFile(option->device_root, fileName);
+    if (!pro) {
+        if (!QFileInfo::exists(option->device_root + fileName)) {
             qCritical("Input file %s does not exist.", qPrintable(fileName));
             return 3;
         }
@@ -96,7 +74,7 @@ static int evaluate(const QString &fileName, const QString &in_pwd, const QStrin
     if (visitor.templateType() == ProFileEvaluator::TT_Subdirs) {
         QStringList subdirs = visitor.values(QLatin1String("SUBDIRS"));
         subdirs.removeDuplicates();
-        foreach (const QString &subDirVar, subdirs) {
+        for (const QString &subDirVar : std::as_const(subdirs)) {
             QString realDir;
             const QString subDirKey = subDirVar + QLatin1String(".subdir");
             const QString subDirFileKey = subDirVar + QLatin1String(".file");
@@ -142,13 +120,8 @@ int main(int argc, char **argv)
 
     QMakeGlobals option;
     QString qmake = QString::fromLocal8Bit(qgetenv("TESTREADER_QMAKE"));
-    if (qmake.isEmpty()) {
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-        qmake = QLibraryInfo::location(QLibraryInfo::BinariesPath) + QLatin1String("/qmake");
-#else
+    if (qmake.isEmpty())
         qmake = QLibraryInfo::path(QLibraryInfo::BinariesPath) + QLatin1String("/qmake");
-#endif
-    }
     option.qmake_abslocation = QDir::cleanPath(qmake);
     option.initProperties();
 
@@ -198,7 +171,7 @@ int main(int argc, char **argv)
     option.useEnvironment();
     if (out_pwd.isEmpty())
         out_pwd = in_pwd;
-    option.setDirectories(in_pwd, out_pwd);
+    option.setDirectories(in_pwd, out_pwd, {});
 
     QMakeVfs vfs;
     QMakeParser parser(0, &vfs, &evalHandler);

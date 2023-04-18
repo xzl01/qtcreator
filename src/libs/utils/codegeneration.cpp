@@ -1,36 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "codegeneration.h"
 
 #include "algorithm.h"
 
-#include <QTextStream>
+#include <QFileInfo>
 #include <QSet>
 #include <QStringList>
-#include <QFileInfo>
+#include <QTextStream>
 
 namespace Utils {
 
@@ -84,9 +62,8 @@ QTCREATOR_UTILS_EXPORT void writeBeginQtVersionCheck(QTextStream &str)
 
 static void qtSection(const QStringList &qtIncludes, QTextStream &str)
 {
-    QStringList sorted = qtIncludes;
-    Utils::sort(sorted);
-    for (const QString &inc : qAsConst(sorted)) {
+    const QStringList sorted = Utils::sorted(qtIncludes);
+    for (const QString &inc : sorted) {
         if (!inc.isEmpty())
             str << QStringLiteral("#include <%1>\n").arg(inc);
     }
@@ -105,8 +82,8 @@ void writeQtIncludeSection(const QStringList &qt4,
     else
         trans = [](const QString &i) { return i.mid(i.indexOf(QLatin1Char('/')) + 1); };
 
-    QSet<QString> qt4Only = Utils::transform<QSet>(qt4, trans);
-    QSet<QString> qt5Only = Utils::transform<QSet>(qt5, trans);
+    QSet<QString> qt4Only = transform<QSet>(qt4, trans);
+    QSet<QString> qt5Only = transform<QSet>(qt5, trans);
 
     if (addQtVersionCheck) {
         QSet<QString> common = qt4Only;
@@ -121,23 +98,23 @@ void writeQtIncludeSection(const QStringList &qt4,
         qt4Only.subtract(common);
         qt5Only.subtract(common);
 
-        qtSection(Utils::toList(common), str);
+        qtSection(toList(common), str);
 
         if (!qt4Only.isEmpty() || !qt5Only.isEmpty()) {
             if (addQtVersionCheck)
                 writeBeginQtVersionCheck(str);
-            qtSection(Utils::toList(qt5Only), str);
+            qtSection(toList(qt5Only), str);
             if (addQtVersionCheck)
                 str << QLatin1String("#else\n");
-            qtSection(Utils::toList(qt4Only), str);
+            qtSection(toList(qt4Only), str);
             if (addQtVersionCheck)
                 str << QLatin1String("#endif\n");
         }
     } else {
         if (!qt5Only.isEmpty()) // default to Qt5
-            qtSection(Utils::toList(qt5Only), str);
+            qtSection(toList(qt5Only), str);
         else
-            qtSection(Utils::toList(qt4Only), str);
+            qtSection(toList(qt4Only), str);
     }
 }
 

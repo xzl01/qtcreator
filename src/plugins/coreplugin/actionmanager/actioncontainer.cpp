@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "actioncontainer_p.h"
 #include "actionmanager.h"
@@ -351,7 +329,7 @@ Command *ActionContainerPrivate::addSeparator(const Context &context, Id group, 
 void ActionContainerPrivate::clear()
 {
     for (Group &group : m_groups) {
-        foreach (QObject *item, group.items) {
+        for (QObject *item : std::as_const(group.items)) {
             if (auto command = qobject_cast<Command *>(item)) {
                 removeAction(command);
                 disconnect(command, &Command::activeStateChanged,
@@ -369,11 +347,10 @@ void ActionContainerPrivate::clear()
     scheduleUpdate();
 }
 
-void ActionContainerPrivate::itemDestroyed()
+void ActionContainerPrivate::itemDestroyed(QObject *sender)
 {
-    QObject *obj = sender();
     for (Group &group : m_groups) {
-        if (group.items.removeAll(obj) > 0)
+        if (group.items.removeAll(sender) > 0)
             break;
     }
 }
@@ -481,8 +458,8 @@ bool MenuActionContainer::updateInternal()
     bool hasitems = false;
     QList<QAction *> actions = m_menu->actions();
 
-    for (const Group &group : qAsConst(m_groups)) {
-        foreach (QObject *item, group.items) {
+    for (const Group &group : std::as_const(m_groups)) {
+        for (QObject *item : std::as_const(group.items)) {
             if (auto container = qobject_cast<ActionContainerPrivate*>(item)) {
                 actions.removeAll(container->menu()->menuAction());
                 if (container == this) {
@@ -499,7 +476,9 @@ bool MenuActionContainer::updateInternal()
                 }
             } else if (auto command = qobject_cast<Command *>(item)) {
                 actions.removeAll(command->action());
-                if (command->isActive()) {
+                if (command->isActive()
+                    && !(HostOsInfo::isMacHost()
+                         && command->action()->menuRole() == QAction::ApplicationSpecificRole)) {
                     hasitems = true;
                     break;
                 }
@@ -512,7 +491,7 @@ bool MenuActionContainer::updateInternal()
     }
     if (!hasitems) {
         // look if there were actions added that we don't control and check if they are enabled
-        foreach (const QAction *action, actions) {
+        for (const QAction *action : std::as_const(actions)) {
             if (!action->isSeparator() && action->isEnabled()) {
                 hasitems = true;
                 break;

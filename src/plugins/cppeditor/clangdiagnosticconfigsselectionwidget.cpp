@@ -1,38 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangdiagnosticconfigsselectionwidget.h"
 
 #include "clangdiagnosticconfigswidget.h"
 #include "cppcodemodelsettings.h"
+#include "cppeditortr.h"
 #include "cpptoolsreuse.h"
 
 #include <coreplugin/icore.h>
 
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -41,20 +21,15 @@ namespace CppEditor {
 
 ClangDiagnosticConfigsSelectionWidget::ClangDiagnosticConfigsSelectionWidget(QWidget *parent)
     : QWidget(parent)
-    , m_label(new QLabel(tr("Diagnostic configuration:")))
-    , m_button(new QPushButton)
 {
-    auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
-    setLayout(layout);
-    layout->addWidget(m_label);
-    layout->addWidget(m_button, 1);
-    layout->addStretch();
+    setUpUi(true);
+}
 
-    connect(m_button,
-            &QPushButton::clicked,
-            this,
-            &ClangDiagnosticConfigsSelectionWidget::onButtonClicked);
+ClangDiagnosticConfigsSelectionWidget::ClangDiagnosticConfigsSelectionWidget(
+        QFormLayout *parentLayout)
+{
+    setUpUi(false);
+    parentLayout->addRow(label(), this);
 }
 
 void ClangDiagnosticConfigsSelectionWidget::refresh(const ClangDiagnosticConfigsModel &model,
@@ -79,6 +54,25 @@ ClangDiagnosticConfigs ClangDiagnosticConfigsSelectionWidget::customConfigs() co
     return m_diagnosticConfigsModel.customConfigs();
 }
 
+QString ClangDiagnosticConfigsSelectionWidget::label() const
+{
+    return Tr::tr("Diagnostic configuration:");
+}
+
+void ClangDiagnosticConfigsSelectionWidget::setUpUi(bool withLabel)
+{
+    m_button = new QPushButton;
+    const auto layout = new QHBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+    if (withLabel)
+        layout->addWidget(new QLabel(label()));
+    layout->addWidget(m_button);
+    layout->addStretch();
+
+    connect(m_button, &QPushButton::clicked,
+            this, &ClangDiagnosticConfigsSelectionWidget::onButtonClicked);
+}
+
 void ClangDiagnosticConfigsSelectionWidget::onButtonClicked()
 {
     ClangDiagnosticConfigsWidget *widget = m_createEditWidget(m_diagnosticConfigsModel.allConfigs(),
@@ -87,7 +81,7 @@ void ClangDiagnosticConfigsSelectionWidget::onButtonClicked()
     widget->layout()->setContentsMargins(0, 0, 0, 0);
 
     QDialog dialog;
-    dialog.setWindowTitle(ClangDiagnosticConfigsWidget::tr("Diagnostic Configurations"));
+    dialog.setWindowTitle(Tr::tr("Diagnostic Configurations"));
     dialog.setLayout(new QVBoxLayout);
     dialog.layout()->addWidget(widget);
     auto *buttonsBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);

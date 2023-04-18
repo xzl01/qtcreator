@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "layoutingridlayout.h"
 
@@ -103,7 +81,7 @@ static int lowerBound(int i)
 static inline QPointF getUpperLeftPosition(const QList<ModelNode> &modelNodeList)
 {
     QPointF postion(std::numeric_limits<qreal>::max(), std::numeric_limits<qreal>::max());
-    foreach (const ModelNode &modelNode, modelNodeList) {
+    for (const ModelNode &modelNode : modelNodeList) {
         if (QmlItemNode::isValidQmlItemNode(modelNode)) {
             QmlItemNode qmlIitemNode = QmlItemNode(modelNode);
             if (qmlIitemNode.instancePosition().x() < postion.x())
@@ -122,18 +100,20 @@ static void setUpperLeftPostionToNode(const ModelNode &layoutNode, const QList<M
     layoutNode.variantProperty("y").setValue(qRound(upperLeftPosition.y()));
 }
 
-void LayoutInGridLayout::reparentToNodeAndRemovePositionForModelNodes(const ModelNode &parentModelNode,
-                                                                             const QList<ModelNode> &modelNodeList)
+void LayoutInGridLayout::reparentToNodeAndRemovePositionForModelNodes(
+    const ModelNode &parentModelNode, const QList<ModelNode> &modelNodeList)
 {
-    foreach (ModelNode modelNode, modelNodeList) {
+    for (ModelNode modelNode : modelNodeList) {
         reparentTo(modelNode, parentModelNode);
         modelNode.removeProperty("x");
         modelNode.removeProperty("y");
-        foreach (const VariantProperty &variantProperty, modelNode.variantProperties()) {
+        const QList<VariantProperty> variantProperties = modelNode.variantProperties();
+        for (const VariantProperty &variantProperty : variantProperties) {
             if (variantProperty.name().contains("anchors."))
                 modelNode.removeProperty(variantProperty.name());
         }
-        foreach (const BindingProperty &bindingProperty, modelNode.bindingProperties()) {
+        const QList<BindingProperty> bindingProperties = modelNode.bindingProperties();
+        for (const BindingProperty &bindingProperty : bindingProperties) {
             if (bindingProperty.name().contains("anchors."))
                 modelNode.removeProperty(bindingProperty.name());
         }
@@ -142,7 +122,7 @@ void LayoutInGridLayout::reparentToNodeAndRemovePositionForModelNodes(const Mode
 
 void LayoutInGridLayout::setSizeAsPreferredSize(const QList<ModelNode> &modelNodeList)
 {
-     foreach (ModelNode modelNode, modelNodeList) {
+     for (ModelNode modelNode : modelNodeList) {
          if (modelNode.hasVariantProperty("width")) {
              modelNode.variantProperty("Layout.preferredWidth").setValue(modelNode.variantProperty("width").value());
              modelNode.removeProperty("width");
@@ -249,7 +229,8 @@ int LayoutInGridLayout::rowCount() const
 
 void LayoutInGridLayout::collectItemNodes()
 {
-    foreach (const ModelNode &modelNode, m_selectionContext.selectedModelNodes()) {
+    const QList<ModelNode> modelNodes = m_selectionContext.selectedModelNodes();
+    for (const ModelNode &modelNode : modelNodes) {
         if (QmlItemNode::isValidQmlItemNode(modelNode)) {
             QmlItemNode itemNode = modelNode;
             if (itemNode.instanceSize().width() > 0
@@ -267,7 +248,7 @@ void LayoutInGridLayout::collectItemNodes()
 void LayoutInGridLayout::collectOffsets()
 {
     //We collect all different x and y offsets that define the cells
-    foreach (const QmlItemNode &qmlItemNode, m_qmlItemNodes) {
+    for (const QmlItemNode &qmlItemNode : std::as_const(m_qmlItemNodes)) {
         int x  = qRound((qmlItemNode.instancePosition().x()));
         m_xTopOffsets.append(x);
         x  = qRound((qmlItemNode.instancePosition().x() + lowerBound(qmlItemNode.instanceBoundingRect().width())));
@@ -303,7 +284,7 @@ void LayoutInGridLayout::calculateGridOffsets()
     int heightTolerance = defaultHeightTolerance;
 
     //The tolerance cannot be bigger then the size of an item
-    foreach (const auto &qmlItemNode, m_qmlItemNodes) {
+    for (const auto &qmlItemNode : std::as_const(m_qmlItemNodes)) {
         widthTolerance = qMin(qmlItemNode.instanceSize().toSize().width() - 1, widthTolerance);
         heightTolerance = qMin(qmlItemNode.instanceSize().toSize().height() - 1, heightTolerance);
     }
@@ -340,7 +321,7 @@ void LayoutInGridLayout::removeEmtpyRowsAndColumns()
     m_columns = QVector<bool>(columnCount());
     m_columns.fill(false);
 
-    foreach (const auto &qmlItemNode, m_qmlItemNodes) {
+    for (const auto &qmlItemNode : std::as_const(m_qmlItemNodes)) {
         int xCell = getCell(m_xTopOffsets, qmlItemNode.instancePosition().x());
         int yCell = getCell(m_yTopOffsets, qmlItemNode.instancePosition().y());
 
@@ -372,7 +353,7 @@ void LayoutInGridLayout::initializeCells()
 void LayoutInGridLayout::markUsedCells()
 {
     //We mark cells which are covered by items with true
-    foreach (const auto &qmlItemNode, m_qmlItemNodes) {
+    for (const auto &qmlItemNode : std::as_const(m_qmlItemNodes)) {
         int xCell = getCell(m_xTopOffsets, qmlItemNode.instancePosition().x());
         int yCell = getCell(m_yTopOffsets, qmlItemNode.instancePosition().y());
 
@@ -391,7 +372,7 @@ void LayoutInGridLayout::fillEmptyCells()
     //Cells which are not covered by items and are not marked as true have to be filled with a "spacer" item
     m_layoutedNodes = m_selectionContext.selectedModelNodes();
 
-    foreach (const QmlItemNode &itemNode, m_qmlItemNodes) {
+    for (const auto &itemNode : std::as_const(m_qmlItemNodes)) {
         m_layoutedNodes.append(itemNode);
     }
 
@@ -423,7 +404,9 @@ void LayoutInGridLayout::fillEmptyCells()
             }
     m_layoutedNodes.append(m_spacerNodes);
 }
-
+namespace {
+constexpr AuxiliaryDataKeyView extraSpanningProperty{AuxiliaryDataType::Document, "extraSpanning"};
+}
 void LayoutInGridLayout::setSpanning(const ModelNode &layoutNode)
 {
     //Define a post layout operation to set columns/rows and the spanning
@@ -431,7 +414,7 @@ void LayoutInGridLayout::setSpanning(const ModelNode &layoutNode)
         layoutNode.variantProperty("columns").setValue(columnCount());
         layoutNode.variantProperty("rows").setValue(rowCount());
 
-        foreach (const ModelNode &modelNode, m_layoutedNodes) {
+        for (const ModelNode &modelNode : std::as_const(m_layoutedNodes)) {
             QmlItemNode qmlItemNode(modelNode);
             int xCell = getCell(m_xTopOffsets, qmlItemNode.instancePosition().x());
             int yCell = getCell(m_yTopOffsets, qmlItemNode.instancePosition().y());
@@ -447,8 +430,8 @@ void LayoutInGridLayout::setSpanning(const ModelNode &layoutNode)
                 rowSpan = 1;
             }
 
-            if (modelNode.hasAuxiliaryData("extraSpanning"))
-                columnSpan += modelNode.auxiliaryData("extraSpanning").toInt();
+            if (auto data = modelNode.auxiliaryData(extraSpanningProperty))
+                columnSpan += data->toInt();
 
             if (columnSpan > 1)
                 qmlItemNode.setVariantProperty("Layout.columnSpan", columnSpan);
@@ -461,7 +444,7 @@ void LayoutInGridLayout::setSpanning(const ModelNode &layoutNode)
 
 void LayoutInGridLayout::removeSpacersBySpanning(QList<ModelNode> &nodes)
 {
-    foreach (const ModelNode &node, m_spacerNodes) {
+    for (const ModelNode &node : std::as_const(m_spacerNodes)) {
         if (int index = nodes.indexOf(node)) {
             ModelNode before = nodes.at(index -1);
             if (m_spacerNodes.contains(before)) {
@@ -469,11 +452,11 @@ void LayoutInGridLayout::removeSpacersBySpanning(QList<ModelNode> &nodes)
                 m_layoutedNodes.removeAll(node);
                 nodes.removeAll(node);
                 ModelNode(node).destroy();
-                if (before.hasAuxiliaryData("extraSpanning")) {
-                    before.setAuxiliaryData("extraSpanning", before.auxiliaryData("extraSpanning").toInt() + 1);
-                } else {
-                    before.setAuxiliaryData("extraSpanning", 1);
-                }
+                auto extraSpanningData = before.auxiliaryData(extraSpanningProperty);
+                if (extraSpanningData)
+                    before.setAuxiliaryData(extraSpanningProperty, extraSpanningData->toInt() + 1);
+                else
+                    before.setAuxiliaryData(extraSpanningProperty, 1);
             }
         }
 

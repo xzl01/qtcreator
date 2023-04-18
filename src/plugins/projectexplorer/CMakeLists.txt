@@ -1,5 +1,5 @@
 add_qtc_plugin(ProjectExplorer
-  DEPENDS QtcSsh Qt5::Qml
+  DEPENDS Qt::Qml
   PLUGIN_DEPENDS Core TextEditor
   PLUGIN_TEST_DEPENDS GenericProjectManager
   SOURCES
@@ -9,7 +9,6 @@ add_qtc_plugin(ProjectExplorer
     addrunconfigdialog.cpp addrunconfigdialog.h
     allprojectsfilter.cpp allprojectsfilter.h
     allprojectsfind.cpp allprojectsfind.h
-    applicationlauncher.cpp applicationlauncher.h
     appoutputpane.cpp appoutputpane.h
     baseprojectwizarddialog.cpp baseprojectwizarddialog.h
     buildaspects.cpp buildaspects.h
@@ -26,7 +25,7 @@ add_qtc_plugin(ProjectExplorer
     buildtargetinfo.h
     buildtargettype.h
     clangparser.cpp clangparser.h
-    codestylesettingspropertiespage.cpp codestylesettingspropertiespage.h codestylesettingspropertiespage.ui
+    codestylesettingspropertiespage.cpp codestylesettingspropertiespage.h
     compileoutputwindow.cpp compileoutputwindow.h
     configtaskhandler.cpp configtaskhandler.h
     copytaskhandler.cpp copytaskhandler.h
@@ -34,7 +33,7 @@ add_qtc_plugin(ProjectExplorer
     currentprojectfind.cpp currentprojectfind.h
     customexecutablerunconfiguration.cpp customexecutablerunconfiguration.h
     customparser.cpp customparser.h
-    customparserconfigdialog.cpp customparserconfigdialog.h customparserconfigdialog.ui
+    customparserconfigdialog.cpp customparserconfigdialog.h
     customparserssettingspage.cpp customparserssettingspage.h
     customtoolchain.cpp customtoolchain.h
     customwizard/customwizard.cpp customwizard/customwizard.h
@@ -49,29 +48,30 @@ add_qtc_plugin(ProjectExplorer
     desktoprunconfiguration.cpp desktoprunconfiguration.h
     devicesupport/desktopdevice.cpp devicesupport/desktopdevice.h
     devicesupport/desktopdevicefactory.cpp devicesupport/desktopdevicefactory.h
-    devicesupport/desktopdeviceprocess.cpp devicesupport/desktopdeviceprocess.h
     devicesupport/desktopprocesssignaloperation.cpp devicesupport/desktopprocesssignaloperation.h
     devicesupport/devicecheckbuildstep.cpp devicesupport/devicecheckbuildstep.h
-    devicesupport/devicefactoryselectiondialog.cpp devicesupport/devicefactoryselectiondialog.h devicesupport/devicefactoryselectiondialog.ui
+    devicesupport/devicefactoryselectiondialog.cpp devicesupport/devicefactoryselectiondialog.h
     devicesupport/devicemanager.cpp devicesupport/devicemanager.h
     devicesupport/devicemanagermodel.cpp devicesupport/devicemanagermodel.h
-    devicesupport/deviceprocess.cpp devicesupport/deviceprocess.h
     devicesupport/deviceprocessesdialog.cpp devicesupport/deviceprocessesdialog.h
     devicesupport/deviceprocesslist.cpp devicesupport/deviceprocesslist.h
     devicesupport/devicesettingspage.cpp devicesupport/devicesettingspage.h
-    devicesupport/devicesettingswidget.cpp devicesupport/devicesettingswidget.h devicesupport/devicesettingswidget.ui
-    devicesupport/devicetestdialog.cpp devicesupport/devicetestdialog.h devicesupport/devicetestdialog.ui
+    devicesupport/devicesettingswidget.cpp devicesupport/devicesettingswidget.h
+    devicesupport/devicetestdialog.cpp devicesupport/devicetestdialog.h
     devicesupport/deviceusedportsgatherer.cpp devicesupport/deviceusedportsgatherer.h
+    devicesupport/filetransfer.cpp devicesupport/filetransfer.h
+    devicesupport/filetransferinterface.h
     devicesupport/idevice.cpp devicesupport/idevice.h
     devicesupport/idevicefactory.cpp devicesupport/idevicefactory.h
+    devicesupport/idevicefwd.h
     devicesupport/idevicewidget.h
     devicesupport/localprocesslist.cpp devicesupport/localprocesslist.h
-    devicesupport/sshdeviceprocess.cpp devicesupport/sshdeviceprocess.h
-    devicesupport/sshdeviceprocess.cpp devicesupport/sshdeviceprocess.h
     devicesupport/sshdeviceprocesslist.cpp devicesupport/sshdeviceprocesslist.h
+    devicesupport/sshparameters.cpp devicesupport/sshparameters.h
+    devicesupport/sshsettings.cpp devicesupport/sshsettings.h
     devicesupport/sshsettingspage.cpp devicesupport/sshsettingspage.h
     editorconfiguration.cpp editorconfiguration.h
-    editorsettingspropertiespage.cpp editorsettingspropertiespage.h editorsettingspropertiespage.ui
+    editorsettingspropertiespage.cpp editorsettingspropertiespage.h
     environmentaspect.cpp environmentaspect.h
     environmentaspectwidget.cpp environmentaspectwidget.h
     environmentwidget.cpp environmentwidget.h
@@ -136,7 +136,7 @@ add_qtc_plugin(ProjectExplorer
     projectexplorerconstants.h
     projectexplorericons.cpp projectexplorericons.h
     projectexplorersettings.h
-    projectexplorersettingspage.cpp projectexplorersettingspage.h projectexplorersettingspage.ui
+    projectexplorersettingspage.cpp projectexplorersettingspage.h
     projectfilewizardextension.cpp projectfilewizardextension.h
     projectimporter.cpp projectimporter.h
     projectmacro.cpp projectmacro.h
@@ -144,20 +144,22 @@ add_qtc_plugin(ProjectExplorer
     projectmodels.cpp projectmodels.h
     projectnodes.cpp projectnodes.h
     projectpanelfactory.cpp projectpanelfactory.h
+    projectsettingswidget.cpp projectsettingswidget.h
     projecttree.cpp projecttree.h
     projecttreewidget.cpp projecttreewidget.h
     projectwelcomepage.cpp projectwelcomepage.h
     projectwindow.cpp projectwindow.h
-    projectwizardpage.cpp projectwizardpage.h projectwizardpage.ui
+    projectwizardpage.cpp projectwizardpage.h
     rawprojectpart.cpp rawprojectpart.h
     removetaskhandler.cpp removetaskhandler.h
     runconfiguration.cpp runconfiguration.h
     runconfigurationaspects.cpp runconfigurationaspects.h
     runcontrol.cpp runcontrol.h
     runsettingspropertiespage.cpp runsettingspropertiespage.h
+    sanitizerparser.cpp sanitizerparser.h
     selectablefilesmodel.cpp selectablefilesmodel.h
     session.cpp session.h
-    sessiondialog.cpp sessiondialog.h sessiondialog.ui
+    sessiondialog.cpp sessiondialog.h
     sessionmodel.cpp sessionmodel.h
     sessionview.cpp sessionview.h
     showineditortaskhandler.cpp showineditortaskhandler.h
@@ -168,6 +170,7 @@ add_qtc_plugin(ProjectExplorer
     targetsetuppage.cpp targetsetuppage.h
     targetsetupwidget.cpp targetsetupwidget.h
     task.cpp task.h
+    taskfile.cpp taskfile.h
     taskhub.cpp taskhub.h
     taskmodel.cpp taskmodel.h
     taskwindow.cpp taskwindow.h
@@ -181,6 +184,7 @@ add_qtc_plugin(ProjectExplorer
     userfileaccessor.cpp userfileaccessor.h
     vcsannotatetaskhandler.cpp vcsannotatetaskhandler.h
     waitforstopdialog.cpp waitforstopdialog.h
+    windebuginterface.cpp windebuginterface.h
     xcodebuildparser.cpp xcodebuildparser.h
 )
 
@@ -189,8 +193,8 @@ extend_qtc_plugin(ProjectExplorer
   DEFINES "PROJECT_USER_FILE_EXTENSION=${PROJECT_USER_FILE_EXTENSION}"
 )
 
-if (TARGET libclang)
-  set(CLANG_BINDIR "$<TARGET_FILE_DIR:libclang>")
+if (TARGET clangd)
+  set(CLANG_BINDIR "$<TARGET_FILE_DIR:clangd>")
 endif()
 extend_qtc_plugin(ProjectExplorer
   DEFINES "CLANG_BINDIR=\"${CLANG_BINDIR}\""
@@ -198,7 +202,6 @@ extend_qtc_plugin(ProjectExplorer
 
 extend_qtc_plugin(ProjectExplorer
   CONDITION WIN32
-  SOURCES windebuginterface.cpp windebuginterface.h
   DEFINES UNICODE _UNICODE
 )
 

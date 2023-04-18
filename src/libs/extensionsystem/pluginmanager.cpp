@@ -1,34 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "pluginmanager.h"
+
+#include "extensionsystemtr.h"
+#include "iplugin.h"
+#include "optionsparser.h"
 #include "pluginmanager_p.h"
 #include "pluginspec.h"
 #include "pluginspec_p.h"
-#include "optionsparser.h"
-#include "iplugin.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -53,10 +33,11 @@
 #include <utils/executeondestruction.h>
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 #include <utils/qtcsettings.h>
+#include <utils/threadutils.h>
 
 #ifdef WITH_TESTS
 #include <utils/hostosinfo.h>
@@ -422,7 +403,7 @@ QString PluginManager::systemInformation()
     QtcProcess qtDiagProc;
     qtDiagProc.setCommand(qtDiag);
     qtDiagProc.runBlocking();
-    if (qtDiagProc.result() == QtcProcess::FinishedWithSuccess)
+    if (qtDiagProc.result() == ProcessResult::FinishedWithSuccess)
         result += qtDiagProc.allOutput() + "\n";
     result += "Plugin information:\n\n";
     auto longestSpec = std::max_element(d->pluginSpecs.cbegin(), d->pluginSpecs.cend(),
@@ -601,7 +582,7 @@ QString PluginManager::serializedArguments()
         if (!rc.isEmpty())
             rc += separator;
         rc += QLatin1String(argumentKeywordC);
-        for (const QString &argument : qAsConst(d->arguments))
+        for (const QString &argument : std::as_const(d->arguments))
             rc += separator + argument;
     }
     return rc;
@@ -768,7 +749,7 @@ void PluginManager::formatOptions(QTextStream &str, int optionIndentation, int d
 void PluginManager::formatPluginOptions(QTextStream &str, int optionIndentation, int descriptionIndentation)
 {
     // Check plugins for options
-    for (PluginSpec *ps : qAsConst(d->pluginSpecs)) {
+    for (PluginSpec *ps : std::as_const(d->pluginSpecs)) {
         const PluginSpec::PluginArgumentDescriptions pargs = ps->argumentDescriptions();
         if (!pargs.empty()) {
             str << "\nPlugin: " <<  ps->name() << '\n';
@@ -783,7 +764,7 @@ void PluginManager::formatPluginOptions(QTextStream &str, int optionIndentation,
 */
 void PluginManager::formatPluginVersions(QTextStream &str)
 {
-    for (PluginSpec *ps : qAsConst(d->pluginSpecs))
+    for (PluginSpec *ps : std::as_const(d->pluginSpecs))
         str << "  " << ps->name() << ' ' << ps->version() << ' ' << ps->description() <<  '\n';
 }
 
@@ -873,7 +854,7 @@ bool PluginManager::finishScenario()
 // Waits until the running scenario is fully initialized
 void PluginManager::waitForScenarioFullyInitialized()
 {
-    if (QThread::currentThread() == qApp->thread()) {
+    if (isMainThread()) {
         qWarning("The waitForScenarioFullyInitialized() function can't be called from main thread.");
         return;
     }
@@ -1015,7 +996,7 @@ void PluginManagerPrivate::writeSettings()
         return;
     QStringList tempDisabledPlugins;
     QStringList tempForceEnabledPlugins;
-    for (PluginSpec *spec : qAsConst(pluginSpecs)) {
+    for (PluginSpec *spec : std::as_const(pluginSpecs)) {
         if (spec->isEnabledByDefault() && !spec->isEnabledBySettings())
             tempDisabledPlugins.append(spec->name());
         if (!spec->isEnabledByDefault() && spec->isEnabledBySettings())
@@ -1225,7 +1206,7 @@ static TestPlan generateCustomTestPlan(IPlugin *plugin,
 
         } else {
             // Add all matching test functions of all remaining test objects
-            for (QObject *testObject : qAsConst(remainingTestObjectsOfPlugin)) {
+            for (QObject *testObject : std::as_const(remainingTestObjectsOfPlugin)) {
                 const QStringList allFunctions = testFunctions(testObject->metaObject());
                 const QStringList matchingFunctions = matchingTestFunctions(allFunctions,
                                                                             matchText);
@@ -1272,7 +1253,7 @@ void PluginManagerPrivate::startTests()
     }
 
     int failedTests = 0;
-    for (const TestSpec &testSpec : qAsConst(testSpecs)) {
+    for (const TestSpec &testSpec : std::as_const(testSpecs)) {
         IPlugin *plugin = testSpec.pluginSpec->plugin();
         if (!plugin)
             continue; // plugin not loaded
@@ -1400,7 +1381,7 @@ void PluginManagerPrivate::shutdown()
 #ifdef WITH_TESTS
     if (PluginManager::isScenarioRunning("TestModelManagerInterface")) {
         qDebug() << "Point 2: Expect the next call to Point 3 triggers a crash";
-        QThread::currentThread()->sleep(5);
+        QThread::sleep(5);
     }
 #endif
     if (!allObjects.isEmpty()) {
@@ -1414,22 +1395,10 @@ void PluginManagerPrivate::shutdown()
 /*!
     \internal
 */
-void PluginManagerPrivate::asyncShutdownFinished()
-{
-    auto *plugin = qobject_cast<IPlugin *>(sender());
-    Q_ASSERT(plugin);
-    asynchronousPlugins.remove(plugin->pluginSpec());
-    if (asynchronousPlugins.isEmpty())
-        shutdownEventLoop->exit();
-}
-
-/*!
-    \internal
-*/
 const QVector<PluginSpec *> PluginManagerPrivate::loadQueue()
 {
     QVector<PluginSpec *> queue;
-    for (PluginSpec *spec : qAsConst(pluginSpecs)) {
+    for (PluginSpec *spec : std::as_const(pluginSpecs)) {
         QVector<PluginSpec *> circularityCheckQueue;
         loadQueue(spec, queue, circularityCheckQueue);
     }
@@ -1448,15 +1417,16 @@ bool PluginManagerPrivate::loadQueue(PluginSpec *spec,
     // check for circular dependencies
     if (circularityCheckQueue.contains(spec)) {
         spec->d->hasError = true;
-        spec->d->errorString = PluginManager::tr("Circular dependency detected:");
+        spec->d->errorString = Tr::tr("Circular dependency detected:");
         spec->d->errorString += QLatin1Char('\n');
         int index = circularityCheckQueue.indexOf(spec);
         for (int i = index; i < circularityCheckQueue.size(); ++i) {
-            spec->d->errorString.append(PluginManager::tr("%1 (%2) depends on")
-                .arg(circularityCheckQueue.at(i)->name()).arg(circularityCheckQueue.at(i)->version()));
+            const PluginSpec *depSpec = circularityCheckQueue.at(i);
+            spec->d->errorString.append(Tr::tr("%1 (%2) depends on")
+                                        .arg(depSpec->name(), depSpec->version()));
             spec->d->errorString += QLatin1Char('\n');
         }
-        spec->d->errorString.append(PluginManager::tr("%1 (%2)").arg(spec->name()).arg(spec->version()));
+        spec->d->errorString.append(Tr::tr("%1 (%2)").arg(spec->name(), spec->version()));
         return false;
     }
     circularityCheckQueue.append(spec);
@@ -1477,8 +1447,8 @@ bool PluginManagerPrivate::loadQueue(PluginSpec *spec,
         if (!loadQueue(depSpec, queue, circularityCheckQueue)) {
             spec->d->hasError = true;
             spec->d->errorString =
-                PluginManager::tr("Cannot load plugin because dependency failed to load: %1 (%2)\nReason: %3")
-                    .arg(depSpec->name()).arg(depSpec->version()).arg(depSpec->errorString());
+                Tr::tr("Cannot load plugin because dependency failed to load: %1 (%2)\nReason: %3")
+                    .arg(depSpec->name(), depSpec->version(), depSpec->errorString());
             return false;
         }
     }
@@ -1501,7 +1471,7 @@ public:
                + ".lock";
     }
 
-    static Utils::optional<QString> lockedPluginName(PluginManagerPrivate *pm)
+    static std::optional<QString> lockedPluginName(PluginManagerPrivate *pm)
     {
         const QString lockFilePath = LockFile::filePath(pm);
         if (QFile::exists(lockFilePath)) {
@@ -1541,7 +1511,7 @@ void PluginManagerPrivate::checkForProblematicPlugins()
 {
     if (!enableCrashCheck)
         return;
-    const Utils::optional<QString> pluginName = LockFile::lockedPluginName(this);
+    const std::optional<QString> pluginName = LockFile::lockedPluginName(this);
     if (pluginName) {
         PluginSpec *spec = pluginByName(*pluginName);
         if (spec && !spec->isRequired()) {
@@ -1550,24 +1520,26 @@ void PluginManagerPrivate::checkForProblematicPlugins()
             std::sort(dependentsNames.begin(), dependentsNames.end());
             const QString dependentsList = dependentsNames.join(", ");
             const QString pluginsMenu = HostOsInfo::isMacHost()
-                                            ? tr("%1 > About Plugins")
+                                            ? Tr::tr("%1 > About Plugins")
                                                   .arg(QGuiApplication::applicationDisplayName())
-                                            : tr("Help > About Plugins");
-            const QString otherPluginsText = tr("The following plugins depend on "
-                                                "%1 and are also disabled: %2.\n\n")
-                                                 .arg(spec->name(), dependentsList);
+                                            : Tr::tr("Help > About Plugins");
+            const QString otherPluginsText
+                = Tr::tr("If you temporarily disable %1, the following plugins that depend on "
+                         "it are also disabled: %2.\n\n")
+                      .arg(spec->name(), dependentsList);
             const QString detailsText = (dependents.isEmpty() ? QString() : otherPluginsText)
-                                        + tr("Disable plugins permanently in %1.").arg(pluginsMenu);
-            const QString text = tr("It looks like %1 closed because of a problem with the \"%2\" "
-                                    "plugin. Temporarily disable the plugin?")
+                                        + Tr::tr("Disable plugins permanently in %1.").arg(pluginsMenu);
+            const QString text = Tr::tr("The last time you started %1, it seems to have closed because "
+                                        "of a problem with the \"%2\" "
+                                        "plugin. Temporarily disable the plugin?")
                                      .arg(QGuiApplication::applicationDisplayName(), spec->name());
             QMessageBox dialog;
             dialog.setIcon(QMessageBox::Question);
             dialog.setText(text);
             dialog.setDetailedText(detailsText);
-            QPushButton *disableButton = dialog.addButton(tr("Disable Plugin"),
+            QPushButton *disableButton = dialog.addButton(Tr::tr("Disable Plugin"),
                                                           QMessageBox::AcceptRole);
-            dialog.addButton(tr("Continue"), QMessageBox::RejectRole);
+            dialog.addButton(Tr::tr("Continue"), QMessageBox::RejectRole);
             dialog.exec();
             if (dialog.clickedButton() == disableButton) {
                 spec->d->setForceDisabled(true);
@@ -1582,6 +1554,15 @@ void PluginManagerPrivate::checkForProblematicPlugins()
 void PluginManager::checkForProblematicPlugins()
 {
     d->checkForProblematicPlugins();
+}
+
+/*!
+    Returns the PluginSpec corresponding to \a plugin.
+*/
+
+PluginSpec *PluginManager::specForPlugin(IPlugin *plugin)
+{
+    return findOrDefault(d->pluginSpecs, equal(&PluginSpec::plugin, plugin));
 }
 
 /*!
@@ -1623,8 +1604,8 @@ void PluginManagerPrivate::loadPlugin(PluginSpec *spec, PluginSpec::State destSt
         if (depSpec->state() != destState) {
             spec->d->hasError = true;
             spec->d->errorString =
-                PluginManager::tr("Cannot load plugin because dependency failed to load: %1(%2)\nReason: %3")
-                    .arg(depSpec->name()).arg(depSpec->version()).arg(depSpec->errorString());
+                Tr::tr("Cannot load plugin because dependency failed to load: %1(%2)\nReason: %3")
+                    .arg(depSpec->name(), depSpec->version(), depSpec->errorString());
             return;
         }
     }
@@ -1643,8 +1624,11 @@ void PluginManagerPrivate::loadPlugin(PluginSpec *spec, PluginSpec::State destSt
         profilingReport(">stop", spec);
         if (spec->d->stop() == IPlugin::AsynchronousShutdown) {
             asynchronousPlugins << spec;
-            connect(spec->plugin(), &IPlugin::asynchronousShutdownFinished,
-                    this, &PluginManagerPrivate::asyncShutdownFinished);
+            connect(spec->plugin(), &IPlugin::asynchronousShutdownFinished, this, [this, spec] {
+                asynchronousPlugins.remove(spec);
+                if (asynchronousPlugins.isEmpty())
+                    shutdownEventLoop->exit();
+            });
         }
         profilingReport("<stop", spec);
         break;
@@ -1692,11 +1676,20 @@ void PluginManagerPrivate::readPluginPaths()
     // default
     pluginCategories.insert(QString(), QVector<PluginSpec *>());
 
+    // from the file system
     for (const QString &pluginFile : pluginFiles(pluginPaths)) {
         PluginSpec *spec = PluginSpec::read(pluginFile);
-        if (!spec) // not a Qt Creator plugin
-            continue;
+        if (spec) // Qt Creator plugin
+            pluginSpecs.append(spec);
+    }
+    // static
+    for (const QStaticPlugin &plugin : QPluginLoader::staticPlugins()) {
+        PluginSpec *spec = PluginSpec::read(plugin);
+        if (spec) // Qt Creator plugin
+            pluginSpecs.append(spec);
+    }
 
+    for (PluginSpec *spec : pluginSpecs) {
         // defaultDisabledPlugins and defaultEnabledPlugins from install settings
         // is used to override the defaults read from the plugin spec
         if (spec->isEnabledByDefault() && defaultDisabledPlugins.contains(spec->name())) {
@@ -1712,7 +1705,6 @@ void PluginManagerPrivate::readPluginPaths()
             spec->d->setEnabledBySettings(false);
 
         pluginCategories[spec->category()].append(spec);
-        pluginSpecs.append(spec);
     }
     resolveDependencies();
     enableDependenciesIndirectly();
@@ -1723,13 +1715,13 @@ void PluginManagerPrivate::readPluginPaths()
 
 void PluginManagerPrivate::resolveDependencies()
 {
-    for (PluginSpec *spec : qAsConst(pluginSpecs))
+    for (PluginSpec *spec : std::as_const(pluginSpecs))
         spec->d->resolveDependencies(pluginSpecs);
 }
 
 void PluginManagerPrivate::enableDependenciesIndirectly()
 {
-    for (PluginSpec *spec : qAsConst(pluginSpecs))
+    for (PluginSpec *spec : std::as_const(pluginSpecs))
         spec->d->enabledIndirectly = false;
     // cannot use reverse loadQueue here, because test dependencies can introduce circles
     QVector<PluginSpec *> queue = Utils::filtered(pluginSpecs, &PluginSpec::isEffectivelyEnabled);
@@ -1744,7 +1736,7 @@ PluginSpec *PluginManagerPrivate::pluginForOption(const QString &option, bool *r
 {
     // Look in the plugins for an option
     *requiresArgument = false;
-    for (PluginSpec *spec : qAsConst(pluginSpecs)) {
+    for (PluginSpec *spec : std::as_const(pluginSpecs)) {
         PluginArgumentDescription match = Utils::findOrDefault(spec->argumentDescriptions(),
                                                                [option](PluginArgumentDescription pad) {
                                                                    return pad.name == option;

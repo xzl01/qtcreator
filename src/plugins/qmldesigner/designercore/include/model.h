@@ -1,40 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <qmldesignercorelib_global.h>
 
 #include <documentmessage.h>
+#include <projectstorage/projectstoragefwd.h>
 
+#include <QMimeData>
 #include <QObject>
 #include <QPair>
 
 #include <import.h>
 
 QT_BEGIN_NAMESPACE
+class QPixmap;
 class QUrl;
 QT_END_NAMESPACE
 
@@ -43,7 +24,6 @@ namespace QmlDesigner {
 namespace Internal {
 class ModelPrivate;
 class WriteLocker;
-class NodeMetaInfoPrivate;
 } //Internal
 
 class AnchorLine;
@@ -69,26 +49,63 @@ class QMLDESIGNERCORE_EXPORT Model : public QObject
     friend AbstractView;
     friend Internal::ModelPrivate;
     friend Internal::WriteLocker;
-    friend Internal::NodeMetaInfoPrivate;
+    friend ModelDeleter;
+    friend class NodeMetaInfoPrivate;
 
     Q_OBJECT
 
 public:
     enum ViewNotification { NotifyView, DoNotNotifyView };
 
-    ~Model() override;
+    Model(ProjectStorage<Sqlite::Database> &projectStorage,
+          const TypeName &type,
+          int major = 1,
+          int minor = 1,
+          Model *metaInfoProxyModel = nullptr);
+    Model(const TypeName &typeName, int major = 1, int minor = 1, Model *metaInfoProxyModel = nullptr);
 
-    static Model *create(TypeName type, int major = 1, int minor = 1, Model *metaInfoPropxyModel = nullptr);
+    ~Model();
+
+    static ModelPointer create(const TypeName &typeName,
+                               int major = 1,
+                               int minor = 1,
+                               Model *metaInfoProxyModel = nullptr)
+    {
+        return ModelPointer(new Model(typeName, major, minor, metaInfoProxyModel));
+    }
 
     QUrl fileUrl() const;
-    QUrl projectUrl() const;
     void setFileUrl(const QUrl &url);
 
     const MetaInfo metaInfo() const;
     MetaInfo metaInfo();
-    NodeMetaInfo metaInfo(const TypeName &typeName, int majorVersion = -1, int minorVersion = -1);
-    bool hasNodeMetaInfo(const TypeName &typeName, int majorVersion = -1, int minorVersion = -1);
+    NodeMetaInfo metaInfo(const TypeName &typeName, int majorVersion = -1, int minorVersion = -1) const;
+    bool hasNodeMetaInfo(const TypeName &typeName, int majorVersion = -1, int minorVersion = -1) const;
     void setMetaInfo(const MetaInfo &metaInfo);
+
+    NodeMetaInfo flowViewFlowDecisionMetaInfo() const;
+    NodeMetaInfo flowViewFlowTransitionMetaInfo() const;
+    NodeMetaInfo flowViewFlowWildcardMetaInfo() const;
+    NodeMetaInfo fontMetaInfo() const;
+    NodeMetaInfo qtQuick3DDefaultMaterialMetaInfo() const;
+    NodeMetaInfo qtQuick3DMaterialMetaInfo() const;
+    NodeMetaInfo qtQuick3DModelMetaInfo() const;
+    NodeMetaInfo qtQuick3DNodeMetaInfo() const;
+    NodeMetaInfo qtQuick3DTextureMetaInfo() const;
+    NodeMetaInfo qtQuickConnectionsMetaInfo() const;
+    NodeMetaInfo qtQuickControlsTextAreaMetaInfo() const;
+    NodeMetaInfo qtQuickImageMetaInfo() const;
+    NodeMetaInfo qtQuickItemMetaInfo() const;
+    NodeMetaInfo qtQuickPropertyAnimationMetaInfo() const;
+    NodeMetaInfo qtQuickRectangleMetaInfo() const;
+    NodeMetaInfo qtQuickStateGroupMetaInfo() const;
+    NodeMetaInfo qtQuickTextEditMetaInfo() const;
+    NodeMetaInfo qtQuickTextMetaInfo() const;
+    NodeMetaInfo qtQuickTimelineKeyframeGroupMetaInfo() const;
+    NodeMetaInfo qtQuickTimelineTimelineMetaInfo() const;
+    NodeMetaInfo vector2dMetaInfo() const;
+    NodeMetaInfo vector3dMetaInfo() const;
+    NodeMetaInfo vector4dMetaInfo() const;
 
     void attachView(AbstractView *view);
     void detachView(AbstractView *view, ViewNotification emitDetachNotify = NotifyView);
@@ -111,29 +128,41 @@ public:
     RewriterView *rewriterView() const;
     void setRewriterView(RewriterView *rewriterView);
 
-    NodeInstanceView *nodeInstanceView() const;
+    const NodeInstanceView *nodeInstanceView() const;
     void setNodeInstanceView(NodeInstanceView *nodeInstanceView);
 
-    Model *metaInfoProxyModel();
+    Model *metaInfoProxyModel() const;
 
     TextModifier *textModifier() const;
     void setTextModifier(TextModifier *textModifier);
-    void setDocumentMessages(const QList<DocumentMessage> &errors, const QList<DocumentMessage> &warnings);
+    void setDocumentMessages(const QList<DocumentMessage> &errors,
+                             const QList<DocumentMessage> &warnings);
 
     QList<ModelNode> selectedNodes(AbstractView *view) const;
 
     void clearMetaInfoCache();
 
     bool hasId(const QString &id) const;
+    bool hasImport(const QString &importUrl) const;
 
-    QString generateNewId(const QString &prefixName) const;
-    QString generateNewId(const QString &prefixName, const QString &fallbackPrefix) const;
+    QString generateNewId(const QString &prefixName, const QString &fallbackPrefix = "element") const;
+    QString generateIdFromName(const QString &name, const QString &fallbackId = "element") const;
 
-protected:
-    Model();
+    void setActive3DSceneId(qint32 sceneId);
+    qint32 active3DSceneId() const;
+
+    void startDrag(QMimeData *mimeData, const QPixmap &icon);
+    void endDrag();
+
+    NotNullPointer<const ProjectStorage<Sqlite::Database>> projectStorage() const;
 
 private:
-    Internal::ModelPrivate *d;
+    template<const auto &moduleName, const auto &typeName>
+    NodeMetaInfo createNodeMetaInfo() const;
+    void detachAllViews();
+
+private:
+    std::unique_ptr<Internal::ModelPrivate> d;
 };
 
 }

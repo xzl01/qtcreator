@@ -14,7 +14,6 @@ Module {
     property bool enableRPath: true
     property bool installApiHeaders: true
     property bool enableBundledQt: false
-    property bool useBundledQtScript: false
     property bool staticBuild: false
     property string libDirName: "lib"
     property string appInstallDir: "bin"
@@ -47,20 +46,23 @@ Module {
     property string pluginsInstallDir: libDirName + "/qbs/plugins"
     property string qmlTypeDescriptionsInstallDir: FileInfo.joinPaths(resourcesInstallDir,
                                                                   "share/qbs/qml-type-descriptions")
+    property bool dumpJsLeaks: qbs.buildVariant === "debug"
 
     Properties {
         condition: project.withCode && qbs.toolchain.contains("gcc")
         cpp.cxxFlags: {
-            var flags = [];
+            var flags = ["-Wno-missing-field-initializers"];
             if (enableAddressSanitizer)
                 flags.push("-fno-omit-frame-pointer");
             function isClang() { return qbs.toolchain.contains("clang"); }
             function versionAtLeast(v) {
                 return Utilities.versionCompare(cpp.compilerVersion, v) >= 0;
             };
+            if (isClang())
+                flags.push("-Wno-constant-logical-operand");
             if ((!isClang() && versionAtLeast("9"))
                     || (isClang() && !qbs.hostOS.contains("darwin") && versionAtLeast("10"))) {
-                flags.push("-Wno-deprecated-copy", "-Wno-constant-logical-operand");
+                flags.push("-Wno-deprecated-copy");
             }
             return flags;
         }
@@ -68,11 +70,20 @@ Module {
             var flags = [];
             if (enableAddressSanitizer)
                 flags.push("-fsanitize=address");
-            if (enableUbSanitizer)
+            if (enableUbSanitizer) {
                 flags.push("-fsanitize=undefined");
+                flags.push("-fno-sanitize=vptr");
+            }
             if (enableThreadSanitizer)
                 flags.push("-fsanitize=thread");
             return flags;
         }
+    }
+    Properties {
+        condition: project.withCode && qbs.toolchain.contains("msvc") && product.Qt
+                && Utilities.versionCompare(Qt.core.version, "6.3") >= 0
+                && Utilities.versionCompare(cpp.compilerVersion, "19.10") >= 0
+                && Utilities.versionCompare(qbs.version, "1.23") < 0
+        cpp.cxxFlags: "/permissive-"
     }
 }

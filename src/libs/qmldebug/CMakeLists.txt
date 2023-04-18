@@ -1,10 +1,11 @@
 add_qtc_library(QmlDebug
-  DEPENDS Qt5::Network Utils
+  DEPENDS Qt::Network Utils
   SOURCES
     baseenginedebugclient.cpp baseenginedebugclient.h
     basetoolsclient.cpp basetoolsclient.h
     qdebugmessageclient.cpp qdebugmessageclient.h
     qmldebug_global.h
+    qmldebugtr.h
     qmldebugclient.cpp qmldebugclient.h
     qmldebugcommandlinearguments.h
     qmldebugconnection.cpp qmldebugconnection.h

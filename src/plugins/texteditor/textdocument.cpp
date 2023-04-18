@@ -1,61 +1,39 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "textdocument.h"
 
 #include "extraencodingsettings.h"
 #include "fontsettings.h"
-#include "textindenter.h"
 #include "storagesettings.h"
 #include "syntaxhighlighter.h"
 #include "tabsettings.h"
 #include "textdocumentlayout.h"
 #include "texteditor.h"
-#include "texteditorconstants.h"
+#include "texteditortr.h"
+#include "textindenter.h"
 #include "typingsettings.h"
+
+#include <coreplugin/coreconstants.h>
 #include <coreplugin/diffservice.h>
-#include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/editormanager/documentmodel.h>
+#include <coreplugin/editormanager/editormanager.h>
+#include <coreplugin/icore.h>
+#include <coreplugin/progressmanager/progressmanager.h>
+
 #include <extensionsystem/pluginmanager.h>
-#include <utils/textutils.h>
+
 #include <utils/guard.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
+#include <utils/qtcassert.h>
+#include <utils/textutils.h>
 
 #include <QAction>
 #include <QApplication>
-#include <QDir>
-#include <QFileInfo>
 #include <QFutureInterface>
 #include <QScrollBar>
 #include <QStringList>
 #include <QTextCodec>
-
-#include <coreplugin/coreconstants.h>
-#include <coreplugin/icore.h>
-#include <coreplugin/progressmanager/progressmanager.h>
-#include <utils/qtcassert.h>
 
 using namespace Core;
 using namespace Utils;
@@ -230,6 +208,7 @@ void TextDocumentPrivate::updateRevisions()
 TextDocument::TextDocument(Id id)
     : d(new TextDocumentPrivate)
 {
+    d->m_document.setParent(this);
     connect(&d->m_document, &QTextDocument::modificationChanged,
             this, &TextDocument::modificationChanged);
     connect(&d->m_document, &QTextDocument::contentsChanged,
@@ -257,27 +236,29 @@ TextDocument::~TextDocument()
     delete d;
 }
 
-QMap<QString, QString> TextDocument::openedTextDocumentContents()
+QMap<FilePath, QString> TextDocument::openedTextDocumentContents()
 {
-    QMap<QString, QString> workingCopy;
-    foreach (IDocument *document, DocumentModel::openedDocuments()) {
+    QMap<FilePath, QString> workingCopy;
+    const QList<IDocument *> documents = DocumentModel::openedDocuments();
+    for (IDocument *document : documents) {
         auto textEditorDocument = qobject_cast<TextDocument *>(document);
         if (!textEditorDocument)
             continue;
-        QString fileName = textEditorDocument->filePath().toString();
+        const FilePath fileName = textEditorDocument->filePath();
         workingCopy[fileName] = textEditorDocument->plainText();
     }
     return workingCopy;
 }
 
-QMap<QString, QTextCodec *> TextDocument::openedTextDocumentEncodings()
+QMap<FilePath, QTextCodec *> TextDocument::openedTextDocumentEncodings()
 {
-    QMap<QString, QTextCodec *> workingCopy;
-    foreach (IDocument *document, DocumentModel::openedDocuments()) {
+    QMap<FilePath, QTextCodec *> workingCopy;
+    const QList<IDocument *> documents = DocumentModel::openedDocuments();
+    for (IDocument *document : documents) {
         auto textEditorDocument = qobject_cast<TextDocument *>(document);
         if (!textEditorDocument)
             continue;
-        QString fileName = textEditorDocument->filePath().toString();
+        const FilePath fileName = textEditorDocument->filePath();
         workingCopy[fileName] = const_cast<QTextCodec *>(textEditorDocument->codec());
     }
     return workingCopy;
@@ -293,9 +274,34 @@ TextDocument *TextDocument::textDocumentForFilePath(const Utils::FilePath &fileP
     return qobject_cast<TextDocument *>(DocumentModel::documentForFilePath(filePath));
 }
 
+QString TextDocument::convertToPlainText(const QString &rawText)
+{
+    // This is basically a copy of QTextDocument::toPlainText but since toRawText returns a
+    // text containing formating characters and toPlainText replaces non breaking spaces, we
+    // provide our own plain text conversion to be able to save and copy document content
+    // containing non breaking spaces.
+
+    QString txt = rawText;
+    QChar *uc = txt.data();
+    QChar *e = uc + txt.size();
+
+    for (; uc != e; ++uc) {
+        switch (uc->unicode()) {
+        case 0xfdd0: // QTextBeginningOfFrame
+        case 0xfdd1: // QTextEndOfFrame
+        case QChar::ParagraphSeparator:
+        case QChar::LineSeparator:
+            *uc = QLatin1Char('\n');
+            break;
+        default:;
+        }
+    }
+    return txt;
+}
+
 QString TextDocument::plainText() const
 {
-    return document()->toPlainText();
+    return convertToPlainText(d->m_document.toRawText());
 }
 
 QString TextDocument::textAt(int pos, int length) const
@@ -362,7 +368,7 @@ QAction *TextDocument::createDiffAgainstCurrentFileAction(
         if (diffService && !leftFilePath.isEmpty() && !rightFilePath.isEmpty())
             diffService->diffFiles(leftFilePath, rightFilePath);
     };
-    auto diffAction = new QAction(tr("Diff Against Current File"), parent);
+    auto diffAction = new QAction(Tr::tr("Diff Against Current File"), parent);
     QObject::connect(diffAction, &QAction::triggered, parent, diffAgainstCurrentFile);
     return diffAction;
 }
@@ -657,7 +663,7 @@ bool TextDocument::save(QString *errorString, const FilePath &filePath, bool aut
         }
     }
 
-    const bool ok = write(savePath, saveFormat, d->m_document.toPlainText(), errorString);
+    const bool ok = write(savePath, saveFormat, plainText(), errorString);
 
     // restore text cursor and scroll bar positions
     if (autoSave && undos < d->m_document.availableUndoSteps()) {
@@ -726,7 +732,7 @@ Core::IDocument::OpenResult TextDocument::open(QString *errorString,
     emit aboutToOpen(filePath, realFilePath);
     OpenResult success = openImpl(errorString, filePath, realFilePath, /*reload =*/ false);
     if (success == OpenResult::Success) {
-        setMimeType(Utils::mimeTypeForFile(filePath).name());
+        setMimeType(Utils::mimeTypeForFile(filePath, MimeMatchMode::MatchDefaultAndRemote).name());
         emit openFinishedSuccessfully();
     }
     return success;
@@ -764,7 +770,7 @@ Core::IDocument::OpenResult TextDocument::openImpl(QString *errorString,
         } else if (chunks > 1) {
             QFutureInterface<void> interface;
             interface.setProgressRange(0, chunks);
-            ProgressManager::addTask(interface.future(), tr("Opening File"),
+            ProgressManager::addTask(interface.future(), Tr::tr("Opening File"),
                                      Constants::TASK_OPEN_FILE);
             interface.reportStarted();
 
@@ -912,7 +918,7 @@ void TextDocument::cleanWhitespace(QTextCursor &cursor, bool inEntireDocument,
     const IndentationForBlock &indentations
         = d->m_indenter->indentationForBlocks(blocks, currentTabSettings);
 
-    foreach (block, blocks) {
+    for (QTextBlock block : std::as_const(blocks)) {
         QString blockText = block.text();
 
         if (removeTrailingWhitespace)
@@ -968,6 +974,13 @@ void TextDocument::updateLayout() const
     documentLayout->requestUpdate();
 }
 
+void TextDocument::scheduleUpdateLayout() const
+{
+    auto documentLayout = qobject_cast<TextDocumentLayout*>(d->m_document.documentLayout());
+    QTC_ASSERT(documentLayout, return);
+    documentLayout->scheduleUpdate();
+}
+
 TextMarks TextDocument::marks() const
 {
     return d->m_marksCache;
@@ -994,12 +1007,14 @@ bool TextDocument::addMark(TextMark *mark)
         if (!mark->isVisible())
             return true;
         // Update document layout
-        double newMaxWidthFactor = qMax(mark->widthFactor(), documentLayout->maxMarkWidthFactor);
-        bool fullUpdate =  newMaxWidthFactor > documentLayout->maxMarkWidthFactor || !documentLayout->hasMarks;
+        bool fullUpdate = !documentLayout->hasMarks;
         documentLayout->hasMarks = true;
-        documentLayout->maxMarkWidthFactor = newMaxWidthFactor;
+        if (!documentLayout->hasLocationMarker && mark->isLocationMarker()) {
+            documentLayout->hasLocationMarker = true;
+            fullUpdate = true;
+        }
         if (fullUpdate)
-            documentLayout->requestUpdate();
+            documentLayout->scheduleUpdate();
         else
             documentLayout->requestExtraAreaUpdate();
         return true;
@@ -1033,9 +1048,13 @@ void TextDocument::removeMarkFromMarksCache(TextMark *mark)
                                   Qt::QueuedConnection);
     };
 
+    if (mark->isLocationMarker()) {
+        documentLayout->hasLocationMarker = false;
+        scheduleLayoutUpdate();
+    }
+
     if (d->m_marksCache.isEmpty()) {
         documentLayout->hasMarks = false;
-        documentLayout->maxMarkWidthFactor = 1.0;
         scheduleLayoutUpdate();
         return;
     }
@@ -1043,28 +1062,48 @@ void TextDocument::removeMarkFromMarksCache(TextMark *mark)
     if (!mark->isVisible())
         return;
 
-    if (documentLayout->maxMarkWidthFactor == 1.0
-            || mark->widthFactor() == 1.0
-            || mark->widthFactor() < documentLayout->maxMarkWidthFactor) {
-        // No change in width possible
-        documentLayout->requestExtraAreaUpdate();
-    } else {
-        double maxWidthFactor = 1.0;
-        foreach (const TextMark *mark, marks()) {
-            if (!mark->isVisible())
-                continue;
-            maxWidthFactor = qMax(mark->widthFactor(), maxWidthFactor);
-            if (maxWidthFactor == documentLayout->maxMarkWidthFactor)
-                break; // Still a mark with the maxMarkWidthFactor
-        }
+    documentLayout->requestExtraAreaUpdate();
+}
 
-        if (maxWidthFactor != documentLayout->maxMarkWidthFactor) {
-            documentLayout->maxMarkWidthFactor = maxWidthFactor;
-            scheduleLayoutUpdate();
-        } else {
-            documentLayout->requestExtraAreaUpdate();
+static QSet<Id> &hiddenMarksIds()
+{
+    static QSet<Id> ids;
+    return ids;
+}
+
+void TextDocument::temporaryHideMarksAnnotation(const Utils::Id &category)
+{
+    hiddenMarksIds().insert(category);
+    const QList<IDocument *> documents = DocumentModel::openedDocuments();
+    for (auto document : documents) {
+        if (auto textDocument = qobject_cast<TextDocument*>(document)) {
+            const TextMarks marks = textDocument->marks();
+            for (const auto mark : marks) {
+                if (mark->category().id == category)
+                    mark->updateMarker();
+            }
         }
     }
+}
+
+void TextDocument::showMarksAnnotation(const Utils::Id &category)
+{
+    hiddenMarksIds().remove(category);
+    const QList<IDocument *> documents = DocumentModel::openedDocuments();
+    for (auto document : documents) {
+        if (auto textDocument = qobject_cast<TextDocument*>(document)) {
+            const TextMarks marks = textDocument->marks();
+            for (const auto mark : marks) {
+                if (mark->category().id == category)
+                    mark->updateMarker();
+            }
+        }
+    }
+}
+
+bool TextDocument::marksAnnotationHidden(const Utils::Id &category)
+{
+    return hiddenMarksIds().contains(category);
 }
 
 void TextDocument::removeMark(TextMark *mark)
@@ -1078,7 +1117,7 @@ void TextDocument::removeMark(TextMark *mark)
     removeMarkFromMarksCache(mark);
     emit markRemoved(mark);
     mark->setBaseTextDocument(nullptr);
-    updateLayout();
+    scheduleUpdateLayout();
 }
 
 void TextDocument::updateMark(TextMark *mark)
@@ -1090,7 +1129,7 @@ void TextDocument::updateMark(TextMark *mark)
         userData->removeMark(mark);
         userData->addMark(mark);
     }
-    updateLayout();
+    scheduleUpdateLayout();
 }
 
 void TextDocument::moveMark(TextMark *mark, int previousLine)

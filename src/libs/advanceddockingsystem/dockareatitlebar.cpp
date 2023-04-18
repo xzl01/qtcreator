@@ -1,43 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Uwe Kindler
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Uwe Kindler
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "dockareatitlebar.h"
 
 #include "ads_globals.h"
+#include "advanceddockingsystemtr.h"
 #include "dockareatabbar.h"
 #include "dockareawidget.h"
+#include "dockcomponentsfactory.h"
 #include "dockmanager.h"
 #include "dockoverlay.h"
 #include "dockwidget.h"
@@ -45,7 +15,6 @@
 #include "floatingdockcontainer.h"
 #include "floatingdragpreview.h"
 #include "iconprovider.h"
-#include "dockcomponentsfactory.h"
 
 #include <QBoxLayout>
 #include <QLoggingCategory>
@@ -151,7 +120,7 @@ namespace ADS
 #endif
         QObject::connect(tabsMenu, &QMenu::aboutToShow, q, &DockAreaTitleBar::onTabsMenuAboutToShow);
         m_tabsMenuButton->setMenu(tabsMenu);
-        internal::setToolTip(m_tabsMenuButton, QObject::tr("List All Tabs"));
+        internal::setToolTip(m_tabsMenuButton, Tr::tr("List All Tabs"));
         m_tabsMenuButton->setSizePolicy(sizePolicy);
         m_tabsMenuButton->setIconSize(iconSize);
         m_tabsMenuButton->setFixedSize(buttonSize);
@@ -165,7 +134,7 @@ namespace ADS
         m_undockButton = new TitleBarButton(testConfigFlag(DockManager::DockAreaHasUndockButton));
         m_undockButton->setObjectName("detachGroupButton");
         //m_undockButton->setAutoRaise(true);
-        internal::setToolTip(m_undockButton, QObject::tr("Detach Group"));
+        internal::setToolTip(m_undockButton, Tr::tr("Detach Group"));
         internal::setButtonIcon(m_undockButton,
                                 QStyle::SP_TitleBarNormalButton,
                                 ADS::DockAreaUndockIcon);
@@ -186,9 +155,9 @@ namespace ADS
                                 QStyle::SP_TitleBarCloseButton,
                                 ADS::DockAreaCloseIcon);
         if (testConfigFlag(DockManager::DockAreaCloseButtonClosesTab))
-            internal::setToolTip(m_closeButton, QObject::tr("Close Active Tab"));
+            internal::setToolTip(m_closeButton, Tr::tr("Close Active Tab"));
         else
-            internal::setToolTip(m_closeButton, QObject::tr("Close Group"));
+            internal::setToolTip(m_closeButton, Tr::tr("Close Group"));
 
         m_closeButton->setSizePolicy(sizePolicy);
         m_closeButton->setIconSize(iconSize);
@@ -254,7 +223,7 @@ namespace ADS
             floatingWidget = floatingDockContainer = new FloatingDockContainer(m_dockArea);
         } else {
             auto w = new FloatingDragPreview(m_dockArea);
-            QObject::connect(w, &FloatingDragPreview::draggingCanceled, [=]() {
+            QObject::connect(w, &FloatingDragPreview::draggingCanceled, q, [this] {
                 m_dragState = DraggingInactive;
             });
             floatingWidget = w;
@@ -413,7 +382,7 @@ namespace ADS
     {
         DockWidget* dockWidget = d->m_tabBar->currentTab()->dockWidget();
         if (!d->m_dockWidgetActionsButtons.isEmpty()) {
-            for (auto button : qAsConst(d->m_dockWidgetActionsButtons)) {
+            for (auto button : std::as_const(d->m_dockWidgetActionsButtons)) {
                 d->m_layout->removeWidget(button);
                 delete button;
             }
@@ -564,14 +533,14 @@ namespace ADS
             return;
 
         QMenu menu(this);
-        auto action = menu.addAction(tr("Detach Area"),
+        auto action = menu.addAction(Tr::tr("Detach Area"),
                                      this,
                                      &DockAreaTitleBar::onUndockButtonClicked);
         action->setEnabled(d->m_dockArea->features().testFlag(DockWidget::DockWidgetFloatable));
         menu.addSeparator();
-        action = menu.addAction(tr("Close Area"), this, &DockAreaTitleBar::onCloseButtonClicked);
+        action = menu.addAction(Tr::tr("Close Area"), this, &DockAreaTitleBar::onCloseButtonClicked);
         action->setEnabled(d->m_dockArea->features().testFlag(DockWidget::DockWidgetClosable));
-        menu.addAction(tr("Close Other Areas"), d->m_dockArea, &DockAreaWidget::closeOtherAreas);
+        menu.addAction(Tr::tr("Close Other Areas"), d->m_dockArea, &DockAreaWidget::closeOtherAreas);
         menu.exec(event->globalPos());
     }
 

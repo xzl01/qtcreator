@@ -1,45 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <texteditor/texteditorconstants.h>
 
 #include <utils/qtcassert.h>
 
+#include "gitconstants.h"
 #include "githighlighters.h"
 
-namespace Git {
-namespace Internal {
+namespace Git::Internal {
 
-static const char CHANGE_PATTERN[] = "\\b[a-f0-9]{7,40}\\b";
+const char CHANGE_PATTERN[] = "\\b[a-f0-9]{7,40}\\b";
 
-GitSubmitHighlighter::GitSubmitHighlighter(QTextEdit * parent) :
+GitSubmitHighlighter::GitSubmitHighlighter(QChar commentChar, QTextEdit * parent) :
     TextEditor::SyntaxHighlighter(parent),
     m_keywordPattern("^[\\w-]+:")
 {
     setDefaultTextFormatCategories();
-    m_hashChar = '#';
+    m_commentChar = commentChar.isNull() ? QChar(Constants::DEFAULT_COMMENT_CHAR) : commentChar;
     QTC_CHECK(m_keywordPattern.isValid());
 }
 
@@ -52,7 +30,7 @@ void GitSubmitHighlighter::highlightBlock(const QString &text)
             state = Other;
         setCurrentBlockState(state);
         return;
-    } else if (text.startsWith(m_hashChar)) {
+    } else if (text.startsWith(m_commentChar)) {
         setFormat(0, text.size(), formatForCategory(TextEditor::C_COMMENT));
         setCurrentBlockState(state);
         return;
@@ -81,6 +59,19 @@ void GitSubmitHighlighter::highlightBlock(const QString &text)
         }
         break;
     }
+}
+
+QChar GitSubmitHighlighter::commentChar() const
+{
+    return m_commentChar;
+}
+
+void GitSubmitHighlighter::setCommentChar(QChar commentChar)
+{
+    if (m_commentChar == commentChar)
+        return;
+    m_commentChar = commentChar;
+    rehighlight();
 }
 
 GitRebaseHighlighter::RebaseAction::RebaseAction(const QString &regexp,
@@ -117,9 +108,9 @@ static TextEditor::TextStyle styleForFormat(int format)
     return C_TEXT;
 }
 
-GitRebaseHighlighter::GitRebaseHighlighter(QTextDocument *parent) :
+GitRebaseHighlighter::GitRebaseHighlighter(QChar commentChar, QTextDocument *parent) :
     TextEditor::SyntaxHighlighter(parent),
-    m_hashChar('#'),
+    m_commentChar(commentChar),
     m_changeNumberPattern(CHANGE_PATTERN)
 {
     setTextFormatCategories(Format_Count, styleForFormat);
@@ -139,7 +130,7 @@ GitRebaseHighlighter::GitRebaseHighlighter(QTextDocument *parent) :
 
 void GitRebaseHighlighter::highlightBlock(const QString &text)
 {
-    if (text.startsWith(m_hashChar)) {
+    if (text.startsWith(m_commentChar)) {
         setFormat(0, text.size(), formatForCategory(Format_Comment));
         QRegularExpressionMatchIterator it = m_changeNumberPattern.globalMatch(text);
         while (it.hasNext()) {
@@ -147,7 +138,7 @@ void GitRebaseHighlighter::highlightBlock(const QString &text)
             setFormat(match.capturedStart(), match.capturedLength(), formatForCategory(Format_Change));
         }
     } else {
-        for (const RebaseAction &action : qAsConst(m_actions)) {
+        for (const RebaseAction &action : std::as_const(m_actions)) {
             const QRegularExpressionMatch match = action.exp.match(text);
             if (match.hasMatch()) {
                 const int len = match.capturedLength();
@@ -167,5 +158,4 @@ void GitRebaseHighlighter::highlightBlock(const QString &text)
     formatSpaces(text);
 }
 
-} // namespace Internal
-} // namespace Git
+} // Git::Internal

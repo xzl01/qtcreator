@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,6 +7,8 @@
 
 #include <cppeditor/projectinfo.h>
 #include <cppeditor/compileroptionsbuilder.h>
+
+#include <utils/link.h>
 
 #include <QPair>
 #include <QTextCursor>
@@ -44,35 +24,34 @@ class CppEditorDocumentHandle;
 
 namespace TextEditor { class TextDocumentManipulatorInterface; }
 
-namespace ClangBackEnd { class TokenInfoContainer; }
-
 namespace ProjectExplorer { class Project; }
 
 namespace ClangCodeModel {
 namespace Internal {
 
-CppEditor::CppEditorDocumentHandle *cppDocument(const QString &filePath);
-void setLastSentDocumentRevision(const QString &filePath, uint revision);
-
 CppEditor::ClangDiagnosticConfig warningsConfigForProject(ProjectExplorer::Project *project);
-const QStringList optionsForProject(ProjectExplorer::Project *project);
+const QStringList globalClangOptions();
 
-QStringList createClangOptions(const CppEditor::ProjectPart &projectPart, const QString &filePath,
-                               const CppEditor::ClangDiagnosticConfig &warningsConfig,
-                               const QStringList &projectOptions);
+CppEditor::CompilerOptionsBuilder clangOptionsBuilder(
+        const CppEditor::ProjectPart &projectPart,
+        const CppEditor::ClangDiagnosticConfig &warningsConfig,
+        const Utils::FilePath &clangIncludeDir,
+        const ProjectExplorer::Macros &extraMacros);
+QJsonArray projectPartOptions(const CppEditor::CompilerOptionsBuilder &optionsBuilder);
+QJsonArray fullProjectPartOptions(const CppEditor::CompilerOptionsBuilder &optionsBuilder,
+                                  const QStringList &projectOptions);
+QJsonArray fullProjectPartOptions(const QJsonArray &projectPartOptions,
+                                  const QJsonArray &projectOptions);
+QJsonArray clangOptionsForFile(const CppEditor::ProjectFile &file,
+                               const CppEditor::ProjectPart &projectPart,
+                               const QJsonArray &generalOptions,
+                               CppEditor::UsePrecompiledHeaders usePch, bool clStyle);
 
-CppEditor::ProjectPart::ConstPtr projectPartForFile(const QString &filePath);
-CppEditor::ProjectPart::ConstPtr projectPartForFileBasedOnProcessor(const QString &filePath);
-bool isProjectPartLoaded(const CppEditor::ProjectPart::ConstPtr projectPart);
-QString projectPartIdForFile(const QString &filePath);
-int clangColumn(const QTextBlock &line, int cppEditorColumn);
-int cppEditorColumn(const QTextBlock &line, int clangColumn);
+CppEditor::ProjectPart::ConstPtr projectPartForFile(const Utils::FilePath &filePath);
 
-QString currentCppEditorDocumentFilePath();
+Utils::FilePath currentCppEditorDocumentFilePath();
 
 QString diagnosticCategoryPrefixRemoved(const QString &text);
-
-Utils::CodeModelIcon::Type iconTypeForToken(const ClangBackEnd::TokenInfoContainer &token);
 
 class GenerateCompilationDbResult
 {
@@ -87,9 +66,10 @@ public:
 };
 
 enum class CompilationDbPurpose { Project, CodeModel };
-GenerateCompilationDbResult generateCompilationDB(const CppEditor::ProjectInfo::ConstPtr projectInfo,
-        const Utils::FilePath &baseDir, CompilationDbPurpose purpose,
-        const CppEditor::ClangDiagnosticConfig &warningsConfig, const QStringList &projectOptions);
+GenerateCompilationDbResult generateCompilationDB(QList<CppEditor::ProjectInfo::ConstPtr> projectInfo,
+        Utils::FilePath baseDir, CompilationDbPurpose purpose,
+        CppEditor::ClangDiagnosticConfig warningsConfig, QStringList projectOptions,
+        Utils::FilePath clangIncludeDir);
 
 class DiagnosticTextInfo
 {
@@ -158,6 +138,74 @@ QString textUntilPreviousStatement(TextEditor::TextDocumentManipulatorInterface 
 
 bool isAtUsingDeclaration(TextEditor::TextDocumentManipulatorInterface &manipulator,
                           int basePosition);
+
+class ClangSourceRange
+{
+public:
+    ClangSourceRange(const Utils::Link &start, const Utils::Link &end) : start(start), end(end) {}
+
+    bool contains(int line, int column) const
+    {
+        if (line < start.targetLine || line > end.targetLine)
+            return false;
+        if (line == start.targetLine && column < start.targetLine)
+            return false;
+        if (line == end.targetLine && column > end.targetColumn)
+            return false;
+        return true;
+    }
+
+    bool contains(const Utils::Link &sourceLocation) const
+    {
+        return contains(sourceLocation.targetLine, sourceLocation.targetColumn);
+    }
+
+    Utils::Link start;
+    Utils::Link end;
+};
+
+inline bool operator==(const ClangSourceRange &first, const ClangSourceRange &second)
+{
+    return first.start == second.start && first.end == second.end;
+}
+
+class ClangFixIt
+{
+public:
+    ClangFixIt(const QString &text, const ClangSourceRange &range) : range(range), text(text) {}
+
+    ClangSourceRange range;
+    QString text;
+};
+
+inline bool operator==(const ClangFixIt &first, const ClangFixIt &second)
+{
+    return first.text == second.text && first.range == second.range;
+}
+
+class ClangDiagnostic
+{
+public:
+    enum class Severity { Ignored, Note, Warning, Error, Fatal };
+
+    Utils::Link location;
+    QString text;
+    QString category;
+    QString enableOption;
+    QString disableOption;
+    QList<ClangDiagnostic> children;
+    QList<ClangFixIt> fixIts;
+    Severity severity = Severity::Ignored;
+};
+
+inline bool operator==(const ClangDiagnostic &first, const ClangDiagnostic &second)
+{
+    return first.text == second.text && first.location == second.location;
+}
+inline bool operator!=(const ClangDiagnostic &first, const ClangDiagnostic &second)
+{
+    return !(first == second);
+}
 
 } // namespace Internal
 } // namespace Clang

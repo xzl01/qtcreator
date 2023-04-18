@@ -1,33 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bineditorwidget.h"
+
+#include "bineditorconstants.h"
 #include "bineditorservice.h"
+#include "bineditortr.h"
 #include "markup.h"
 
 #include <coreplugin/coreconstants.h>
+#include <coreplugin/icore.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/editormanager/ieditor.h>
 
@@ -39,16 +21,14 @@
 #include <utils/fadingindicator.h>
 #include <utils/fileutils.h>
 #include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 
+#include <QAction>
+#include <QApplication>
 #include <QByteArrayMatcher>
 #include <QDebug>
 #include <QFile>
-#include <QTemporaryFile>
-#include <QVariant>
-
-#include <QApplication>
-#include <QAction>
-#include <QClipboard>
+#include <QTextCodec>
 #include <QFontMetrics>
 #include <QHelpEvent>
 #include <QMenu>
@@ -56,14 +36,15 @@
 #include <QPainter>
 #include <QPointer>
 #include <QScrollBar>
+#include <QTemporaryFile>
 #include <QToolTip>
+#include <QVariant>
 #include <QWheelEvent>
 
 using namespace Core;
 using namespace Utils;
 
-namespace BinEditor {
-namespace Internal {
+namespace BinEditor::Internal {
 
 const QChar MidpointChar(u'\u00B7');
 
@@ -137,27 +118,15 @@ private:
     std::function<void(quint64, uint)> m_watchPointRequestHandler;
     std::function<void()> m_aboutToBeDestroyedHandler;
     QList<Markup> m_markup;
+
+public:
+    QTextCodec *m_codec = nullptr;
 };
 
 BinEditorWidget::BinEditorWidget(QWidget *parent)
     : QAbstractScrollArea(parent), d(new BinEditorWidgetPrivate(this))
 {
-    m_bytesPerLine = 16;
-    m_ieditor = nullptr;
-    m_baseAddr = 0;
-    m_blockSize = 4096;
-    m_size = 0;
-    m_addressBytes = 4;
     init();
-    m_unmodifiedState = 0;
-    m_readOnly = false;
-    m_hexCursor = true;
-    m_cursorPosition = 0;
-    m_anchorPosition = 0;
-    m_lowNibble = false;
-    m_cursorVisible = false;
-    m_caseSensitiveSearch = false;
-    m_canRequestNewWindow = false;
     setFocusPolicy(Qt::WheelFocus);
     setFrameStyle(QFrame::Plain);
 
@@ -167,6 +136,9 @@ BinEditorWidget::BinEditorWidget(QWidget *parent)
             &TextEditor::TextEditorSettings::fontSettingsChanged,
             this, &BinEditorWidget::setFontSettings);
 
+    const QByteArray setting = ICore::settings()->value(Constants::C_ENCODING_SETTING).toByteArray();
+    if (!setting.isEmpty())
+        setCodec(QTextCodec::codecForName(setting));
 }
 
 BinEditorWidget::~BinEditorWidget()
@@ -552,12 +524,25 @@ QRect BinEditorWidget::cursorRect() const
     return QRect(x, y, w, m_lineHeight);
 }
 
-Utils::optional<qint64> BinEditorWidget::posAt(const QPoint &pos, bool includeEmptyArea) const
+QChar BinEditorWidget::displayChar(char ch) const
+{
+    const QChar qc = QLatin1Char(ch);
+    if (qc.isPrint() && qc.unicode() < 128)
+        return qc;
+    if (!d->m_codec || qc.unicode() < 32)
+        return MidpointChar;
+    const QString uc = d->m_codec->toUnicode(&ch, 1);
+    if (uc.isEmpty() || !uc.at(0).isLetterOrNumber())
+        return MidpointChar;
+    return uc.at(0);
+}
+
+std::optional<qint64> BinEditorWidget::posAt(const QPoint &pos, bool includeEmptyArea) const
 {
     const int xoffset = horizontalScrollBar()->value();
     int x = xoffset + pos.x() - m_margin - m_labelWidth;
     if (!includeEmptyArea && x < 0)
-        return Utils::nullopt;
+        return std::nullopt;
     int column = qMin(15, qMax(0,x) / m_columnWidth);
     const qint64 topLine = verticalScrollBar()->value();
     const qint64 line = topLine + pos.y() / m_lineHeight;
@@ -569,20 +554,18 @@ Utils::optional<qint64> BinEditorWidget::posAt(const QPoint &pos, bool includeEm
             const qint64 dataPos = line * m_bytesPerLine + column;
             if (dataPos < 0 || dataPos >= m_size)
                 break;
-            QChar qc(QLatin1Char(dataAt(dataPos)));
-            if (!qc.isPrint())
-                qc = MidpointChar;
+            const QChar qc = displayChar(dataAt(dataPos));
             x -= fontMetrics().horizontalAdvance(qc);
             if (x <= 0)
                 break;
         }
         if (!includeEmptyArea && x > 0) // right of the text area
-            return Utils::nullopt;
+            return std::nullopt;
     }
 
     const qint64 bytePos = line * m_bytesPerLine + column;
     if (!includeEmptyArea && bytePos >= m_size)
-        return Utils::nullopt;
+        return std::nullopt;
     return qMin(m_size - 1, bytePos);
 }
 
@@ -859,19 +842,21 @@ void BinEditorWidget::paintEvent(QPaintEvent *e)
         bool isOld = hasOldData && !hasData;
 
         QString printable;
+        QString printableDisp;
 
         if (hasData || hasOldData) {
             for (int c = 0; c < m_bytesPerLine; ++c) {
                 qint64 pos = line * m_bytesPerLine + c;
                 if (pos >= m_size)
                     break;
-                QChar qc(QLatin1Char(dataAt(pos, isOld)));
-                if (qc.unicode() >= 127 || !qc.isPrint())
-                    qc = MidpointChar;
+                const QChar qc = displayChar(dataAt(pos, isOld));
                 printable += qc;
+                printableDisp += qc;
+                if (qc.direction() == QChar::Direction::DirR)
+                    printableDisp += QChar(0x200E); // Add LRM to avoid reversing RTL text
             }
         } else {
-            printable = QString(m_bytesPerLine, QLatin1Char(' '));
+            printableDisp = printable = QString(m_bytesPerLine, QLatin1Char(' '));
         }
 
         QRect selectionRect;
@@ -905,7 +890,7 @@ void BinEditorWidget::paintEvent(QPaintEvent *e)
                 int item_x = -xoffset +  m_margin + c * m_columnWidth + m_labelWidth;
 
                 QColor color;
-                foreach (const Markup &m, m_markup) {
+                for (const Markup &m : std::as_const(m_markup)) {
                     if (m.covers(lineAddress + c)) {
                         color = m.color;
                         break;
@@ -979,16 +964,16 @@ void BinEditorWidget::paintEvent(QPaintEvent *e)
                 painter.fillRect(text_x, y-m_ascent, fm.horizontalAdvance(printable), m_lineHeight,
                                  palette().highlight());
                 painter.setPen(palette().highlightedText().color());
-                painter.drawText(text_x, y, printable);
+                painter.drawText(text_x, y, printableDisp);
                 painter.restore();
         } else {
-            painter.drawText(text_x, y, printable);
+            painter.drawText(text_x, y, printableDisp);
             if (!printableSelectionRect.isEmpty()) {
                 painter.save();
                 painter.fillRect(printableSelectionRect, palette().highlight());
                 painter.setPen(palette().highlightedText().color());
                 painter.setClipRect(printableSelectionRect);
-                painter.drawText(text_x, y, printable);
+                painter.drawText(text_x, y, printableDisp);
                 painter.restore();
             }
         }
@@ -1005,7 +990,7 @@ void BinEditorWidget::paintEvent(QPaintEvent *e)
                 painter.setClipRect(cursorRect);
                 painter.fillRect(cursorRect, Qt::red);
                 painter.setPen(Qt::white);
-                painter.drawText(text_x, y, printable);
+                painter.drawText(text_x, y, printableDisp);
                 painter.restore();
             }
         }
@@ -1179,7 +1164,7 @@ QString BinEditorWidget::toolTip(const QHelpEvent *helpEvent) const
     } while (startInLine <= selEnd);
     if (!insideSelection) {
         // show popup for byte under cursor
-        Utils::optional<qint64> pos = posAt(helpEvent->pos(), /*includeEmptyArea*/false);
+        std::optional<qint64> pos = posAt(helpEvent->pos(), /*includeEmptyArea*/false);
         if (!pos)
             return QString();
         selStart = pos.value();
@@ -1234,24 +1219,24 @@ QString BinEditorWidget::toolTip(const QHelpEvent *helpEvent) const
     QString msg;
     QTextStream str(&msg);
     str << "<html><head/><body><p align=\"center\"><b>"
-        << tr("Memory at 0x%1").arg(address, 0, 16) << "</b></p>";
+        << Tr::tr("Memory at 0x%1").arg(address, 0, 16) << "</b></p>";
 
-    foreach (const Markup &m, m_markup) {
+    for (const Markup &m : std::as_const(m_markup)) {
         if (m.covers(address) && !m.toolTip.isEmpty()) {
             str << "<p>" <<  m.toolTip << "</p><br>";
             break;
         }
     }
-    const QString msgDecimalUnsigned = tr("Decimal&nbsp;unsigned&nbsp;value:");
-    const QString msgDecimalSigned = tr("Decimal&nbsp;signed&nbsp;value:");
-    const QString msgOldDecimalUnsigned = tr("Previous&nbsp;decimal&nbsp;unsigned&nbsp;value:");
-    const QString msgOldDecimalSigned = tr("Previous&nbsp;decimal&nbsp;signed&nbsp;value:");
+    const QString msgDecimalUnsigned = Tr::tr("Decimal&nbsp;unsigned&nbsp;value:");
+    const QString msgDecimalSigned = Tr::tr("Decimal&nbsp;signed&nbsp;value:");
+    const QString msgOldDecimalUnsigned = Tr::tr("Previous&nbsp;decimal&nbsp;unsigned&nbsp;value:");
+    const QString msgOldDecimalSigned = Tr::tr("Previous&nbsp;decimal&nbsp;signed&nbsp;value:");
 
     // Table showing little vs. big endian integers for multi-byte
     if (intSize > 1) {
         str << "<table><tr><th>"
-            << tr("%1-bit&nbsp;Integer&nbsp;Type").arg(8 * intSize) << "</th><th>"
-            << tr("Little Endian") << "</th><th>" << tr("Big Endian") << "</th></tr>";
+            << Tr::tr("%1-bit&nbsp;Integer&nbsp;Type").arg(8 * intSize) << "</th><th>"
+            << Tr::tr("Little Endian") << "</th><th>" << Tr::tr("Big Endian") << "</th></tr>";
         str << tableRowStartC << msgDecimalUnsigned
             << numericTableRowSepC << littleEndianValue << numericTableRowSepC
             << bigEndianValue << tableRowEndC <<  tableRowStartC << msgDecimalSigned
@@ -1277,14 +1262,14 @@ QString BinEditorWidget::toolTip(const QHelpEvent *helpEvent) const
             str << tableRowStartC << msgDecimalSigned << numericTableRowSepC
                 << littleEndianSigned << tableRowEndC;
         }
-        str << tableRowStartC << tr("Binary&nbsp;value:") << numericTableRowSepC;
+        str << tableRowStartC << Tr::tr("Binary&nbsp;value:") << numericTableRowSepC;
         str.setIntegerBase(2);
         str.setFieldWidth(8);
         str.setPadChar(QLatin1Char('0'));
         str << littleEndianValue;
         str.setFieldWidth(0);
         str << tableRowEndC << tableRowStartC
-            << tr("Octal&nbsp;value:") << numericTableRowSepC;
+            << Tr::tr("Octal&nbsp;value:") << numericTableRowSepC;
         str.setIntegerBase(8);
         str.setFieldWidth(3);
         str << littleEndianValue << tableRowEndC;
@@ -1297,13 +1282,13 @@ QString BinEditorWidget::toolTip(const QHelpEvent *helpEvent) const
                 str << tableRowStartC << msgOldDecimalSigned << numericTableRowSepC
                     << littleEndianSignedOld << tableRowEndC;
             }
-            str << tableRowStartC << tr("Previous&nbsp;binary&nbsp;value:")
+            str << tableRowStartC << Tr::tr("Previous&nbsp;binary&nbsp;value:")
                 << numericTableRowSepC;
             str.setIntegerBase(2);
             str.setFieldWidth(8);
             str << littleEndianValueOld;
             str.setFieldWidth(0);
-            str << tableRowEndC << tableRowStartC << tr("Previous&nbsp;octal&nbsp;value:")
+            str << tableRowEndC << tableRowStartC << Tr::tr("Previous&nbsp;octal&nbsp;value:")
                 << numericTableRowSepC;
             str.setIntegerBase(8);
             str.setFieldWidth(3);
@@ -1319,10 +1304,10 @@ QString BinEditorWidget::toolTip(const QHelpEvent *helpEvent) const
         double doubleValue, doubleValueOld;
         asDouble(selStart, doubleValue, false);
         asDouble(selStart, doubleValueOld, true);
-        str << tableRowStartC << tr("<i>double</i>&nbsp;value:") << numericTableRowSepC
+        str << tableRowStartC << Tr::tr("<i>double</i>&nbsp;value:") << numericTableRowSepC
             << doubleValue << tableRowEndC;
         if (doubleValue != doubleValueOld)
-            str << tableRowStartC << tr("Previous <i>double</i>&nbsp;value:") << numericTableRowSepC
+            str << tableRowStartC << Tr::tr("Previous <i>double</i>&nbsp;value:") << numericTableRowSepC
                 << doubleValueOld << tableRowEndC;
         str << "</table>";
     }
@@ -1333,10 +1318,10 @@ QString BinEditorWidget::toolTip(const QHelpEvent *helpEvent) const
         float floatValue, floatValueOld;
         asFloat(selStart, floatValue, false);
         asFloat(selStart, floatValueOld, true);
-        str << tableRowStartC << tr("<i>float</i>&nbsp;value:") << numericTableRowSepC
+        str << tableRowStartC << Tr::tr("<i>float</i>&nbsp;value:") << numericTableRowSepC
             << floatValue << tableRowEndC;
         if (floatValue != floatValueOld)
-            str << tableRowStartC << tr("Previous <i>float</i>&nbsp;value:") << numericTableRowSepC
+            str << tableRowStartC << Tr::tr("Previous <i>float</i>&nbsp;value:") << numericTableRowSepC
                 << floatValueOld << tableRowEndC;
 
         str << "</table>";
@@ -1457,8 +1442,7 @@ void BinEditorWidget::keyPressEvent(QKeyEvent *e)
 static void showZoomIndicator(QWidget *editor, const int newZoom)
 {
     Utils::FadingIndicator::showText(editor,
-                                     QCoreApplication::translate("BinEditorWidget::TextEditorWidget",
-                                                                 "Zoom: %1%").arg(newZoom),
+                                     Tr::tr("Zoom: %1%").arg(newZoom),
                                      Utils::FadingIndicator::SmallText);
 }
 
@@ -1481,14 +1465,15 @@ void BinEditorWidget::copy(bool raw)
     int selEnd = selectionEnd();
     const int selectionLength = selEnd - selStart + 1;
     if (selectionLength >> 22) {
-        QMessageBox::warning(this, tr("Copying Failed"),
-                             tr("You cannot copy more than 4 MB of binary data."));
+        QMessageBox::warning(this, Tr::tr("Copying Failed"),
+                             Tr::tr("You cannot copy more than 4 MB of binary data."));
         return;
     }
     QByteArray data = dataMid(selStart, selectionLength);
     if (raw) {
         data.replace(0, ' ');
-        QApplication::clipboard()->setText(QString::fromLatin1(data));
+        QTextCodec *codec = d->m_codec ? d->m_codec : QTextCodec::codecForName("latin1");
+        setClipboardAndSelection(codec->toUnicode(data));
         return;
     }
     QString hexString;
@@ -1499,7 +1484,7 @@ void BinEditorWidget::copy(bool raw)
         hexString.append(QLatin1Char(hex[val >> 4])).append(QLatin1Char(hex[val & 0xf])).append(QLatin1Char(' '));
     }
     hexString.chop(1);
-    QApplication::clipboard()->setText(hexString);
+    setClipboardAndSelection(hexString);
 }
 
 void BinEditorWidget::highlightSearchResults(const QByteArray &pattern, QTextDocument::FindFlags findFlags)
@@ -1592,15 +1577,15 @@ void BinEditorWidget::contextMenuEvent(QContextMenuEvent *event)
 
     QPointer<QMenu> contextMenu(new QMenu(this));
 
-    auto copyAsciiAction = new QAction(tr("Copy Selection as ASCII Characters"), contextMenu);
-    auto copyHexAction = new QAction(tr("Copy Selection as Hex Values"), contextMenu);
+    auto copyAsciiAction = new QAction(Tr::tr("Copy Selection as ASCII Characters"), contextMenu);
+    auto copyHexAction = new QAction(Tr::tr("Copy Selection as Hex Values"), contextMenu);
     auto copyBeValue = new QAction(contextMenu);
     auto copyLeValue = new QAction(contextMenu);
     auto jumpToBeAddressHereAction = new QAction(contextMenu);
     auto jumpToBeAddressNewWindowAction = new QAction(contextMenu);
     auto jumpToLeAddressHereAction = new QAction(contextMenu);
     auto jumpToLeAddressNewWindowAction = new QAction(contextMenu);
-    auto addWatchpointAction = new QAction(tr("Set Data Breakpoint on Selection"), contextMenu);
+    auto addWatchpointAction = new QAction(Tr::tr("Set Data Breakpoint on Selection"), contextMenu);
     contextMenu->addAction(copyAsciiAction);
     contextMenu->addAction(copyHexAction);
     contextMenu->addAction(addWatchpointAction);
@@ -1611,11 +1596,11 @@ void BinEditorWidget::contextMenuEvent(QContextMenuEvent *event)
     quint64 leAddress = 0;
     if (byteCount <= 8) {
         asIntegers(selStart, byteCount, beAddress, leAddress);
-        copyBeValue->setText(tr("Copy 0x%1").arg(QString::number(beAddress, 16)));
+        copyBeValue->setText(Tr::tr("Copy 0x%1").arg(QString::number(beAddress, 16)));
         contextMenu->addAction(copyBeValue);
         // If the menu entries would be identical, show only one of them.
         if (beAddress != leAddress) {
-            copyLeValue->setText(tr("Copy 0x%1").arg(QString::number(leAddress, 16)));
+            copyLeValue->setText(Tr::tr("Copy 0x%1").arg(QString::number(leAddress, 16)));
             contextMenu->addAction(copyLeValue);
         }
         setupJumpToMenuAction(contextMenu, jumpToBeAddressHereAction,
@@ -1626,9 +1611,9 @@ void BinEditorWidget::contextMenuEvent(QContextMenuEvent *event)
                                   jumpToLeAddressNewWindowAction, leAddress);
         }
     } else {
-        jumpToBeAddressHereAction->setText(tr("Jump to Address in This Window"));
-        jumpToBeAddressNewWindowAction->setText(tr("Jump to Address in New Window"));
-        copyBeValue->setText(tr("Copy Value"));
+        jumpToBeAddressHereAction->setText(Tr::tr("Jump to Address in This Window"));
+        jumpToBeAddressNewWindowAction->setText(Tr::tr("Jump to Address in New Window"));
+        copyBeValue->setText(Tr::tr("Copy Value"));
         jumpToBeAddressHereAction->setEnabled(false);
         jumpToBeAddressNewWindowAction->setEnabled(false);
         copyBeValue->setEnabled(false);
@@ -1646,9 +1631,9 @@ void BinEditorWidget::contextMenuEvent(QContextMenuEvent *event)
     else if (action == copyHexAction)
         copy(false);
     else if (action == copyBeValue)
-        QApplication::clipboard()->setText("0x" + QString::number(beAddress, 16));
+        setClipboardAndSelection("0x" + QString::number(beAddress, 16));
     else if (action == copyLeValue)
-        QApplication::clipboard()->setText("0x" + QString::number(leAddress, 16));
+        setClipboardAndSelection("0x" + QString::number(leAddress, 16));
     else if (action == jumpToBeAddressHereAction)
         jumpToAddress(beAddress);
     else if (action == jumpToLeAddressHereAction)
@@ -1665,9 +1650,9 @@ void BinEditorWidget::contextMenuEvent(QContextMenuEvent *event)
 void BinEditorWidget::setupJumpToMenuAction(QMenu *menu, QAction *actionHere,
                                       QAction *actionNew, quint64 addr)
 {
-    actionHere->setText(tr("Jump to Address 0x%1 in This Window")
+    actionHere->setText(Tr::tr("Jump to Address 0x%1 in This Window")
                         .arg(QString::number(addr, 16)));
-    actionNew->setText(tr("Jump to Address 0x%1 in New Window")
+    actionNew->setText(Tr::tr("Jump to Address 0x%1 in New Window")
                         .arg(QString::number(addr, 16)));
     menu->addAction(actionHere);
     menu->addAction(actionNew);
@@ -1686,6 +1671,15 @@ void BinEditorWidget::jumpToAddress(quint64 address)
 void BinEditorWidget::setNewWindowRequestAllowed(bool c)
 {
     m_canRequestNewWindow = c;
+}
+
+void BinEditorWidget::setCodec(QTextCodec *codec)
+{
+    if (codec == d->m_codec)
+        return;
+    d->m_codec = codec;
+    ICore::settings()->setValue(Constants::C_ENCODING_SETTING, codec ? codec->name() : QByteArray());
+    viewport()->update();
 }
 
 void BinEditorWidget::updateContents()
@@ -1741,5 +1735,4 @@ void BinEditorWidget::setMarkup(const QList<Markup> &markup)
     viewport()->update();
 }
 
-} // namespace Internal
-} // namespace BinEditor
+} // BinEditor::Internal

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -58,7 +36,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT MarkedString
-    : public Utils::variant<QString, MarkedLanguageString>
+    : public std::variant<QString, MarkedLanguageString>
 {
 public:
     MarkedString() = default;
@@ -75,7 +53,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT HoverContent
-    : public Utils::variant<MarkedString, QList<MarkedString>, MarkupContent>
+    : public std::variant<MarkedString, QList<MarkedString>, MarkupContent>
 {
 public:
     HoverContent() = default;
@@ -94,15 +72,24 @@ public:
     HoverContent content() const;
     void setContent(const HoverContent &content);
 
-    Utils::optional<Range> range() const { return optionalValue<Range>(rangeKey); }
+    std::optional<Range> range() const { return optionalValue<Range>(rangeKey); }
     void setRange(const Range &range) { insert(rangeKey, range); }
     void clearRange() { remove(rangeKey); }
 
     bool isValid() const override { return contains(contentsKey); }
 };
 
+class LANGUAGESERVERPROTOCOL_EXPORT HoverResult : public std::variant<Hover, std::nullptr_t>
+{
+public:
+    HoverResult() : variant(nullptr) {}
+    explicit HoverResult(const Hover &hover) : variant(hover) {}
+    explicit HoverResult(const QJsonValue &value);
+    bool isValid() const;
+};
+
 class LANGUAGESERVERPROTOCOL_EXPORT HoverRequest
-    : public Request<Hover, std::nullptr_t, TextDocumentPositionParams>
+    : public Request<HoverResult, std::nullptr_t, TextDocumentPositionParams>
 {
 public:
     explicit HoverRequest(const TextDocumentPositionParams &params);
@@ -122,7 +109,7 @@ public:
     QString label() const { return typedValue<QString>(labelKey); }
     void setLabel(const QString &label) { insert(labelKey, label); }
 
-    Utils::optional<MarkupOrString> documentation() const;
+    std::optional<MarkupOrString> documentation() const;
     void setDocumentation(const MarkupOrString &documentation)
     { insert(documentationKey, documentation.toJson()); }
     void clearDocumentation() { remove(documentationKey); }
@@ -140,13 +127,13 @@ class LANGUAGESERVERPROTOCOL_EXPORT SignatureInformation : public ParameterInfor
 public:
     using ParameterInformation::ParameterInformation;
 
-    Utils::optional<QList<ParameterInformation>> parameters() const
+    std::optional<QList<ParameterInformation>> parameters() const
     { return optionalArray<ParameterInformation>(parametersKey); }
     void setParameters(const QList<ParameterInformation> &parameters)
     { insertArray(parametersKey, parameters); }
     void clearParameters() { remove(parametersKey); }
 
-    Utils::optional<int> activeParameter() const { return optionalValue<int>(activeParameterKey); }
+    std::optional<int> activeParameter() const { return optionalValue<int>(activeParameterKey); }
     void setActiveParameter(int activeParameter) { insert(activeParameterKey, activeParameter); }
     void clearActiveParameter() { remove(activeParameterKey); }
 };
@@ -176,7 +163,7 @@ public:
      * In future version of the protocol this property might become
      * mandatory to better express this.
      */
-    Utils::optional<int> activeSignature() const { return optionalValue<int>(activeSignatureKey); }
+    std::optional<int> activeSignature() const { return optionalValue<int>(activeSignatureKey); }
     void setActiveSignature(int activeSignature) { insert(activeSignatureKey, activeSignature); }
     void clearActiveSignature() { remove(activeSignatureKey); }
 
@@ -189,7 +176,7 @@ public:
      * mandatory to better express the active parameter if the
      * active signature does have any.
      */
-    Utils::optional<int> activeParameter() const { return optionalValue<int>(activeParameterKey); }
+    std::optional<int> activeParameter() const { return optionalValue<int>(activeParameterKey); }
     void setActiveParameter(int activeParameter) { insert(activeParameterKey, activeParameter); }
     void clearActiveParameter() { remove(activeParameterKey); }
 
@@ -207,7 +194,7 @@ public:
 
 /// The result of a goto request can either be a location, a list of locations or null
 class LANGUAGESERVERPROTOCOL_EXPORT GotoResult
-        : public Utils::variant<Location, QList<Location>, std::nullptr_t>
+        : public std::variant<Location, QList<Location>, std::nullptr_t>
 {
 public:
     explicit GotoResult(const QJsonValue &value);
@@ -290,7 +277,7 @@ public:
     Range range() const { return typedValue<Range>(rangeKey); }
     void setRange(const Range &range) { insert(rangeKey, range); }
 
-    Utils::optional<int> kind() const { return optionalValue<int>(kindKey); }
+    std::optional<int> kind() const { return optionalValue<int>(kindKey); }
     void setKind(int kind) { insert(kindKey, kind); }
     void clearKind() { remove(kindKey); }
 
@@ -298,7 +285,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentHighlightsResult
-        : public Utils::variant<QList<DocumentHighlight>, std::nullptr_t>
+        : public std::variant<QList<DocumentHighlight>, std::nullptr_t>
 {
 public:
     using variant::variant;
@@ -334,7 +321,7 @@ public:
 using DocumentSymbolParams = TextDocumentParams;
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentSymbolsResult
-        : public Utils::variant<QList<SymbolInformation>, QList<DocumentSymbol>, std::nullptr_t>
+        : public std::variant<QList<SymbolInformation>, QList<DocumentSymbol>, std::nullptr_t>
 {
 public:
     using variant::variant;
@@ -407,7 +394,7 @@ public:
         void setDiagnostics(const QList<Diagnostic> &diagnostics)
         { insertArray(diagnosticsKey, diagnostics); }
 
-        Utils::optional<QList<CodeActionKind>> only() const;
+        std::optional<QList<CodeActionKind>> only() const;
         void setOnly(const QList<CodeActionKind> &only);
         void clearOnly() { remove(onlyKey); }
 
@@ -437,21 +424,21 @@ public:
     QString title() const { return typedValue<QString>(titleKey); }
     void setTitle(QString title) { insert(titleKey, title); }
 
-    Utils::optional<CodeActionKind> kind() const { return optionalValue<CodeActionKind>(kindKey); }
+    std::optional<CodeActionKind> kind() const { return optionalValue<CodeActionKind>(kindKey); }
     void setKind(const CodeActionKind &kind) { insert(kindKey, kind); }
     void clearKind() { remove(kindKey); }
 
-    Utils::optional<QList<Diagnostic>> diagnostics() const
+    std::optional<QList<Diagnostic>> diagnostics() const
     { return optionalArray<Diagnostic>(diagnosticsKey); }
     void setDiagnostics(const QList<Diagnostic> &diagnostics)
     { insertArray(diagnosticsKey, diagnostics); }
     void clearDiagnostics() { remove(diagnosticsKey); }
 
-    Utils::optional<WorkspaceEdit> edit() const { return optionalValue<WorkspaceEdit>(editKey); }
+    std::optional<WorkspaceEdit> edit() const { return optionalValue<WorkspaceEdit>(editKey); }
     void setEdit(const WorkspaceEdit &edit) { insert(editKey, edit); }
     void clearEdit() { remove(editKey); }
 
-    Utils::optional<Command> command() const { return optionalValue<Command>(commandKey); }
+    std::optional<Command> command() const { return optionalValue<Command>(commandKey); }
     void setCommand(const Command &command) { insert(commandKey, command); }
     void clearCommand() { remove(commandKey); }
 
@@ -459,7 +446,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT CodeActionResult
-    : public Utils::variant<QList<Utils::variant<Command, CodeAction>>, std::nullptr_t>
+    : public std::variant<QList<std::variant<Command, CodeAction>>, std::nullptr_t>
 {
 public:
     using variant::variant;
@@ -485,11 +472,11 @@ public:
     Range range() const { return typedValue<Range>(rangeKey); }
     void setRange(const Range &range) { insert(rangeKey, range); }
 
-    Utils::optional<Command> command() const { return optionalValue<Command>(commandKey); }
+    std::optional<Command> command() const { return optionalValue<Command>(commandKey); }
     void setCommand(const Command &command) { insert(commandKey, command); }
     void clearCommand() { remove(commandKey); }
 
-    Utils::optional<QJsonValue> data() const;
+    std::optional<QJsonValue> data() const;
     void setData(const QJsonValue &data) { insert(dataKey, data); }
     void clearData() { remove(dataKey); }
 
@@ -522,11 +509,11 @@ public:
     Range range() const { return typedValue<Range>(rangeKey); }
     void setRange(const Range &range) { insert(rangeKey, range); }
 
-    Utils::optional<DocumentUri> target() const;
+    std::optional<DocumentUri> target() const;
     void setTarget(const DocumentUri &target) { insert(targetKey, target.toString()); }
     void clearTarget() { remove(targetKey); }
 
-    Utils::optional<QJsonValue> data() const;
+    std::optional<QJsonValue> data() const;
     void setData(const QJsonValue &data) { insert(dataKey, data); }
     void clearData() { remove(dataKey); }
 
@@ -627,11 +614,11 @@ public:
     QString label() const { return typedValue<QString>(labelKey); }
     void setLabel(const QString &label) { insert(labelKey, label); }
 
-    Utils::optional<TextEdit> textEdit() const { return optionalValue<TextEdit>(textEditKey); }
+    std::optional<TextEdit> textEdit() const { return optionalValue<TextEdit>(textEditKey); }
     void setTextEdit(const TextEdit &textEdit) { insert(textEditKey, textEdit); }
     void clearTextEdit() { remove(textEditKey); }
 
-    Utils::optional<QList<TextEdit>> additionalTextEdits() const
+    std::optional<QList<TextEdit>> additionalTextEdits() const
     { return optionalArray<TextEdit>(additionalTextEditsKey); }
     void setAdditionalTextEdits(const QList<TextEdit> &additionalTextEdits)
     { insertArray(additionalTextEditsKey, additionalTextEdits); }
@@ -649,13 +636,13 @@ public:
     constexpr static const char methodName[] = "textDocument/colorPresentation";
 };
 
-class DocumentFormattingProperty : public Utils::variant<bool, double, QString>
+class DocumentFormattingProperty : public std::variant<bool, double, QString>
 {
 public:
     DocumentFormattingProperty() = default;
     explicit DocumentFormattingProperty(const QJsonValue &value);
     explicit DocumentFormattingProperty(const DocumentFormattingProperty &other)
-        : Utils::variant<bool, double, QString>(other) {}
+        : std::variant<bool, double, QString>(other) {}
 
     using variant::variant;
     using variant::operator=;
@@ -672,19 +659,19 @@ public:
     bool insertSpace() const { return typedValue<bool>(insertSpaceKey); }
     void setInsertSpace(bool insertSpace) { insert(insertSpaceKey, insertSpace); }
 
-    Utils::optional<bool> trimTrailingWhitespace() const
+    std::optional<bool> trimTrailingWhitespace() const
     { return optionalValue<bool>(trimTrailingWhitespaceKey); }
     void setTrimTrailingWhitespace(bool trimTrailingWhitespace)
     { insert(trimTrailingWhitespaceKey, trimTrailingWhitespace); }
     void clearTrimTrailingWhitespace() { remove(trimTrailingWhitespaceKey); }
 
-    Utils::optional<bool> insertFinalNewline() const
+    std::optional<bool> insertFinalNewline() const
     { return optionalValue<bool>(insertFinalNewlineKey); }
     void setInsertFinalNewline(bool insertFinalNewline)
     { insert(insertFinalNewlineKey, insertFinalNewline); }
     void clearInsertFinalNewline() { remove(insertFinalNewlineKey); }
 
-    Utils::optional<bool> trimFinalNewlines() const
+    std::optional<bool> trimFinalNewlines() const
     { return optionalValue<bool>(trimFinalNewlinesKey); }
     void setTrimFinalNewlines(bool trimFinalNewlines)
     { insert(trimFinalNewlinesKey, trimFinalNewlines); }
@@ -797,11 +784,11 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT PrepareRenameResult
-    : public Utils::variant<PlaceHolderResult, Range, std::nullptr_t>
+    : public std::variant<PlaceHolderResult, Range, std::nullptr_t>
 {
 public:
     PrepareRenameResult();
-    PrepareRenameResult(const Utils::variant<PlaceHolderResult, Range, std::nullptr_t> &val);
+    PrepareRenameResult(const std::variant<PlaceHolderResult, Range, std::nullptr_t> &val);
     explicit PrepareRenameResult(const PlaceHolderResult &val);
     explicit PrepareRenameResult(const Range &val);
     explicit PrepareRenameResult(const QJsonValue &val);

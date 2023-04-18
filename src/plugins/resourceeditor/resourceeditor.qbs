@@ -11,7 +11,7 @@ Project {
 
         Depends { name: "Core" }
 
-        cpp.defines: base.concat(["RESOURCE_LIBRARY"])
+        cpp.defines: base.concat(["RESOURCEEDITOR_LIBRARY"])
 
         Group {
             name: "General"
@@ -19,6 +19,7 @@ Project {
                 "resourceeditorconstants.h",
                 "resourceeditorfactory.cpp", "resourceeditorfactory.h",
                 "resourceeditorplugin.cpp", "resourceeditorplugin.h",
+                "resourceeditortr.h",
                 "resourceeditorw.cpp", "resourceeditorw.h",
                 "resource_global.h", "resourcenode.cpp", "resourcenode.h"
             ]
@@ -28,7 +29,7 @@ Project {
             name: "QRC Editor"
             prefix: "qrceditor/"
             files: [
-                "qrceditor.cpp", "qrceditor.h", "qrceditor.ui",
+                "qrceditor.cpp", "qrceditor.h",
                 "resourcefile.cpp", "resourcefile_p.h",
                 "resourceview.cpp", "resourceview.h",
                 "undocommands.cpp", "undocommands_p.h",

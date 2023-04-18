@@ -1,37 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Uwe Kindler
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Uwe Kindler
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "dockoverlay.h"
 
@@ -39,7 +7,6 @@
 #include "dockareatitlebar.h"
 
 #include <utils/hostosinfo.h>
-#include <utils/porting.h>
 
 #include <QCursor>
 #include <QGridLayout>
@@ -422,6 +389,7 @@ namespace ADS {
         d->m_lastLocation = InvalidDockWidgetArea;
 
         // Move it over the target.
+        hide();
         resize(target->size());
         QPoint topLeft = target->mapToGlobal(target->rect().topLeft());
         move(topLeft);
@@ -624,7 +592,7 @@ namespace ADS {
         if (windowHandle()->devicePixelRatio() == d->m_lastDevicePixelRatio) // TODO
             return;
 
-        for (auto widget : qAsConst(d->m_dropIndicatorWidgets))
+        for (auto widget : std::as_const(d->m_dropIndicatorWidgets))
             d->updateDropIndicatorIcon(widget);
 
         d->m_lastDevicePixelRatio = devicePixelRatioF();
@@ -759,9 +727,9 @@ namespace ADS {
                                     {"Arrow", DockOverlayCross::ArrowColor},
                                     {"Shadow", DockOverlayCross::ShadowColor}};
 
-        auto colorList = colors.split(' ', Utils::SkipEmptyParts);
+        auto colorList = colors.split(' ', Qt::SkipEmptyParts);
         for (const auto &colorListEntry : colorList) {
-            auto componentColor = colorListEntry.split('=', Utils::SkipEmptyParts);
+            auto componentColor = colorListEntry.split('=', Qt::SkipEmptyParts);
             int component = colorCompenentStringMap.value(componentColor[0], -1);
             if (component < 0)
                 continue;

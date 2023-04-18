@@ -1,37 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "idocument.h"
 
-#include <utils/fileutils.h>
+#include "coreplugintr.h"
+
+#include <utils/filepath.h>
 #include <utils/infobar.h>
-#include <utils/optional.h>
+#include <utils/minimizableinfobars.h>
 #include <utils/qtcassert.h>
 
 #include <QFile>
 #include <QFileInfo>
+
+#include <memory>
+#include <optional>
 
 /*!
     \class Core::IDocument
@@ -226,8 +209,9 @@ public:
     QString uniqueDisplayName;
     Utils::FilePath autoSavePath;
     Utils::InfoBar *infoBar = nullptr;
+    std::unique_ptr<MinimizableInfoBars> minimizableInfoBars;
     Id id;
-    optional<bool> fileIsReadOnly;
+    std::optional<bool> fileIsReadOnly;
     bool temporary = false;
     bool hasWriteWarning = false;
     bool restored = false;
@@ -631,7 +615,7 @@ void IDocument::setRestoredFrom(const Utils::FilePath &path)
     d->autoSavePath = path;
     d->restored = true;
     Utils::InfoBarEntry info(Id(kRestoredAutoSave),
-                             tr("File was restored from auto-saved copy. "
+                             Tr::tr("File was restored from auto-saved copy. "
                                 "Select Save to confirm or Revert to Saved to discard changes."));
     infoBar()->addInfo(info);
 }
@@ -676,6 +660,13 @@ Utils::InfoBar *IDocument::infoBar()
     if (!d->infoBar)
         d->infoBar = new Utils::InfoBar;
     return d->infoBar;
+}
+
+MinimizableInfoBars *IDocument::minimizableInfoBars()
+{
+    if (!d->minimizableInfoBars)
+        d->minimizableInfoBars.reset(new Utils::MinimizableInfoBars(*infoBar()));
+    return d->minimizableInfoBars.get();
 }
 
 /*!

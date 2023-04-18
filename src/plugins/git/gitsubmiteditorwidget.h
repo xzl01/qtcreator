@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "ui_gitsubmitpanel.h"
-#include "gitsettings.h"
 #include "commitdata.h"
 
 #include <texteditor/syntaxhighlighter.h>
@@ -39,11 +15,12 @@ QT_BEGIN_NAMESPACE
 class QValidator;
 QT_END_NAMESPACE
 
-namespace Git {
-namespace Internal {
+namespace Git::Internal {
 
+class GitSubmitPanel;
 class GitSubmitEditorPanelInfo;
 class GitSubmitEditorPanelData;
+class GitSubmitHighlighter;
 class LogChangeWidget;
 
 /* Submit editor widget with 2 additional panes:
@@ -64,11 +41,7 @@ public:
     GitSubmitEditorPanelData panelData() const;
     QString amendSHA1() const;
     void setHasUnmerged(bool e);
-    void initialize(CommitType commitType,
-                    const Utils::FilePath &repository,
-                    const GitSubmitEditorPanelData &data,
-                    const GitSubmitEditorPanelInfo &info,
-                    bool enablePush);
+    void initialize(const Utils::FilePath &repository, const CommitData &data);
     void refreshLog(const Utils::FilePath &repository);
 
 protected:
@@ -90,9 +63,9 @@ private:
     void setPanelInfo(const GitSubmitEditorPanelInfo &info);
 
     PushAction m_pushAction = NoPush;
-    QWidget *m_gitSubmitPanel;
+    GitSubmitPanel *m_gitSubmitPanel;
+    GitSubmitHighlighter *m_highlighter = nullptr;
     LogChangeWidget *m_logChangeWidget = nullptr;
-    Ui::GitSubmitPanel m_gitSubmitPanelUi;
     QValidator *m_emailValidator;
     QString m_originalAuthor;
     QString m_originalEmail;
@@ -100,5 +73,4 @@ private:
     bool m_isInitialized = false;
 };
 
-} // namespace Internal
-} // namespace Git
+} // Git::Internal

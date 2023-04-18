@@ -1,41 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Uwe Kindler
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Uwe Kindler
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "dockwidgettab.h"
 
 #include "ads_globals.h"
+#include "advanceddockingsystemtr.h"
 #include "dockareawidget.h"
 #include "dockmanager.h"
 #include "dockoverlay.h"
@@ -190,7 +159,7 @@ namespace ADS
         m_closeButton->setIconSize(QSize(11, 11));
         m_closeButton->setFixedSize(QSize(17, 17));
         q->onDockWidgetFeaturesChanged();
-        internal::setToolTip(m_closeButton, QObject::tr("Close Tab"));
+        internal::setToolTip(m_closeButton, Tr::tr("Close Tab"));
         QObject::connect(m_closeButton,
                          &QAbstractButton::clicked,
                          q,
@@ -442,12 +411,12 @@ namespace ADS
         const bool isNotOnlyTabInContainer =  !d->m_dockArea->dockContainer()->hasTopLevelDockWidget();
         const bool isDetachable = isFloatable && isNotOnlyTabInContainer;
 
-        auto action = menu.addAction(tr("Detach"), this, &DockWidgetTab::detachDockWidget);
+        auto action = menu.addAction(Tr::tr("Detach"), this, &DockWidgetTab::detachDockWidget);
         action->setEnabled(isDetachable);
         menu.addSeparator();
-        action = menu.addAction(tr("Close"), this, &DockWidgetTab::closeRequested);
+        action = menu.addAction(Tr::tr("Close"), this, &DockWidgetTab::closeRequested);
         action->setEnabled(isClosable());
-        menu.addAction(tr("Close Others"), this, &DockWidgetTab::closeOtherTabsRequested);
+        menu.addAction(Tr::tr("Close Others"), this, &DockWidgetTab::closeOtherTabsRequested);
         menu.exec(event->globalPos());
     }
 

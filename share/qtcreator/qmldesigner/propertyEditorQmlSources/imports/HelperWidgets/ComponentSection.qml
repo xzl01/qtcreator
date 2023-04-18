@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 import QtQuick.Controls 2.15
@@ -41,7 +19,10 @@ Section {
     property bool showState: false
 
     SectionLayout {
-        PropertyLabel { text: qsTr("Type") }
+        PropertyLabel {
+            text: qsTr("Type")
+            tooltip: qsTr("Sets the QML type of the component.")
+        }
 
         SecondColumnLayout {
             z: 2
@@ -66,7 +47,7 @@ Section {
                         typeLineEdit.visible = !typeLineEdit.visible
                         typeLineEdit.forceActiveFocus()
                     }
-                    tooltip: qsTr("Changes the type of this component.")
+                    tooltip: qsTr("Sets the QML type of the component.")
                     enabled: !modelNodeBackend.multiSelection
                 }
 
@@ -105,7 +86,10 @@ Section {
             ExpandingSpacer {}
         }
 
-        PropertyLabel { text: qsTr("ID") }
+        PropertyLabel {
+            text: qsTr("ID")
+            tooltip: qsTr("Sets a unique identification or name.")
+        }
 
         SecondColumnLayout {
             Spacer { implicitWidth: StudioTheme.Values.actionIndicatorWidth }
@@ -189,7 +173,10 @@ Section {
             ExpandingSpacer {}
         }
 
-        PropertyLabel { text: qsTr("Name") }
+        PropertyLabel {
+            text: qsTr("Name")
+            tooltip: qsTr("Adds a note with a title to explain the component.")
+        }
 
         SecondColumnLayout {
             enabled: !modelNodeBackend.multiSelection
@@ -269,6 +256,7 @@ Section {
         PropertyLabel {
             visible: root.showState
             text: qsTr("State")
+            tooltip: qsTr("Sets the state of the component.")
         }
 
         SecondColumnLayout {

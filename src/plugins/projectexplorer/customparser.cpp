@@ -1,35 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Andre Hartmann.
-** Contact: aha_1980@gmx.de
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Andre Hartmann.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "customparser.h"
 
-#include "projectexplorerconstants.h"
 #include "projectexplorer.h"
+#include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "task.h"
 
 #include <coreplugin/icore.h>
+
+#include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
 #include <QCheckBox>
@@ -181,7 +162,8 @@ CustomParsersAspect::CustomParsersAspect(Target *target)
     Q_UNUSED(target)
     setId("CustomOutputParsers");
     setSettingsKey("CustomOutputParsers");
-    setDisplayName(tr("Custom Output Parsers"));
+    setDisplayName(Tr::tr("Custom Output Parsers"));
+    addDataExtractor(this, &CustomParsersAspect::parsers, &Data::parsers);
     setConfigWidgetCreator([this] {
         const auto widget = new Internal::CustomParsersSelectionWidget;
         widget->setSelectedParsers(m_parsers);
@@ -223,11 +205,6 @@ CustomParser *CustomParser::createFromId(Utils::Id id)
     if (parser.id.isValid())
         return new CustomParser(parser);
     return nullptr;
-}
-
-Utils::Id CustomParser::id()
-{
-    return Utils::Id("ProjectExplorer.OutputParser.Custom");
 }
 
 OutputLineParser::Result CustomParser::handleLine(const QString &line, OutputFormat type)
@@ -286,11 +263,12 @@ public:
     SelectionWidget(QWidget *parent = nullptr) : QWidget(parent)
     {
         const auto layout = new QVBoxLayout(this);
-        const auto explanatoryLabel = new QLabel(tr(
+        const auto explanatoryLabel = new QLabel(Tr::tr(
             "Custom output parsers scan command line output for user-provided error patterns<br>"
-            "in order to create entries in the issues pane.<br>"
+            "to create entries in Issues.<br>"
             "The parsers can be configured <a href=\"dummy\">here</a>."));
         layout->addWidget(explanatoryLabel);
+        layout->setContentsMargins(0, 0, 0, 0);
         connect(explanatoryLabel, &QLabel::linkActivated, [] {
             Core::ICore::showOptionsDialog(Constants::CUSTOM_PARSERS_SETTINGS_PAGE_ID);
         });
@@ -301,7 +279,7 @@ public:
 
     void setSelectedParsers(const QList<Utils::Id> &parsers)
     {
-        for (const auto &p : qAsConst(parserCheckBoxes))
+        for (const auto &p : std::as_const(parserCheckBoxes))
             p.first->setChecked(parsers.contains(p.second));
         emit selectionChanged();
     }
@@ -309,7 +287,7 @@ public:
     QList<Utils::Id> selectedParsers() const
     {
         QList<Utils::Id> parsers;
-        for (const auto &p : qAsConst(parserCheckBoxes)) {
+        for (const auto &p : std::as_const(parserCheckBoxes)) {
             if (p.first->isChecked())
                 parsers << p.second;
         }
@@ -325,14 +303,13 @@ private:
         const auto layout = qobject_cast<QVBoxLayout *>(this->layout());
         QTC_ASSERT(layout, return);
         const QList<Utils::Id> parsers = selectedParsers();
-        for (const auto &p : qAsConst(parserCheckBoxes))
+        for (const auto &p : std::as_const(parserCheckBoxes))
             delete p.first;
         parserCheckBoxes.clear();
         for (const CustomParserSettings &s : ProjectExplorerPlugin::customParsers()) {
             const auto checkBox = new QCheckBox(s.displayName, this);
-            connect(checkBox, &QCheckBox::stateChanged,
-                    this, &SelectionWidget::selectionChanged);
-            parserCheckBoxes << qMakePair(checkBox, s.id);
+            connect(checkBox, &QCheckBox::stateChanged, this, &SelectionWidget::selectionChanged);
+            parserCheckBoxes.push_back({checkBox, s.id});
             layout->addWidget(checkBox);
         }
         setSelectedParsers(parsers);
@@ -368,9 +345,9 @@ void CustomParsersSelectionWidget::updateSummary()
     const QList<Utils::Id> parsers
             = qobject_cast<SelectionWidget *>(widget())->selectedParsers();
     if (parsers.isEmpty())
-        setSummaryText(tr("There are no custom parsers active"));
+        setSummaryText(Tr::tr("There are no custom parsers active"));
     else
-        setSummaryText(tr("There are %n custom parsers active", nullptr, parsers.count()));
+        setSummaryText(Tr::tr("There are %n custom parsers active", nullptr, parsers.count()));
 }
 
 } // namespace Internal

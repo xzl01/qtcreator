@@ -1,31 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "findvalueoperation.h"
 
 #include <iostream>
+
+#ifdef WITH_TESTS
+#include <QTest>
+#endif
+
+#include <QLoggingCategory>
+
+Q_LOGGING_CATEGORY(findvaluelog, "qtc.sdktool.operations.findvalue", QtWarningMsg)
 
 QString FindValueOperation::name() const
 {
@@ -55,16 +41,16 @@ bool FindValueOperation::setArguments(const QStringList &args)
 
         QVariant v = valueFromString(current);
         if (!v.isValid()) {
-            std::cerr << "Value for key '" << qPrintable(current) << "' is not valid." << std::endl << std::endl;
+            qCCritical(findvaluelog) << "Value for key '" << qPrintable(current) << "' is not valid.";
             return false;
         }
         m_values << v;
     }
 
     if (m_file.isEmpty())
-        std::cerr << "No file given." << std::endl << std::endl;
+        qCCritical(findvaluelog) << "No file given.";
     if (m_values.isEmpty())
-        std::cerr << "No values given." << std::endl << std::endl;
+        qCCritical(findvaluelog) << "No values given.";
 
     return (!m_file.isEmpty() && !m_values.isEmpty());
 }
@@ -74,9 +60,9 @@ int FindValueOperation::execute() const
     Q_ASSERT(!m_values.isEmpty());
     QVariantMap map = load(m_file);
 
-    foreach (const QVariant &v, m_values) {
+    for (const QVariant &v : std::as_const(m_values)) {
         const QStringList result = findValue(map, v);
-        foreach (const QString &r, result)
+        for (const QString &r : result)
             std::cout << qPrintable(r) << std::endl;
     }
 
@@ -84,7 +70,7 @@ int FindValueOperation::execute() const
 }
 
 #ifdef WITH_TESTS
-bool FindValueOperation::test() const
+void FindValueOperation::unittest()
 {
     QVariantMap testMap;
     QVariantMap subKeys;
@@ -114,26 +100,21 @@ bool FindValueOperation::test() const
 
     QStringList result;
     result = findValue(testMap, QVariant(23));
-    if (result.count() != 1
-            || !result.contains(QLatin1String("testint")))
-        return false;
+    QCOMPARE(result.count(), 1);
+    QVERIFY(result.contains(QLatin1String("testint")));
 
     result = findValue(testMap, QVariant(53));
-    if (result.count() != 2
-            || !result.contains(QLatin1String("subkeys/subsubkeys/testint2"))
-            || !result.contains(QLatin1String("subkeys/otherint")))
-        return false;
+    QCOMPARE(result.count(), 2);
+
+    QVERIFY(result.contains(QLatin1String("subkeys/subsubkeys/testint2")));
+    QVERIFY(result.contains(QLatin1String("subkeys/otherint")));
 
     result = findValue(testMap, QVariant(23456));
-    if (!result.isEmpty())
-        return false;
+    QVERIFY(result.isEmpty());
 
     result = findValue(testMap, QVariant(QString::fromLatin1("FindInList")));
-    if (result.count() != 1
-            || !result.contains(QLatin1String("aList[2][1]/findMe")))
-        return false;
-
-    return true;
+    QCOMPARE(result.count(), 1);
+    QVERIFY(result.contains(QLatin1String("aList[2][1]/findMe")));
 }
 #endif
 

@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "peripheralregisterhandler.h"
 
 #include "debuggeractions.h"
 #include "debuggercore.h"
-#include "debuggerdialogs.h"
+#include "debuggertr.h"
 
 #include <utils/basetreeview.h>
 
@@ -37,13 +15,12 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QPainter>
+#include <QXmlStreamReader>
 
 using namespace Utils;
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
-namespace {
 // Keys of a properties in SVD file.
 constexpr char kAccess[] = "access";
 constexpr char kAddressOffset[] = "addressOffset";
@@ -70,7 +47,6 @@ constexpr char kRegisters[] = "registers";
 constexpr char kResetvalue[] = "resetValue";
 constexpr char kSize[] = "size";
 constexpr char kWritOnlye[] = "write-only";
-} // namespace
 
 enum PeripheralRegisterColumns
 {
@@ -89,13 +65,13 @@ static QString accessName(PeripheralRegisterAccess access)
 {
     switch (access) {
     case PeripheralRegisterAccess::ReadOnly:
-        return PeripheralRegisterHandler::tr("RO");
+        return Tr::tr("RO");
     case PeripheralRegisterAccess::WriteOnly:
-        return PeripheralRegisterHandler::tr("WO");
+        return Tr::tr("WO");
     case PeripheralRegisterAccess::ReadWrite:
-        return PeripheralRegisterHandler::tr("RW");
+        return Tr::tr("RW");
     default:
-        return PeripheralRegisterHandler::tr("N/A");
+        return Tr::tr("N/A");
     }
 }
 
@@ -172,7 +148,7 @@ QString PeripheralRegisterField::bitRangeString() const
 {
     const int from = bitOffset;
     const int to = bitOffset + bitWidth - 1;
-    return PeripheralRegisterHandler::tr("[%1..%2]").arg(to).arg(from);
+    return Tr::tr("[%1..%2]").arg(to).arg(from);
 }
 
 QString PeripheralRegisterField::bitValueString(quint64 regValue) const
@@ -561,14 +537,14 @@ PeripheralRegisterHandler::PeripheralRegisterHandler(DebuggerEngine *engine)
     : m_engine(engine)
 {
     setObjectName("PeripheralRegisterModel");
-    setHeader({tr("Name"), tr("Value"), tr("Access")});
+    setHeader({Tr::tr("Name"), Tr::tr("Value"), Tr::tr("Access")});
 }
 
 static void handleField(QXmlStreamReader &in, PeripheralRegister &reg)
 {
     PeripheralRegisterField fld;
-    Utils::optional<int> from;
-    Utils::optional<int> to;
+    std::optional<int> from;
+    std::optional<int> to;
     while (in.readNextStartElement()) {
         const auto elementName = in.name();
         if (elementName == QLatin1String(kName)) {
@@ -731,12 +707,9 @@ void PeripheralRegisterHandler::updateRegisterGroups()
     clear();
 
     const DebuggerRunParameters &rp = m_engine->runParameters();
-    const FilePath peripheralDescriptionFile = FilePath::fromVariant(
-                rp.inferior.extraData.value(Debugger::Constants::kPeripheralDescriptionFile));
-
-    if (!peripheralDescriptionFile.exists())
+    if (!rp.peripheralDescriptionFile.exists())
         return;
-    m_peripheralRegisterGroups = availablePeripheralRegisterGroups(peripheralDescriptionFile);
+    m_peripheralRegisterGroups = availablePeripheralRegisterGroups(rp.peripheralDescriptionFile);
 }
 
 void PeripheralRegisterHandler::updateRegister(quint64 address, quint64 value)
@@ -804,24 +777,25 @@ bool PeripheralRegisterHandler::contextMenuEvent(const ItemViewEvent &ev)
     return true;
 }
 
-QMenu *PeripheralRegisterHandler::createRegisterGroupsMenu(DebuggerState state) const
+QMenu *PeripheralRegisterHandler::createRegisterGroupsMenu(DebuggerState state)
 {
-    const auto groupMenu = new QMenu(tr("View Groups"));
+    const auto groupMenu = new QMenu(Tr::tr("View Groups"));
     const auto actionGroup = new QActionGroup(groupMenu);
     bool hasActions = false;
-    for (const PeripheralRegisterGroup &group : qAsConst(m_peripheralRegisterGroups)) {
-        const QString actName = QStringLiteral("%1: %2")
-                .arg(group.name, group.description);
+    for (const PeripheralRegisterGroup &group : std::as_const(m_peripheralRegisterGroups)) {
+        const QString groupName = group.name;
+        const QString actName = QStringLiteral("%1: %2").arg(groupName, group.description);
         QAction *act = groupMenu->addAction(actName);
         const bool on = m_engine->hasCapability(RegisterCapability)
                 && (state == InferiorStopOk || state == InferiorUnrunnable);
         act->setEnabled(on);
-        act->setData(group.name);
         act->setCheckable(true);
         act->setChecked(group.active);
         actionGroup->addAction(act);
-        QObject::connect(act, &QAction::triggered,
-                         this, &PeripheralRegisterHandler::setActiveGroup);
+        QObject::connect(act, &QAction::triggered, this, [this, groupName](bool checked) {
+            if (checked)
+                setActiveGroup(groupName);
+        });
         hasActions = true;
     }
     groupMenu->setEnabled(hasActions);
@@ -832,7 +806,7 @@ QMenu *PeripheralRegisterHandler::createRegisterGroupsMenu(DebuggerState state) 
 QMenu *PeripheralRegisterHandler::createRegisterFormatMenu(
         DebuggerState state, PeripheralRegisterItem *item) const
 {
-    const auto fmtMenu = new QMenu(tr("Format"));
+    const auto fmtMenu = new QMenu(Tr::tr("Format"));
     const auto actionGroup = new QActionGroup(fmtMenu);
 
     const bool on = m_engine->hasCapability(RegisterCapability)
@@ -842,7 +816,7 @@ QMenu *PeripheralRegisterHandler::createRegisterFormatMenu(
 
     // Hexadecimal action.
     const auto hexAct = addCheckableAction(
-                this, fmtMenu, tr("Hexadecimal"), on,
+                this, fmtMenu, Tr::tr("Hexadecimal"), on,
                 fmt == PeripheralRegisterFormat::Hexadecimal,
                 [item] {
         item->m_reg.format = PeripheralRegisterFormat::Hexadecimal;
@@ -852,7 +826,7 @@ QMenu *PeripheralRegisterHandler::createRegisterFormatMenu(
 
     // Decimal action.
     const auto decAct = addCheckableAction(
-                this, fmtMenu, tr("Decimal"), on,
+                this, fmtMenu, Tr::tr("Decimal"), on,
                 fmt == PeripheralRegisterFormat::Decimal,
                 [item] {
         item->m_reg.format = PeripheralRegisterFormat::Decimal;
@@ -862,7 +836,7 @@ QMenu *PeripheralRegisterHandler::createRegisterFormatMenu(
 
     // Octal action.
     const auto octAct = addCheckableAction(
-                this, fmtMenu, tr("Octal"), on,
+                this, fmtMenu, Tr::tr("Octal"), on,
                 fmt == PeripheralRegisterFormat::Octal,
                 [item] {
         item->m_reg.format = PeripheralRegisterFormat::Octal;
@@ -872,7 +846,7 @@ QMenu *PeripheralRegisterHandler::createRegisterFormatMenu(
 
     // Binary action.
     const auto binAct = addCheckableAction(
-                this, fmtMenu, tr("Binary"), on,
+                this, fmtMenu, Tr::tr("Binary"), on,
                 fmt == PeripheralRegisterFormat::Binary,
                 [item] {
         item->m_reg.format = PeripheralRegisterFormat::Binary;
@@ -886,7 +860,7 @@ QMenu *PeripheralRegisterHandler::createRegisterFormatMenu(
 QMenu *PeripheralRegisterHandler::createRegisterFieldFormatMenu(
         DebuggerState state, PeripheralRegisterFieldItem *item) const
 {
-    const auto fmtMenu = new QMenu(tr("Format"));
+    const auto fmtMenu = new QMenu(Tr::tr("Format"));
     const auto actionGroup = new QActionGroup(fmtMenu);
 
     const bool on = m_engine->hasCapability(RegisterCapability)
@@ -896,7 +870,7 @@ QMenu *PeripheralRegisterHandler::createRegisterFieldFormatMenu(
 
     // Hexadecimal action.
     const auto hexAct = addCheckableAction(
-                this, fmtMenu, tr("Hexadecimal"), on,
+                this, fmtMenu, Tr::tr("Hexadecimal"), on,
                 fmt == PeripheralRegisterFormat::Hexadecimal,
                 [item] {
         item->m_fld.format = PeripheralRegisterFormat::Hexadecimal;
@@ -906,7 +880,7 @@ QMenu *PeripheralRegisterHandler::createRegisterFieldFormatMenu(
 
     // Decimal action.
     const auto decAct = addCheckableAction(
-                this, fmtMenu, tr("Decimal"), on,
+                this, fmtMenu, Tr::tr("Decimal"), on,
                 fmt == PeripheralRegisterFormat::Decimal,
                 [item] {
         item->m_fld.format = PeripheralRegisterFormat::Decimal;
@@ -916,7 +890,7 @@ QMenu *PeripheralRegisterHandler::createRegisterFieldFormatMenu(
 
     // Octal action.
     const auto octAct = addCheckableAction(
-                this, fmtMenu, tr("Octal"), on,
+                this, fmtMenu, Tr::tr("Octal"), on,
                 fmt == PeripheralRegisterFormat::Octal,
                 [item] {
         item->m_fld.format = PeripheralRegisterFormat::Octal;
@@ -926,7 +900,7 @@ QMenu *PeripheralRegisterHandler::createRegisterFieldFormatMenu(
 
     // Binary action.
     const auto binAct = addCheckableAction(
-                this, fmtMenu, tr("Binary"), on,
+                this, fmtMenu, Tr::tr("Binary"), on,
                 fmt == PeripheralRegisterFormat::Binary,
                 [item] {
         item->m_fld.format = PeripheralRegisterFormat::Binary;
@@ -937,36 +911,31 @@ QMenu *PeripheralRegisterHandler::createRegisterFieldFormatMenu(
     return fmtMenu;
 }
 
-void PeripheralRegisterHandler::setActiveGroup(bool checked)
+void PeripheralRegisterHandler::setActiveGroup(const QString &groupName)
 {
-    if (!checked)
-        return;
     deactivateGroups();
-    if (const auto act = qobject_cast<QAction *>(sender())) {
-        const QString groupName = act->data().toString();
-        const auto groupEnd = m_peripheralRegisterGroups.end();
-        const auto groupIt = std::find_if(
-                    m_peripheralRegisterGroups.begin(), groupEnd,
-                    [groupName](const PeripheralRegisterGroup &group){
-            return group.name == groupName;
-        });
-        if (groupIt == groupEnd)
-            return; // Group not found.
-        // Set active group.
-        groupIt->active = true;
+    const auto groupEnd = m_peripheralRegisterGroups.end();
+    const auto groupIt = std::find_if(
+                m_peripheralRegisterGroups.begin(), groupEnd,
+                [groupName](const PeripheralRegisterGroup &group){
+        return group.name == groupName;
+    });
+    if (groupIt == groupEnd)
+        return; // Group not found.
+    // Set active group.
+    groupIt->active = true;
 
-        // Add all register items of active register group.
-        m_activeRegisters.reserve(groupIt->registers.count());
-        for (PeripheralRegister &reg : groupIt->registers) {
-            const auto item = new PeripheralRegisterItem(m_engine, *groupIt, reg);
-            rootItem()->appendChild(item);
+    // Add all register items of active register group.
+    m_activeRegisters.reserve(groupIt->registers.count());
+    for (PeripheralRegister &reg : groupIt->registers) {
+        const auto item = new PeripheralRegisterItem(m_engine, *groupIt, reg);
+        rootItem()->appendChild(item);
 
-            const quint64 address = reg.address(groupIt->baseAddress);
-            m_activeRegisters.insert(address, item);
-        }
-
-        m_engine->reloadPeripheralRegisters();
+        const quint64 address = reg.address(groupIt->baseAddress);
+        m_activeRegisters.insert(address, item);
     }
+
+    m_engine->reloadPeripheralRegisters();
 }
 
 void PeripheralRegisterHandler::deactivateGroups()
@@ -979,5 +948,4 @@ void PeripheralRegisterHandler::deactivateGroups()
     m_activeRegisters.clear();
 }
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal

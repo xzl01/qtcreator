@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \previouspage qtcreator-ui-text.html
@@ -569,8 +547,7 @@
         ...
         using namespace Utils;
 
-        namespace Foo {
-        namespace Internal {
+        namespace Foo::Internal {
 
         void SomeThing::bar()
         {
@@ -578,8 +555,7 @@
             ...
         }
         ...
-        } // namespace Internal      // or only // Internal
-        } // namespace Foo           // or only // Foo
+        } // Foo::Internal           // or // namespace Foo::Internal
 
         -NOT-
 
@@ -763,49 +739,30 @@
     \note As an exception, imported third party code as well as code
     interfacing the native APIs (src/support/os_*) can use NULL or 0.
 
-    \section2 C++11 and C++14 Features
-
-    Code should compile with Microsoft Visual Studio 2013, g++ 4.7, and Clang 3.1.
-
     \section3 Lambdas
-
-    When using lambdas, note the following:
-
-    \list
-        \li You do not have to explicitly specify the return type. If you are not using one
-            of the previously mentioned compilers, do note that this is a C++14 feature and you
-            might need to enable C++14 support in your compiler.
-            \code
-            []() {
-                Foo *foo = activeFoo();
-                return foo ? foo->displayName() : QString();
-            });
-            \endcode
-
-        \li If you use static functions from the class that the lambda is located in, you have to
-            explicitly capture \c this. Otherwise it does not compile with g++ 4.7 and earlier.
-            \code
-            void Foo::something()
-            {
-                ...
-                [this]() { Foo::someStaticFunction(); }
-                ...
-            }
-
-            -NOT-
-
-            void Foo::something()
-            {
-                ...
-                []() { Foo::someStaticFunction(); }
-                ...
-            }
-            \endcode
-    \endlist
 
     Format the lambda according to the following rules:
 
     \list
+        \li When the lambda neither takes arguments nor specifies a return type,
+            drop round brackets.
+            \code
+            [] { ... lambda body ... }
+
+            -NOT-
+
+            []() { ... lambda body ... }
+            \endcode
+
+        \li Glue square brackets with round brackets when defining a lambda.
+            \code
+            [](int a) { ... lambda body ... }
+
+            -NOT-
+
+            [] (int a) { ... lambda body ... }
+            \endcode
+
         \li Place the capture-list, parameter list, return type, and opening brace on the first line,
             the body indented on the following lines, and the closing brace on a new line.
             \code
@@ -823,7 +780,7 @@
         \li Place a closing parenthesis and semicolon of an enclosing function call on the same line
             as the closing brace of the lambda.
             \code
-            foo([]() {
+            foo([] {
                 something();
             });
             \endcode
@@ -894,7 +851,7 @@
     Use initializer lists to initialize containers, for example:
 
     \code
-    const QVector<int> values = {1, 2, 3, 4, 5};
+    const QList<int> values = {1, 2, 3, 4, 5};
     \endcode
 
     \section3 Initialization with Curly Brackets
@@ -906,7 +863,7 @@
     class Values // the following code is quite useful for test fixtures
     {
         float floatValue = 4; // prefer that for simple types
-        QVector<int> values = {1, 2, 3, 4, integerValue}; // prefer that syntax for initializer lists
+        QList<int> values = {1, 2, 3, 4, integerValue}; // prefer that syntax for initializer lists
         SomeValues someValues{"One", 2, 3.4}; // not an initializer_list
         SomeValues &someValuesReference = someValues;
         ComplexType complexType{values, otherValues} // constructor call
@@ -935,17 +892,35 @@
     Make sure that a class uses \c{override} consistently, either for all overridden functions or
     for none.
 
-    \section3 Nullptr
-
-    All compilers support \c{nullptr}, but there is no consensus on using it. If in doubt, ask
-    the maintainer of the module whether they prefer using \c{nullptr}.
-
     \section3 Range-Based for-Loop
 
     You may use range-based for-loops, but beware of the spurious detachment problem.
     If the for-loop only reads the container and it is not obvious whether the
     container is const or unshared, use \c{std::cref()} to ensure that the container
     is not unnecessarily detached.
+
+    \section3 std::optional
+
+    Avoid the throwing function \c{value()}. Check the availability of the value first, and then use
+    the non-throwing functions for accessing values, like \c{operator*} and \c{operator->}.
+    In very simple cases, you can also use \c{value_or()}.
+
+    \code
+
+    if (optionalThing) {
+        val = optionalThing->member;
+        other = doSomething(*optionalThing);
+    }
+
+    -NOT-
+
+    if (optionalThing) {
+        val = optionalThing.value().member;
+        other = doSomething(optionalThing.value());
+    }
+
+    \endcode
+
 
     \section2 Using QObject
 

@@ -1,30 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangformatbaseindenter.h"
 #include "clangformatutils.h"
+#include "llvmfilesystem.h"
+
+#include <coreplugin/icore.h>
+
+#include <projectexplorer/editorconfiguration.h>
+#include <projectexplorer/project.h>
+#include <projectexplorer/session.h>
+
+#include <texteditor/icodestylepreferences.h>
+#include <texteditor/texteditorsettings.h>
 
 #include <clang/Tooling/Core/Replacement.h>
 
@@ -38,6 +26,8 @@
 
 namespace ClangFormat {
 
+Internal::LlvmFileSystemAdapter llvmFileSystemAdapter = {};
+
 namespace {
 void adjustFormatStyleForLineBreak(clang::format::FormatStyle &style,
                                    ReplacementsToKeep replacementsToKeep)
@@ -48,16 +38,23 @@ void adjustFormatStyleForLineBreak(clang::format::FormatStyle &style,
 #else
     style.SortIncludes = false;
 #endif
+#if LLVM_VERSION_MAJOR >= 16
+    style.SortUsingDeclarations = clang::format::FormatStyle::SUD_Never;
+#else
     style.SortUsingDeclarations = false;
+#endif
 
     // This is a separate pass, don't do it unless it's the full formatting.
     style.FixNamespaceComments = false;
+#if LLVM_VERSION_MAJOR >= 16
+    style.AlignTrailingComments = {clang::format::FormatStyle::TCAS_Never, 0};
+#else
     style.AlignTrailingComments = false;
+#endif
 
     if (replacementsToKeep == ReplacementsToKeep::IndentAndBefore)
         return;
 
-    style.DisableFormat = false;
     style.ColumnLimit = 0;
 #ifdef KEEP_LINE_BREAKS_FOR_NON_EMPTY_LINES_BACKPORTED
     style.KeepLineBreaksForNonEmptyLines = true;
@@ -148,6 +145,16 @@ QTextBlock reverseFindLastEmptyBlock(QTextBlock start)
     return start;
 }
 
+QTextBlock reverseFindLastBlockWithSymbol(QTextBlock start, QChar ch)
+{
+    if (start.position() > 0) {
+        start = start.previous();
+        while (start.position() > 0 && !start.text().contains(ch))
+            start = start.previous();
+    }
+    return start;
+}
+
 enum class CharacterContext {
     AfterComma,
     LastAfterComma,
@@ -194,18 +201,30 @@ bool comesDirectlyAfterIf(const QTextDocument *doc, int pos)
     return pos > 0 && doc->characterAt(pos) == 'f' && doc->characterAt(pos - 1) == 'i';
 }
 
-CharacterContext characterContext(const QTextBlock &currentBlock,
-                                  const QTextBlock &previousNonEmptyBlock)
+CharacterContext characterContext(const QTextBlock &currentBlock)
 {
+    QTextBlock previousNonEmptyBlock = reverseFindLastEmptyBlock(currentBlock);
+    if (previousNonEmptyBlock.position() > 0)
+        previousNonEmptyBlock = previousNonEmptyBlock.previous();
+
     const QString prevLineText = previousNonEmptyBlock.text().trimmed();
     if (prevLineText.isEmpty())
         return CharacterContext::NewStatementOrContinuation;
 
     const QChar firstNonWhitespaceChar = findFirstNonWhitespaceCharacter(currentBlock);
     if (prevLineText.endsWith(',')) {
-        // We don't need to add comma in case it's the last argument.
-        if (firstNonWhitespaceChar == '}' || firstNonWhitespaceChar == ')')
+        if (firstNonWhitespaceChar == '}') {
+            if (reverseFindLastBlockWithSymbol(currentBlock, '{').text().trimmed().last(1) == '{')
+                return CharacterContext::NewStatementOrContinuation;
             return CharacterContext::LastAfterComma;
+        }
+
+        if (firstNonWhitespaceChar == ')') {
+            if (reverseFindLastBlockWithSymbol(currentBlock, '(').text().trimmed().last(1) == '(')
+                return CharacterContext::NewStatementOrContinuation;
+            return CharacterContext::LastAfterComma;
+        }
+
         return CharacterContext::AfterComma;
     }
 
@@ -242,7 +261,7 @@ QByteArray dummyTextForContext(CharacterContext context, bool closingBraceBlock)
     case CharacterContext::IfOrElseWithoutScope:
         return ";";
     case CharacterContext::NewStatementOrContinuation:
-        return "/**/";
+        return "/*//*/";
     case CharacterContext::Unknown:
     default:
         QTC_ASSERT(false, return "";);
@@ -258,6 +277,14 @@ int forceIndentWithExtraText(QByteArray &buffer,
 {
     if (!block.isValid())
         return 0;
+
+    auto tmpcharContext = characterContext(block);
+    if (charContext == CharacterContext::LastAfterComma
+        && tmpcharContext == CharacterContext::LastAfterComma) {
+        charContext = CharacterContext::AfterComma;
+    } else {
+        charContext = tmpcharContext;
+    }
 
     const QString blockText = block.text();
     int firstNonWhitespace = Utils::indexOf(blockText,
@@ -282,22 +309,11 @@ int forceIndentWithExtraText(QByteArray &buffer,
         // If the next line is also empty it's safer to use a comment line.
         dummyText = "//";
     } else if (firstNonWhitespace < 0 || closingParenBlock || closingBraceBlock) {
-        if (charContext == CharacterContext::LastAfterComma) {
-            charContext = CharacterContext::AfterComma;
-        } else if (charContext == CharacterContext::Unknown || firstNonWhitespace >= 0) {
-            QTextBlock lastBlock = reverseFindLastEmptyBlock(block);
-            if (lastBlock.position() > 0)
-                lastBlock = lastBlock.previous();
-
-            // If we don't know yet the dummy text, let's guess it and use for this line and before.
-            charContext = characterContext(block, lastBlock);
-        }
-
         dummyText = dummyTextForContext(charContext, closingBraceBlock);
     }
 
     // A comment at the end of the line appears to prevent clang-format from removing line breaks.
-    if (dummyText == "/**/" || dummyText.isEmpty()) {
+    if (dummyText == "/*//*/" || dummyText.isEmpty()) {
         if (block.previous().isValid()) {
             const int prevEndOffset = Utils::Text::utf8NthLineOffset(block.document(), buffer,
                     block.blockNumber()) + block.previous().text().length();
@@ -455,10 +471,9 @@ Utils::Text::Replacements ClangFormatBaseIndenter::replacements(QByteArray buffe
                                                                 bool secondTry) const
 {
     QTC_ASSERT(replacementsToKeep != ReplacementsToKeep::All, return Utils::Text::Replacements());
+    QTC_ASSERT(!m_fileName.isEmpty(), return {});
 
-    clang::format::FormatStyle style = styleForFile();
     QByteArray originalBuffer = buffer;
-
     int utf8Offset = Utils::Text::utf8NthLineOffset(m_doc, buffer, startBlock.blockNumber() + 1);
     QTC_ASSERT(utf8Offset >= 0, return Utils::Text::Replacements(););
     int utf8Length = selectedLines(m_doc, startBlock, endBlock).toUtf8().size();
@@ -467,6 +482,7 @@ Utils::Text::Replacements ClangFormatBaseIndenter::replacements(QByteArray buffe
     if (replacementsToKeep == ReplacementsToKeep::IndentAndBefore)
         rangeStart = formattingRangeStart(startBlock, buffer, lastSaveRevision());
 
+    clang::format::FormatStyle style = styleForFile();
     adjustFormatStyleForLineBreak(style, replacementsToKeep);
     if (replacementsToKeep == ReplacementsToKeep::OnlyIndent) {
         CharacterContext currentCharContext = CharacterContext::Unknown;
@@ -486,11 +502,8 @@ Utils::Text::Replacements ClangFormatBaseIndenter::replacements(QByteArray buffe
     std::vector<clang::tooling::Range> ranges{{static_cast<unsigned int>(rangeStart), rangeLength}};
 
     clang::format::FormattingAttemptStatus status;
-    clang::tooling::Replacements clangReplacements = reformat(style,
-                                                              buffer.data(),
-                                                              ranges,
-                                                              m_fileName.toString().toStdString(),
-                                                              &status);
+    clang::tooling::Replacements clangReplacements = clang::format::reformat(
+        style, buffer.data(), ranges, m_fileName.toFSPathString().toStdString(), &status);
 
     clang::tooling::Replacements filtered;
     if (status.FormatComplete) {
@@ -518,6 +531,7 @@ Utils::Text::Replacements ClangFormatBaseIndenter::replacements(QByteArray buffe
 Utils::Text::Replacements ClangFormatBaseIndenter::format(
     const TextEditor::RangesInLines &rangesInLines)
 {
+    QTC_ASSERT(!m_fileName.isEmpty(), return {});
     if (rangesInLines.empty())
         return Utils::Text::Replacements();
 
@@ -537,7 +551,7 @@ Utils::Text::Replacements ClangFormatBaseIndenter::format(
     }
 
     clang::format::FormatStyle style = styleForFile();
-    const std::string assumedFileName = m_fileName.toString().toStdString();
+    const std::string assumedFileName = m_fileName.toFSPathString().toStdString();
     clang::tooling::Replacements clangReplacements = clang::format::sortIncludes(style,
                                                                                  buffer.data(),
                                                                                  ranges,
@@ -550,11 +564,11 @@ Utils::Text::Replacements ClangFormatBaseIndenter::format(
     ranges = clang::tooling::calculateRangesAfterReplacements(clangReplacements, ranges);
 
     clang::format::FormattingAttemptStatus status;
-    const clang::tooling::Replacements formatReplacements = reformat(style,
-                                                                     *changedCode,
-                                                                     ranges,
-                                                                     assumedFileName,
-                                                                     &status);
+    const clang::tooling::Replacements formatReplacements = clang::format::reformat(style,
+                                                                                    *changedCode,
+                                                                                    ranges,
+                                                                                    assumedFileName,
+                                                                                    &status);
     clangReplacements = clangReplacements.merge(formatReplacements);
 
     const Utils::Text::Replacements toReplace = utf16Replacements(m_doc, buffer, clangReplacements);
@@ -566,7 +580,8 @@ Utils::Text::Replacements ClangFormatBaseIndenter::format(
 Utils::Text::Replacements ClangFormatBaseIndenter::indentsFor(QTextBlock startBlock,
                                                               const QTextBlock &endBlock,
                                                               const QChar &typedChar,
-                                                              int cursorPositionInEditor)
+                                                              int cursorPositionInEditor,
+                                                              bool trimTrailingWhitespace)
 {
     if (typedChar != QChar::Null && cursorPositionInEditor > 0
         && m_doc->characterAt(cursorPositionInEditor - 1) == typedChar
@@ -576,7 +591,7 @@ Utils::Text::Replacements ClangFormatBaseIndenter::indentsFor(QTextBlock startBl
 
     startBlock = reverseFindLastEmptyBlock(startBlock);
     const int startBlockPosition = startBlock.position();
-    if (startBlockPosition > 0) {
+    if (trimTrailingWhitespace && startBlockPosition > 0) {
         trimRHSWhitespace(startBlock.previous());
         if (cursorPositionInEditor >= 0)
             cursorPositionInEditor += startBlock.position() - startBlockPosition;
@@ -657,7 +672,8 @@ int ClangFormatBaseIndenter::indentFor(const QTextBlock &block,
     Utils::Text::Replacements toReplace = indentsFor(block,
                                                      block,
                                                      QChar::Null,
-                                                     cursorPositionInEditor);
+                                                     cursorPositionInEditor,
+                                                     false);
     if (toReplace.empty())
         return -1;
 
@@ -701,7 +717,7 @@ bool ClangFormatBaseIndenter::isElectricCharacter(const QChar &ch) const
     return false;
 }
 
-Utils::optional<int> ClangFormat::ClangFormatBaseIndenter::margin() const
+std::optional<int> ClangFormat::ClangFormatBaseIndenter::margin() const
 {
     return styleForFile().ColumnLimit;
 }
@@ -725,16 +741,51 @@ void ClangFormatBaseIndenter::autoIndent(const QTextCursor &cursor,
     }
 }
 
+clang::format::FormatStyle overrideStyle(const Utils::FilePath &fileName)
+{
+    const ProjectExplorer::Project *projectForFile
+        = ProjectExplorer::SessionManager::projectForFile(fileName);
+
+    const TextEditor::ICodeStylePreferences *preferences
+        = projectForFile
+              ? projectForFile->editorConfiguration()->codeStyle("Cpp")->currentPreferences()
+              : TextEditor::TextEditorSettings::codeStyle("Cpp")->currentPreferences();
+
+    Utils::FilePath filePath = filePathToCurrentSettings(preferences);
+
+    if (!filePath.exists())
+        return qtcStyle();
+
+    clang::format::FormatStyle currentSettingsStyle;
+    currentSettingsStyle.Language = clang::format::FormatStyle::LK_Cpp;
+    const std::error_code error = clang::format::parseConfiguration(filePath.fileContents()
+                                                                        .value_or(QByteArray())
+                                                                        .toStdString(),
+                                                                    &currentSettingsStyle);
+    QTC_ASSERT(error.value() == static_cast<int>(clang::format::ParseError::Success),
+               return qtcStyle());
+
+    return currentSettingsStyle;
+}
+
 clang::format::FormatStyle ClangFormatBaseIndenter::styleForFile() const
 {
-    llvm::Expected<clang::format::FormatStyle> style
-        = clang::format::getStyle("file", m_fileName.toString().toStdString(), "none");
-    if (style) {
-        addQtcStatementMacros(*style);
-        return *style;
+    if (getCurrentOverriddenSettings(m_fileName))
+        return overrideStyle(m_fileName);
+
+    llvm::Expected<clang::format::FormatStyle> styleFromProjectFolder
+        = clang::format::getStyle("file",
+                                  m_fileName.toFSPathString().toStdString(),
+                                  "none",
+                                  "",
+                                  &llvmFileSystemAdapter);
+
+    if (styleFromProjectFolder && !(*styleFromProjectFolder == clang::format::getNoStyle())) {
+        addQtcStatementMacros(*styleFromProjectFolder);
+        return *styleFromProjectFolder;
     }
 
-    handleAllErrors(style.takeError(), [](const llvm::ErrorInfoBase &) {
+    handleAllErrors(styleFromProjectFolder.takeError(), [](const llvm::ErrorInfoBase &) {
         // do nothing
     });
 

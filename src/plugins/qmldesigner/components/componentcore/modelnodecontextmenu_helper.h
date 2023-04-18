@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "modelnodeoperations.h"
 #include "abstractaction.h"
+#include "bindingproperty.h"
 #include "abstractactiongroup.h"
 #include "qmlitemnode.h"
 #include <qmldesignerplugin.h>
@@ -61,6 +40,33 @@ inline bool inBaseState(const SelectionContext &selectionState)
 inline bool singleSelection(const SelectionContext &selectionState)
 {
     return selectionState.singleNodeIsSelected();
+}
+
+inline bool addMouseAreaFillCheck(const SelectionContext &selectionContext)
+{
+    if (selectionContext.isValid() && selectionContext.singleNodeIsSelected()) {
+        ModelNode node = selectionContext.currentSingleSelectedNode();
+        if (node.hasMetaInfo()) {
+            NodeMetaInfo nodeInfo = node.metaInfo();
+            return nodeInfo.isSuitableForMouseAreaFill();
+        }
+    }
+    return false;
+}
+
+inline bool isModel(const SelectionContext &selectionState)
+{
+    ModelNode node = selectionState.currentSingleSelectedNode();
+    return node.metaInfo().isQtQuick3DModel();
+}
+
+inline bool modelHasMaterial(const SelectionContext &selectionState)
+{
+    ModelNode node = selectionState.currentSingleSelectedNode();
+
+    BindingProperty prop = node.bindingProperty("materials");
+
+    return prop.exists() && (!prop.expression().isEmpty() || !prop.resolveToModelNodeList().empty());
 }
 
 inline bool selectionEnabled(const SelectionContext &selectionState)
@@ -135,7 +141,7 @@ public:
 class ActionGroup : public AbstractActionGroup
 {
 public:
-    ActionGroup(const QString &displayName, const QByteArray &menuId, int priority,
+    ActionGroup(const QString &displayName, const QByteArray &menuId, const QIcon &icon, int priority,
             SelectionContextPredicate enabled = &SelectionContextFunctors::always,
             SelectionContextPredicate visibility = &SelectionContextFunctors::always) :
         AbstractActionGroup(displayName),
@@ -144,6 +150,7 @@ public:
         m_enabled(enabled),
         m_visibility(visibility)
     {
+        menu()->setIcon(icon);
     }
 
     bool isVisible(const SelectionContext &m_selectionState) const override { return m_visibility(m_selectionState); }

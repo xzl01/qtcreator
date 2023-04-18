@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Leander Schulten <Leander.Schulten@rwth-aachen.de>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Leander Schulten <Leander.Schulten@rwth-aachen.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppquickfixsettings.h"
 
@@ -34,6 +12,7 @@
 #include <QRegularExpression>
 
 namespace CppEditor {
+
 CppQuickFixSettings::CppQuickFixSettings(bool loadGlobalSettings)
 {
     setDefaultSettings();
@@ -97,10 +76,14 @@ void CppQuickFixSettings::loadSettingsFrom(QSettings *s)
         s->value(Constants::QUICK_FIX_SETTING_CPP_FILE_NAMESPACE_HANDLING,
                  static_cast<int>(def.cppFileNamespaceHandling))
             .toInt());
+    useAuto = s->value(Constants::QUICK_FIX_SETTING_USE_AUTO, def.useAuto).toBool();
+
     memberVariableNameTemplate = s->value(Constants::QUICK_FIX_SETTING_MEMBER_VARIABEL_NAME_TEMPLATE,
                                           def.memberVariableNameTemplate)
                                      .toString();
     valueTypes = s->value(Constants::QUICK_FIX_SETTING_VALUE_TYPES, def.valueTypes).toStringList();
+    returnByConstRef = s->value(Constants::QUICK_FIX_SETTING_RETURN_BY_CONST_REF,
+                                def.returnByConstRef).toBool();
     customTemplates = def.customTemplates;
     int size = s->beginReadArray(Constants::QUICK_FIX_SETTING_CUSTOM_TEMPLATES);
     if (size > 0)
@@ -190,9 +173,17 @@ void CppQuickFixSettings::saveSettingsTo(QSettings *s)
                                      setterAsSlot,
                                      def.setterAsSlot);
     QtcSettings::setValueWithDefault(s,
+                                     Constants::QUICK_FIX_SETTING_USE_AUTO,
+                                     useAuto,
+                                     def.useAuto);
+    QtcSettings::setValueWithDefault(s,
                                      Constants::QUICK_FIX_SETTING_VALUE_TYPES,
                                      valueTypes,
                                      def.valueTypes);
+    QtcSettings::setValueWithDefault(s,
+                                     Constants::QUICK_FIX_SETTING_RETURN_BY_CONST_REF,
+                                     returnByConstRef,
+                                     def.returnByConstRef);
     if (customTemplates == def.customTemplates) {
         s->remove(Constants::QUICK_FIX_SETTING_CUSTOM_TEMPLATES);
     } else {

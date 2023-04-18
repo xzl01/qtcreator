@@ -837,7 +837,7 @@
     If the value is left undefined, the compiler default will be used.
     If the list contains more than one value, the highest version is chosen.
 
-    Possible values include: \c{"c89"}, \c{"c99"}, \c{"c11"}.
+    Possible values include: \c{"c89"}, \c{"c99"}, \c{"c11"}, \c{"c17"}, \c{"c2x"}.
 
     \nodefaultvalue
 */
@@ -1409,11 +1409,11 @@
 
     \code
     Properties {
-        condition: qbs.toolchain.contains("gcc")
+        condition: qbs.toolchain.includes("gcc")
         cpp.linkerVariant: "gold"
     }
     Properties {
-        condition: qbs.toolchain.contains("clang-cl")
+        condition: qbs.toolchain.includes("clang-cl")
         cpp.linkerVariant: "lld"
     }
     \endcode

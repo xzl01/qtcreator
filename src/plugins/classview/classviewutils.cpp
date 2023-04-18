@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Mingulov
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Mingulov
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "classviewutils.h"
+
 #include "classviewconstants.h"
-#include "classviewsymbolinformation.h"
 
 #include <QStandardItem>
-#include <QDebug>
 
 namespace ClassView {
 namespace Internal {
@@ -43,7 +20,7 @@ namespace Internal {
 QSet<SymbolLocation> roleToLocations(const QList<QVariant> &locationsVar)
 {
     QSet<SymbolLocation> locations;
-    foreach (const QVariant &loc, locationsVar) {
+    for (const QVariant &loc : locationsVar) {
         if (loc.canConvert<SymbolLocation>())
             locations.insert(loc.value<SymbolLocation>());
     }
@@ -65,15 +42,7 @@ SymbolInformation symbolInformationFromItem(const QStandardItem *item)
 
     const QString &name = item->data(Constants::SymbolNameRole).toString();
     const QString &type = item->data(Constants::SymbolTypeRole).toString();
-    int iconType = 0;
-
-    QVariant var = item->data(Constants::IconTypeRole);
-    bool ok = false;
-    int value;
-    if (var.isValid())
-        value = var.toInt(&ok);
-    if (ok)
-        iconType = value;
+    int iconType = item->data(Constants::IconTypeRole).toInt();
 
     return SymbolInformation(name, type, iconType);
 }

@@ -1,37 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rawprojectpart.h"
 
 #include "abi.h"
 #include "buildconfiguration.h"
+#include "buildsystem.h"
 #include "kitinformation.h"
 #include "project.h"
-#include "projectexplorerconstants.h"
 #include "target.h"
 
+#include <ios/iosconstants.h>
 #include <utils/algorithm.h>
 
 namespace ProjectExplorer {
@@ -165,7 +144,7 @@ KitInfo::KitInfo(Kit *kit)
     }
 
     // Sysroot
-    sysRootPath = SysRootKitAspect::sysRoot(kit).toString();
+    sysRootPath = SysRootKitAspect::sysRoot(kit);
 }
 
 bool KitInfo::isValid() const
@@ -174,14 +153,14 @@ bool KitInfo::isValid() const
 }
 
 ToolChainInfo::ToolChainInfo(const ToolChain *toolChain,
-                             const QString &sysRootPath,
+                             const Utils::FilePath &sysRootPath,
                              const Utils::Environment &env)
 {
     if (toolChain) {
         // Keep the following cheap/non-blocking for the ui thread...
         type = toolChain->typeId();
         isMsvc2015ToolChain = toolChain->targetAbi().osFlavor() == Abi::WindowsMsvc2015Flavor;
-        wordWidth = toolChain->targetAbi().wordWidth();
+        abi = toolChain->targetAbi();
         targetTriple = toolChain->effectiveCodeModelTargetTriple();
         targetTripleIsAuthoritative = !toolChain->explicitCodeModelTargetTriple().isEmpty();
         extraCodeModelFlags = toolChain->extraCodeModelFlags();
@@ -212,6 +191,30 @@ ProjectUpdateInfo::ProjectUpdateInfo(Project *project,
         if (project->activeTarget() && project->activeTarget()->activeBuildConfiguration())
             buildRoot = project->activeTarget()->activeBuildConfiguration()->buildDirectory();
     }
+}
+
+// We do not get the -target flag from qmake or cmake on macOS; see QTCREATORBUG-28278.
+void addTargetFlagForIos(QStringList &cFlags, QStringList &cxxFlags, const BuildSystem *bs,
+                         const std::function<QString ()> &getDeploymentTarget)
+{
+    const Utils::Id deviceType = DeviceTypeKitAspect::deviceTypeId(bs->target()->kit());
+    if (deviceType != Ios::Constants::IOS_DEVICE_TYPE
+            && deviceType != Ios::Constants::IOS_SIMULATOR_TYPE) {
+        return;
+    }
+    const bool isSim = deviceType == Ios::Constants::IOS_SIMULATOR_TYPE;
+    QString targetTriple(QLatin1String(isSim ? "x86_64" : "arm64"));
+    targetTriple.append("-apple-ios").append(getDeploymentTarget());
+    if (isSim)
+        targetTriple.append("-simulator");
+    const auto addTargetFlag = [&targetTriple](QStringList &flags) {
+        if (!flags.contains("-target") && !Utils::contains(flags,
+                    [](const QString &flag) { return flag.startsWith("--target="); })) {
+            flags << "-target" << targetTriple;
+        }
+    };
+    addTargetFlag(cxxFlags);
+    addTargetFlag(cFlags);
 }
 
 } // namespace ProjectExplorer

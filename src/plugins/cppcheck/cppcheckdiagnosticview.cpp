@@ -1,38 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Sergey Morozov
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Sergey Morozov
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppcheckdiagnosticview.h"
+
+#include "cppchecktr.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 
 #include <debugger/analyzer/diagnosticlocation.h>
 
-namespace Cppcheck {
-namespace Internal {
-
 using namespace Debugger;
+
+namespace Cppcheck::Internal {
 
 DiagnosticView::DiagnosticView(QWidget *parent)
     : DetailedErrorView(parent)
@@ -43,7 +22,7 @@ DiagnosticView::DiagnosticView(QWidget *parent)
     setAutoScroll(false);
     sortByColumn(DiagnosticColumn, Qt::AscendingOrder);
     setObjectName("CppcheckIssuesView");
-    setWindowTitle(tr("Cppcheck Diagnostics"));
+    setWindowTitle(Tr::tr("Cppcheck Diagnostics"));
     setHeaderHidden(true);
 }
 
@@ -112,7 +91,4 @@ void DiagnosticView::mouseDoubleClickEvent(QMouseEvent *event)
     DetailedErrorView::mouseDoubleClickEvent(event);
 }
 
-} // namespace Internal
-} // namespace Cppcheck
-
-//#include "clangtoolsdiagnosticview.moc"
+} // Cppcheck::Internal

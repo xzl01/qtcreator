@@ -1,57 +1,29 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectnodes.h"
 
-#include "buildconfiguration.h"
 #include "buildsystem.h"
 #include "project.h"
 #include "projectexplorerconstants.h"
-#include "projecttree.h"
 #include "target.h"
 
-#include <coreplugin/fileiconprovider.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/iversioncontrol.h>
 #include <coreplugin/vcsmanager.h>
 
 #include <utils/fileutils.h>
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/hostosinfo.h>
-#include <utils/mimetypes/mimedatabase.h>
-#include <utils/mimetypes/mimetype.h>
+#include <utils/mimeutils.h>
 #include <utils/pointeralgorithm.h>
 #include <utils/qtcassert.h>
-#include <utils/stringutils.h>
+#include <utils/threadutils.h>
 #include <utils/utilsicons.h>
 
 #include <QDir>
 #include <QFileInfo>
 #include <QIcon>
-#include <QStyle>
-#include <QThread>
-#include <QTimer>
 
 #include <memory>
 
@@ -62,8 +34,8 @@ namespace ProjectExplorer {
 QHash<QString, QIcon> DirectoryIcon::m_cache;
 
 static FolderNode *recursiveFindOrCreateFolderNode(FolderNode *folder,
-                                                   const Utils::FilePath &directory,
-                                                   const Utils::FilePath &overrideBaseDir,
+                                                   const FilePath &directory,
+                                                   const FilePath &overrideBaseDir,
                                                    const FolderNode::FolderNodeFactory &factory)
 {
     Utils::FilePath path = overrideBaseDir.isEmpty() ? folder->filePath() : overrideBaseDir;
@@ -71,7 +43,7 @@ static FolderNode *recursiveFindOrCreateFolderNode(FolderNode *folder,
     Utils::FilePath directoryWithoutPrefix;
     bool isRelative = false;
 
-    if (path.isEmpty() || path.toDir().isRoot()) {
+    if (path.isEmpty() || path.isRootPath()) {
         directoryWithoutPrefix = directory;
         isRelative = false;
     } else {
@@ -79,18 +51,24 @@ static FolderNode *recursiveFindOrCreateFolderNode(FolderNode *folder,
             isRelative = true;
             directoryWithoutPrefix = directory.relativeChildPath(path);
         } else {
-            isRelative = false;
-            path.clear();
-            directoryWithoutPrefix = directory;
+            const FilePath relativePath = directory.relativePathFrom(path);
+            if (relativePath.path().count("../") < 5) {
+                isRelative = true;
+                directoryWithoutPrefix = relativePath;
+            } else {
+                isRelative = false;
+                path.clear();
+                directoryWithoutPrefix = directory;
+            }
         }
     }
-    QStringList parts = directoryWithoutPrefix.toString().split('/', Qt::SkipEmptyParts);
-    if (!Utils::HostOsInfo::isWindowsHost() && !isRelative && !parts.isEmpty())
+    QStringList parts = directoryWithoutPrefix.path().split('/', Qt::SkipEmptyParts);
+    if (directory.osType() != OsTypeWindows && !isRelative && !parts.isEmpty())
         parts[0].prepend('/');
 
     ProjectExplorer::FolderNode *parent = folder;
-    foreach (const QString &part, parts) {
-        path = path.pathAppended(part);
+    for (const QString &part : std::as_const(parts)) {
+        path = path.pathAppended(part).cleanPath();
         // Find folder in subFolders
         FolderNode *next = parent->folderNode(path);
         if (!next) {
@@ -258,7 +236,7 @@ QIcon FileNode::icon() const
     if (hasError())
         return Utils::Icons::WARNING.icon();
     if (m_icon.isNull())
-        m_icon = Core::FileIconProvider::icon(filePath());
+        m_icon = Utils::FileIconProvider::icon(filePath());
     return m_icon;
 }
 
@@ -343,40 +321,51 @@ FileType Node::fileTypeForFileName(const Utils::FilePath &file)
 
 FilePath Node::pathOrDirectory(bool dir) const
 {
-    FilePath location;
     const FolderNode *folder = asFolderNode();
     if (isVirtualFolderType() && folder) {
+        FilePath location;
         // Virtual Folder case
         // If there are files directly below or no subfolders, take the folder path
         if (!folder->fileNodes().isEmpty() || folder->folderNodes().isEmpty()) {
             location = m_filePath;
         } else {
             // Otherwise we figure out a commonPath from the subfolders
-            QStringList list;
-            foreach (FolderNode *f, folder->folderNodes())
-                list << f->filePath().toString() + QLatin1Char('/');
-            location = FilePath::fromString(Utils::commonPath(list));
+            FilePaths list;
+            const QList<FolderNode *> folders = folder->folderNodes();
+            for (FolderNode *f : folders)
+                list << f->filePath();
+            location = FileUtils::commonPath(list);
         }
 
         QTC_CHECK(!location.needsDevice());
         QFileInfo fi = location.toFileInfo();
         while ((!fi.exists() || !fi.isDir()) && !fi.isRoot())
             fi.setFile(fi.absolutePath());
-        location = FilePath::fromString(fi.absoluteFilePath());
-    } else if (!m_filePath.isEmpty()) {
-        QTC_CHECK(!m_filePath.needsDevice());
-        QFileInfo fi = m_filePath.toFileInfo();
-        // remove any /suffixes, which e.g. ResourceNode uses
-        // Note this could be removed again by making path() a true path again
-        // That requires changes in both the VirtualFolderNode and ResourceNode
-        while (!fi.exists() && !fi.isRoot())
-            fi.setFile(fi.absolutePath());
-
-        if (dir)
-            location = FilePath::fromString(fi.isDir() ? fi.absoluteFilePath() : fi.absolutePath());
-        else
-            location = FilePath::fromString(fi.absoluteFilePath());
+        return FilePath::fromString(fi.absoluteFilePath());
     }
+
+    if (m_filePath.isEmpty())
+        return {};
+
+    if (m_filePath.needsDevice()) {
+        if (dir)
+            return m_filePath.isDir() ? m_filePath.absoluteFilePath() : m_filePath.absolutePath();
+        return m_filePath;
+    }
+
+    FilePath location;
+    QFileInfo fi = m_filePath.toFileInfo();
+    // remove any /suffixes, which e.g. ResourceNode uses
+    // Note this could be removed again by making path() a true path again
+    // That requires changes in both the VirtualFolderNode and ResourceNode
+    while (!fi.exists() && !fi.isRoot())
+        fi.setFile(fi.absolutePath());
+
+    if (dir)
+        location = FilePath::fromString(fi.isDir() ? fi.absoluteFilePath() : fi.absolutePath());
+    else
+        location = FilePath::fromString(fi.absoluteFilePath());
+
     return location;
 }
 
@@ -467,21 +456,21 @@ QString FolderNode::displayName() const
  */
 QIcon FolderNode::icon() const
 {
-    QTC_CHECK(QThread::currentThread() == QCoreApplication::instance()->thread());
+    QTC_CHECK(isMainThread());
 
     // Instantiating the Icon provider is expensive.
-    if (auto strPtr = Utils::get_if<QString>(&m_icon)) {
+    if (auto strPtr = std::get_if<QString>(&m_icon)) {
         m_icon = QIcon(*strPtr);
-    } else if (auto directoryIconPtr = Utils::get_if<DirectoryIcon>(&m_icon)) {
+    } else if (auto directoryIconPtr = std::get_if<DirectoryIcon>(&m_icon)) {
         m_icon = directoryIconPtr->icon();
-    } else if (auto creatorPtr = Utils::get_if<IconCreator>(&m_icon)) {
+    } else if (auto creatorPtr = std::get_if<IconCreator>(&m_icon)) {
         m_icon = (*creatorPtr)();
     } else {
-        auto iconPtr = Utils::get_if<QIcon>(&m_icon);
+        auto iconPtr = std::get_if<QIcon>(&m_icon);
         if (!iconPtr || iconPtr->isNull())
-            m_icon = Core::FileIconProvider::icon(QFileIconProvider::Folder);
+            m_icon = Utils::FileIconProvider::icon(QFileIconProvider::Folder);
     }
-    return Utils::get<QIcon>(m_icon);
+    return std::get<QIcon>(m_icon);
 }
 
 Node *FolderNode::findNode(const std::function<bool(Node *)> &filter)
@@ -579,7 +568,7 @@ const QList<Node *> FolderNode::nodes() const
     return Utils::toRawPointer<QList>(m_nodes);
 }
 
-QList<FileNode*> FolderNode::fileNodes() const
+QList<FileNode *> FolderNode::fileNodes() const
 {
     QList<FileNode *> result;
     for (const std::unique_ptr<Node> &n : m_nodes) {
@@ -598,7 +587,7 @@ FileNode *FolderNode::fileNode(const Utils::FilePath &file) const
     }));
 }
 
-QList<FolderNode*> FolderNode::folderNodes() const
+QList<FolderNode *> FolderNode::folderNodes() const
 {
     QList<FolderNode *> result;
     for (const std::unique_ptr<Node> &n : m_nodes) {
@@ -749,8 +738,7 @@ void FolderNode::setIcon(const IconCreator &iconCreator)
 
 void FolderNode::setLocationInfo(const QVector<FolderNode::LocationInfo> &info)
 {
-    m_locations = info;
-    Utils::sort(m_locations, &LocationInfo::priority);
+    m_locations = Utils::sorted(info, &LocationInfo::priority);
 }
 
 const QVector<FolderNode::LocationInfo> FolderNode::locationInfo() const
@@ -1085,13 +1073,37 @@ DirectoryIcon::DirectoryIcon(const QString &overlay)
 */
 QIcon DirectoryIcon::icon() const
 {
-    QTC_CHECK(QThread::currentThread() == QCoreApplication::instance()->thread());
+    QTC_CHECK(isMainThread());
     const auto it = m_cache.find(m_overlay);
     if (it != m_cache.end())
         return it.value();
-    const QIcon icon = Core::FileIconProvider::directoryIcon(m_overlay);
+    const QIcon icon = Utils::FileIconProvider::directoryIcon(m_overlay);
     m_cache.insert(m_overlay, icon);
     return icon;
+}
+
+ResourceFileNode::ResourceFileNode(const FilePath &filePath, const QString &qrcPath, const QString &displayName)
+    : FileNode(filePath, FileNode::fileTypeForFileName(filePath))
+    , m_qrcPath(qrcPath)
+    , m_displayName(displayName)
+{
+}
+
+QString ResourceFileNode::displayName() const
+{
+    return m_displayName;
+}
+
+QString ResourceFileNode::qrcPath() const
+{
+    return m_qrcPath;
+}
+
+bool ResourceFileNode::supportsAction(ProjectAction action, const Node *node) const
+{
+    if (action == HidePathActions)
+        return false;
+    return parentFolderNode()->supportsAction(action, node);
 }
 
 } // namespace ProjectExplorer

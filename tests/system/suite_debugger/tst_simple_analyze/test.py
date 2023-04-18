@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 source("../../shared/qtcreator.py")
 
@@ -52,7 +30,7 @@ def main():
         invokeMenuItem("File", "Save All")
         availableConfigs = iterateBuildConfigs("Debug")
         if not availableConfigs:
-            test.fatal("Haven't found a suitable Qt version (need Qt 5.3+) - leaving without debugging.")
+            test.fatal("Haven't found a suitable Qt version (need Qt 6.2+) - leaving without profiling.")
         else:
             performTest(workingDir, projectName, availableConfigs)
     invokeMenuItem("File", "Exit")
@@ -64,11 +42,11 @@ def performTest(workingDir, projectName, availableConfigs):
     for kit, config in availableConfigs:
         # switching from MSVC to MinGW build will fail on the clean step of 'Rebuild All Projects'
         # because of differences between MSVC's and MinGW's Makefile (so clean before changing kit)
-        selectFromLocator("t clean", "Clean (Clean Project)")
+        selectFromLocator("t clean", "Clean Project")
         verifyBuildConfig(kit, config, True, True, True)
         test.log("Selected kit '%s'" % Targets.getStringForTarget(kit))
         # explicitly build before start debugging for adding the executable as allowed program to WinFW
-        selectFromLocator("t rebuild", "Rebuild (Rebuild All Projects)")
+        selectFromLocator("t rebuild", "Rebuild All Projects")
         waitForCompile()
         if not checkCompile():
             test.fatal("Compile had errors... Skipping current build config")
@@ -99,7 +77,7 @@ def performTest(workingDir, projectName, availableConfigs):
              colMean, colMedian, colLongest, colShortest) = range(2, 11)
             model = waitForObject(":Events.QmlProfilerEventsTable_QmlProfiler::"
                                   "Internal::QmlProfilerStatisticsMainView").model()
-            compareEventsTab(model, "events_qt5.10.1.tsv")
+            compareEventsTab(model, "events_qt6.2.4.tsv")
             test.compare(dumpItems(model, column=colPercent)[0], '100 %')
             # cannot run following test on colShortest (unstable)
             for i in [colMean, colMedian, colLongest]:
@@ -142,7 +120,7 @@ def compareEventsTab(model, file):
                  "Checking number of rows in Events table")
     if not test.verify(containsOnce(expectedTable, foundTable),
                        "Verifying that Events table matches expected values"):
-        test.log("Events displayed by Creator: %s" % foundTable)
+        test.log("Events displayed by Creator: %s" % foundTable, str(expectedTable))
 
 def containsOnce(tuple, items):
     for item in items:

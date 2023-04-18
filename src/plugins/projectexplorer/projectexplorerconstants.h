@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -82,6 +60,7 @@ const char G_PROJECT_BUILD[]      = "Project.Group.Build";
 const char G_PROJECT_REBUILD[]    = "Project.Group.Rebuild";
 const char G_PROJECT_RUN[]        = "Project.Group.Run";
 const char G_PROJECT_FILES[]      = "Project.Group.Files";
+const char G_PROJECT_CLOSE[]      = "Project.Group.Close";
 const char G_PROJECT_TREE[]       = "Project.Group.Tree";
 const char G_PROJECT_LAST[]       = "Project.Group.Last";
 
@@ -123,7 +102,7 @@ const char BUILD_AND_RUN_SETTINGS_CATEGORY[]  = "K.BuildAndRun";
 const char BUILD_AND_RUN_SETTINGS_PAGE_ID[] = "A.ProjectExplorer.BuildAndRunOptions";
 
 // Device settings page
-const char DEVICE_SETTINGS_CATEGORY[] = "XW.Devices";
+const char DEVICE_SETTINGS_CATEGORY[] = "AM.Devices";
 const char DEVICE_SETTINGS_PAGE_ID[] = "AA.Device Settings";
 
 // Task categories
@@ -131,19 +110,15 @@ const char TASK_CATEGORY_COMPILE[] = "Task.Category.Compile";
 const char TASK_CATEGORY_BUILDSYSTEM[] = "Task.Category.Buildsystem";
 const char TASK_CATEGORY_DEPLOYMENT[] = "Task.Category.Deploy";
 const char TASK_CATEGORY_AUTOTEST[] = "Task.Category.Autotest";
+const char TASK_CATEGORY_SANITIZER[] = "Task.Category.Analyzer";
+const char TASK_CATEGORY_TASKLIST_ID[] = "Task.Category.TaskListId";
 
 // Wizard categories
 const char QT_PROJECT_WIZARD_CATEGORY[] = "H.Project";
-const char QT_PROJECT_WIZARD_CATEGORY_DISPLAY[] = QT_TRANSLATE_NOOP("ProjectExplorer", "Other Project");
-
-const char QT_APPLICATION_WIZARD_CATEGORY[] = "F.Application";
-const char QT_APPLICATION_WIZARD_CATEGORY_DISPLAY[] = QT_TRANSLATE_NOOP("ProjectExplorer", "Application");
-
-const char LIBRARIES_WIZARD_CATEGORY[] = "G.Library";
-const char LIBRARIES_WIZARD_CATEGORY_DISPLAY[] = QT_TRANSLATE_NOOP("ProjectExplorer", "Library");
+const char QT_PROJECT_WIZARD_CATEGORY_DISPLAY[] = QT_TRANSLATE_NOOP("QtC::ProjectExplorer", "Other Project");
 
 const char IMPORT_WIZARD_CATEGORY[] = "T.Import";
-const char IMPORT_WIZARD_CATEGORY_DISPLAY[] = QT_TRANSLATE_NOOP("ProjectExplorer", "Import Project");
+const char IMPORT_WIZARD_CATEGORY_DISPLAY[] = QT_TRANSLATE_NOOP("QtC::ProjectExplorer", "Import Project");
 
 // Wizard extra values
 const char PREFERRED_PROJECT_NODE[] = "ProjectExplorer.PreferredProjectNode";
@@ -191,12 +166,6 @@ const char ANDROID_ABI_ARM64_V8A[] = "arm64-v8a";
 const char ANDROID_ABI_X86[] = "x86";
 const char ANDROID_ABI_X86_64[] = "x86_64";
 
-// Variable Names:
-const char VAR_CURRENTPROJECT_PREFIX[] = "CurrentProject";
-const char VAR_CURRENTPROJECT_NAME[] = "CurrentProject:Name";
-const char VAR_CURRENTBUILD_NAME[] = "CurrentBuild:Name";
-const char VAR_CURRENTBUILD_ENV[] = "CurrentBuild:Env";
-
 // JsonWizard:
 const char PAGE_ID_PREFIX[] = "PE.Wizard.Page.";
 const char GENERATOR_ID_PREFIX[] = "PE.Wizard.Generator.";
@@ -238,6 +207,9 @@ const char LASTSESSION_KEY[] = "ProjectExplorer/StartupSession";
 const char SETTINGS_MENU_HIDE_BUILD[] = "Menu/HideBuild";
 const char SETTINGS_MENU_HIDE_DEBUG[] = "Menu/HideDebug";
 const char SETTINGS_MENU_HIDE_ANALYZE[] = "Menu/HideAnalyze";
+const char SESSION_TASKFILE_KEY[] = "TaskList.File";
+const char CLEAR_SYSTEM_ENVIRONMENT_KEY[] = "ProjectExplorer.BuildConfiguration.ClearSystemEnvironment";
+const char USER_ENVIRONMENT_CHANGES_KEY[] = "ProjectExplorer.BuildConfiguration.UserEnvironmentChanges";
 
 // UI texts
 PROJECTEXPLORER_EXPORT QString msgAutoDetected();

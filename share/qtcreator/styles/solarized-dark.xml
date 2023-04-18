@@ -13,6 +13,7 @@
   <style name="SearchResult" background="#073642"/>
   <style name="SearchResultAlt1" foreground="#aaaaff" background="#363655"/>
   <style name="SearchResultAlt2" foreground="#ffaaaa" background="#553636"/>
+  <style name="SearchResultContainingFunction" foreground="#839496" background="#002b36"/>
   <style name="SearchScope" background="#073642"/>
   <style name="Parentheses" foreground="#dc322f" background="#586e75" bold="true"/>
   <style name="ParenthesesMismatch" foreground="#fdff2c" background="#d33682" bold="true"/>
@@ -32,6 +33,7 @@
   <style name="Static" foreground="#b58900" italic="true"/>
   <style name="VirtualMethod" foreground="#839496" italic="true"/>
   <style name="Function" foreground="#839496"/>
+  <style name="Macro" foreground="#839496"/>
   <style name="Keyword" foreground="#709d06"/>
   <style name="PrimitiveType" foreground="#808000"/>
   <style name="Punctuation"/>
@@ -42,7 +44,7 @@
   <style name="Comment" foreground="#586e75" italic="true"/>
   <style name="Doxygen.Comment" foreground="#586e75" italic="true"/>
   <style name="Doxygen.Tag" foreground="#586e75"/>
-  <style name="VisualWhitespace" foreground="#268bd2"/>
+  <style name="VisualWhitespace" foreground="#586e75"/>
   <style name="QmlLocalId" foreground="#657b83" italic="true"/>
   <style name="QmlExternalId" foreground="#2aa198" italic="true"/>
   <style name="QmlTypeId" foreground="#b58900"/>

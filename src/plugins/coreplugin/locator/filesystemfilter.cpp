@@ -1,46 +1,28 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "filesystemfilter.h"
 
 #include "basefilefilter.h"
-#include "locatorwidget.h"
+#include "../coreplugintr.h"
+#include "../documentmanager.h"
+#include "../editormanager/editormanager.h"
+#include "../icore.h"
+#include "../vcsmanager.h"
 
-#include <coreplugin/coreconstants.h>
-#include <coreplugin/documentmanager.h>
-#include <coreplugin/editormanager/editormanager.h>
-#include <coreplugin/editormanager/ieditor.h>
-#include <coreplugin/icore.h>
-#include <coreplugin/idocument.h>
-#include <coreplugin/vcsmanager.h>
 #include <utils/checkablemessagebox.h>
-#include <utils/fileutils.h>
+#include <utils/environment.h>
+#include <utils/filepath.h>
+#include <utils/layoutbuilder.h>
 #include <utils/link.h>
 
+#include <QCheckBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QJsonObject>
+#include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QRegularExpression>
 
@@ -68,8 +50,8 @@ ILocatorFilter::MatchLevel FileSystemFilter::matchLevelFor(const QRegularExpress
 FileSystemFilter::FileSystemFilter()
 {
     setId("Files in file system");
-    setDisplayName(tr("Files in File System"));
-    setDescription(tr("Opens a file given by a relative path to the current document, or absolute "
+    setDisplayName(Tr::tr("Files in File System"));
+    setDescription(Tr::tr("Opens a file given by a relative path to the current document, or absolute "
                       "path. \"~\" refers to your home directory. You have the option to create a "
                       "file if it does not exist yet."));
     setDefaultShortcutString("f");
@@ -87,7 +69,11 @@ QList<LocatorFilterEntry> FileSystemFilter::matchesFor(QFutureInterface<LocatorF
                                                        const QString &entry)
 {
     QList<LocatorFilterEntry> entries[int(MatchLevel::Count)];
-    const QFileInfo entryInfo(entry);
+
+    Environment env = Environment::systemEnvironment();
+    const QString expandedEntry = env.expandVariables(entry);
+
+    const QFileInfo entryInfo(expandedEntry);
     const QString entryFileName = entryInfo.fileName();
     QString directory = entryInfo.path();
     if (entryInfo.isRelative()) {
@@ -123,7 +109,7 @@ QList<LocatorFilterEntry> FileSystemFilter::matchesFor(QFutureInterface<LocatorF
         if (match.hasMatch()) {
             const MatchLevel level = matchLevelFor(match, dir);
             const QString fullPath = dirInfo.filePath(dir);
-            LocatorFilterEntry filterEntry(this, dir, QVariant());
+            LocatorFilterEntry filterEntry(this, dir);
             filterEntry.filePath = FilePath::fromString(fullPath);
             filterEntry.highlightInfo = highlightInfo(match);
 
@@ -131,8 +117,7 @@ QList<LocatorFilterEntry> FileSystemFilter::matchesFor(QFutureInterface<LocatorF
         }
     }
     // file names can match with +linenumber or :linenumber
-    QString postfix;
-    Link link = Link::fromString(entryFileName, true, &postfix);
+    const Link link = Link::fromString(entryFileName, true);
     regExp = createRegExp(link.targetFilePath.toString(), caseSensitivity_);
     if (!regExp.isValid())
         return {};
@@ -144,21 +129,20 @@ QList<LocatorFilterEntry> FileSystemFilter::matchesFor(QFutureInterface<LocatorF
         if (match.hasMatch()) {
             const MatchLevel level = matchLevelFor(match, file);
             const QString fullPath = dirInfo.filePath(file);
-            LocatorFilterEntry filterEntry(this, file, QString(fullPath + postfix));
+            LocatorFilterEntry filterEntry(this, file);
             filterEntry.filePath = FilePath::fromString(fullPath);
             filterEntry.highlightInfo = highlightInfo(match);
-
+            filterEntry.linkForEditor = Link(filterEntry.filePath, link.targetLine,
+                                             link.targetColumn);
             entries[int(level)].append(filterEntry);
         }
     }
 
     // "create and open" functionality
     const QString fullFilePath = dirInfo.filePath(entryFileName);
-    const bool containsWildcard = entry.contains('?') || entry.contains('*');
+    const bool containsWildcard = expandedEntry.contains('?') || expandedEntry.contains('*');
     if (!containsWildcard && !QFileInfo::exists(fullFilePath) && dirInfo.exists()) {
-        LocatorFilterEntry createAndOpen(this,
-                                         tr("Create and Open \"%1\"").arg(entry),
-                                         fullFilePath);
+        LocatorFilterEntry createAndOpen(this, Tr::tr("Create and Open \"%1\"").arg(expandedEntry));
         createAndOpen.filePath = FilePath::fromString(fullFilePath);
         createAndOpen.extraInfo = FilePath::fromString(dirInfo.absolutePath()).shortNativePath();
         entries[int(MatchLevel::Normal)].append(createAndOpen);
@@ -184,18 +168,17 @@ void FileSystemFilter::accept(const LocatorFilterEntry &selection,
     } else {
         // Don't block locator filter execution with dialog
         QMetaObject::invokeMethod(EditorManager::instance(), [selection] {
-            const FilePath targetFile = FilePath::fromVariant(selection.internalData);
             if (!selection.filePath.exists()) {
                 if (CheckableMessageBox::shouldAskAgain(ICore::settings(), kAlwaysCreate)) {
                     CheckableMessageBox messageBox(ICore::dialogParent());
-                    messageBox.setWindowTitle(tr("Create File"));
+                    messageBox.setWindowTitle(Tr::tr("Create File"));
                     messageBox.setIcon(QMessageBox::Question);
-                    messageBox.setText(tr("Create \"%1\"?").arg(targetFile.shortNativePath()));
+                    messageBox.setText(Tr::tr("Create \"%1\"?").arg(selection.filePath.shortNativePath()));
                     messageBox.setCheckBoxVisible(true);
-                    messageBox.setCheckBoxText(tr("Always create"));
+                    messageBox.setCheckBoxText(Tr::tr("Always create"));
                     messageBox.setChecked(false);
                     messageBox.setStandardButtons(QDialogButtonBox::Cancel);
-                    QPushButton *createButton = messageBox.addButton(tr("Create"),
+                    QPushButton *createButton = messageBox.addButton(Tr::tr("Create"),
                                                                      QDialogButtonBox::AcceptRole);
                     messageBox.setDefaultButton(QDialogButtonBox::Cancel);
                     messageBox.exec();
@@ -204,35 +187,70 @@ void FileSystemFilter::accept(const LocatorFilterEntry &selection,
                     if (messageBox.isChecked())
                         CheckableMessageBox::doNotAskAgain(ICore::settings(), kAlwaysCreate);
                 }
-                QFile file(targetFile.toString());
+                QFile file(selection.filePath.toString());
                 file.open(QFile::WriteOnly);
                 file.close();
-                VcsManager::promptToAdd(targetFile.absolutePath(), {targetFile});
+                VcsManager::promptToAdd(selection.filePath.absolutePath(), {selection.filePath});
             }
             BaseFileFilter::openEditorAt(selection);
         }, Qt::QueuedConnection);
     }
 }
 
+class FileSystemFilterOptions : public QDialog
+{
+public:
+    FileSystemFilterOptions(QWidget *parent)
+        : QDialog(parent)
+    {
+        resize(360, 131);
+        setWindowTitle(ILocatorFilter::msgConfigureDialogTitle());
+
+        auto prefixLabel = new QLabel;
+        prefixLabel->setText(ILocatorFilter::msgPrefixLabel());
+        prefixLabel->setToolTip(ILocatorFilter::msgPrefixToolTip());
+
+        shortcutEdit = new QLineEdit;
+        includeByDefault = new QCheckBox;
+        hiddenFilesFlag = new QCheckBox(Tr::tr("Include hidden files"));
+
+        prefixLabel->setBuddy(shortcutEdit);
+
+        auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+
+        using namespace Layouting;
+        Column {
+            Grid {
+                prefixLabel, shortcutEdit, includeByDefault, br,
+                Tr::tr("Filter:"), hiddenFilesFlag, br,
+            },
+            st,
+            Row {st, buttonBox }
+        }.attachTo(this);
+
+        connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+        connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    }
+
+    QLineEdit *shortcutEdit;
+    QCheckBox *includeByDefault;
+    QCheckBox *hiddenFilesFlag;
+};
+
 bool FileSystemFilter::openConfigDialog(QWidget *parent, bool &needsRefresh)
 {
     Q_UNUSED(needsRefresh)
-    Ui::FileSystemFilterOptions ui;
-    QDialog dialog(parent);
-    ui.setupUi(&dialog);
-    dialog.setWindowTitle(ILocatorFilter::msgConfigureDialogTitle());
-    ui.prefixLabel->setText(ILocatorFilter::msgPrefixLabel());
-    ui.prefixLabel->setToolTip(ILocatorFilter::msgPrefixToolTip());
-    ui.includeByDefault->setText(msgIncludeByDefault());
-    ui.includeByDefault->setToolTip(msgIncludeByDefaultToolTip());
-    ui.hiddenFilesFlag->setChecked(m_includeHidden);
-    ui.includeByDefault->setChecked(isIncludedByDefault());
-    ui.shortcutEdit->setText(shortcutString());
+    FileSystemFilterOptions dialog(parent);
+    dialog.includeByDefault->setText(msgIncludeByDefault());
+    dialog.includeByDefault->setToolTip(msgIncludeByDefaultToolTip());
+    dialog.includeByDefault->setChecked(isIncludedByDefault());
+    dialog.hiddenFilesFlag->setChecked(m_includeHidden);
+    dialog.shortcutEdit->setText(shortcutString());
 
     if (dialog.exec() == QDialog::Accepted) {
-        m_includeHidden = ui.hiddenFilesFlag->isChecked();
-        setShortcutString(ui.shortcutEdit->text().trimmed());
-        setIncludedByDefault(ui.includeByDefault->isChecked());
+        m_includeHidden = dialog.hiddenFilesFlag->isChecked();
+        setShortcutString(dialog.shortcutEdit->text().trimmed());
+        setIncludedByDefault(dialog.includeByDefault->isChecked());
         return true;
     }
     return false;

@@ -35,6 +35,7 @@
 #include <string>
 #include <memory>
 #include <sstream>
+#include <utility>
 
 using namespace CPlusPlus;
 
@@ -46,6 +47,7 @@ Bind::Bind(TranslationUnit *unit)
       _expression(nullptr),
       _name(nullptr),
       _declaratorId(nullptr),
+      _decompositionDeclarator(nullptr),
       _visibility(Symbol::Public),
       _objcVisibility(Symbol::Public),
       _methodKey(Function::NormalMethod),
@@ -274,8 +276,25 @@ FullySpecifiedType Bind::postfixDeclarator(PostfixDeclaratorAST *ast, const Full
     return value;
 }
 
-bool Bind::preVisit(AST *)
+bool Bind::preVisit(AST *ast)
 {
+    if (_typeWasUnsignedOrSigned) {
+        if (SimpleSpecifierAST *simpleAst = ast->asSimpleSpecifier()) {
+            switch (tokenKind(simpleAst->specifier_token)) {
+                case T_CHAR:
+                case T_CHAR16_T:
+                case T_CHAR32_T:
+                case T_WCHAR_T:
+                case T_INT:
+                case T_SHORT:
+                case T_LONG:
+                    _type.setType(&UndefinedType::instance);
+                    break;
+            }
+        }
+        _typeWasUnsignedOrSigned = false;
+    }
+
     ++_depth;
     if (_depth > kMaxDepth)
         return false;
@@ -341,7 +360,9 @@ bool Bind::visit(DeclaratorAST *ast)
     return false;
 }
 
-FullySpecifiedType Bind::declarator(DeclaratorAST *ast, const FullySpecifiedType &init, DeclaratorIdAST **declaratorId)
+FullySpecifiedType Bind::declarator(DeclaratorAST *ast, const FullySpecifiedType &init,
+                                    DeclaratorIdAST **declaratorId,
+                                    DecompositionDeclaratorAST **decompDeclarator)
 {
     FullySpecifiedType type = init;
 
@@ -349,6 +370,7 @@ FullySpecifiedType Bind::declarator(DeclaratorAST *ast, const FullySpecifiedType
         return type;
 
     std::swap(_declaratorId, declaratorId);
+    std::swap(_decompositionDeclarator, decompDeclarator);
     bool isAuto = false;
     const bool cxx11Enabled = translationUnit()->languageFeatures().cxx11Enabled;
     if (cxx11Enabled)
@@ -371,7 +393,7 @@ FullySpecifiedType Bind::declarator(DeclaratorAST *ast, const FullySpecifiedType
         if (type.isAuto())
             isAuto = true;
     }
-    if (!type->isFunctionType()) {
+    if (!type->asFunctionType()) {
         ExpressionTy initializer = this->expression(ast->initializer);
         if (cxx11Enabled && isAuto) {
             type = initializer;
@@ -380,6 +402,7 @@ FullySpecifiedType Bind::declarator(DeclaratorAST *ast, const FullySpecifiedType
     }
 
     std::swap(_declaratorId, declaratorId);
+    std::swap(_decompositionDeclarator, decompDeclarator);
     return type;
 }
 
@@ -890,6 +913,10 @@ OperatorNameId::Kind Bind::cppOperator(OperatorAST *ast)
 
     case T_LBRACKET:
         kind = OperatorNameId::ArrayAccessOp;
+        break;
+
+    case T_LESS_EQUAL_GREATER:
+        kind = OperatorNameId::SpaceShipOp;
         break;
 
     default:
@@ -1997,51 +2024,69 @@ bool Bind::visit(SimpleDeclarationAST *ast)
 
     for (DeclaratorListAST *it = ast->declarator_list; it; it = it->next) {
         DeclaratorIdAST *declaratorId = nullptr;
-        FullySpecifiedType declTy = this->declarator(it->value, type, &declaratorId);
+        DecompositionDeclaratorAST *decompDeclarator = nullptr;
+        FullySpecifiedType declTy = this->declarator(it->value, type, &declaratorId,
+                                                     &decompDeclarator);
 
-        const Name *declName = nullptr;
-        int sourceLocation = location(it->value, ast->firstToken());
-        if (declaratorId && declaratorId->name)
-            declName = declaratorId->name->name;
-
-        Declaration *decl = control()->newDeclaration(sourceLocation, declName);
-        decl->setType(declTy);
-        setDeclSpecifiers(decl, type);
-
-        if (Function *fun = decl->type()->asFunctionType()) {
-            fun->setEnclosingScope(_scope);
-            fun->setSourceLocation(sourceLocation, translationUnit());
-
-            setDeclSpecifiers(fun, type);
-            if (declaratorId && declaratorId->name)
-                fun->setName(declaratorId->name->name); // update the function name
-        }
-        else if (declTy.isAuto()) {
-            const ExpressionAST *initializer = it->value->initializer;
-            if (!initializer && declaratorId)
-                translationUnit()->error(location(declaratorId->name, ast->firstToken()), "auto-initialized variable must have an initializer");
-            else if (initializer)
-                decl->setInitializer(asStringLiteral(initializer));
-        }
-
-        if (_scope->isClass()) {
-            decl->setVisibility(_visibility);
-
-            if (Function *funTy = decl->type()->asFunctionType()) {
-                funTy->setMethodKey(methodKey);
-
-                bool pureVirtualInit = it->value->equal_token
-                        && it->value->initializer
-                        && it->value->initializer->asNumericLiteral();
-                if (funTy->isVirtual() && pureVirtualInit)
-                    funTy->setPureVirtual(true);
+        std::vector<std::pair<const Name *, int>> namesAndLocations;
+        if (declaratorId && declaratorId->name) {
+            namesAndLocations.push_back({declaratorId->name->name,
+                                         location(it->value, ast->firstToken())});
+        } else if (decompDeclarator) {
+            for (auto it = decompDeclarator->identifiers->begin();
+                 it != decompDeclarator->identifiers->end(); ++it) {
+                if ((*it)->name)
+                    namesAndLocations.push_back({(*it)->name, (*it)->firstToken()});
             }
         }
 
-        _scope->addMember(decl);
+        for (const auto &nameAndLoc : std::as_const(namesAndLocations)) {
+            const int sourceLocation = nameAndLoc.second;
+            Declaration *decl = control()->newDeclaration(sourceLocation, nameAndLoc.first);
+            if (const Type * const t = declTy.type(); t && declTy.isTypedef() && t->asClassType()
+                    && t->asClassType()->name() && t->asClassType()->name()->asAnonymousNameId()) {
+                declTy.type()->asClassType()->setName(decl->name());
+            }
+            decl->setType(declTy);
+            setDeclSpecifiers(decl, type);
 
-        *symbolTail = new (translationUnit()->memoryPool()) List<Symbol *>(decl);
-        symbolTail = &(*symbolTail)->next;
+            if (Function *fun = decl->type()->asFunctionType()) {
+                fun->setEnclosingScope(_scope);
+                fun->setSourceLocation(sourceLocation, translationUnit());
+
+                setDeclSpecifiers(fun, type);
+                if (declaratorId && declaratorId->name)
+                    fun->setName(declaratorId->name->name); // update the function name
+            }
+            else if (declTy.isAuto()) {
+                const ExpressionAST *initializer = it->value->initializer;
+                if (!initializer && declaratorId) {
+                    translationUnit()->error(location(declaratorId->name, ast->firstToken()),
+                                             "auto-initialized variable must have an initializer");
+                } else if (initializer) {
+                    decl->setInitializer(asStringLiteral(initializer));
+                }
+            }
+
+            if (_scope->asClass()) {
+                decl->setVisibility(_visibility);
+
+                if (Function *funTy = decl->type()->asFunctionType()) {
+                    funTy->setMethodKey(methodKey);
+
+                    bool pureVirtualInit = it->value->equal_token
+                            && it->value->initializer
+                            && it->value->initializer->asNumericLiteral();
+                    if (funTy->isVirtual() && pureVirtualInit)
+                        funTy->setPureVirtual(true);
+                }
+            }
+
+            _scope->addMember(decl);
+
+            *symbolTail = new (translationUnit()->memoryPool()) List<Symbol *>(decl);
+            symbolTail = &(*symbolTail)->next;
+        }
     }
     return false;
 }
@@ -2050,7 +2095,7 @@ bool Bind::visit(EmptyDeclarationAST *ast)
 {
     (void) ast;
     int semicolon_token = ast->semicolon_token;
-    if (_scope && (_scope->isClass() || _scope->isNamespace())) {
+    if (_scope && (_scope->asClass() || _scope->asNamespace())) {
         const Token &tk = tokenAt(semicolon_token);
 
         if (! tk.generated())
@@ -2227,7 +2272,7 @@ bool Bind::visit(AliasDeclarationAST *ast)
     decl->setType(ty);
     decl->setStorage(Symbol::Typedef);
     ast->symbol = decl;
-    if (_scope->isClass())
+    if (_scope->asClass())
         decl->setVisibility(_visibility);
     _scope->addMember(decl);
 
@@ -2299,7 +2344,7 @@ bool Bind::visit(FunctionDefinitionAST *ast)
         setDeclSpecifiers(fun, declSpecifiers);
         fun->setEndOffset(tokenAt(ast->lastToken() - 1).utf16charsEnd());
 
-        if (_scope->isClass()) {
+        if (_scope->asClass()) {
             fun->setVisibility(_visibility);
             fun->setMethodKey(methodKey);
         }
@@ -2956,13 +3001,17 @@ bool Bind::visit(SimpleSpecifierAST *ast)
         case T_SIGNED:
             if (_type.isSigned())
                 translationUnit()->error(ast->specifier_token, "duplicate `%s'", spell(ast->specifier_token));
+            _type.setType(control()->integerType(IntegerType::Int));
             _type.setSigned(true);
+            _typeWasUnsignedOrSigned = true;
             break;
 
         case T_UNSIGNED:
             if (_type.isUnsigned())
                 translationUnit()->error(ast->specifier_token, "duplicate `%s'", spell(ast->specifier_token));
+            _type.setType(control()->integerType(IntegerType::Int));
             _type.setUnsigned(true);
+            _typeWasUnsignedOrSigned = true;
             break;
 
         case T_CHAR:
@@ -3147,7 +3196,7 @@ bool Bind::visit(ClassSpecifierAST *ast)
     klass->setEndOffset(tokenAt(ast->lastToken() - 1).utf16charsEnd());
     _scope->addMember(klass);
 
-    if (_scope->isClass())
+    if (_scope->asClass())
         klass->setVisibility(_visibility);
 
     // set the class key
@@ -3210,7 +3259,7 @@ bool Bind::visit(EnumSpecifierAST *ast)
     ast->symbol = e;
     _scope->addMember(e);
 
-    if (_scope->isClass())
+    if (_scope->asClass())
         e->setVisibility(_visibility);
 
     Scope *previousScope = switchScope(e);
@@ -3249,7 +3298,7 @@ bool Bind::visit(PointerToMemberAST *ast)
 
 bool Bind::visit(PointerAST *ast)
 {
-    if (_type->isReferenceType())
+    if (_type->asReferenceType())
         translationUnit()->error(ast->firstToken(), "cannot declare pointer to a reference");
 
     FullySpecifiedType type(control()->pointerType(_type));
@@ -3264,7 +3313,7 @@ bool Bind::visit(ReferenceAST *ast)
 {
     const bool rvalueRef = (tokenKind(ast->reference_token) == T_AMPER_AMPER);
 
-    if (_type->isReferenceType())
+    if (_type->asReferenceType())
         translationUnit()->error(ast->firstToken(), "cannot declare reference to a reference");
 
     FullySpecifiedType type(control()->referenceType(_type, rvalueRef));
@@ -3316,6 +3365,15 @@ bool Bind::visit(DeclaratorIdAST *ast)
 {
     /*const Name *name =*/ this->name(ast->name);
     *_declaratorId = ast;
+    return false;
+}
+
+bool Bind::visit(DecompositionDeclaratorAST *ast)
+{
+    for (auto it = ast->identifiers->begin(); it != ast->identifiers->end(); ++it)
+        name(*it);
+    if (_decompositionDeclarator)
+        *_decompositionDeclarator = ast;
     return false;
 }
 
@@ -3398,7 +3456,7 @@ void Bind::ensureValidClassName(const Name **name, int sourceLocation)
     const QualifiedNameId *qName = (*name)->asQualifiedNameId();
     const Name *uqName = qName ? qName->name() : *name;
 
-    if (!uqName->isNameId() && !uqName->isTemplateNameId()) {
+    if (!uqName->asNameId() && !uqName->asTemplateNameId()) {
         translationUnit()->error(sourceLocation, "expected a class-name");
 
         *name = uqName->identifier();

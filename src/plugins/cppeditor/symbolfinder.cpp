@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #if defined(_MSC_VER)
 #pragma warning(disable:4996)
@@ -42,6 +20,7 @@
 #include <utility>
 
 using namespace CPlusPlus;
+using namespace Utils;
 
 namespace CppEditor {
 namespace {
@@ -156,7 +135,7 @@ Function *SymbolFinder::findMatchingDefinition(Symbol *declaration,
     if (!declaration)
         return nullptr;
 
-    QString declFile = QString::fromUtf8(declaration->fileName(), declaration->fileNameLength());
+    const FilePath declFile = declaration->filePath();
 
     Document::Ptr thisDocument = snapshot.document(declFile);
     if (!thisDocument) {
@@ -172,10 +151,11 @@ Function *SymbolFinder::findMatchingDefinition(Symbol *declaration,
     }
 
     Hit best;
-    foreach (const QString &fileName, fileIterationOrder(declFile, snapshot)) {
-        Document::Ptr doc = snapshot.document(fileName);
+    const FilePaths filePaths = fileIterationOrder(declFile, snapshot);
+    for (const FilePath &filePath : filePaths) {
+        Document::Ptr doc = snapshot.document(filePath);
         if (!doc) {
-            clearCache(declFile, fileName);
+            clearCache(declFile, filePath);
             continue;
         }
 
@@ -241,7 +221,7 @@ Symbol *SymbolFinder::findMatchingVarDefinition(Symbol *declaration, const Snaps
             return nullptr;
     }
 
-    QString declFile = QString::fromUtf8(declaration->fileName(), declaration->fileNameLength());
+    const FilePath declFile = declaration->filePath();
     const Document::Ptr thisDocument = snapshot.document(declFile);
     if (!thisDocument) {
         qWarning() << "undefined document:" << declaration->fileName();
@@ -251,10 +231,11 @@ Symbol *SymbolFinder::findMatchingVarDefinition(Symbol *declaration, const Snaps
     using SymbolWithPriority = QPair<Symbol *, bool>;
     QList<SymbolWithPriority> candidates;
     QList<SymbolWithPriority> fallbacks;
-    foreach (const QString &fileName, fileIterationOrder(declFile, snapshot)) {
-        Document::Ptr doc = snapshot.document(fileName);
+    const FilePaths filePaths = fileIterationOrder(declFile, snapshot);
+    for (const FilePath &filePath : filePaths) {
+        Document::Ptr doc = snapshot.document(filePath);
         if (!doc) {
-            clearCache(declFile, fileName);
+            clearCache(declFile, filePath);
             continue;
         }
 
@@ -276,22 +257,22 @@ Symbol *SymbolFinder::findMatchingVarDefinition(Symbol *declaration, const Snaps
             for (const LookupItem &item : items) {
                 if (item.declaration() == symbol)
                     addFallback = false;
-                candidates << qMakePair(item.declaration(),
-                                        context.lookupType(item.declaration()) == enclosingType);
+                candidates.push_back({item.declaration(),
+                                      context.lookupType(item.declaration()) == enclosingType});
             }
             // TODO: This is a workaround for static member definitions not being found by
             //       the lookup() function.
             if (addFallback)
-                fallbacks << qMakePair(symbol, context.lookupType(symbol) == enclosingType);
+                fallbacks.push_back({symbol, context.lookupType(symbol) == enclosingType});
         }
     }
 
     candidates << fallbacks;
     SymbolWithPriority best;
-    for (const auto &candidate : qAsConst(candidates)) {
+    for (const auto &candidate : std::as_const(candidates)) {
         if (candidate.first == declaration)
             continue;
-        if (QLatin1String(candidate.first->fileName()) == declFile
+        if (candidate.first->filePath() == declFile
                 && candidate.first->sourceLocation() == declaration->sourceLocation())
             continue;
         if (!candidate.first->asDeclaration())
@@ -318,9 +299,10 @@ Class *SymbolFinder::findMatchingClassDeclaration(Symbol *declaration, const Sna
     if (!declaration->identifier())
         return nullptr;
 
-    QString declFile = QString::fromUtf8(declaration->fileName(), declaration->fileNameLength());
+    const FilePath declFile = declaration->filePath();
 
-    foreach (const QString &file, fileIterationOrder(declFile, snapshot)) {
+    const FilePaths filePaths = fileIterationOrder(declFile, snapshot);
+    for (const FilePath &file : filePaths) {
         Document::Ptr doc = snapshot.document(file);
         if (!doc) {
             clearCache(declFile, file);
@@ -337,7 +319,8 @@ Class *SymbolFinder::findMatchingClassDeclaration(Symbol *declaration, const Sna
         if (!type)
             continue;
 
-        foreach (Symbol *s, type->symbols()) {
+        const QList<Symbol *> symbols = type->symbols();
+        for (Symbol *s : symbols) {
             if (Class *c = s->asClass())
                 return c;
         }
@@ -374,7 +357,7 @@ void SymbolFinder::findMatchingDeclaration(const LookupContext &context,
         return;
 
     Scope *enclosingScope = functionType->enclosingScope();
-    while (!(enclosingScope->isNamespace() || enclosingScope->isClass()))
+    while (!(enclosingScope->asNamespace() || enclosingScope->asClass()))
         enclosingScope = enclosingScope->enclosingScope();
     QTC_ASSERT(enclosingScope != nullptr, return);
 
@@ -411,20 +394,21 @@ void SymbolFinder::findMatchingDeclaration(const LookupContext &context,
         operatorNameId = onid->kind();
     }
 
-    foreach (Symbol *s, binding->symbols()) {
+    const QList<Symbol *> symbols = binding->symbols();
+    for (Symbol *s : symbols) {
         Scope *scope = s->asScope();
         if (!scope)
             continue;
 
         if (funcId) {
             for (Symbol *s = scope->find(funcId); s; s = s->next()) {
-                if (!s->name() || !funcId->match(s->identifier()) || !s->type()->isFunctionType())
+                if (!s->name() || !funcId->match(s->identifier()) || !s->type()->asFunctionType())
                     continue;
                 findDeclarationOfSymbol(s, functionType, typeMatch, argumentCountMatch, nameMatch);
             }
         } else {
             for (Symbol *s = scope->find(operatorNameId); s; s = s->next()) {
-                if (!s->name() || !s->type()->isFunctionType())
+                if (!s->name() || !s->type()->asFunctionType())
                     continue;
                 findDeclarationOfSymbol(s, functionType, typeMatch, argumentCountMatch, nameMatch);
             }
@@ -446,25 +430,25 @@ QList<Declaration *> SymbolFinder::findMatchingDeclaration(const LookupContext &
     // For member functions not defined inline, add fuzzy matches as fallbacks. We cannot do
     // this for free functions, because there is no guarantee that there's a separate declaration.
     QList<Declaration *> fuzzyMatches = argumentCountMatch + nameMatch;
-    if (!functionType->enclosingScope() || !functionType->enclosingScope()->isClass()) {
+    if (!functionType->enclosingScope() || !functionType->enclosingScope()->asClass()) {
         for (Declaration * const d : fuzzyMatches) {
-            if (d->enclosingScope() && d->enclosingScope()->isClass())
+            if (d->enclosingScope() && d->enclosingScope()->asClass())
                 result.append(d);
         }
     }
     return result;
 }
 
-QStringList SymbolFinder::fileIterationOrder(const QString &referenceFile, const Snapshot &snapshot)
+FilePaths SymbolFinder::fileIterationOrder(const FilePath &referenceFile, const Snapshot &snapshot)
 {
     if (m_filePriorityCache.contains(referenceFile)) {
         checkCacheConsistency(referenceFile, snapshot);
     } else {
-        foreach (Document::Ptr doc, snapshot)
-            insertCache(referenceFile, doc->fileName());
+        for (Document::Ptr doc : snapshot)
+            insertCache(referenceFile, doc->filePath());
     }
 
-    QStringList files = m_filePriorityCache.value(referenceFile).toStringList();
+    FilePaths files = m_filePriorityCache.value(referenceFile).toFilePaths();
 
     trackCacheUse(referenceFile);
 
@@ -478,19 +462,19 @@ void SymbolFinder::clearCache()
     m_recent.clear();
 }
 
-void SymbolFinder::checkCacheConsistency(const QString &referenceFile, const Snapshot &snapshot)
+void SymbolFinder::checkCacheConsistency(const FilePath &referenceFile, const Snapshot &snapshot)
 {
     // We only check for "new" files, which which are in the snapshot but not in the cache.
     // The counterpart validation for "old" files is done when one tries to access the
     // corresponding document and notices it's now null.
-    const QSet<QString> &meta = m_fileMetaCache.value(referenceFile);
-    foreach (const Document::Ptr &doc, snapshot) {
-        if (!meta.contains(doc->fileName()))
-            insertCache(referenceFile, doc->fileName());
+    const QSet<FilePath> &meta = m_fileMetaCache.value(referenceFile);
+    for (const Document::Ptr &doc : snapshot) {
+        if (!meta.contains(doc->filePath()))
+            insertCache(referenceFile, doc->filePath());
     }
 }
 
-const QString projectPartIdForFile(const QString &filePath)
+const QString projectPartIdForFile(const FilePath &filePath)
 {
     const QList<ProjectPart::ConstPtr> parts = CppModelManager::instance()->projectPart(filePath);
     if (!parts.isEmpty())
@@ -498,13 +482,13 @@ const QString projectPartIdForFile(const QString &filePath)
     return QString();
 }
 
-void SymbolFinder::clearCache(const QString &referenceFile, const QString &comparingFile)
+void SymbolFinder::clearCache(const FilePath &referenceFile, const FilePath &comparingFile)
 {
     m_filePriorityCache[referenceFile].remove(comparingFile, projectPartIdForFile(comparingFile));
     m_fileMetaCache[referenceFile].remove(comparingFile);
 }
 
-void SymbolFinder::insertCache(const QString &referenceFile, const QString &comparingFile)
+void SymbolFinder::insertCache(const FilePath &referenceFile, const FilePath &comparingFile)
 {
     FileIterationOrder &order = m_filePriorityCache[referenceFile];
     if (!order.isValid()) {
@@ -516,7 +500,7 @@ void SymbolFinder::insertCache(const QString &referenceFile, const QString &comp
     m_fileMetaCache[referenceFile].insert(comparingFile);
 }
 
-void SymbolFinder::trackCacheUse(const QString &referenceFile)
+void SymbolFinder::trackCacheUse(const FilePath &referenceFile)
 {
     if (!m_recent.isEmpty()) {
         if (m_recent.last() == referenceFile)
@@ -528,7 +512,7 @@ void SymbolFinder::trackCacheUse(const QString &referenceFile)
 
     // We don't want this to grow too much.
     if (m_recent.size() > kMaxCacheSize) {
-        const QString &oldest = m_recent.takeFirst();
+        const FilePath &oldest = m_recent.takeFirst();
         m_filePriorityCache.remove(oldest);
         m_fileMetaCache.remove(oldest);
     }

@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
-** Contact: http://www.qt.io/licensing
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nimbuildsystem.h"
 
 #include "nimconstants.h"
-#include "nimproject.h"
 #include "nimbleproject.h"
 
 #include <projectexplorer/target.h>
@@ -77,9 +54,9 @@ NimProjectScanner::NimProjectScanner(Project *project)
         }
 
         // Sync watched dirs
-        const QSet<QString> fsDirs = Utils::transform<QSet>(nodes,
-            [](const std::unique_ptr<FileNode> &fn) { return fn->directory().toString(); });
-        const QSet<QString> projectDirs = Utils::toSet(m_directoryWatcher.directories());
+        const QSet<FilePath> fsDirs = Utils::transform<QSet>(nodes,
+            [](const std::unique_ptr<FileNode> &fn) { return fn->directory(); });
+        const QSet<FilePath> projectDirs = Utils::toSet(m_directoryWatcher.directoryPaths());
         m_directoryWatcher.addDirectories(Utils::toList(fsDirs - projectDirs), FileSystemWatcher::WatchAllChanges);
         m_directoryWatcher.removeDirectories(Utils::toList(projectDirs - fsDirs));
 
@@ -121,7 +98,7 @@ void NimProjectScanner::startScan()
 
 void NimProjectScanner::watchProjectFilePath()
 {
-    m_directoryWatcher.addFile(m_project->projectFilePath().toString(), FileSystemWatcher::WatchModifiedDate);
+    m_directoryWatcher.addFile(m_project->projectFilePath(), FileSystemWatcher::WatchModifiedDate);
 }
 
 void NimProjectScanner::setExcludedFiles(const QStringList &list)

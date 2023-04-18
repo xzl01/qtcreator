@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -61,17 +39,16 @@ public:
 
     static void clientStarted(Client *client);
     static void clientFinished(Client *client);
-    static Client *startClient(BaseSettings *setting, ProjectExplorer::Project *project = nullptr);
-    static QVector<Client *> clients();
+    static Client *startClient(const BaseSettings *setting, ProjectExplorer::Project *project = nullptr);
+    static const QList<Client *> clients();
     static void addClient(Client *client);
-
-    static void addExclusiveRequest(const LanguageServerProtocol::MessageId &id, Client *client);
-    static void reportFinished(const LanguageServerProtocol::MessageId &id, Client *byClient);
+    static void restartClient(Client *client);
 
     static void shutdownClient(Client *client);
     static void deleteClient(Client *client);
 
     static void shutdown();
+    static bool isShuttingDown();
 
     static LanguageClientManager *instance();
 
@@ -80,12 +57,11 @@ public:
     static void applySettings();
     static QList<BaseSettings *> currentSettings();
     static void registerClientSettings(BaseSettings *settings);
-    static void enableClientSettings(const QString &settingsId);
-    static QVector<Client *> clientForSetting(const BaseSettings *setting);
+    static void enableClientSettings(const QString &settingsId, bool enable = true);
+    static QList<Client *> clientsForSetting(const BaseSettings *setting);
     static const BaseSettings *settingForClient(Client *setting);
     static Client *clientForDocument(TextEditor::TextDocument *document);
     static Client *clientForFilePath(const Utils::FilePath &filePath);
-    static Client *clientForUri(const LanguageServerProtocol::DocumentUri &uri);
     static const QList<Client *> clientsForProject(const ProjectExplorer::Project *project);
     template<typename T> static bool hasClients();
 
@@ -96,12 +72,14 @@ public:
     ///
     static void openDocumentWithClient(TextEditor::TextDocument *document, Client *client);
 
-    static void logBaseMessage(const LspLogMessage::MessageSender sender,
-                               const QString &clientName,
-                               const LanguageServerProtocol::BaseMessage &message);
+    static void logJsonRpcMessage(const LspLogMessage::MessageSender sender,
+                                  const QString &clientName,
+                                  const LanguageServerProtocol::JsonRpcMessage &message);
+
     static void showInspector();
 
 signals:
+    void clientAdded(Client *client);
     void clientRemoved(Client *client);
     void shutdownFinished();
 
@@ -117,14 +95,13 @@ private:
     void updateProject(ProjectExplorer::Project *project);
     void projectAdded(ProjectExplorer::Project *project);
 
-    QVector<Client *> reachableClients();
+    QList<Client *> reachableClients();
 
-    bool m_shuttingDown = false;
-    QVector<Client *> m_clients;
+    QList<Client *> m_clients;
+    QSet<Client *> m_restartingClients;
     QList<BaseSettings *>  m_currentSettings; // owned
-    QMap<QString, QVector<Client *>> m_clientsForSetting;
+    QMap<QString, QList<Client *>> m_clientsForSetting;
     QHash<TextEditor::TextDocument *, QPointer<Client>> m_clientForDocument;
-    QHash<LanguageServerProtocol::MessageId, QList<Client *>> m_exclusiveRequests;
     DocumentLocatorFilter m_currentDocumentLocatorFilter;
     WorkspaceLocatorFilter m_workspaceLocatorFilter;
     WorkspaceClassLocatorFilter m_workspaceClassLocatorFilter;

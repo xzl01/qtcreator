@@ -1,36 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BogDan Vatra <bog_dan_ro@yahoo.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BogDan Vatra <bog_dan_ro@yahoo.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "androidplugin.h"
 
 #include "androidconfigurations.h"
+#include "androidbuildapkstep.h"
 #include "androidconstants.h"
 #include "androiddebugsupport.h"
 #include "androiddeployqtstep.h"
 #include "androiddevice.h"
-#include "androidmanager.h"
 #include "androidmanifesteditorfactory.h"
 #include "androidpackageinstallationstep.h"
 #include "androidpotentialkit.h"
@@ -41,6 +19,13 @@
 #include "androidruncontrol.h"
 #include "androidsettingswidget.h"
 #include "androidtoolchain.h"
+#include "androidtr.h"
+
+#ifdef WITH_TESTS
+#  include "androidsdkmanager_test.h"
+#  include "sdkmanageroutputparser_test.h"
+#endif
+
 #include "javaeditor.h"
 #include "javalanguageserver.h"
 
@@ -54,9 +39,9 @@
 
 #include <languageclient/languageclientsettings.h>
 
-#include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/deployconfiguration.h>
+#include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/project.h>
@@ -70,8 +55,7 @@ using namespace ProjectExplorer::Constants;
 
 const char kSetupAndroidSetting[] = "ConfigureAndroid";
 
-namespace Android {
-namespace Internal {
+namespace Android::Internal {
 
 class AndroidDeployConfigurationFactory : public DeployConfigurationFactory
 {
@@ -80,8 +64,7 @@ public:
     {
         setConfigBaseId("Qt4ProjectManager.AndroidDeployConfiguration2");
         addSupportedTargetDeviceType(Constants::ANDROID_DEVICE_TYPE);
-        setDefaultDisplayName(QCoreApplication::translate("Android::Internal",
-                                                          "Deploy to Android Device"));
+        setDefaultDisplayName(Tr::tr("Deploy to Android Device"));
         addInitialStep(Constants::ANDROID_DEPLOY_QT_ID);
     }
 };
@@ -112,30 +95,12 @@ public:
     AndroidPackageInstallationFactory packackeInstallationFactory;
     AndroidManifestEditorFactory manifestEditorFactory;
     AndroidRunConfigurationFactory runConfigFactory;
-
-    RunWorkerFactory runWorkerFactory{
-        RunWorkerFactory::make<AndroidRunSupport>(),
-        {NORMAL_RUN_MODE},
-        {runConfigFactory.runConfigurationId()}
-    };
-    RunWorkerFactory debugWorkerFactory{
-        RunWorkerFactory::make<AndroidDebugSupport>(),
-        {DEBUG_RUN_MODE},
-        {runConfigFactory.runConfigurationId()}
-    };
-    RunWorkerFactory profilerWorkerFactory{
-        RunWorkerFactory::make<AndroidQmlToolingSupport>(),
-        {QML_PROFILER_RUN_MODE},
-        {runConfigFactory.runConfigurationId()}
-    };
-    RunWorkerFactory qmlPreviewWorkerFactory{
-        RunWorkerFactory::make<AndroidQmlPreviewWorker>(),
-        {QML_PREVIEW_RUN_MODE},
-        {"QmlProjectManager.QmlRunConfiguration.Qml", runConfigFactory.runConfigurationId()},
-        {Android::Constants::ANDROID_DEVICE_TYPE}
-    };
-
+    AndroidRunWorkerFactory runWorkerFactory;
+    AndroidDebugWorkerFactory debugWorkerFactory;
+    AndroidQmlToolingSupportFactory profilerWorkerFactory;
+    AndroidQmlPreviewWorkerFactory qmlPreviewWorkerFactory;
     AndroidBuildApkStepFactory buildApkStepFactory;
+    AndroidDeviceManager deviceManager;
 };
 
 AndroidPlugin::~AndroidPlugin()
@@ -143,27 +108,22 @@ AndroidPlugin::~AndroidPlugin()
     delete d;
 }
 
-bool AndroidPlugin::initialize(const QStringList &arguments, QString *errorMessage)
+void AndroidPlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorMessage)
-
     d = new AndroidPluginPrivate;
 
     connect(KitManager::instance(), &KitManager::kitsLoaded,
             this, &AndroidPlugin::kitsRestored);
 
-    LanguageClient::LanguageClientSettings::registerClientType({Android::Constants::JLS_SETTINGS_ID,
-                                                                tr("Java Language Server"),
-                                                                []() { return new JLSSettings; }});
+    LanguageClient::LanguageClientSettings::registerClientType(
+        {Android::Constants::JLS_SETTINGS_ID,
+         Tr::tr("Java Language Server"),
+         [] { return new JLSSettings; }});
 
-    return true;
-}
-
-ExtensionSystem::IPlugin::ShutdownFlag AndroidPlugin::aboutToShutdown()
-{
-    AndroidDeviceManager::instance()->shutdownDevicesWatcher();
-    return ExtensionSystem::IPlugin::SynchronousShutdown;
+#ifdef WITH_TESTS
+    addTest<AndroidSdkManagerTest>();
+    addTest<SdkManagerOutputParserTest>();
+#endif
 }
 
 void AndroidPlugin::kitsRestored()
@@ -181,7 +141,7 @@ void AndroidPlugin::kitsRestored()
     AndroidConfigurations::registerNewToolChains();
     AndroidConfigurations::updateAutomaticKitList();
     connect(QtSupport::QtVersionManager::instance(), &QtSupport::QtVersionManager::qtVersionsChanged,
-            AndroidConfigurations::instance(), []() {
+            AndroidConfigurations::instance(), [] {
         AndroidConfigurations::registerNewToolChains();
         AndroidConfigurations::updateAutomaticKitList();
     });
@@ -196,18 +156,17 @@ void AndroidPlugin::askUserAboutAndroidSetup()
         return;
 
     Utils::InfoBarEntry
-        info(kSetupAndroidSetting,
-             tr("Would you like to configure Android options? This will ensure "
-                "Android kits can be usable and all essential packages are installed. "
-                "To do it later, select Options > Devices > Android."),
-             Utils::InfoBarEntry::GlobalSuppression::Enabled);
-    info.addCustomButton(tr("Configure Android"), [this] {
+            info(kSetupAndroidSetting,
+                 Tr::tr("Would you like to configure Android options? This will ensure "
+                        "Android kits can be usable and all essential packages are installed. "
+                        "To do it later, select Edit > Preferences > Devices > Android."),
+                 Utils::InfoBarEntry::GlobalSuppression::Enabled);
+    info.addCustomButton(Tr::tr("Configure Android"), [this] {
         Core::ICore::infoBar()->removeInfo(kSetupAndroidSetting);
         Core::ICore::infoBar()->globallySuppressInfo(kSetupAndroidSetting);
-        QTimer::singleShot(0, this, [this]() { d->potentialKit.executeFromMenu(); });
+        QTimer::singleShot(0, this, [this] { d->potentialKit.executeFromMenu(); });
     });
     Core::ICore::infoBar()->addInfo(info);
 }
 
-} // namespace Internal
-} // namespace Android
+} // Android::Internal

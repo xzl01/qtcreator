@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmltextgenerator.h"
 
@@ -101,6 +79,8 @@ QString QmlTextGenerator::toQml(const AbstractProperty &property, int indentDept
         return property.toBindingProperty().expression();
     } else if (property.isSignalHandlerProperty()) {
         return property.toSignalHandlerProperty().source();
+    } else if (property.isSignalDeclarationProperty()) {
+        return property.toSignalDeclarationProperty().signature();
     } else if (property.isNodeProperty()) {
         return toQml(property.toNodeProperty().modelNode(), indentDepth);
     } else if (property.isNodeListProperty()) {
@@ -200,7 +180,7 @@ QString QmlTextGenerator::toQml(const ModelNode &node, int indentDepth) const
 
     QString alias;
     if (!url.isEmpty()) {
-        foreach (const Import &import, node.model()->imports()) {
+        for (const Import &import : node.model()->imports()) {
             if (import.url() == url) {
                 alias = import.alias();
                 break;
@@ -218,6 +198,10 @@ QString QmlTextGenerator::toQml(const ModelNode &node, int indentDepth) const
         result = alias + '.';
 
     result += type;
+    if (!node.behaviorPropertyName().isEmpty()) {
+        result += " on " +  node.behaviorPropertyName();
+    }
+
     result += QStringLiteral(" {\n");
 
     const int propertyIndentDepth = indentDepth + m_tabSettings.m_indentSize;
@@ -236,7 +220,7 @@ QString QmlTextGenerator::propertiesToQml(const ModelNode &node, int indentDepth
     PropertyNameList nodePropertyNames = node.propertyNames();
     bool addToTop = true;
 
-    foreach (const PropertyName &propertyName, m_propertyOrder) {
+    for (const PropertyName &propertyName : std::as_const(m_propertyOrder)) {
         if (propertyName == "id") {
             // the model handles the id property special, so:
             if (!node.id().isEmpty()) {
@@ -262,7 +246,7 @@ QString QmlTextGenerator::propertiesToQml(const ModelNode &node, int indentDepth
         }
     }
 
-    foreach (const PropertyName &propertyName, nodePropertyNames) {
+    for (const PropertyName &propertyName : std::as_const(nodePropertyNames)) {
         bottomPart.prepend(propertyToQml(node.property(propertyName), indentDepth));
     }
 
@@ -284,6 +268,10 @@ QString QmlTextGenerator::propertyToQml(const AbstractProperty &property, int in
                     + QString::fromUtf8(property.name())
                     + QStringLiteral(": ")
                     + toQml(property, indentDepth);
+        }
+        if (property.isSignalDeclarationProperty()) {
+            result = m_tabSettings.indentationString(0, indentDepth, 0) + "signal" + " "
+                     + QString::fromUtf8(property.name()) + " " + toQml(property, indentDepth);
         } else {
             result = m_tabSettings.indentationString(0, indentDepth, 0)
                     + QString::fromUtf8(property.name())

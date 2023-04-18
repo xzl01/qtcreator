@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -50,7 +28,7 @@ class  ConnectionView : public AbstractView
     Q_OBJECT
 
 public:
-    ConnectionView(QObject *parent = nullptr);
+    ConnectionView(ExternalDependenciesInterface &externalDependencies);
     ~ConnectionView() override;
 
     // AbstractView
@@ -70,9 +48,13 @@ public:
 
     void selectedNodesChanged(const QList<ModelNode> &selectedNodeList,
                               const QList<ModelNode> &lastSelectedNodeList) override;
-    void auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &data) override;
+    void auxiliaryDataChanged(const ModelNode &node,
+                              AuxiliaryDataKeyView key,
+                              const QVariant &data) override;
 
     void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports) override;
+
+    void currentStateChanged(const ModelNode &node) override;
 
     WidgetInfo widgetInfo() override;
     bool hasWidget() const override;
@@ -83,13 +65,14 @@ public:
     QTableView *dynamicPropertiesTableView() const;
     QTableView *backendView() const;
 
-protected:
+    DynamicPropertiesModel *dynamicPropertiesModel() const;
+
     ConnectionViewWidget *connectionViewWidget() const;
     ConnectionModel *connectionModel() const;
     BindingModel *bindingModel() const;
-    DynamicPropertiesModel *dynamicPropertiesModel() const;
     BackendModel *backendModel() const;
 
+    static ConnectionView *instance();
 
 private: //variables
     QPointer<ConnectionViewWidget> m_connectionViewWidget;

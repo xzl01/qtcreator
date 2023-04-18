@@ -1,37 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Uwe Kindler
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Uwe Kindler
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "dockcontainerwidget.h"
 
@@ -236,7 +204,7 @@ namespace ADS
                 return;
 
             m_visibleDockAreaCount = 0;
-            for (auto dockArea : qAsConst(m_dockAreas))
+            for (auto dockArea : std::as_const(m_dockAreas))
                 m_visibleDockAreaCount += dockArea->isHidden() ? 0 : 1;
         }
 
@@ -298,9 +266,8 @@ namespace ADS
             splitter->setSizes(splitterSizes);
         }
 
-        void onDockAreaViewToggled(bool visible)
+        void onDockAreaViewToggled(DockAreaWidget *dockArea, bool visible)
         {
-            DockAreaWidget *dockArea = qobject_cast<DockAreaWidget *>(q->sender());
             m_visibleDockAreaCount += visible ? 1 : -1;
             onVisibleDockAreaCountChanged();
             emit q->dockAreaViewToggled(dockArea, visible);
@@ -661,12 +628,9 @@ namespace ADS
     {
         m_dockAreas.append(newDockAreas);
         for (auto dockArea : newDockAreas) {
-            QObject::connect(dockArea,
-                             &DockAreaWidget::viewToggled,
-                             q,
-                             std::bind(&DockContainerWidgetPrivate::onDockAreaViewToggled,
-                                       this,
-                                       std::placeholders::_1));
+            QObject::connect(dockArea, &DockAreaWidget::viewToggled,
+                             q, std::bind(&DockContainerWidgetPrivate::onDockAreaViewToggled,
+                                          this, dockArea, std::placeholders::_1));
         }
     }
 
@@ -1146,7 +1110,7 @@ namespace ADS
 
     DockAreaWidget *DockContainerWidget::dockAreaAt(const QPoint &globalPosition) const
     {
-        for (auto dockArea : qAsConst(d->m_dockAreas)) {
+        for (auto dockArea : std::as_const(d->m_dockAreas)) {
             if (dockArea->isVisible()
                 && dockArea->rect().contains(dockArea->mapFromGlobal(globalPosition)))
                 return dockArea;
@@ -1167,7 +1131,7 @@ namespace ADS
     int DockContainerWidget::visibleDockAreaCount() const
     {
         int result = 0;
-        for (auto dockArea : qAsConst(d->m_dockAreas))
+        for (auto dockArea : std::as_const(d->m_dockAreas))
             result += dockArea->isHidden() ? 0 : 1;
 
         return result;
@@ -1251,13 +1215,13 @@ namespace ADS
         }
 
         window()->activateWindow();
-        d->m_dockManager->notifyWidgetOrAreaRelocation(widget);
+        d->m_dockManager->notifyWidgetOrAreaRelocation(dockWidget);
     }
 
     QList<DockAreaWidget *> DockContainerWidget::openedDockAreas() const
     {
         QList<DockAreaWidget *> result;
-        for (auto dockArea : qAsConst(d->m_dockAreas)) {
+        for (auto dockArea : std::as_const(d->m_dockAreas)) {
             if (!dockArea->isHidden())
                 result.append(dockArea);
         }
@@ -1397,7 +1361,7 @@ namespace ADS
     QList<DockWidget *> DockContainerWidget::dockWidgets() const
     {
         QList<DockWidget *> result;
-        for (const auto dockArea : qAsConst(d->m_dockAreas))
+        for (const auto dockArea : std::as_const(d->m_dockAreas))
             result.append(dockArea->dockWidgets());
 
         return result;
@@ -1406,7 +1370,7 @@ namespace ADS
     DockWidget::DockWidgetFeatures DockContainerWidget::features() const
     {
         DockWidget::DockWidgetFeatures features(DockWidget::AllDockWidgetFeatures);
-        for (const auto dockArea : qAsConst(d->m_dockAreas))
+        for (const auto dockArea : std::as_const(d->m_dockAreas))
             features &= dockArea->features();
 
         return features;
@@ -1419,7 +1383,7 @@ namespace ADS
 
     void DockContainerWidget::closeOtherAreas(DockAreaWidget *keepOpenArea)
     {
-        for (const auto dockArea : qAsConst(d->m_dockAreas)) {
+        for (const auto dockArea : std::as_const(d->m_dockAreas)) {
             if (dockArea == keepOpenArea)
                 continue;
 

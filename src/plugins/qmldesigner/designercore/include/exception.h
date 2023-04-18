@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -43,6 +21,8 @@ public:
     virtual QString type() const = 0;
     QString description() const;
     void showException(const QString &title = QString()) const;
+    static void setShowExceptionCallback(
+        std::function<void(QStringView title, QStringView description)> callback);
 
     int line() const;
     QString function() const;
@@ -53,6 +33,7 @@ public:
 
     static void setShouldAssert(bool assert);
     static bool shouldAssert();
+    static void setWarnAboutException(bool warn);
     static bool warnAboutException();
 
 protected:
@@ -70,6 +51,7 @@ private:
     const QString m_description;
     const QString m_backTrace;
     static bool s_shouldAssert;
+    static bool s_warnAboutException;
 };
 
 QMLDESIGNERCORE_EXPORT QDebug operator<<(QDebug debug, const Exception &exception);

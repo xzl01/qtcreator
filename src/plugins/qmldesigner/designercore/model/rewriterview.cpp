@@ -1,51 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rewriterview.h"
 
 #include "texttomodelmerger.h"
 #include "modeltotextmerger.h"
+#include "model_p.h"
 
-#include <variantproperty.h>
 #include <bindingproperty.h>
+#include <customnotifications.h>
+#include <designersettings.h>
+#include <externaldependenciesinterface.h>
+#include <filemanager/astobjecttextextractor.h>
+#include <filemanager/firstdefinitionfinder.h>
+#include <filemanager/objectlengthcalculator.h>
+#include <modelnode.h>
+#include <modelnodepositionstorage.h>
+#include <nodeproperty.h>
 #include <rewritingexception.h>
 #include <signalhandlerproperty.h>
-#include <filemanager/astobjecttextextractor.h>
-#include <filemanager/objectlengthcalculator.h>
-#include <filemanager/firstdefinitionfinder.h>
-#include <customnotifications.h>
-#include <modelnodepositionstorage.h>
-#include <modelnode.h>
-#include <nodeproperty.h>
+#include <variantproperty.h>
 #include <qmlobjectnode.h>
 #include <qmltimelinekeyframegroup.h>
-
-#ifndef QMLDESIGNER_TEST
-#include <qmldesignerplugin.h>
-#include <viewmanager.h>
-#endif
 
 #include <qmljs/parser/qmljsengine_p.h>
 #include <qmljs/qmljsmodelmanagerinterface.h>
@@ -65,29 +41,25 @@ using namespace QmlDesigner::Internal;
 
 namespace QmlDesigner {
 
-const char annotationsEscapeSequence[] = "##^##";
+constexpr QStringView annotationsStart{u"/*##^##"};
+constexpr QStringView annotationsEnd{u"##^##*/"};
 
-bool debugQmlPuppet()
+bool debugQmlPuppet(const DesignerSettings &settings)
 {
-#ifndef QMLDESIGNER_TEST
-    if (!QmlDesignerPlugin::instance())
-        return false;
-    const QString debugPuppet = QmlDesignerPlugin::instance()->settings().value(DesignerSettingsKey::
-        DEBUG_PUPPET).toString();
+    const QString debugPuppet = settings.value(DesignerSettingsKey::DEBUG_PUPPET).toString();
     return !debugPuppet.isEmpty();
-#else
-    return false;
-#endif
 }
 
-RewriterView::RewriterView(DifferenceHandling differenceHandling, QObject *parent):
-        AbstractView(parent),
-        m_differenceHandling(differenceHandling),
-        m_positionStorage(new ModelNodePositionStorage),
-        m_modelToTextMerger(new Internal::ModelToTextMerger(this)),
-        m_textToModelMerger(new Internal::TextToModelMerger(this))
+RewriterView::RewriterView(ExternalDependenciesInterface &externalDependencies,
+                           DifferenceHandling differenceHandling)
+    : AbstractView{externalDependencies}
+    , m_differenceHandling(differenceHandling)
+    , m_positionStorage(new ModelNodePositionStorage)
+    , m_modelToTextMerger(new Internal::ModelToTextMerger(this))
+    , m_textToModelMerger(new Internal::TextToModelMerger(this))
 {
     m_amendTimer.setSingleShot(true);
+
     m_amendTimer.setInterval(800);
     connect(&m_amendTimer, &QTimer::timeout, this, &RewriterView::amendQmlText);
 
@@ -220,7 +192,7 @@ void RewriterView::variantPropertiesChanged(const QList<VariantProperty>& proper
         return;
 
     QList<AbstractProperty> usefulPropertyList;
-    foreach (const VariantProperty &property, propertyList)
+    for (const VariantProperty &property : propertyList)
         usefulPropertyList.append(property);
 
     modelToTextMerger()->propertiesChanged(usefulPropertyList, propertyChange);
@@ -236,7 +208,7 @@ void RewriterView::bindingPropertiesChanged(const QList<BindingProperty>& proper
         return;
 
     QList<AbstractProperty> usefulPropertyList;
-    foreach (const BindingProperty &property, propertyList)
+    for (const BindingProperty &property : propertyList)
         usefulPropertyList.append(property);
 
     modelToTextMerger()->propertiesChanged(usefulPropertyList, propertyChange);
@@ -252,7 +224,23 @@ void RewriterView::signalHandlerPropertiesChanged(const QVector<SignalHandlerPro
         return;
 
     QList<AbstractProperty> usefulPropertyList;
-    foreach (const SignalHandlerProperty &property, propertyList)
+    for (const SignalHandlerProperty &property : propertyList)
+        usefulPropertyList.append(property);
+
+    modelToTextMerger()->propertiesChanged(usefulPropertyList, propertyChange);
+
+    if (!isModificationGroupActive())
+        applyChanges();
+}
+
+void RewriterView::signalDeclarationPropertiesChanged(const QVector<SignalDeclarationProperty> &propertyList, PropertyChangeFlags propertyChange)
+{
+    Q_ASSERT(textModifier());
+    if (textToModelMerger()->isActive())
+        return;
+
+    QList<AbstractProperty> usefulPropertyList;
+    for (const SignalDeclarationProperty &property : propertyList)
         usefulPropertyList.append(property);
 
     modelToTextMerger()->propertiesChanged(usefulPropertyList, propertyChange);
@@ -275,10 +263,10 @@ void RewriterView::nodeReparented(const ModelNode &node, const NodeAbstractPrope
 
 void RewriterView::importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports)
 {
-    foreach (const Import &import, addedImports)
+    for (const Import &import : addedImports)
         importAdded(import);
 
-    foreach (const Import &import, removedImports)
+    for (const Import &import : removedImports)
         importRemoved(import);
 
 }
@@ -290,7 +278,7 @@ void RewriterView::importAdded(const Import &import)
         return;
 
     if (import.url() == QLatin1String("Qt")) {
-        foreach (const Import &import, model()->imports()) {
+        for (const Import &import : model()->imports()) {
             if (import.url() == QLatin1String("QtQuick"))
                 return; //QtQuick magic we do not have to add an import for Qt
         }
@@ -452,24 +440,13 @@ void RewriterView::deactivateTextMofifierChangeSignals()
         textModifier()->deactivateChangeSignals();
 }
 
-void RewriterView::auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &)
+void RewriterView::auxiliaryDataChanged(const ModelNode &, AuxiliaryDataKeyView key, const QVariant &)
 {
     if (m_restoringAuxData)
         return;
 
-    if (name.endsWith("@NodeInstance"))
-        return;
-
-    if (name.endsWith("@Internal"))
-        return;
-
-    if (node.isRootNode()) {
-        if (name == "width" || name == "height" || name == "autoSize" || name == "formeditorColor"
-            || name == "formeditorZoom")
-            return;
-    }
-
-    m_textModifier->textDocument()->setModified(true);
+    if (key.type == AuxiliaryDataType::Document)
+        m_textModifier->textDocument()->setModified(true);
 }
 
 void RewriterView::applyModificationGroupChanges()
@@ -519,6 +496,10 @@ void RewriterView::applyChanges()
 
 void RewriterView::amendQmlText()
 {
+
+    if (!model()->rewriterView())
+        return;
+
     emitCustomNotification(StartRewriterAmend);
 
     const QString newQmlText = m_textModifier->text();
@@ -597,8 +578,8 @@ QString RewriterView::auxiliaryDataAsQML() const
     const QRegularExpression safeName("^[a-z][a-zA-Z0-9]*$");
 
     for (const auto &node : allModelNodes()) {
-        QHash<PropertyName, QVariant> data = node.auxiliaryData();
-        if (!data.isEmpty()) {
+        auto data = node.auxiliaryData(AuxiliaryDataType::Document);
+        if (!data.empty()) {
             if (columnCount > 80) {
                 str += "\n";
                 columnCount = 0;
@@ -610,26 +591,18 @@ QString RewriterView::auxiliaryDataAsQML() const
             str += QString::number(m_canonicalModelNodeInt.value(node));
             str += ";";
 
-            QStringList keys = Utils::transform(data.keys(), [](const PropertyName &name) {
-                return QString::fromUtf8(name);
+            std::sort(data.begin(), data.end(), [](const auto &first, const auto &second) {
+                return first.first < second.first;
             });
 
-            keys.sort();
-
-            for (const QString &key : keys) {
-                if (key.endsWith("@NodeInstance"))
-                    continue;
-
-                if (key.endsWith("@Internal"))
-                    continue;
-
+            for (const auto &[keyUtf8, value] : data) {
+                auto key = QString::fromUtf8(keyUtf8);
                 if (idIsQmlKeyWord(key))
                     continue;
 
                 if (!key.contains(safeName))
                     continue;
                 hasAuxData = true;
-                const QVariant value = data.value(key.toUtf8());
                 QString strValue = value.toString();
 
                 auto metaType = static_cast<QMetaType::Type>(value.type());
@@ -715,6 +688,21 @@ bool RewriterView::allowComponentRoot() const
     return m_allowComponentRoot;
 }
 
+void RewriterView::resetPossibleImports()
+{
+    m_textToModelMerger->clearPossibleImportKeys();
+}
+
+bool RewriterView::possibleImportsEnabled() const
+{
+    return m_possibleImportsEnabled;
+}
+
+void RewriterView::setPossibleImportsEnabled(bool b)
+{
+    m_possibleImportsEnabled = b;
+}
+
 Internal::ModelNodePositionStorage *RewriterView::positionStorage() const
 {
     return m_positionStorage.data();
@@ -775,7 +763,9 @@ void RewriterView::resetToLastCorrectQml()
     m_textModifier->textDocument()->undo();
     m_textModifier->textDocument()->clearUndoRedoStacks(QTextDocument::RedoStack);
     ModelAmender differenceHandler(m_textToModelMerger.data());
+    Internal::WriteLocker::unlock(model());
     m_textToModelMerger->load(m_textModifier->text(), differenceHandler);
+    Internal::WriteLocker::lock(model());
 
     leaveErrorState();
 }
@@ -785,7 +775,7 @@ QMap<ModelNode, QString> RewriterView::extractText(const QList<ModelNode> &nodes
     QmlDesigner::ASTObjectTextExtractor extract(m_textModifier->text());
     QMap<ModelNode, QString> result;
 
-    foreach (const ModelNode &node, nodes) {
+    for (const ModelNode &node : nodes) {
         const int nodeLocation = m_positionStorage->nodeOffset(node);
 
         if (nodeLocation == ModelNodePositionStorage::INVALID_LOCATION)
@@ -906,7 +896,8 @@ void RewriterView::setupCanonicalHashes() const
 void RewriterView::handleLibraryInfoUpdate()
 {
     // Trigger dummy amend to reload document when library info changes
-    if (isAttached() && !m_modelAttachPending && !debugQmlPuppet())
+    if (isAttached() && !m_modelAttachPending
+        && !debugQmlPuppet(externalDependencies().designerSettings()))
         m_amendTimer.start();
 }
 
@@ -981,7 +972,7 @@ QString RewriterView::convertTypeToImportAlias(const QString &type) const
 
     QString alias;
     if (!url.isEmpty()) {
-        foreach (const Import &import, model()->imports()) {
+        for (const Import &import : model()->imports()) {
             if (import.url() == url) {
                 alias = import.alias();
                 break;
@@ -1011,7 +1002,7 @@ QString RewriterView::pathForImport(const Import &import)
 
         QmlJS::ImportInfo importInfo;
 
-        foreach (const QmlJS::Import &qmljsImport, imports->all()) {
+        for (const QmlJS::Import &qmljsImport : imports->all()) {
             if (qmljsImport.info.name() == importStr)
                 importInfo = qmljsImport.info;
         }
@@ -1024,7 +1015,10 @@ QString RewriterView::pathForImport(const Import &import)
 
 QStringList RewriterView::importDirectories() const
 {
-    return m_textToModelMerger->vContext().paths;
+    const QList<Utils::FilePath> list(m_textToModelMerger->vContext().paths.begin(),
+                                      m_textToModelMerger->vContext().paths.end());
+
+    return Utils::transform(list, [](const Utils::FilePath &p) { return p.toString(); });
 }
 
 QSet<QPair<QString, QString> > RewriterView::qrcMapping() const
@@ -1107,19 +1101,13 @@ void RewriterView::qmlTextChanged()
         }
 
         case Amend: {
-            if (m_instantQmlTextUpdate) {
+            if (m_instantQmlTextUpdate || externalDependencies().instantQmlTextUpdate()) {
                 amendQmlText();
             } else {
-#ifndef QMLDESIGNER_TEST
-                auto &viewManager = QmlDesignerPlugin::instance()->viewManager();
-                if (viewManager.usesRewriterView(this)) {
-                    QmlDesignerPlugin::instance()->viewManager().disableWidgets();
+                if (externalDependencies().viewManagerUsesRewriterView(this)) {
+                    externalDependencies().viewManagerDiableWidgets();
                     m_amendTimer.start();
                 }
-#else
-                /*Keep test synchronous*/
-                amendQmlText();
-#endif
             }
             break;
         }
@@ -1133,29 +1121,17 @@ void RewriterView::delayedSetup()
         m_textToModelMerger->delayedSetup();
 }
 
-static QString annotationsEnd()
-{
-    const static QString end = QString("%1*/").arg(annotationsEscapeSequence);
-    return end;
-}
-
-static QString annotationsStart()
-{
-    const static QString start = QString("/*%1").arg(annotationsEscapeSequence);
-    return start;
-}
-
 QString RewriterView::getRawAuxiliaryData() const
 {
     QTC_ASSERT(m_textModifier, return {});
 
     const QString oldText = m_textModifier->text();
 
-    int startIndex = oldText.indexOf(annotationsStart());
-    int endIndex = oldText.indexOf(annotationsEnd());
+    int startIndex = oldText.indexOf(annotationsStart);
+    int endIndex = oldText.indexOf(annotationsEnd);
 
     if (startIndex > 0 && endIndex > 0)
-        return oldText.mid(startIndex, endIndex - startIndex + annotationsEnd().length());
+        return oldText.mid(startIndex, endIndex - startIndex + annotationsEnd.length());
 
     return {};
 }
@@ -1166,8 +1142,8 @@ void RewriterView::writeAuxiliaryData()
 
     const QString oldText = m_textModifier->text();
 
-    const int startIndex = oldText.indexOf(annotationsStart());
-    const int endIndex = oldText.indexOf(annotationsEnd());
+    const int startIndex = oldText.indexOf(annotationsStart);
+    const int endIndex = oldText.indexOf(annotationsEnd);
 
     QString auxData = auxiliaryDataAsQML();
 
@@ -1175,16 +1151,16 @@ void RewriterView::writeAuxiliaryData()
 
     if (!auxData.isEmpty()) {
         auxData.prepend("\n");
-        auxData.prepend(annotationsStart());
+        auxData.prepend(annotationsStart);
         if (!replace)
             auxData.prepend("\n");
-        auxData.append(annotationsEnd());
+        auxData.append(annotationsEnd);
         if (!replace)
             auxData.append("\n");
     }
 
     if (replace)
-        m_textModifier->replace(startIndex, endIndex - startIndex + annotationsEnd().length(), auxData);
+        m_textModifier->replace(startIndex, endIndex - startIndex + annotationsEnd.length(), auxData);
     else
         m_textModifier->replace(oldText.length(), 0, auxData);
 }
@@ -1227,8 +1203,8 @@ void checkNode(const QmlJS::SimpleReaderNode::Ptr &node, RewriterView *view)
     for (auto i = properties.begin(); i != properties.end(); ++i) {
         if (i.key() != "i") {
             const PropertyName name = fixUpIllegalChars(i.key()).toUtf8();
-            if (!modelNode.hasAuxiliaryData(name))
-                modelNode.setAuxiliaryData(name, i.value().value);
+            if (!modelNode.hasAuxiliaryData(AuxiliaryDataType::Document, name))
+                modelNode.setAuxiliaryData(AuxiliaryDataType::Document, name, i.value().value);
         }
     }
 
@@ -1240,7 +1216,7 @@ void RewriterView::restoreAuxiliaryData()
     QTC_ASSERT(m_textModifier, return);
 
     const char auxRestoredFlag[] = "AuxRestored@Internal";
-    if (rootModelNode().hasAuxiliaryData(auxRestoredFlag))
+    if (rootModelNode().hasAuxiliaryData(AuxiliaryDataType::Document, auxRestoredFlag))
         return;
 
     m_restoringAuxData = true;
@@ -1252,17 +1228,17 @@ void RewriterView::restoreAuxiliaryData()
 
     const QString text = m_textModifier->text();
 
-    int startIndex = text.indexOf(annotationsStart());
-    int endIndex = text.indexOf(annotationsEnd());
+    int startIndex = text.indexOf(annotationsStart);
+    int endIndex = text.indexOf(annotationsEnd);
 
     if (startIndex > 0 && endIndex > 0) {
-        const QString auxSource = text.mid(startIndex + annotationsStart().length(),
-                                           endIndex - startIndex - annotationsStart().length());
+        const QString auxSource = text.mid(startIndex + annotationsStart.length(),
+                                           endIndex - startIndex - annotationsStart.length());
         QmlJS::SimpleReader reader;
         checkChildNodes(reader.readFromSource(auxSource), this);
     }
 
-    rootModelNode().setAuxiliaryData(auxRestoredFlag, true);
+    rootModelNode().setAuxiliaryData(AuxiliaryDataType::Document, auxRestoredFlag, true);
     m_restoringAuxData = false;
 }
 

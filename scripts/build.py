@@ -1,39 +1,14 @@
 #!/usr/bin/env python3
-#############################################################################
-##
-## Copyright (C) 2020 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the release tools of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:GPL-EXCEPT$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 3 as published by the Free Software
-## Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2020 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 # import the print function which is used in python 3.x
 from __future__ import print_function
 
 import argparse
 import collections
-import glob
 import os
+import shutil
 
 import common
 
@@ -95,6 +70,8 @@ def get_arguments():
                         action='store_true', default=False)
     parser.add_argument('--with-pch', help='Enable building with PCH',
                         action='store_true', default=False)
+    parser.add_argument('--with-cpack', help='Create packages with cpack',
+                        action='store_true', default=False)
     parser.add_argument('--add-path', help='Prepends a CMAKE_PREFIX_PATH to the build',
                         action='append', dest='prefix_paths', default=[])
     parser.add_argument('--add-module-path', help='Prepends a CMAKE_MODULE_PATH to the build',
@@ -117,6 +94,23 @@ def get_arguments():
 
     if not args.qt_path and not args.no_qtcreator:
         parser.error("argument --qt-path is required if --no-qtcreator is not given")
+
+    if args.with_cpack:
+        if common.is_mac_platform():
+            print('warning: --with-cpack is not supported on macOS, turning off')
+            args.with_cpack = False
+        elif common.is_linux_platform():
+            args.cpack_generators = ['DEB']
+        elif common.is_windows_platform():
+            args.cpack_generators = []
+            if shutil.which('makensis'):
+                args.cpack_generators += ['NSIS64']
+            if shutil.which('candle') and shutil.which('torch'):
+                args.cpack_generators += ['WIX']
+            else:
+                print('warning: could not find NSIS or WIX, turning cpack off')
+                args.with_cpack = False
+
     return args
 
 def common_cmake_arguments(args):
@@ -174,7 +168,6 @@ def build_qtcreator(args, paths):
                   '-DBUILD_DEVELOPER_DOCS=' + cmake_option(not args.no_docs),
                   '-DBUILD_EXECUTABLE_SDKTOOL=OFF',
                   '-DQTC_FORCE_XCB=ON',
-                  '-DCMAKE_INSTALL_PREFIX=' + common.to_posix_path(paths.install),
                   '-DWITH_TESTS=' + cmake_option(args.with_tests)]
     cmake_args += common_cmake_arguments(args)
 
@@ -192,6 +185,11 @@ def build_qtcreator(args, paths):
     if not args.build_type.lower() == 'release' and args.sanitize_flags:
         cmake_args += ['-DWITH_SANITIZE=ON',
                        '-DSANITIZE_FLAGS=' + ",".join(args.sanitize_flags)]
+
+    if args.with_cpack:
+        cmake_args += ['-DCPACK_PACKAGE_FILE_NAME=qtcreator' + args.zip_infix]
+        if common.is_linux_platform():
+            cmake_args += ['-DCPACK_INSTALL_PREFIX=/opt/qt-creator']
 
     cmake_args += args.config_args
 
@@ -313,6 +311,8 @@ def package_qtcreator(args, paths):
                                      paths.src,
                                      paths.install],
                                     paths.result)
+    if args.with_cpack and args.cpack_generators:
+        common.check_print_call(['cpack', '-G', ';'.join(args.cpack_generators)], paths.build)
 
 
 def get_paths(args):

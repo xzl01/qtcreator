@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
+#include <languageserverprotocol/servercapabilities.h>
 #include <qmljs/qmljsdocument.h>
 #include <qmljstools/qmljssemanticinfo.h>
 
@@ -45,6 +24,17 @@ class QmlOutlineModel;
 
 class SemanticInfoUpdater;
 
+class QmllsStatus
+{
+public:
+    enum class Source { Qmlls, EmbeddedCodeModel };
+
+    Source semanticWarningsSource;
+    Source semanticHighlightSource;
+    Source completionSource;
+    Utils::FilePath qmllsPath;
+};
+
 class QmlJSEditorDocumentPrivate : public QObject
 {
     Q_OBJECT
@@ -58,12 +48,21 @@ public:
     void onDocumentUpdated(QmlJS::Document::Ptr doc);
     void reupdateSemanticInfo();
     void acceptNewSemanticInfo(const QmlJSTools::SemanticInfo &semanticInfo);
+    bool isSemanticInfoOutdated() const;
     void updateOutlineModel();
 
     void createTextMarks(const QList<QmlJS::DiagnosticMessage> &diagnostics);
     void cleanDiagnosticMarks();
     void createTextMarks(const QmlJSTools::SemanticInfo &info);
     void cleanSemanticMarks();
+
+    // qmlls change source
+    void setSemanticWarningSource(QmllsStatus::Source newSource);
+    void setSemanticHighlightSource(QmllsStatus::Source newSource);
+    void setCompletionSource(QmllsStatus::Source newSource);
+public slots:
+    void setSourcesWithCapabilities(const LanguageServerProtocol::ServerCapabilities &);
+    void settingsChanged();
 
 public:
     QmlJSEditorDocument *q = nullptr;
@@ -81,6 +80,10 @@ public:
     QVector<TextEditor::TextMark *> m_diagnosticMarks;
     QVector<TextEditor::TextMark *> m_semanticMarks;
     bool m_isDesignModePreferred = false;
+    QmllsStatus m_qmllsStatus = {QmllsStatus::Source::EmbeddedCodeModel,
+                                 QmllsStatus::Source::EmbeddedCodeModel,
+                                 QmllsStatus::Source::EmbeddedCodeModel,
+                                 {}};
 };
 
 } // Internal

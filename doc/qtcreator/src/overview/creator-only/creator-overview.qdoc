@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -36,14 +14,13 @@
 
     \title IDE Overview
 
-    \QC is an integrated development environment (IDE) that provides you with
-    tools to design and develop applications with the Qt application framework.
-    Qt is designed for developing applications and user interfaces once and
-    deploying them to several desktop, embedded, and mobile operating systems or
-    web browsers (experimental). \QC
-    provides you with tools for accomplishing your tasks throughout the whole
-    application development life-cycle, from creating a project to deploying the
-    application to the target platforms.
+    \QC is an integrated development environment (IDE) that has tools for
+    designing and developing applications with the Qt application framework.
+    With Qt you can develop applications and user interfaces once and deploy
+    them to several desktop, embedded, and mobile operating systems or
+    web browsers (experimental). \QC has the tools for accomplishing your tasks
+    throughout the whole application development life-cycle, from creating a
+    project to deploying the application to the target platforms.
 
     \table
         \row
@@ -54,28 +31,28 @@
             \li \b {\l{Managing Projects}}
 
                 To be able to build and run applications, \QC needs the same
-                information as a compiler would need. This information is
-                specified in the project settings.
+                information as a compiler would need. It stores the information
+                in the project settings.
 
-                Setting up a new project in \QC is aided by a wizard that guides
-                you step-by-step through the project creation process, creates
-                the necessary files, and specifies settings depending on the
+                \QC has templates for creating new projects. They guide
+                you step-by-step through the project creation process, create
+                the necessary files, and specify settings depending on the
                 choices you make. For more information, see
                 \l{Managing Projects}.
             \li \b {\l{Designing User Interfaces}}
 
                 To create intuitive, modern-looking, fluid user interfaces, you
                 can use \l{Qt Quick} and \l{Qt Design Studio Manual}{\QDS}.
-                If you need a traditional user interface that is clearly
-                structured and enforces a platform look and feel, you can use
+                If you need a traditional user interface that has a clear
+                structure and enforces a platform look and feel, you can use
                 the integrated \QD. For more information, see
                 \l{Designing User Interfaces}.
             \li \b {\l{Coding}}
 
                 As an IDE, \QC differs from a text editor in that it knows how
                 to build and run applications. It understands the C++ and QML
-                languages as code, not just as plain text. This enables it to
-                provide you with useful features, such as semantic highlighting,
+                languages as code, not just as plain text. Therefore, it can
+                offer useful features, such as semantic highlighting,
                 checking code syntax, code completion, and refactoring actions.
                 \QC supports some of these services also for other programming
                 languages, such as Python, for which a \e {language server} is
@@ -88,33 +65,33 @@
         \row
             \li \b {\l{Building and Running}}
 
-                \QC is integrated with cross-platform systems for build
+                \QC integrates cross-platform systems for build
                 automation: qmake, Qbs, CMake, and Autotools. In addition, you
                 can import
                 projects as \e {generic projects} and fully control the steps
                 and commands used to build the project.
 
-                \QC provides support for running and deploying Qt applications
-                built for the desktop environment or a \l{glossary-device}
-                {device}. \l{glossary-buildandrun-kit}{Kits}, build,
-                run, and deployment settings allow you to quickly switch between
-                different setups and target platforms.
+                You can build applications for, deploy them to, and run them on
+                the desktop environment or a \l{glossary-device}{device}.
+                \l{glossary-buildandrun-kit}{Kits}, build, run, and deployment
+                settings allow you to quickly switch between different setups and
+                target platforms.
 
                 For more information, see \l{Building and Running}.
             \li \b {\l{Testing}}
 
-                \QC is integrated to several external native debuggers: GNU
+                \QC integrates several external native debuggers: GNU
                 Symbolic Debugger (GDB), Microsoft Console Debugger (CDB), and
                 internal JavaScript debugger. In the \uicontrol Debug mode, you
                 can inspect the state of your application while debugging.
 
-                The memory and CPU power available on devices are limited and
+                Devices have limited memory and CPU power, so
                 you should use them carefully. \QC integrates Valgrind code
                 analysis tools for detecting memory leaks and profiling function
                 execution. In addition, the QML Profiler enables you to profile
                 Qt Quick applications.
 
-                \QC is integrated to the \l{Qt Test}, Boost.Test, Catch 2 test,
+                \QC integrates the \l{Qt Test}, Boost.Test, Catch 2 test,
                 and Google C++ Testing frameworks for unit testing applications
                 and libraries. You can use \QC to create, build, and run
                 autotests.
@@ -122,8 +99,8 @@
                 For more information, see \l{Testing}.
             \li \b {Publishing}
 
-                \QC allows you to create installation packages for mobile
-                devices that are suitable for publishing to application stores
+                \QC enables you to create installation packages for mobile
+                devices that you can publish to application stores
                 and other channels. You must make sure that the package contents
                 meet the requirements for publishing on the channel.
 

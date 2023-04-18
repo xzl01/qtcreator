@@ -1,45 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "workspacedialog.h"
 
+#include "advanceddockingsystemtr.h"
 #include "dockmanager.h"
+#include "workspaceview.h"
 
 #include <utils/algorithm.h>
+#include <utils/layoutbuilder.h>
 
-#include <QInputDialog>
+#include <QCheckBox>
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QValidator>
 
@@ -91,23 +66,26 @@ WorkspaceNameInputDialog::WorkspaceNameInputDialog(DockManager *manager, QWidget
     : QDialog(parent)
     , m_manager(manager)
 {
-    auto hlayout = new QVBoxLayout(this);
-    auto label = new QLabel(tr("Enter the name of the workspace:"), this);
-    hlayout->addWidget(label);
+    auto label = new QLabel(Tr::tr("Enter the name of the workspace:"), this);
     m_newWorkspaceLineEdit = new QLineEdit(this);
     m_newWorkspaceLineEdit->setValidator(new WorkspaceValidator(this, m_manager->workspaces()));
-    hlayout->addWidget(m_newWorkspaceLineEdit);
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                                         Qt::Horizontal,
                                         this);
     m_okButton = buttons->button(QDialogButtonBox::Ok);
     m_switchToButton = new QPushButton;
     buttons->addButton(m_switchToButton, QDialogButtonBox::AcceptRole);
-    connect(m_switchToButton, &QPushButton::clicked, [this]() { m_usedSwitchTo = true; });
+    connect(m_switchToButton, &QPushButton::clicked, this, [this] { m_usedSwitchTo = true; });
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    hlayout->addWidget(buttons);
-    setLayout(hlayout);
+
+    using namespace Utils::Layouting;
+
+    Column {
+        label,
+        m_newWorkspaceLineEdit,
+        buttons
+    }.attachTo(this);
 }
 
 void WorkspaceNameInputDialog::setActionText(const QString &actionText,
@@ -135,64 +113,90 @@ bool WorkspaceNameInputDialog::isSwitchToRequested() const
 WorkspaceDialog::WorkspaceDialog(DockManager *manager, QWidget *parent)
     : QDialog(parent)
     , m_manager(manager)
+    , m_workspaceView(new WorkspaceView(manager))
+    , m_btCreateNew(new QPushButton(Tr::tr("&New")))
+    , m_btRename(new QPushButton(Tr::tr("&Rename")))
+    , m_btClone(new QPushButton(Tr::tr("C&lone")))
+    , m_btDelete(new QPushButton(Tr::tr("&Delete")))
+    , m_btReset(new QPushButton(Tr::tr("Reset")))
+    , m_btSwitch(new QPushButton(Tr::tr("&Switch To")))
+    , m_btImport(new QPushButton(Tr::tr("Import")))
+    , m_btExport(new QPushButton(Tr::tr("Export")))
+    , m_autoLoadCheckBox(new QCheckBox(Tr::tr("Restore last workspace on startup")))
 {
-    m_ui.setupUi(this);
-    m_ui.workspaceView->setActivationMode(Utils::DoubleClickActivation);
+    setWindowTitle(Tr::tr("Workspace Manager"));
 
-    connect(m_ui.btCreateNew,
-            &QAbstractButton::clicked,
-            m_ui.workspaceView,
-            &WorkspaceView::createNewWorkspace);
-    connect(m_ui.btClone,
-            &QAbstractButton::clicked,
-            m_ui.workspaceView,
-            &WorkspaceView::cloneCurrentWorkspace);
-    connect(m_ui.btDelete,
-            &QAbstractButton::clicked,
-            m_ui.workspaceView,
-            &WorkspaceView::deleteSelectedWorkspaces);
-    connect(m_ui.btSwitch,
-            &QAbstractButton::clicked,
-            m_ui.workspaceView,
-            &WorkspaceView::switchToCurrentWorkspace);
-    connect(m_ui.btRename,
-            &QAbstractButton::clicked,
-            m_ui.workspaceView,
-            &WorkspaceView::renameCurrentWorkspace);
-    connect(m_ui.btReset,
-            &QAbstractButton::clicked,
-            m_ui.workspaceView,
-            &WorkspaceView::resetCurrentWorkspace);
-    connect(m_ui.workspaceView,
-            &WorkspaceView::workspaceActivated,
-            m_ui.workspaceView,
-            &WorkspaceView::switchToCurrentWorkspace);
-    connect(m_ui.workspaceView,
-            &WorkspaceView::workspacesSelected,
-            this,
-            &WorkspaceDialog::updateActions);
-    connect(m_ui.btImport,
-            &QAbstractButton::clicked,
-            m_ui.workspaceView,
-            &WorkspaceView::importWorkspace);
-    connect(m_ui.btExport,
-            &QAbstractButton::clicked,
-            m_ui.workspaceView,
-            &WorkspaceView::exportCurrentWorkspace);
+    m_workspaceView->setActivationMode(Utils::DoubleClickActivation);
 
-    m_ui.whatsAWorkspaceLabel->setOpenExternalLinks(true);
+    QLabel *whatsAWorkspaceLabel = new QLabel(Tr::tr("<a href=\"qthelp://org.qt-project.qtcreator/doc/"
+           "creator-project-managing-workspaces.html\">What is a Workspace?</a>"));
+    whatsAWorkspaceLabel->setOpenExternalLinks(true);
 
-   updateActions(m_ui.workspaceView->selectedWorkspaces());
+    QDialogButtonBox *buttonBox = new QDialogButtonBox;
+    buttonBox->setStandardButtons(QDialogButtonBox::Close);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+
+    using namespace Utils::Layouting;
+
+    Column {
+        Row {
+            Column {
+                m_workspaceView,
+                m_autoLoadCheckBox
+            },
+            Column {
+                m_btCreateNew,
+                m_btRename,
+                m_btClone,
+                m_btDelete,
+                m_btReset,
+                m_btSwitch,
+                st,
+                m_btImport,
+                m_btExport
+            }
+        },
+        hr,
+        Row {
+            whatsAWorkspaceLabel,
+            buttonBox
+        }
+    }.attachTo(this);
+
+
+    connect(m_btCreateNew, &QAbstractButton::clicked,
+            m_workspaceView, &WorkspaceView::createNewWorkspace);
+    connect(m_btClone, &QAbstractButton::clicked,
+            m_workspaceView, &WorkspaceView::cloneCurrentWorkspace);
+    connect(m_btDelete, &QAbstractButton::clicked,
+            m_workspaceView, &WorkspaceView::deleteSelectedWorkspaces);
+    connect(m_btSwitch, &QAbstractButton::clicked,
+            m_workspaceView, &WorkspaceView::switchToCurrentWorkspace);
+    connect(m_btRename, &QAbstractButton::clicked,
+            m_workspaceView, &WorkspaceView::renameCurrentWorkspace);
+    connect(m_btReset, &QAbstractButton::clicked,
+            m_workspaceView, &WorkspaceView::resetCurrentWorkspace);
+    connect(m_workspaceView, &WorkspaceView::workspaceActivated,
+            m_workspaceView, &WorkspaceView::switchToCurrentWorkspace);
+    connect(m_workspaceView, &WorkspaceView::workspacesSelected,
+            this, &WorkspaceDialog::updateActions);
+    connect(m_btImport, &QAbstractButton::clicked,
+            m_workspaceView, &WorkspaceView::importWorkspace);
+    connect(m_btExport, &QAbstractButton::clicked,
+            m_workspaceView, &WorkspaceView::exportCurrentWorkspace);
+
+   updateActions(m_workspaceView->selectedWorkspaces());
 }
 
 void WorkspaceDialog::setAutoLoadWorkspace(bool check)
 {
-    m_ui.autoLoadCheckBox->setChecked(check);
+    m_autoLoadCheckBox->setChecked(check);
 }
 
 bool WorkspaceDialog::autoLoadWorkspace() const
 {
-    return m_ui.autoLoadCheckBox->checkState() == Qt::Checked;
+    return m_autoLoadCheckBox->checkState() == Qt::Checked;
 }
 
 DockManager *WorkspaceDialog::dockManager() const
@@ -203,12 +207,12 @@ DockManager *WorkspaceDialog::dockManager() const
 void WorkspaceDialog::updateActions(const QStringList &workspaces)
 {
     if (workspaces.isEmpty()) {
-        m_ui.btDelete->setEnabled(false);
-        m_ui.btRename->setEnabled(false);
-        m_ui.btClone->setEnabled(false);
-        m_ui.btReset->setEnabled(false);
-        m_ui.btSwitch->setEnabled(false);
-        m_ui.btExport->setEnabled(false);
+        m_btDelete->setEnabled(false);
+        m_btRename->setEnabled(false);
+        m_btClone->setEnabled(false);
+        m_btReset->setEnabled(false);
+        m_btSwitch->setEnabled(false);
+        m_btExport->setEnabled(false);
         return;
     }
     const bool presetIsSelected = Utils::anyOf(workspaces, [this](const QString &workspace) {
@@ -217,12 +221,12 @@ void WorkspaceDialog::updateActions(const QStringList &workspaces)
     const bool activeIsSelected = Utils::anyOf(workspaces, [this](const QString &workspace) {
         return workspace == m_manager->activeWorkspace();
     });
-    m_ui.btDelete->setEnabled(!activeIsSelected && !presetIsSelected);
-    m_ui.btRename->setEnabled(workspaces.size() == 1 && !presetIsSelected);
-    m_ui.btClone->setEnabled(workspaces.size() == 1);
-    m_ui.btReset->setEnabled(presetIsSelected);
-    m_ui.btSwitch->setEnabled(workspaces.size() == 1);
-    m_ui.btExport->setEnabled(workspaces.size() == 1);
+    m_btDelete->setEnabled(!activeIsSelected && !presetIsSelected);
+    m_btRename->setEnabled(workspaces.size() == 1 && !presetIsSelected);
+    m_btClone->setEnabled(workspaces.size() == 1);
+    m_btReset->setEnabled(presetIsSelected);
+    m_btSwitch->setEnabled(workspaces.size() == 1);
+    m_btExport->setEnabled(workspaces.size() == 1);
 }
 
 } // namespace ADS

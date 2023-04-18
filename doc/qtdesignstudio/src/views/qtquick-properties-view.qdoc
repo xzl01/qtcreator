@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtquick-properties-view.html
@@ -43,6 +21,26 @@
     components.
 
     \image qmldesigner-element-properties.png "Rectangle and Text properties"
+
+    \section1 Custom Properties
+
+    Custom Properties are properties that the user has added to the component.
+
+    There are two types of custom properties:
+
+    \table
+      \header
+        \li Custom Property Type
+        \li Description
+      \row
+        \li Local Custom Property
+        \li A property that has been added for a \l{Preset Components}{preset component}.
+      \row
+        \li Exposed Custom Property
+        \li A property that has been added inside a component.
+    \endtable
+
+    \image custom-properties.png
 
     \section1 Summary of Properties View Buttons
 
@@ -88,7 +86,7 @@
 
     The default values of properties are displayed in white color, while the
     values that you specify explicitly are highlighted with blue color. In
-    addition, property changes in \l{Adding States}{states} are highlighted
+    addition, property changes in \l{Working with States}{states} are highlighted
     with blue.
 
     This allows you to easily see which values are set in the component
@@ -141,8 +139,8 @@
     \section1 Multiselection
 
     To modify the values of common properties of multiple components
-    simultaneously, select the components in \l Navigator, \l {Form Editor}
-    or \uicontrol {3D Editor}:
+    simultaneously, select the components in the \l Navigator, \l {2D}
+    or \uicontrol{3D} view:
 
     \list
         \li On Windows, press and hold \key Ctrl and \key Shift, and then click

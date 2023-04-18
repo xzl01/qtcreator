@@ -6,12 +6,14 @@ QtcTool {
 
     Depends { name: "Qt.network" }
 
-    cpp.defines: base.concat("QTCREATOR_UTILS_STATIC_LIB")
+    cpp.defines: base.concat("UTILS_STATIC_LIBRARY")
     cpp.includePaths: base.concat(pathToUtils)
 
     Properties {
         condition: qbs.targetOS.contains("windows")
-        cpp.dynamicLibraries: "user32"
+        cpp.dynamicLibraries: {
+            return qbs.toolchainType === "msvc" ? ["user32", "dbghelp"] : ["user32"];
+        }
     }
 
     files: [
@@ -29,6 +31,7 @@ QtcTool {
         files: [
             "launcherpackets.cpp",
             "launcherpackets.h",
+            "processenums.h",
             "processreaper.cpp",
             "processreaper.h",
             "processutils.cpp",
@@ -37,6 +40,8 @@ QtcTool {
             "qtcassert.h",
             "singleton.cpp",
             "singleton.h",
+            "threadutils.cpp",
+            "threadutils.h",
         ]
     }
 }

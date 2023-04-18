@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "ctesttreeitem.h"
 
@@ -32,6 +10,7 @@
 #include "../itestframework.h"
 #include "../testsettings.h"
 
+#include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/environmentaspect.h>
 #include <projectexplorer/project.h>
@@ -41,11 +20,13 @@
 #include <utils/link.h>
 #include  <utils/qtcassert.h>
 
+using namespace Utils;
+
 namespace Autotest {
 namespace Internal {
 
 CTestTreeItem::CTestTreeItem(ITestBase *testBase, const QString &name,
-                             const Utils::FilePath &filepath, Type type)
+                             const FilePath &filepath, Type type)
     : ITestTreeItem(testBase, name, filepath, type)
 {
 }
@@ -90,7 +71,7 @@ QVariant CTestTreeItem::data(int column, int role) const
         return checked();
     if (role == LinkRole) {
         QVariant itemLink;
-        itemLink.setValue(Utils::Link(filePath(), line()));
+        itemLink.setValue(Link(filePath(), line()));
         return itemLink;
     }
     return ITestTreeItem::data(column, role);
@@ -110,7 +91,7 @@ QList<ITestConfiguration *> CTestTreeItem::testConfigurationsFor(const QStringLi
     QStringList options{"--timeout", QString::number(AutotestPlugin::settings()->timeout / 1000)};
     auto ctestSettings = static_cast<CTestSettings *>(testBase()->testSettings());
     options << ctestSettings->activeSettingsAsOptions();
-    Utils::CommandLine command = buildSystem->commandLineForTests(selected, options);
+    CommandLine command = buildSystem->commandLineForTests(selected, options);
     if (command.executable().isEmpty())
         return {};
 
@@ -118,12 +99,12 @@ QList<ITestConfiguration *> CTestTreeItem::testConfigurationsFor(const QStringLi
     config->setProject(project);
     config->setCommandLine(command);
     const ProjectExplorer::RunConfiguration *runConfig = target->activeRunConfiguration();
-    Utils::Environment env = Utils::Environment::systemEnvironment();
+    Environment env = Environment::systemEnvironment();
     if (QTC_GUARD(runConfig)) {
         if (auto envAspect = runConfig->aspect<ProjectExplorer::EnvironmentAspect>())
             env = envAspect->environment();
     }
-    if (Utils::HostOsInfo::isWindowsHost()) {
+    if (HostOsInfo::isWindowsHost()) {
         env.set("QT_FORCE_STDERR_LOGGING", "1");
         env.set("QT_LOGGING_TO_CONSOLE", "1");
     }

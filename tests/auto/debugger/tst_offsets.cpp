@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest>
 
@@ -38,8 +16,10 @@
 #endif
 
 #include <QtGlobal>
+#include <QLibraryInfo>
 
 #include <private/qdatetime_p.h>
+#include <private/qdir_p.h>
 #include <private/qfile_p.h>
 #include <private/qfileinfo_p.h>
 #include <private/qobject_p.h>
@@ -72,6 +52,23 @@ OFFSET_ACCESS(QString, QFilePrivate, fileName);
 OFFSET_ACCESS(QString, QFileSystemEntry, m_filePath);
 OFFSET_ACCESS(QFileSystemEntry, QFileInfoPrivate, fileEntry);
 OFFSET_ACCESS(QObjectPrivate::ExtraData*, QObjectPrivate, extraData);
+
+#if QT_VERSION >= 0x60000
+OFFSET_ACCESS(QFileSystemEntry, QDirPrivate, dirEntry);
+
+#if QT_VERSION < 0x60600
+OFFSET_ACCESS(QStringList, QDirPrivate, files);
+OFFSET_ACCESS(QFileInfoList, QDirPrivate, fileInfos);
+OFFSET_ACCESS(QFileSystemEntry, QDirPrivate, absoluteDirEntry);
+#else
+using FileCache = QDirPrivate::FileCache;
+
+OFFSET_ACCESS(QDirPrivate::FileCache, QDirPrivate, fileCache);
+OFFSET_ACCESS(QStringList, FileCache, files);
+OFFSET_ACCESS(QFileInfoList, FileCache, fileInfos);
+OFFSET_ACCESS(QFileSystemEntry, FileCache, absoluteDirEntry);
+#endif
+#endif
 
 #if QT_VERSION < 0x50000
 OFFSET_ACCESS(QString, QObjectPrivate, objectName);
@@ -157,7 +154,17 @@ void tst_offsets::offsets_data()
     const int qtVersion = QT_VERSION;
     const quintptr qtTypeVersion = qtHookData[6];
 
-    if (qtTypeVersion >= 20)
+    if (qtTypeVersion >= 22)
+#ifdef Q_OS_WIN
+#   ifdef Q_CC_MSVC
+        OFFSET_TEST(QFilePrivate, fileName) << 0 << 424;
+#   else // MinGW
+        OFFSET_TEST(QFilePrivate, fileName) << 0 << 424;
+#   endif
+#else
+        OFFSET_TEST(QFilePrivate, fileName) << 300 << 424;
+#endif
+    else if (qtTypeVersion >= 20)
 #ifdef Q_OS_WIN
 #   ifdef Q_CC_MSVC
         OFFSET_TEST(QFilePrivate, fileName) << 0 << 304;
@@ -165,7 +172,7 @@ void tst_offsets::offsets_data()
         OFFSET_TEST(QFilePrivate, fileName) << 0 << 304;
 #   endif
 #else
-        OFFSET_TEST(QFilePrivate, fileName) << 0 << 304;
+        OFFSET_TEST(QFilePrivate, fileName) << 196 << 304;
 #endif
     else if (qtVersion > 0x50600 && qtTypeVersion >= 17)
 #ifdef Q_OS_WIN
@@ -299,6 +306,21 @@ void tst_offsets::offsets_data()
         OFFSET_TEST(QDateTimePrivate, m_status) << 4 << 4;
         OFFSET_TEST(QDateTimePrivate, m_offsetFromUtc) << 16 << 16;
         OFFSET_TEST(QDateTimePrivate, m_timeZone) << 20 << 24;
+#endif
+
+#if QT_VERSION >= 0x60000
+#if QT_VERSION < 0x60600
+        OFFSET_TEST(QDirPrivate, dirEntry) << 40 << 96;
+        OFFSET_TEST(QDirPrivate, files) << 4 << 8;
+        OFFSET_TEST(QDirPrivate, fileInfos) << 16 << 32;
+        OFFSET_TEST(QDirPrivate, absoluteDirEntry) << 72 << 152;
+#else
+        OFFSET_TEST(QDirPrivate, fileCache) << 52 << 104;
+        OFFSET_TEST(QDirPrivate, dirEntry) << 24 << 48;
+        OFFSET_TEST(FileCache, files) << 4 << 8;
+        OFFSET_TEST(FileCache, fileInfos) << 16 << 32;
+        OFFSET_TEST(FileCache, absoluteDirEntry) << 32 << 64;
+#endif
 #endif
 
 #ifdef HAS_BOOST

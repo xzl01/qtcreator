@@ -48,7 +48,7 @@ var Utilities = require("qbs.Utilities");
 
 function splitNonEmpty(s, c) { return s.split(c).filter(function(e) { return e; }); }
 function toNative(p) { return FileInfo.toNativeSeparators(p); }
-function exeSuffix(qbs) { return Host.os().contains("windows") ? ".exe" : ""; }
+function exeSuffix(qbs) { return FileInfo.executableSuffix(); }
 
 function getQmakeFilePaths(qmakeFilePaths, qbs) {
     if (qmakeFilePaths && qmakeFilePaths.length > 0)
@@ -178,6 +178,8 @@ function guessMinimumWindowsVersion(qtProps) {
         return "10.0";
     if (!targetsDesktopWindows(qtProps))
         return "";
+    if (qtProps.qtMajorVersion >= 6)
+        return "10.0";
     if (qtProps.architecture === "x86_64" || qtProps.architecture === "ia64")
         return "5.2"
     var match = qtProps.mkspecName.match(/^win32-msvc(\d+)$/);
@@ -281,7 +283,11 @@ function getQtProperties(qmakeFilePath, qbs) {
 
     // QML tools were only moved in Qt 6.2.
     qtProps.qmlLibExecPath = Utilities.versionCompare(qtProps.qtVersion, "6.2") >= 0
-        ? qtProps.libExecPath : qtProps.binaryPath
+        ? qtProps.libExecPath : qtProps.binaryPath;
+
+    // qhelpgenerator was only moved in Qt 6.3.
+    qtProps.helpGeneratorLibExecPath = Utilities.versionCompare(qtProps.qtVersion, "6.3") >= 0
+        ? qtProps.libExecPath : qtProps.binaryPath;
 
     if (!File.exists(qtProps.mkspecBasePath))
         throw "Cannot extract the mkspecs directory.";
@@ -763,6 +769,7 @@ function doSetupLibraries(modInfo, qtProps, debugBuild, nonExistingPrlFiles, and
             for (i = 0; i < parts.length; ++i) {
                 var part = parts[i];
                 part = part.replace("$$[QT_INSTALL_LIBS]", qtProps.libraryPath);
+                part = part.replace("$$[QT_INSTALL_PLUGINS]", qtProps.pluginPath);
                 part = part.replace("$$[QT_INSTALL_PREFIX]", qtProps.installPrefixPath);
                 if (part.startsWith("-l")) {
                     libs.push(part.slice(2));
@@ -1432,6 +1439,7 @@ function replaceSpecialValues(content, module, qtProps, abi) {
         pluginPath: ModUtils.toJSLiteral(qtProps.pluginPath),
         incPath: ModUtils.toJSLiteral(qtProps.includePath),
         docPath: ModUtils.toJSLiteral(qtProps.documentationPath),
+        helpGeneratorLibExecPath: ModUtils.toJSLiteral(qtProps.helpGeneratorLibExecPath),
         mkspecName: ModUtils.toJSLiteral(qtProps.mkspecName),
         mkspecPath: ModUtils.toJSLiteral(qtProps.mkspecPath),
         version: ModUtils.toJSLiteral(qtProps.qtVersion),

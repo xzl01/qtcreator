@@ -1,57 +1,37 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectfilewizardextension.h"
-#include "projectexplorer.h"
-#include "session.h"
+
+#include "editorconfiguration.h"
+#include "project.h"
+#include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "projectnodes.h"
 #include "projecttree.h"
 #include "projectwizardpage.h"
-
-#include <utils/algorithm.h>
-#include <utils/qtcassert.h>
-#include <utils/stringutils.h>
+#include "session.h"
 
 #include <coreplugin/icore.h>
-#include <projectexplorer/editorconfiguration.h>
-#include <projectexplorer/project.h>
-#include <projectexplorer/projecttree.h>
+
 #include <texteditor/icodestylepreferences.h>
 #include <texteditor/icodestylepreferencesfactory.h>
 #include <texteditor/storagesettings.h>
 #include <texteditor/tabsettings.h>
 #include <texteditor/texteditorsettings.h>
 #include <texteditor/textindenter.h>
-#include <utils/mimetypes/mimedatabase.h>
 
-#include <QPointer>
+#include <utils/algorithm.h>
+#include <utils/mimeutils.h>
+#include <utils/qtcassert.h>
+#include <utils/stringutils.h>
+
 #include <QDebug>
 #include <QFileInfo>
-#include <QTextDocument>
-#include <QTextCursor>
 #include <QMessageBox>
+#include <QPointer>
+#include <QTextCursor>
+#include <QTextDocument>
 
 using namespace TextEditor;
 using namespace Core;
@@ -76,7 +56,6 @@ using namespace Utils;
 enum { debugExtension = 0 };
 
 namespace ProjectExplorer {
-
 namespace Internal {
 
 // --------- ProjectWizardContext
@@ -118,7 +97,7 @@ void ProjectFileWizardExtension::firstExtensionPageShown(
     if (debugExtension)
         qDebug() << Q_FUNC_INFO << files.size();
 
-    QStringList fileNames = Utils::transform(files, &GeneratedFile::path);
+    const FilePaths fileNames = Utils::transform(files, &GeneratedFile::filePath);
     m_context->page->setFiles(fileNames);
 
     FilePaths filePaths;
@@ -189,8 +168,8 @@ bool ProjectFileWizardExtension::processFiles(
             message.append(QLatin1String("\n\n"));
             errorMessage->clear();
         }
-        message.append(tr("Open project anyway?"));
-        if (QMessageBox::question(ICore::dialogParent(), tr("Version Control Failure"), message,
+        message.append(Tr::tr("Open project anyway?"));
+        if (QMessageBox::question(ICore::dialogParent(), Tr::tr("Version Control Failure"), message,
                                   QMessageBox::Yes, QMessageBox::No) == QMessageBox::No)
             return false;
     }
@@ -211,7 +190,7 @@ bool ProjectFileWizardExtension::processProject(
         return true;
     if (m_context->wizard->kind() == IWizardFactory::ProjectWizard) {
         if (!static_cast<ProjectNode *>(folder)->addSubProject(generatedProject)) {
-            *errorMessage = tr("Failed to add subproject \"%1\"\nto project \"%2\".")
+            *errorMessage = Tr::tr("Failed to add subproject \"%1\"\nto project \"%2\".")
                             .arg(generatedProject.toUserOutput()).arg(folder->filePath().toUserOutput());
             return false;
         }
@@ -219,7 +198,7 @@ bool ProjectFileWizardExtension::processProject(
     } else {
         FilePaths filePaths = Utils::transform(files, &GeneratedFile::filePath);
         if (!folder->addFiles(filePaths)) {
-            *errorMessage = tr("Failed to add one or more files to project\n\"%1\" (%2).")
+            *errorMessage = Tr::tr("Failed to add one or more files to project\n\"%1\" (%2).")
                     .arg(folder->filePath().toUserOutput())
                     .arg(FilePath::formatFilePaths(filePaths, ","));
             return false;
@@ -244,7 +223,7 @@ void ProjectFileWizardExtension::applyCodeStyle(GeneratedFile *file) const
     if (file->isBinary() || file->contents().isEmpty())
         return; // nothing to do
 
-    Id languageId = TextEditorSettings::languageId(Utils::mimeTypeForFile(file->path()).name());
+    Id languageId = TextEditorSettings::languageId(Utils::mimeTypeForFile(file->filePath()).name());
 
     if (!languageId.isValid())
         return; // don't modify files like *.ui *.pro

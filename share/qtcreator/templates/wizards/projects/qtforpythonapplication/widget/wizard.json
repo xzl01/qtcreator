@@ -3,12 +3,12 @@
     "supportedProjectTypes": [ "PythonProject" ],
     "id": "F.QtForPythonApplicationWindowWidget",
     "category": "F.ApplicationPySide",
-    "trDescription": "Creates a Qt for Python application that includes a Qt Designer-based widget (ui file)",
-    "trDisplayName": "Qt for Python - Window (UI file)",
+    "trDescription": "Creates a Qt for Python application that includes a Qt Designer-based widget (ui file) - Requires .ui to Python conversion",
+    "trDisplayName": "Window UI",
     "trDisplayCategory": "Application (Qt for Python)",
     "icon": "../icons/icon.png",
     "iconKind": "Themed",
-    "enabled": "%{JS: value('Plugins').indexOf('Python') >= 0}",
+    "enabled": "%{JS: value('Plugins').indexOf('Python') >= 0 && (!value('Platform').length || ['Desktop', 'DockerDeviceType', 'GenericLinuxOsType'].includes(value('Platform')))}",
 
     "options":
     [
@@ -34,7 +34,11 @@
                     "name": "PySideVersion",
                     "trDisplayName": "PySide version:",
                     "type": "ComboBox",
-                    "data": { "items": [ "PySide2", "PySide6" ] }
+                    "data":
+                    {
+                        "index": 1,
+                        "items": [ "PySide2", "PySide6" ]
+                    }
                 },
                 {
                     "name": "Class",

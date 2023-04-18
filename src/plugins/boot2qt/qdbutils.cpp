@@ -1,40 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdbutils.h"
 
+#include "qdbtr.h"
+
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
+
+#include <utils/environment.h>
+#include <utils/filepath.h>
 #include <utils/hostosinfo.h>
-#include <utils/fileutils.h>
 #include <utils/qtcassert.h>
 
-#include <QDir>
+using namespace Utils;
 
-namespace Qdb {
-namespace Internal {
+namespace Qdb::Internal {
 
 static QString executableBaseName(QdbTool tool)
 {
@@ -48,9 +29,9 @@ static QString executableBaseName(QdbTool tool)
     return QString();
 }
 
-Utils::FilePath findTool(QdbTool tool)
+FilePath findTool(QdbTool tool)
 {
-    QString filePath = QString::fromLocal8Bit(qgetenv(overridingEnvironmentVariable(tool)));
+    QString filePath = Utils::qtcEnvironmentVariable(overridingEnvironmentVariable(tool));
 
     if (filePath.isEmpty()) {
         QSettings * const settings = Core::ICore::settings();
@@ -60,20 +41,18 @@ Utils::FilePath findTool(QdbTool tool)
     }
 
     if (filePath.isEmpty()) {
-        filePath = Utils::HostOsInfo::withExecutableSuffix(
-                    QCoreApplication::applicationDirPath()
-#ifdef Q_OS_MACOS
-                    + QLatin1String("/../../../Tools/b2qt/")
-#else
-                    + QLatin1String("/../../b2qt/")
-#endif
-                    + executableBaseName(tool));
+        filePath = QCoreApplication::applicationDirPath();
+        if (HostOsInfo::isMacHost())
+            filePath += "/../../../Tools/b2qt/";
+        else
+            filePath += "/../../b2qt/";
+        filePath = HostOsInfo::withExecutableSuffix(filePath + executableBaseName(tool));
     }
 
-    return Utils::FilePath::fromString(QDir::cleanPath(filePath));
+    return FilePath::fromUserInput(filePath);
 }
 
-const char *overridingEnvironmentVariable(QdbTool tool)
+QString overridingEnvironmentVariable(QdbTool tool)
 {
     switch (tool) {
     case QdbTool::FlashingWizard:
@@ -81,12 +60,12 @@ const char *overridingEnvironmentVariable(QdbTool tool)
     case QdbTool::Qdb:
         return "BOOT2QT_QDB_FILEPATH";
     }
-    QTC_ASSERT(false, return "");
+    QTC_ASSERT(false, return {});
 }
 
 void showMessage(const QString &message, bool important)
 {
-    const QString fullMessage = QCoreApplication::translate("Boot2Qt", "Boot2Qt: %1").arg(message);
+    const QString fullMessage = Tr::tr("Boot2Qt: %1").arg(message);
     if (important)
         Core::MessageManager::writeFlashing(fullMessage);
     else
@@ -109,5 +88,4 @@ QString settingsKey(QdbTool tool)
     QTC_ASSERT(false, return QString());
 }
 
-} // namespace Internal
-} // namespace Qdb
+} // Qdb::Internal

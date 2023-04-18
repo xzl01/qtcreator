@@ -1,10 +1,5 @@
 add_subdirectory(3rdparty)
 add_subdirectory(buildoutputparser)
-if (NOT Clang_FOUND)
-  message(WARNING "Could not find Clang installation - disabling clangbackend.")
-else ()
-  add_subdirectory(clangbackend)
-endif ()
 
 option(BUILD_CPLUSPLUS_TOOLS "Build CPlusPlus tools" OFF)
 
@@ -13,7 +8,7 @@ function(add_qtc_cpp_tool name)
     DEFINES
       PATH_PREPROCESSOR_CONFIG=\"${CMAKE_CURRENT_SOURCE_DIR}/cplusplus-shared/pp-configuration.inc\"
       ${ARGN}
-    DEPENDS CPlusPlus Utils Qt5::Widgets
+    DEPENDS CPlusPlus Utils Qt::Widgets
     INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/cplusplus-shared"
       "${CMAKE_CURRENT_SOURCE_DIR}/${name}"
     SOURCES
@@ -42,11 +37,9 @@ add_subdirectory(qtc-askpass)
 add_subdirectory(qtcreatorcrashhandler)
 # add_subdirectory(qtcreatorwidgets) ## qbs does not build this either
 add_subdirectory(qtpromaker)
-add_subdirectory(screenshotcropper)
 add_subdirectory(sdktool)
 add_subdirectory(valgrindfake)
 add_subdirectory(wininterrupt) ## windows only
-add_subdirectory(winrtdebughelper) ## windows only
 
 if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/perfparser/CMakeLists.txt)
   add_subdirectory(perfparser)

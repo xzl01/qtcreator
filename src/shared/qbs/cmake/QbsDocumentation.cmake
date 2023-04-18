@@ -1,6 +1,7 @@
 # Options:
 option(QBS_INSTALL_HTML_DOCS "Whether to install Qbs HTML Documentation" OFF)
 option(QBS_INSTALL_QCH_DOCS "Whether to install Qbs QCH Documentation" OFF)
+option(QBS_INSTALL_MAN_PAGE "Whether to install Qbs man page" OFF)
 
 # Get information on directories from qmake
 # as this is not yet exported by cmake.
@@ -39,23 +40,6 @@ function(qt_query_qmake)
     endforeach()
 endfunction()
 
-# Find programs:
-function(_qbs_doc_find_program result_var)
-    if (NOT TARGET Qt${QT_VERSION_MAJOR}::qmake)
-        message(FATAL_ERROR "QDoc is only available in Qt projects")
-    endif()
-
-    get_target_property(_qmake_binary Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
-    get_filename_component(_qmake_dir "${_qmake_binary}" DIRECTORY)
-    find_program("_prg_${result_var}" ${ARGN} HINTS "${_qmake_dir}")
-    if ("_prg_${result_var}" STREQUAL "_prg_${result_var}-NOTFOUND")
-        set("_prg_${result_var}" "${result_var}-NOTFOUND")
-        message(WARNING "Could not find binary for ${result_var}")
-    endif()
-
-    set(${result_var} "${_prg_${result_var}}" PARENT_SCOPE)
-endfunction()
-
 function(_qbs_setup_doc_targets)
     # Set up important targets:
     if (NOT TARGET qbs_html_docs)
@@ -68,6 +52,11 @@ function(_qbs_setup_doc_targets)
         add_custom_target(
             BuildQbsDocumentation ALL COMMENT "Build Qbs documentation")
         add_dependencies(BuildQbsDocumentation qbs_html_docs qbs_qch_docs)
+    endif()
+    if (NOT TARGET qbs_docs)
+        add_custom_target(
+            qbs_docs ALL COMMENT "Build Qbs documentation")
+        add_dependencies(qbs_docs BuildQbsDocumentation)
     endif()
 endfunction()
 
@@ -108,6 +97,8 @@ function(_qbs_setup_qdoc_targets _qdocconf_file _retval)
         list(APPEND _env "${_export}=${${_export}}")
     endforeach()
 
+    get_target_property(_qdoc Qt${QT_VERSION_MAJOR}::qdoc IMPORTED_LOCATION)
+
     set(_full_qdoc_command "${_qdoc}")
     if (_env)
         set(_full_qdoc_command "${CMAKE_COMMAND}" "-E" "env" ${_env} "${_qdoc}")
@@ -119,8 +110,6 @@ function(_qbs_setup_qdoc_targets _qdocconf_file _retval)
 
     get_filename_component(_target "${_qdocconf_file}" NAME_WE)
 
-    #  message(${_target})
-    #  set(_html_outputdir "${_arg_HTML_DIR}/${_target}${_arg_POSTFIX}")
     set(_html_outputdir "${_arg_HTML_DIR}")
     file(MAKE_DIRECTORY "${_html_outputdir}")
 
@@ -183,6 +172,13 @@ function(_qbs_setup_qdoc_targets _qdocconf_file _retval)
     add_custom_target(${_html_target} DEPENDS "${_fixed_html_artifact}")
     add_dependencies(qbs_html_docs "${_html_target}")
 
+    # artifacts might be required for QCH-only installation, so we build them
+    # always, and skip HTML docs installation here
+    if (QBS_INSTALL_HTML_DOCS)
+        install(DIRECTORY "${_html_outputdir}" DESTINATION "${_arg_INSTALL_DIR}"
+            COMPONENT qbs_docs)
+    endif()
+
     set("${_retval}" "${_html_outputdir}" PARENT_SCOPE)
 endfunction()
 
@@ -228,17 +224,14 @@ function(_qbs_setup_qhelpgenerator_targets _qdocconf_file _html_outputdir)
     add_dependencies(qbs_qch_docs "${_qch_target}")
 
     install(FILES "${_qch_outputdir}/${_target}.qch" DESTINATION "${_arg_INSTALL_DIR}"
-        COMPONENT qbs_qch_docs)
-    install(DIRECTORY "${_qch_outputdir}/html" DESTINATION "${_arg_INSTALL_DIR}"
-        COMPONENT qbs_html_docs)
+        COMPONENT qbs_docs)
 endfunction()
 
 # Helper functions:
 function(_qbs_qdoc_build_qdocconf_file _qdocconf_file)
     _qbs_setup_doc_targets()
 
-    _qbs_doc_find_program(_qdoc NAMES qdoc qdoc-qt5)
-    if (_qdoc STREQUAL "_prg__qdoc-NOTFOUND")
+    if (NOT TARGET Qt${QT_VERSION_MAJOR}::qdoc)
         message(WARNING "No qdoc binary found: No documentation targets were generated")
         return()
     endif()
@@ -285,10 +278,11 @@ function(add_qbs_documentation qdocconf_file)
     set(SRCDIR "${Qbs_SOURCE_DIR}/doc")
 
     set(_qch_params)
+    # if QBS_INSTALL_QCH_DOCS is No, qch generation will be skipped entirely
     if (QBS_INSTALL_QCH_DOCS)
         set(_qch_params QCH QCH_DIR "${CMAKE_CURRENT_BINARY_DIR}")
     endif()
-    set(_qdoc_params HTML_DIR "${CMAKE_CURRENT_BINARY_DIR}/html")
+    set(_qdoc_params HTML_DIR "${CMAKE_CURRENT_BINARY_DIR}/${QBS_DOC_HTML_DIR_NAME}")
     list(APPEND _qdoc_params INSTALL_DIR "${QBS_DOC_INSTALL_DIR}")
 
     # Set up environment for qdoc:

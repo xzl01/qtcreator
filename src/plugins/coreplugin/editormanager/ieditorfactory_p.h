@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include <utils/mimetypes/mimetype.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
 
 #include <QHash>
 #include <QSet>
@@ -48,21 +25,12 @@ static void mimeTypeFactoryLookup(const Utils::MimeType &mimeType,
                                   QList<EditorTypeLike *> *list)
 {
     QSet<EditorTypeLike *> matches;
-    // search breadth-first through parent hierarchy, e.g. for hierarchy
-    // * application/x-ruby
-    //     * application/x-executable
-    //         * application/octet-stream
-    //     * text/plain
-    QList<Utils::MimeType> queue;
-    QSet<QString> seen;
-    queue.append(mimeType);
-    seen.insert(mimeType.name());
-    while (!queue.isEmpty()) {
-        Utils::MimeType mt = queue.takeFirst();
+    Utils::visitMimeParents(mimeType, [&](const Utils::MimeType &mt) -> bool {
         // check for matching factories
-        foreach (EditorTypeLike *factory, allFactories) {
+        for (EditorTypeLike *factory : allFactories) {
             if (!matches.contains(factory)) {
-                foreach (const QString &mimeName, factory->mimeTypes()) {
+                const QStringList mimeTypes = factory->mimeTypes();
+                for (const QString &mimeName : mimeTypes) {
                     if (mt.matchesName(mimeName)) {
                         list->append(factory);
                         matches.insert(factory);
@@ -70,18 +38,8 @@ static void mimeTypeFactoryLookup(const Utils::MimeType &mimeType,
                 }
             }
         }
-        // add parent mime types
-        QStringList parentNames = mt.parentMimeTypes();
-        foreach (const QString &parentName, parentNames) {
-            const Utils::MimeType parent = Utils::mimeTypeForName(parentName);
-            if (parent.isValid()) {
-                int seenSize = seen.size();
-                seen.insert(parent.name());
-                if (seen.size() != seenSize) // not seen before, so add
-                    queue.append(parent);
-            }
-        }
-    }
+        return true; // continue
+    });
 }
 
 } // Internal

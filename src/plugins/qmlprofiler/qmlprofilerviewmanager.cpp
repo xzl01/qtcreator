@@ -1,35 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include "qmlprofilerconstants.h"
+#include "qmlprofilerstatewidget.h"
+#include "qmlprofilertr.h"
 #include "qmlprofilerviewmanager.h"
 
-#include "qmlprofilertool.h"
-#include "qmlprofilerstatewidget.h"
+#include <debugger/analyzer/analyzermanager.h>
+
+#include <projectexplorer/projectexplorerconstants.h>
 
 #include <utils/qtcassert.h>
-#include <debugger/analyzer/analyzermanager.h>
 
 #include <QDockWidget>
 
@@ -51,7 +32,7 @@ QmlProfilerViewManager::QmlProfilerViewManager(QObject *parent,
     QTC_ASSERT(m_profilerModelManager, return);
     QTC_ASSERT(m_profilerState, return);
 
-    m_perspective = new Utils::Perspective(Constants::QmlProfilerPerspectiveId, tr("QML Profiler"));
+    m_perspective = new Perspective(Constants::QmlProfilerPerspectiveId, Tr::tr("QML Profiler"));
     m_perspective->setAboutToActivateCallback([this]() { createViews(); });
 }
 
@@ -85,15 +66,19 @@ void QmlProfilerViewManager::createViews()
     prepareEventsView(m_statisticsView);
     m_flameGraphView = new FlameGraphView(m_profilerModelManager);
     prepareEventsView(m_flameGraphView);
+    m_quick3dView = new Quick3DFrameView(m_profilerModelManager);
+    prepareEventsView(m_quick3dView);
 
     QWidget *anchorDock = nullptr;
     if (m_traceView->isUsable()) {
         anchorDock = m_traceView;
         m_perspective->addWindow(m_traceView, Perspective::SplitVertical, nullptr);
         m_perspective->addWindow(m_flameGraphView, Perspective::AddToTab, m_traceView);
+        m_perspective->addWindow(m_quick3dView, Perspective::AddToTab, m_flameGraphView);
     } else {
         anchorDock = m_flameGraphView;
         m_perspective->addWindow(m_flameGraphView, Perspective::SplitVertical, nullptr);
+        m_perspective->addWindow(m_quick3dView, Perspective::AddToTab, m_flameGraphView);
     }
     m_perspective->addWindow(m_statisticsView, Perspective::AddToTab, anchorDock);
     m_perspective->addWindow(anchorDock, Perspective::Raise, nullptr);
@@ -106,6 +91,7 @@ QmlProfilerViewManager::~QmlProfilerViewManager()
     delete m_traceView;
     delete m_flameGraphView;
     delete m_statisticsView;
+    delete m_quick3dView;
     delete m_perspective;
 }
 

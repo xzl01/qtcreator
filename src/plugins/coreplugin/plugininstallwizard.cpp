@@ -1,33 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "plugininstallwizard.h"
 
 #include "coreplugin.h"
+#include "coreplugintr.h"
 #include "icore.h"
 
+#include <extensionsystem/pluginmanager.h>
 #include <extensionsystem/pluginspec.h>
 
 #include <utils/archive.h>
@@ -99,23 +79,22 @@ public:
         : WizardPage(parent)
         , m_data(data)
     {
-        setTitle(PluginInstallWizard::tr("Source"));
+        setTitle(Tr::tr("Source"));
         auto vlayout = new QVBoxLayout;
         setLayout(vlayout);
 
         auto label = new QLabel(
             "<p>"
-            + PluginInstallWizard::tr(
-                "Choose source location. This can be a plugin library file or a zip file.")
+            + Tr::tr("Choose source location. This can be a plugin library file or a zip file.")
             + "</p>");
         label->setWordWrap(true);
         vlayout->addWidget(label);
 
-        auto path = new PathChooser;
-        path->setExpectedKind(PathChooser::Any);
-        vlayout->addWidget(path);
-        connect(path, &PathChooser::pathChanged, this, [this, path] {
-            m_data->sourcePath = path->filePath();
+        auto chooser = new PathChooser;
+        chooser->setExpectedKind(PathChooser::Any);
+        vlayout->addWidget(chooser);
+        connect(chooser, &PathChooser::textChanged, this, [this, chooser] {
+            m_data->sourcePath = chooser->filePath();
             updateWarnings();
         });
 
@@ -135,7 +114,7 @@ public:
     {
         const FilePath path = m_data->sourcePath;
         if (!QFile::exists(path.toString())) {
-            m_info->setText(PluginInstallWizard::tr("File does not exist."));
+            m_info->setText(Tr::tr("File does not exist."));
             return false;
         }
         if (hasLibSuffix(path))
@@ -173,14 +152,14 @@ public:
         : WizardPage(parent)
         , m_data(data)
     {
-        setTitle(PluginInstallWizard::tr("Check Archive"));
+        setTitle(Tr::tr("Check Archive"));
         auto vlayout = new QVBoxLayout;
         setLayout(vlayout);
 
         m_label = new InfoLabel;
         m_label->setElideMode(Qt::ElideNone);
         m_label->setWordWrap(true);
-        m_cancelButton = new QPushButton(PluginInstallWizard::tr("Cancel"));
+        m_cancelButton = new QPushButton(Tr::tr("Cancel"));
         m_output = new QTextEdit;
         m_output->setReadOnly(true);
 
@@ -201,66 +180,71 @@ public:
 
         m_tempDir = std::make_unique<TemporaryDirectory>("plugininstall");
         m_data->extractedPath = m_tempDir->path();
-        m_label->setText(PluginInstallWizard::tr("Checking archive..."));
+        m_label->setText(Tr::tr("Checking archive..."));
         m_label->setType(InfoLabel::None);
 
         m_cancelButton->setVisible(true);
         m_output->clear();
 
-        m_archive = Archive::unarchive(m_data->sourcePath, m_tempDir->path());
-
-        if (!m_archive) {
+        m_archive.reset(new Archive(m_data->sourcePath, m_tempDir->path()));
+        if (!m_archive->isValid()) {
             m_label->setType(InfoLabel::Error);
-            m_label->setText(PluginInstallWizard::tr("The file is not an archive."));
-
+            m_label->setText(Tr::tr("The file is not an archive."));
             return;
         }
-        QObject::connect(m_archive, &Archive::outputReceived, this, [this](const QString &output) {
+        QObject::connect(m_archive.get(), &Archive::outputReceived, this,
+                         [this](const QString &output) {
             m_output->append(output);
         });
-        QObject::connect(m_archive, &Archive::finished, this, [this](bool success) {
-            m_archive = nullptr; // we don't own it
-            m_cancelButton->disconnect();
-            if (!success) { // unarchiving failed
-                m_cancelButton->setVisible(false);
-                if (m_canceled) {
-                    m_label->setType(InfoLabel::Information);
-                    m_label->setText(PluginInstallWizard::tr("Canceled."));
-                } else {
-                    m_label->setType(InfoLabel::Error);
-                    m_label->setText(
-                        PluginInstallWizard::tr("There was an error while unarchiving."));
-                }
-            } else { // unarchiving was successful, run a check
-                m_archiveCheck = Utils::runAsync(
-                    [this](QFutureInterface<ArchiveIssue> &fi) { return checkContents(fi); });
-                Utils::onFinished(m_archiveCheck, this, [this](const QFuture<ArchiveIssue> &f) {
-                    m_cancelButton->setVisible(false);
-                    m_cancelButton->disconnect();
-                    const bool ok = f.resultCount() == 0 && !f.isCanceled();
-                    if (f.isCanceled()) {
-                        m_label->setType(InfoLabel::Information);
-                        m_label->setText(PluginInstallWizard::tr("Canceled."));
-                    } else if (ok) {
-                        m_label->setType(InfoLabel::Ok);
-                        m_label->setText(PluginInstallWizard::tr("Archive is OK."));
-                    } else {
-                        const ArchiveIssue issue = f.result();
-                        m_label->setType(issue.type);
-                        m_label->setText(issue.message);
-                    }
-                    m_isComplete = ok;
-                    emit completeChanged();
-                });
-                QObject::connect(m_cancelButton, &QPushButton::clicked, this, [this] {
-                    m_archiveCheck.cancel();
-                });
-            }
+        QObject::connect(m_archive.get(), &Archive::finished, this, [this](bool success) {
+            m_archive.release()->deleteLater();
+            handleFinished(success);
         });
-        QObject::connect(m_cancelButton, &QPushButton::clicked, m_archive, [this] {
+        QObject::connect(m_cancelButton, &QPushButton::clicked, this, [this] {
             m_canceled = true;
-            m_archive->cancel();
+            m_archive.reset();
+            handleFinished(false);
         });
+        m_archive->unarchive();
+    }
+
+    void handleFinished(bool success)
+    {
+        m_cancelButton->disconnect();
+        if (!success) { // unarchiving failed
+            m_cancelButton->setVisible(false);
+            if (m_canceled) {
+                m_label->setType(InfoLabel::Information);
+                m_label->setText(Tr::tr("Canceled."));
+            } else {
+                m_label->setType(InfoLabel::Error);
+                m_label->setText(Tr::tr("There was an error while unarchiving."));
+            }
+        } else { // unarchiving was successful, run a check
+            m_archiveCheck = Utils::runAsync(
+                [this](QFutureInterface<ArchiveIssue> &fi) { return checkContents(fi); });
+            Utils::onFinished(m_archiveCheck, this, [this](const QFuture<ArchiveIssue> &f) {
+                m_cancelButton->setVisible(false);
+                m_cancelButton->disconnect();
+                const bool ok = f.resultCount() == 0 && !f.isCanceled();
+                if (f.isCanceled()) {
+                    m_label->setType(InfoLabel::Information);
+                    m_label->setText(Tr::tr("Canceled."));
+                } else if (ok) {
+                    m_label->setType(InfoLabel::Ok);
+                    m_label->setText(Tr::tr("Archive is OK."));
+                } else {
+                    const ArchiveIssue issue = f.result();
+                    m_label->setType(issue.type);
+                    m_label->setText(issue.message);
+                }
+                m_isComplete = ok;
+                emit completeChanged();
+            });
+            QObject::connect(m_cancelButton, &QPushButton::clicked, this, [this] {
+                m_archiveCheck.cancel();
+            });
+        }
     }
 
     // Async. Result is set if any issue was found.
@@ -268,7 +252,7 @@ public:
     {
         QTC_ASSERT(m_tempDir.get(), return );
 
-        PluginSpec *coreplugin = CorePlugin::instance()->pluginSpec();
+        PluginSpec *coreplugin = PluginManager::specForPlugin(CorePlugin::instance());
 
         // look for plugin
         QDirIterator it(m_tempDir->path().path(),
@@ -291,8 +275,7 @@ public:
                                                 });
                 if (found != dependencies.constEnd()) {
                     if (!coreplugin->provides(found->name, found->version)) {
-                        fi.reportResult({PluginInstallWizard::tr(
-                                             "Plugin requires an incompatible version of %1 (%2).")
+                        fi.reportResult({Tr::tr("Plugin requires an incompatible version of %1 (%2).")
                                              .arg(Constants::IDE_DISPLAY_NAME)
                                              .arg(found->version),
                                          InfoLabel::Error});
@@ -302,20 +285,15 @@ public:
                 return; // successful / no error
             }
         }
-        fi.reportResult(
-            {PluginInstallWizard::tr("Did not find %1 plugin.").arg(Constants::IDE_DISPLAY_NAME),
-             InfoLabel::Error});
+        fi.reportResult({Tr::tr("Did not find %1 plugin.").arg(Constants::IDE_DISPLAY_NAME),
+                         InfoLabel::Error});
     }
 
     void cleanupPage() final
     {
         // back button pressed
         m_cancelButton->disconnect();
-        if (m_archive) {
-            m_archive->disconnect();
-            m_archive->cancel();
-            m_archive = nullptr; // we don't own it
-        }
+        m_archive.reset();
         if (m_archiveCheck.isRunning()) {
             m_archiveCheck.cancel();
             m_archiveCheck.waitForFinished();
@@ -326,7 +304,7 @@ public:
     bool isComplete() const final { return m_isComplete; }
 
     std::unique_ptr<TemporaryDirectory> m_tempDir;
-    Archive *m_archive = nullptr;
+    std::unique_ptr<Archive> m_archive;
     QFuture<ArchiveIssue> m_archiveCheck;
     InfoLabel *m_label = nullptr;
     QPushButton *m_cancelButton = nullptr;
@@ -343,21 +321,19 @@ public:
         : WizardPage(parent)
         , m_data(data)
     {
-        setTitle(PluginInstallWizard::tr("Install Location"));
+        setTitle(Tr::tr("Install Location"));
         auto vlayout = new QVBoxLayout;
         setLayout(vlayout);
 
-        auto label = new QLabel("<p>" + PluginInstallWizard::tr("Choose install location.")
-                                + "</p>");
+        auto label = new QLabel("<p>" + Tr::tr("Choose install location.") + "</p>");
         label->setWordWrap(true);
         vlayout->addWidget(label);
         vlayout->addSpacing(10);
 
-        auto localInstall = new QRadioButton(PluginInstallWizard::tr("User plugins"));
+        auto localInstall = new QRadioButton(Tr::tr("User plugins"));
         localInstall->setChecked(!m_data->installIntoApplication);
-        auto localLabel = new QLabel(
-            PluginInstallWizard::tr("The plugin will be available to all compatible %1 "
-                                    "installations, but only for the current user.")
+        auto localLabel = new QLabel(Tr::tr("The plugin will be available to all compatible %1 "
+                                            "installations, but only for the current user.")
                 .arg(Constants::IDE_DISPLAY_NAME));
         localLabel->setWordWrap(true);
         localLabel->setAttribute(Qt::WA_MacSmallSize, true);
@@ -367,11 +343,11 @@ public:
         vlayout->addSpacing(10);
 
         auto appInstall = new QRadioButton(
-            PluginInstallWizard::tr("%1 installation").arg(Constants::IDE_DISPLAY_NAME));
+            Tr::tr("%1 installation").arg(Constants::IDE_DISPLAY_NAME));
         appInstall->setChecked(m_data->installIntoApplication);
         auto appLabel = new QLabel(
-            PluginInstallWizard::tr("The plugin will be available only to this %1 "
-                                    "installation, but for all users that can access it.")
+            Tr::tr("The plugin will be available only to this %1 "
+                   "installation, but for all users that can access it.")
                 .arg(Constants::IDE_DISPLAY_NAME));
         appLabel->setWordWrap(true);
         appLabel->setAttribute(Qt::WA_MacSmallSize, true);
@@ -397,7 +373,7 @@ public:
         : WizardPage(parent)
         , m_data(data)
     {
-        setTitle(PluginInstallWizard::tr("Summary"));
+        setTitle(Tr::tr("Summary"));
 
         auto vlayout = new QVBoxLayout;
         setLayout(vlayout);
@@ -410,7 +386,7 @@ public:
     void initializePage() final
     {
         m_summaryLabel->setText(
-            PluginInstallWizard::tr("\"%1\" will be installed into \"%2\".")
+            Tr::tr("\"%1\" will be installed into \"%2\".")
                 .arg(m_data->sourcePath.toUserOutput(),
                      pluginInstallPath(m_data->installIntoApplication).toUserOutput()));
     }
@@ -439,13 +415,11 @@ static bool copyPluginFile(const FilePath &src, const FilePath &dest)
     const FilePath destFile = dest.pathAppended(src.fileName());
     if (destFile.exists()) {
         QMessageBox box(QMessageBox::Question,
-                        PluginInstallWizard::tr("Overwrite File"),
-                        PluginInstallWizard::tr("The file \"%1\" exists. Overwrite?")
-                            .arg(destFile.toUserOutput()),
+                        Tr::tr("Overwrite File"),
+                        Tr::tr("The file \"%1\" exists. Overwrite?").arg(destFile.toUserOutput()),
                         QMessageBox::Cancel,
                         ICore::dialogParent());
-        QPushButton *acceptButton = box.addButton(PluginInstallWizard::tr("Overwrite"),
-                                                  QMessageBox::AcceptRole);
+        QPushButton *acceptButton = box.addButton(Tr::tr("Overwrite"), QMessageBox::AcceptRole);
         box.setDefaultButton(acceptButton);
         box.exec();
         if (box.clickedButton() != acceptButton)
@@ -455,9 +429,8 @@ static bool copyPluginFile(const FilePath &src, const FilePath &dest)
     dest.parentDir().ensureWritableDir();
     if (!src.copyFile(destFile)) {
         QMessageBox::warning(ICore::dialogParent(),
-                             PluginInstallWizard::tr("Failed to Write File"),
-                             PluginInstallWizard::tr("Failed to write file \"%1\".")
-                                 .arg(destFile.toUserOutput()));
+                             Tr::tr("Failed to Write File"),
+                             Tr::tr("Failed to write file \"%1\".").arg(destFile.toUserOutput()));
         return false;
     }
     postCopyOperation()(destFile);
@@ -467,7 +440,7 @@ static bool copyPluginFile(const FilePath &src, const FilePath &dest)
 bool PluginInstallWizard::exec()
 {
     Wizard wizard(ICore::dialogParent());
-    wizard.setWindowTitle(tr("Install Plugin"));
+    wizard.setWindowTitle(Tr::tr("Install Plugin"));
 
     Data data;
 
@@ -495,7 +468,7 @@ bool PluginInstallWizard::exec()
                                             FileUtils::CopyAskingForOverwrite(ICore::dialogParent(),
                                                                               postCopyOperation()))) {
                 QMessageBox::warning(ICore::dialogParent(),
-                                     PluginInstallWizard::tr("Failed to Copy Plugin Files"),
+                                     Tr::tr("Failed to Copy Plugin Files"),
                                      error);
                 return false;
             }

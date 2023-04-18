@@ -1,51 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Mingulov.
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Mingulov.
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "imageview.h"
 
 #include "exportdialog.h"
-#include "multiexportdialog.h"
 #include "imageviewerfile.h"
+#include "imageviewertr.h"
+#include "multiexportdialog.h"
+#include "utils/mimeutils.h"
 
 #include <coreplugin/messagemanager.h>
 
 #include <utils/fileutils.h>
 #include <utils/qtcassert.h>
+#include <utils/qtcsettings.h>
 
-#include <QMessageBox>
-#include <QGraphicsRectItem>
-
-#include <QWheelEvent>
-#include <QMouseEvent>
-#include <QImage>
-#include <QPainter>
-#include <QPixmap>
-
+#include <QClipboard>
 #include <QDir>
 #include <QFileInfo>
+#include <QGraphicsRectItem>
+#include <QGuiApplication>
+#include <QImage>
+#include <QMessageBox>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QPixmap>
+#include <QWheelEvent>
 
 #include <qmath.h>
 
@@ -53,6 +34,11 @@
 #include <QGraphicsSvgItem>
 #include <QSvgRenderer>
 #endif
+
+const char kSettingsGroup[] = "ImageViewer";
+const char kSettingsBackground[] = "ShowBackground";
+const char kSettingsOutline[] = "ShowOutline";
+const char kSettingsFitToScreen[] = "FitToScreen";
 
 namespace ImageViewer {
 namespace Constants {
@@ -125,7 +111,7 @@ void ImageView::createScene()
     m_backgroundItem = new QGraphicsRectItem(m_imageItem->boundingRect());
     m_backgroundItem->setBrush(Qt::white);
     m_backgroundItem->setPen(Qt::NoPen);
-    m_backgroundItem->setVisible(m_showBackground);
+    m_backgroundItem->setVisible(m_settings.showBackground);
     m_backgroundItem->setZValue(-1);
 
     // outline
@@ -134,7 +120,7 @@ void ImageView::createScene()
     outline.setCosmetic(true);
     m_outlineItem->setPen(outline);
     m_outlineItem->setBrush(Qt::NoBrush);
-    m_outlineItem->setVisible(m_showOutline);
+    m_outlineItem->setVisible(m_settings.showOutline);
     m_outlineItem->setZValue(1);
 
     QGraphicsScene *s = scene();
@@ -173,14 +159,14 @@ bool ImageView::exportSvg(const ExportData &ed)
 {
     const bool result = renderSvg(ed.size).save(ed.fileName);
     if (result) {
-        const QString message = tr("Exported \"%1\", %2x%3, %4 bytes")
+        const QString message = Tr::tr("Exported \"%1\", %2x%3, %4 bytes")
             .arg(QDir::toNativeSeparators(ed.fileName))
             .arg(ed.size.width()).arg(ed.size.height())
             .arg(QFileInfo(ed.fileName).size());
         Core::MessageManager::writeDisrupting(message);
     } else {
-        const QString message = tr("Could not write file \"%1\".").arg(QDir::toNativeSeparators(ed.fileName));
-        QMessageBox::critical(this, tr("Export Image"), message);
+        const QString message = Tr::tr("Could not write file \"%1\".").arg(QDir::toNativeSeparators(ed.fileName));
+        QMessageBox::critical(this, Tr::tr("Export Image"), message);
     }
     return result;
 }
@@ -211,7 +197,7 @@ void ImageView::exportImage()
 
     const QFileInfo origFi = m_file->filePath().toFileInfo();
     ExportDialog exportDialog(this);
-    exportDialog.setWindowTitle(tr("Export %1").arg(origFi.fileName()));
+    exportDialog.setWindowTitle(Tr::tr("Export %1").arg(origFi.fileName()));
     exportDialog.setExportSize(svgSize());
     exportDialog.setExportFileName(suggestedExportFileName(origFi));
 
@@ -227,7 +213,7 @@ void ImageView::exportMultiImages()
     const QFileInfo origFi = m_file->filePath().toFileInfo();
     const QSize size = svgSize();
     const QString title =
-        tr("Export a Series of Images from %1 (%2x%3)")
+        Tr::tr("Export a Series of Images from %1 (%2x%3)")
           .arg(origFi.fileName()).arg(size.width()).arg(size.height());
     MultiExportDialog multiExportDialog;
     multiExportDialog.setWindowTitle(title);
@@ -250,16 +236,26 @@ void ImageView::exportMultiImages()
 #endif // !QT_NO_SVG
 }
 
+void ImageView::copyDataUrl()
+{
+    Utils::MimeType mimeType = Utils::mimeTypeForFile(m_file->filePath());
+    QByteArray data = m_file->filePath().fileContents().value_or(QByteArray());
+    const auto url = QStringLiteral("data:%1;base64,%2")
+            .arg(mimeType.name())
+            .arg(QString::fromLatin1(data.toBase64()));
+    QGuiApplication::clipboard()->setText(url);
+}
+
 void ImageView::setViewBackground(bool enable)
 {
-    m_showBackground = enable;
+    m_settings.showBackground = enable;
     if (m_backgroundItem)
         m_backgroundItem->setVisible(enable);
 }
 
 void ImageView::setViewOutline(bool enable)
 {
-    m_showOutline = enable;
+    m_settings.showOutline = enable;
     if (m_outlineItem)
         m_outlineItem->setVisible(enable);
 }
@@ -275,6 +271,7 @@ void ImageView::doScale(qreal factor)
 
 void ImageView::wheelEvent(QWheelEvent *event)
 {
+    setFitToScreen(false);
     qreal factor = qPow(Constants::DEFAULT_SCALE_FACTOR, event->angleDelta().y() / 240.0);
     // cap to 0.001 - 1000
     qreal actualFactor = qBound(0.001, factor, 1000.0);
@@ -282,8 +279,16 @@ void ImageView::wheelEvent(QWheelEvent *event)
     event->accept();
 }
 
+void ImageView::resizeEvent(QResizeEvent *event)
+{
+    QGraphicsView::resizeEvent(event);
+    if (m_settings.fitToScreen)
+        doFitToScreen();
+}
+
 void ImageView::zoomIn()
 {
+    setFitToScreen(false);
     qreal nextZoomLevel = nextLevel(transform().m11());
     resetTransform();
     doScale(nextZoomLevel);
@@ -291,6 +296,7 @@ void ImageView::zoomIn()
 
 void ImageView::zoomOut()
 {
+    setFitToScreen(false);
     qreal previousZoomLevel = previousLevel(transform().m11());
     resetTransform();
     doScale(previousZoomLevel);
@@ -298,11 +304,49 @@ void ImageView::zoomOut()
 
 void ImageView::resetToOriginalSize()
 {
+    setFitToScreen(false);
     resetTransform();
     emitScaleFactor();
 }
 
-void ImageView::fitToScreen()
+void ImageView::setFitToScreen(bool fit)
+{
+    if (fit == m_settings.fitToScreen)
+        return;
+    m_settings.fitToScreen = fit;
+    if (m_settings.fitToScreen)
+        doFitToScreen();
+    emit fitToScreenChanged(m_settings.fitToScreen);
+}
+
+void ImageView::readSettings(Utils::QtcSettings *settings)
+{
+    const Settings def;
+    settings->beginGroup(kSettingsGroup);
+    m_settings.showBackground = settings->value(kSettingsBackground, def.showBackground).toBool();
+    m_settings.showOutline = settings->value(kSettingsOutline, def.showOutline).toBool();
+    m_settings.fitToScreen = settings->value(kSettingsFitToScreen, def.fitToScreen).toBool();
+    settings->endGroup();
+}
+
+void ImageView::writeSettings(Utils::QtcSettings *settings) const
+{
+    const Settings def;
+    settings->beginGroup(kSettingsGroup);
+    settings->setValueWithDefault(kSettingsBackground,
+                                  m_settings.showBackground,
+                                  def.showBackground);
+    settings->setValueWithDefault(kSettingsOutline, m_settings.showOutline, def.showOutline);
+    settings->setValueWithDefault(kSettingsFitToScreen, m_settings.fitToScreen, def.fitToScreen);
+    settings->endGroup();
+}
+
+ImageView::Settings ImageView::settings() const
+{
+    return m_settings;
+}
+
+void ImageView::doFitToScreen()
 {
     fitInView(m_imageItem, Qt::KeepAspectRatio);
     emitScaleFactor();

@@ -1,46 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rewritertransaction.h"
 #include <abstractview.h>
-#include <rewritingexception.h>
+#include <externaldependenciesinterface.h>
 #include <rewriterview.h>
+#include <rewritingexception.h>
 
+#include <utils/environment.h>
 #include <utils/qtcassert.h>
-
-#ifndef QMLDESIGNER_TEST
-#include <designdocument.h>
-#include <qmldesignerplugin.h>
-#endif
 
 #include <QDebug>
 
 namespace QmlDesigner {
 
 QList<QByteArray> RewriterTransaction::m_identifierList;
-bool RewriterTransaction::m_activeIdentifier = qEnvironmentVariableIsSet("QML_DESIGNER_TRACE_REWRITER_TRANSACTION");
+bool RewriterTransaction::m_activeIdentifier = Utils::qtcEnvironmentVariableIsSet(
+    "QML_DESIGNER_TRACE_REWRITER_TRANSACTION");
 
 RewriterTransaction::RewriterTransaction() : m_valid(false)
 {
@@ -107,8 +83,8 @@ void RewriterTransaction::commit()
 
         if (m_activeIdentifier) {
             qDebug() << "Commit RewriterTransaction:" << m_identifier << m_identifierNumber;
-            bool success = m_identifierList.removeOne(m_identifier + QByteArrayLiteral("-") + QByteArray::number(m_identifierNumber));
-            Q_UNUSED(success)
+            [[maybe_unused]] bool success = m_identifierList.removeOne(
+                m_identifier + QByteArrayLiteral("-") + QByteArray::number(m_identifierNumber));
             Q_ASSERT(success);
         }
     }
@@ -121,9 +97,7 @@ void RewriterTransaction::rollback()
         m_valid = false;
         view()->emitRewriterEndTransaction();
 
-#ifndef QMLDESIGNER_TEST
-        QmlDesignerPlugin::instance()->currentDesignDocument()->undo();
-#endif
+        view()->externalDependencies().undoOnCurrentDesignDocument();
         if (m_activeIdentifier) {
             qDebug() << "Rollback RewriterTransaction:" << m_identifier << m_identifierNumber;
             m_identifierList.removeOne(m_identifier + QByteArrayLiteral("-") + QByteArray::number(m_identifierNumber));

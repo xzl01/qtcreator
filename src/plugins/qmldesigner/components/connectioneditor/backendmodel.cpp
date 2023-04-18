@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <utils/algorithm.h>
 
@@ -77,39 +55,41 @@ void BackendModel::resetModel()
     if (rewriterView)
         for (const QmlTypeData &cppTypeData : rewriterView->getQMLTypes())
             if (cppTypeData.isSingleton) {
-                NodeMetaInfo metaInfo = m_connectionView->model()->metaInfo(cppTypeData.typeName.toUtf8());
-                  if (metaInfo.isValid() && !metaInfo.isSubclassOf("QtQuick.Item")) {
-                      auto type = new QStandardItem(cppTypeData.typeName);
-                      type->setData(cppTypeData.typeName, Qt::UserRole + 1);
-                      type->setData(true, Qt::UserRole + 2);
-                      type->setEditable(false);
+                NodeMetaInfo metaInfo = m_connectionView->model()->metaInfo(
+                    cppTypeData.typeName.toUtf8());
+                if (metaInfo.isValid() && !metaInfo.isQtQuickItem()) {
+                    auto type = new QStandardItem(cppTypeData.typeName);
+                    type->setData(cppTypeData.typeName, Qt::UserRole + 1);
+                    type->setData(true, Qt::UserRole + 2);
+                    type->setEditable(false);
 
-                      auto name = new QStandardItem(cppTypeData.typeName);
-                      name->setEditable(false);
+                    auto name = new QStandardItem(cppTypeData.typeName);
+                    name->setEditable(false);
 
-                      QStandardItem *singletonItem = new QStandardItem("");
-                      singletonItem->setCheckState(Qt::Checked);
+                    QStandardItem *singletonItem = new QStandardItem("");
+                    singletonItem->setCheckState(Qt::Checked);
 
-                      singletonItem->setCheckable(true);
-                      singletonItem->setEnabled(false);
+                    singletonItem->setCheckable(true);
+                    singletonItem->setEnabled(false);
 
-                      QStandardItem *inlineItem = new QStandardItem("");
+                    QStandardItem *inlineItem = new QStandardItem("");
 
-                      inlineItem->setCheckState(Qt::Unchecked);
+                    inlineItem->setCheckState(Qt::Unchecked);
 
-                      inlineItem->setCheckable(true);
-                      inlineItem->setEnabled(false);
+                    inlineItem->setCheckable(true);
+                    inlineItem->setEnabled(false);
 
-                      appendRow({ type, name, singletonItem, inlineItem });
-                  }
+                    appendRow({type, name, singletonItem, inlineItem});
+                }
             }
 
     if (rootNode.isValid()) {
-        foreach (const AbstractProperty &property ,rootNode.properties())
+        const QList<AbstractProperty> properties = rootNode.properties();
+        for (const AbstractProperty &property : properties)
             if (property.isDynamic() && !simpleTypes.contains(property.dynamicTypeName())) {
 
                 NodeMetaInfo metaInfo = m_connectionView->model()->metaInfo(property.dynamicTypeName());
-                if (metaInfo.isValid() && !metaInfo.isSubclassOf("QtQuick.Item")) {
+                if (metaInfo.isValid() && !metaInfo.isQtQuickItem()) {
                     QStandardItem *type = new QStandardItem(QString::fromUtf8(property.dynamicTypeName()));
                     type->setEditable(false);
 
@@ -147,7 +127,8 @@ QStringList BackendModel::possibleCppTypes() const
     QStringList list;
 
     if (rewriterView) {
-        foreach (const QmlTypeData &cppTypeData, rewriterView->getQMLTypes())
+        const QList<QmlTypeData> cppTypes = rewriterView->getQMLTypes();
+        for (const QmlTypeData &cppTypeData : cppTypes)
             list.append(cppTypeData.typeName);
     }
 

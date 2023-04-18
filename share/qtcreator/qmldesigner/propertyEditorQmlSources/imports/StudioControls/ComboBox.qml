@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 import QtQuick.Window 2.15
@@ -39,6 +17,8 @@ T.ComboBox {
                          && myComboBox.enabled
     property bool edit: myComboBox.activeFocus && myComboBox.editable
     property bool open: comboBoxPopup.opened
+    property bool hasActiveDrag: false // an item that can be dropped on the combobox is being dragged
+    property bool hasActiveHoverDrag: false // an item that can be dropped on the combobox is being hovered on the combobox
 
     property bool dirty: false // user modification flag
 
@@ -65,6 +45,11 @@ T.ComboBox {
             comboBoxPopup.close()
     }
 
+    onActiveFocusChanged: {
+        if (myComboBox.activeFocus)
+            comboBoxInput.preFocusText = myComboBox.editText
+    }
+
     ActionIndicator {
         id: actionIndicator
         myControl: myComboBox
@@ -76,19 +61,22 @@ T.ComboBox {
 
     contentItem: ComboBoxInput {
         id: comboBoxInput
+
+        property string preFocusText: ""
+
         myControl: myComboBox
         text: myComboBox.editText
 
         onEditingFinished: {
             comboBoxInput.deselect()
             comboBoxInput.focus = false
+            myComboBox.focus = false
 
             // Only trigger the signal, if the value was modified
             if (myComboBox.dirty) {
                 myTimer.stop()
                 myComboBox.dirty = false
-                myComboBox.compressedActivated(myComboBox.find(myComboBox.editText),
-                                               ComboBox.ActivatedReason.EditingFinished)
+                myComboBox.accepted()
             }
         }
         onTextEdited: myComboBox.dirty = true
@@ -101,7 +89,7 @@ T.ComboBox {
         x: comboBoxInput.x + comboBoxInput.width
         y: StudioTheme.Values.border
         width: StudioTheme.Values.checkIndicatorWidth - StudioTheme.Values.border
-        height: StudioTheme.Values.checkIndicatorHeight - (StudioTheme.Values.border * 2)
+        height: StudioTheme.Values.checkIndicatorHeight - StudioTheme.Values.border * 2
     }
 
     background: Rectangle {
@@ -191,7 +179,7 @@ T.ComboBox {
         id: comboBoxPopup
         x: actionIndicator.width + StudioTheme.Values.border
         y: myComboBox.height
-        width: myComboBox.width - actionIndicator.width - (StudioTheme.Values.border * 2)
+        width: myComboBox.width - actionIndicator.width - StudioTheme.Values.border * 2
         // TODO Setting the height on the popup solved the problem with the popup of height 0,
         // but it has the problem that it sometimes extend over the border of the actual window
         // and is then cut off.
@@ -231,7 +219,7 @@ T.ComboBox {
         State {
             name: "default"
             when: myComboBox.enabled && !myComboBox.hover && !myComboBox.edit && !myComboBox.open
-                  && !myComboBox.activeFocus
+                  && !myComboBox.activeFocus && !myComboBox.hasActiveDrag
             PropertyChanges {
                 target: myComboBox
                 wheelEnabled: false
@@ -243,7 +231,23 @@ T.ComboBox {
             PropertyChanges {
                 target: comboBoxBackground
                 color: StudioTheme.Values.themeControlBackground
-                border.color: StudioTheme.Values.themeControlOutline
+            }
+        },
+        State {
+            name: "acceptsDrag"
+            when: myComboBox.enabled && myComboBox.hasActiveDrag && !myComboBox.hasActiveHoverDrag
+            PropertyChanges {
+                target: comboBoxBackground
+                border.color: StudioTheme.Values.themeControlOutlineInteraction
+            }
+        },
+        State {
+            name: "dragHover"
+            when: myComboBox.enabled && myComboBox.hasActiveHoverDrag
+            PropertyChanges {
+                target: comboBoxBackground
+                color: StudioTheme.Values.themeControlBackgroundInteraction
+                border.color: StudioTheme.Values.themeControlOutlineInteraction
             }
         },
         // This state is intended for ComboBoxes which aren't editable, but have focus e.g. via
@@ -276,7 +280,7 @@ T.ComboBox {
             PropertyChanges {
                 target: comboBoxBackground
                 color: StudioTheme.Values.themeControlBackgroundInteraction
-                border.color: StudioTheme.Values.themeControlOutline
+                border.color: StudioTheme.Values.themeControlOutlineInteraction
             }
             StateChangeScript {
                 script: comboBoxPopup.close()
@@ -312,7 +316,10 @@ T.ComboBox {
     ]
 
     Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape)
+        if (event.key === Qt.Key_Escape) {
+            myComboBox.editText = comboBoxInput.preFocusText
+            myComboBox.dirty = true
             myComboBox.focus = false
+        }
     }
 }

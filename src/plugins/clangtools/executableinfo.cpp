@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "executableinfo.h"
 
@@ -55,15 +33,15 @@ static QString runExecutable(const Utils::CommandLine &commandLine, QueryFailMod
     cpp.setCommand(commandLine);
 
     cpp.runBlocking();
-    if (cpp.result() != QtcProcess::FinishedWithSuccess
+    if (cpp.result() != ProcessResult::FinishedWithSuccess
             && (queryFailMode == QueryFailMode::Noisy
-            || cpp.result() != QtcProcess::FinishedWithError)) {
+            || cpp.result() != ProcessResult::FinishedWithError)) {
         Core::MessageManager::writeFlashing(cpp.exitMessage());
         Core::MessageManager::writeFlashing(QString::fromUtf8(cpp.allRawOutput()));
         return {};
     }
 
-    return cpp.stdOut();
+    return cpp.cleanedStdOut();
 }
 
 static QStringList queryClangTidyChecks(const FilePath &executable,
@@ -169,7 +147,7 @@ ClazyStandaloneInfo ClazyStandaloneInfo::getInfo(const FilePath &executablePath)
     const auto it = cache.find(executablePath);
     if (it == cache.end()) {
         const ClazyStandaloneInfo info(executablePath);
-        cache.insert(executablePath, qMakePair(timeStamp, info));
+        cache.insert(executablePath, {timeStamp, info});
         return info;
     }
     if (it->first != timeStamp) {
@@ -236,13 +214,23 @@ QString queryVersion(const FilePath &clangToolPath, QueryFailMode failMode)
     return {};
 }
 
-QPair<FilePath, QString> getClangIncludeDirAndVersion(const FilePath &clangToolPath)
+static QPair<FilePath, QString> clangIncludeDirAndVersion(const FilePath &clangToolPath)
 {
     const FilePath dynamicResourceDir = queryResourceDir(clangToolPath);
     const QString dynamicVersion = queryVersion(clangToolPath, QueryFailMode::Noisy);
     if (dynamicResourceDir.isEmpty() || dynamicVersion.isEmpty())
-        return qMakePair(FilePath::fromString(CLANG_INCLUDE_DIR), QString(CLANG_VERSION));
-    return qMakePair(dynamicResourceDir + "/include", dynamicVersion);
+        return {FilePath::fromUserInput(CLANG_INCLUDE_DIR), QString(CLANG_VERSION)};
+    return {dynamicResourceDir / "include", dynamicVersion};
+}
+
+QPair<FilePath, QString> getClangIncludeDirAndVersion(const FilePath &clangToolPath)
+{
+    QTC_CHECK(!clangToolPath.isEmpty());
+    static QMap<FilePath, QPair<FilePath, QString>> cache;
+    auto it = cache.find(clangToolPath);
+    if (it == cache.end())
+        it = cache.insert(clangToolPath, clangIncludeDirAndVersion(clangToolPath));
+    return it.value();
 }
 
 QHash<Utils::FilePath, QPair<QDateTime, ClazyStandaloneInfo>> ClazyStandaloneInfo::cache;

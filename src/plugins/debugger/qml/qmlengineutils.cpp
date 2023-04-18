@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
-
-#include "qmlengine.h"
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qmljs/parser/qmljsast_p.h>
 #include <qmljs/qmljsmodelmanagerinterface.h>
 #include <debugger/console/console.h>
+#include <qmldebug/qdebugmessageclient.h>
 
 #include <coreplugin/editormanager/documentmodel.h>
 
@@ -44,8 +21,7 @@ using namespace QmlJS;
 using namespace QmlJS::AST;
 using namespace TextEditor;
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 class ASTWalker : public Visitor
 {
@@ -228,8 +204,6 @@ void appendDebugOutput(QtMsgType type, const QString &message, const QDebugConte
         break;
     }
 
-    QTC_ASSERT(itemType != ConsoleItem::DefaultType, return);
-
     debuggerConsole()->printItem(new ConsoleItem(itemType, message, info.file, info.line));
 }
 
@@ -237,7 +211,8 @@ void clearExceptionSelection()
 {
     QList<QTextEdit::ExtraSelection> selections;
 
-    foreach (IEditor *editor, DocumentModel::editorsForOpenedDocuments()) {
+    const QList<IEditor *> editors = DocumentModel::editorsForOpenedDocuments();
+    for (IEditor *editor : editors) {
         if (auto ed = TextEditorWidget::fromEditor(editor))
             ed->setExtraSelections(TextEditorWidget::DebuggerExceptionSelection, selections);
     }
@@ -281,5 +256,4 @@ QStringList highlightExceptionCode(int lineNumber, const QString &filePath, cons
     return messages;
 }
 
-} // Internal
-} // Debugger
+} // Debugger::Internal

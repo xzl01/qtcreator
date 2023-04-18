@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "toolchain.h"
 
 #include "abi.h"
+#include "devicesupport/idevice.h"
 #include "headerpath.h"
 #include "projectexplorerconstants.h"
 #include "toolchainmanager.h"
@@ -91,6 +70,7 @@ public:
 
     ToolChain::MacrosCache m_predefinedMacrosCache;
     ToolChain::HeaderPathsCache m_headerPathsCache;
+    std::optional<bool> m_isValid;
 };
 
 
@@ -206,9 +186,10 @@ Abis ToolChain::supportedAbis() const
 
 bool ToolChain::isValid() const
 {
-    if (compilerCommand().isEmpty())
-        return false;
-    return compilerCommand().isExecutableFile();
+    if (!d->m_isValid.has_value())
+        d->m_isValid = !compilerCommand().isEmpty() && compilerCommand().isExecutableFile();
+
+    return d->m_isValid.value_or(false);
 }
 
 QStringList ToolChain::includedFiles(const QStringList &flags, const QString &directory) const
@@ -236,7 +217,7 @@ bool ToolChain::operator == (const ToolChain &tc) const
 
 ToolChain *ToolChain::clone() const
 {
-    for (ToolChainFactory *f : qAsConst(Internal::g_toolChainFactories)) {
+    for (ToolChainFactory *f : std::as_const(Internal::g_toolChainFactories)) {
         if (f->supportedToolChainType() == d->m_typeId) {
             ToolChain *tc = f->create();
             QTC_ASSERT(tc, return nullptr);
@@ -278,7 +259,7 @@ QVariantMap ToolChain::toMap() const
     if (!d->m_targetAbiKey.isEmpty())
         result.insert(d->m_targetAbiKey, d->m_targetAbi.toString());
     if (!d->m_compilerCommandKey.isEmpty())
-        result.insert(d->m_compilerCommandKey, d->m_compilerCommand.toVariant());
+        result.insert(d->m_compilerCommandKey, d->m_compilerCommand.toSettings());
     return result;
 }
 
@@ -336,10 +317,17 @@ FilePath ToolChain::compilerCommand() const
 
 void ToolChain::setCompilerCommand(const FilePath &command)
 {
+    d->m_isValid.reset();
+
     if (command == d->m_compilerCommand)
         return;
     d->m_compilerCommand = command;
     toolChainUpdated();
+}
+
+bool ToolChain::matchesCompilerCommand(const FilePath &command) const
+{
+    return compilerCommand().isSameExecutable(command);
 }
 
 void ToolChain::setCompilerCommandKey(const QString &commandKey)
@@ -394,7 +382,8 @@ bool ToolChain::fromMap(const QVariantMap &data)
     if (!d->m_targetAbiKey.isEmpty())
         d->m_targetAbi = Abi::fromString(data.value(d->m_targetAbiKey).toString());
 
-    d->m_compilerCommand = FilePath::fromVariant(data.value(d->m_compilerCommandKey));
+    d->m_compilerCommand = FilePath::fromSettings(data.value(d->m_compilerCommandKey));
+    d->m_isValid.reset();
 
     return true;
 }
@@ -411,7 +400,8 @@ const ToolChain::MacrosCache &ToolChain::predefinedMacrosCache() const
 
 static long toLanguageVersionAsLong(QByteArray dateAsByteArray)
 {
-    dateAsByteArray.chop(1); // Strip 'L'.
+    if (dateAsByteArray.endsWith('L'))
+        dateAsByteArray.chop(1); // Strip 'L'.
 
     bool success = false;
     const int result = dateAsByteArray.toLong(&success);
@@ -478,13 +468,23 @@ Utils::LanguageVersion ToolChain::languageVersion(const Utils::Id &language, con
 
 QStringList ToolChain::includedFiles(const QString &option,
                                      const QStringList &flags,
-                                     const QString &directoryPath)
+                                     const QString &directoryPath,
+                                     PossiblyConcatenatedFlag possiblyConcatenated)
 {
     QStringList result;
 
     for (int i = 0; i < flags.size(); ++i) {
-        if (flags[i] == option && i + 1 < flags.size()) {
-            QString includeFile = flags[++i];
+        QString includeFile;
+        const QString flag = flags[i];
+        if (possiblyConcatenated == PossiblyConcatenatedFlag::Yes
+                && flag.startsWith(option)
+                && flag.size() > option.size()) {
+            includeFile = flag.mid(option.size());
+        }
+        if (includeFile.isEmpty() && flag == option && i + 1 < flags.size())
+            includeFile = flags[++i];
+
+        if (!includeFile.isEmpty()) {
             if (!QFileInfo(includeFile).isAbsolute())
                 includeFile = directoryPath + "/" + includeFile;
             result.append(QDir::cleanPath(includeFile));
@@ -606,7 +606,7 @@ static QPair<QString, QString> rawIdData(const QVariantMap &data)
     const QString raw = data.value(QLatin1String(ID_KEY)).toString();
     const int pos = raw.indexOf(QLatin1Char(':'));
     QTC_ASSERT(pos > 0, return qMakePair(QString::fromLatin1("unknown"), QString::fromLatin1("unknown")));
-    return qMakePair(raw.mid(0, pos), raw.mid(pos + 1));
+    return {raw.mid(0, pos), raw.mid(pos + 1)};
 }
 
 QByteArray ToolChainFactory::idFromMap(const QVariantMap &data)
@@ -626,7 +626,7 @@ void ToolChainFactory::autoDetectionToMap(QVariantMap &data, bool detected)
 
 ToolChain *ToolChainFactory::createToolChain(Utils::Id toolChainType)
 {
-    for (ToolChainFactory *factory : qAsConst(Internal::g_toolChainFactories)) {
+    for (ToolChainFactory *factory : std::as_const(Internal::g_toolChainFactories)) {
         if (factory->m_supportedToolChainType == toolChainType) {
             if (ToolChain *tc = factory->create()) {
                 tc->d->m_typeId = toolChainType;
@@ -695,18 +695,16 @@ static QString badToolchainTimestampKey() { return {"Timestamp"}; }
 
 QVariantMap BadToolchain::toMap() const
 {
-    return {
-        std::make_pair(badToolchainFilePathKey(), filePath.toVariant()),
-        std::make_pair(badToolchainSymlinkTargetKey(), symlinkTarget.toVariant()),
-        std::make_pair(badToolchainTimestampKey(), timestamp.toMSecsSinceEpoch()),
-    };
+    return {{badToolchainFilePathKey(), filePath.toSettings()},
+            {badToolchainSymlinkTargetKey(), symlinkTarget.toSettings()},
+            {badToolchainTimestampKey(), timestamp.toMSecsSinceEpoch()}};
 }
 
 BadToolchain BadToolchain::fromMap(const QVariantMap &map)
 {
     return {
-        FilePath::fromVariant(map.value(badToolchainFilePathKey())),
-        FilePath::fromVariant(map.value(badToolchainSymlinkTargetKey())),
+        FilePath::fromSettings(map.value(badToolchainFilePathKey())),
+        FilePath::fromSettings(map.value(badToolchainSymlinkTargetKey())),
         QDateTime::fromMSecsSinceEpoch(map.value(badToolchainTimestampKey()).toLongLong())
     };
 }

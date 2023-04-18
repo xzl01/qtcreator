@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlprofilerdetailsrewriter.h"
 
@@ -106,7 +84,7 @@ QmlProfilerDetailsRewriter::QmlProfilerDetailsRewriter(QObject *parent)
 void QmlProfilerDetailsRewriter::requestDetailsForLocation(int typeId,
                                                            const QmlEventLocation &location)
 {
-    const QString localFile = getLocalFile(location.filename());
+    const Utils::FilePath localFile = getLocalFile(location.filename());
     if (localFile.isEmpty())
         return;
 
@@ -116,16 +94,15 @@ void QmlProfilerDetailsRewriter::requestDetailsForLocation(int typeId,
     m_pendingEvents.insert(localFile, {location, typeId});
 }
 
-QString QmlProfilerDetailsRewriter::getLocalFile(const QString &remoteFile)
+Utils::FilePath QmlProfilerDetailsRewriter::getLocalFile(const QString &remoteFile)
 {
-    const QString localFile = m_projectFinder.findFile(remoteFile).constFirst().toString();
-    const QFileInfo fileInfo(localFile);
-    if (!fileInfo.exists() || !fileInfo.isReadable())
-        return QString();
+    const Utils::FilePath localFile = m_projectFinder.findFile(remoteFile).constFirst();
+    if (!localFile.exists() || !localFile.isReadableFile())
+        return Utils::FilePath();
     if (!QmlJS::ModelManagerInterface::guessLanguageOfFile(localFile).isQmlLikeOrJsLanguage())
-        return QString();
+        return Utils::FilePath();
 
-    return fileInfo.canonicalFilePath();
+    return localFile.canonicalPath();
 }
 
 void QmlProfilerDetailsRewriter::reloadDocuments()
@@ -182,7 +159,7 @@ void QmlProfilerDetailsRewriter::clear()
 
 void QmlProfilerDetailsRewriter::documentReady(QmlJS::Document::Ptr doc)
 {
-    const QString &fileName = doc->fileName();
+    const Utils::FilePath &fileName = doc->fileName();
     auto first = m_pendingEvents.find(fileName);
 
     // this could be triggered by an unrelated reload in Creator

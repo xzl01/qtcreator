@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "shortcutmanager.h"
 
-#include "designersettings.h"
+#include <designersettings.h>
 
 #include <viewmanager.h>
 #include <designeractionmanagerview.h>
@@ -41,6 +19,8 @@
 #include <coreplugin/coreconstants.h>
 #include <qmljseditor/qmljseditorconstants.h>
 
+#include <qmlprojectmanager/qmlprojectmanagerconstants.h>
+
 #include <coreplugin/icore.h>
 
 #include <utils/hostosinfo.h>
@@ -51,6 +31,7 @@
 
 #include <qmljs/qmljsreformatter.h>
 
+#include "modelnodecontextmenu_helper.h"
 #include "qmldesignerconstants.h"
 #include "qmldesignerplugin.h"
 
@@ -68,6 +49,7 @@ ShortCutManager::ShortCutManager()
     m_cutAction(tr("Cu&t")),
     m_copyAction(tr("&Copy")),
     m_pasteAction(tr("&Paste")),
+    m_duplicateAction(tr("&Duplicate")),
     m_selectAllAction(tr("Select &All")),
     m_escapeAction(this)
 {
@@ -77,16 +59,20 @@ ShortCutManager::ShortCutManager()
 void ShortCutManager::registerActions(const Core::Context &qmlDesignerMainContext,
                                       const Core::Context &qmlDesignerFormEditorContext,
                                       const Core::Context &qmlDesignerEditor3DContext,
-                                      const Core::Context &qmlDesignerNavigatorContext)
+                                      const Core::Context &qmlDesignerNavigatorContext,
+                                      const Core::Context &qmlDesignerMaterialBrowserContext)
 {
+    Q_UNUSED(qmlDesignerMaterialBrowserContext)
+
     Core::ActionContainer *editMenu = Core::ActionManager::actionContainer(Core::Constants::M_EDIT);
-    Core::ActionContainer *fileMenu = Core::ActionManager::actionContainer(Core::Constants::M_FILE);
 
     connect(&m_undoAction, &QAction::triggered, this, &ShortCutManager::undo);
 
     connect(&m_redoAction, &QAction::triggered, this, &ShortCutManager::redo);
 
     connect(&m_deleteAction, &QAction::triggered, this, &ShortCutManager::deleteSelected);
+
+    connect(&m_duplicateAction, &QAction::triggered, this, &ShortCutManager::duplicateSelected);
 
     connect(&m_cutAction, &QAction::triggered, this, &ShortCutManager::cutSelected);
 
@@ -120,7 +106,11 @@ void ShortCutManager::registerActions(const Core::Context &qmlDesignerMainContex
     connect(&m_exportAsImageAction, &QAction::triggered, [] {
         QmlDesignerPlugin::instance()->viewManager().exportAsImage();
     });
-    fileMenu->addAction(command, Core::Constants::G_FILE_SAVE);
+
+    Core::ActionContainer *exportMenu = Core::ActionManager::actionContainer(
+        QmlProjectManager::Constants::EXPORT_MENU);
+
+    exportMenu->addAction(command, QmlProjectManager::Constants::G_EXPORT_CONVERT);
 
     //Close Editor
     Core::ActionManager::registerAction(&m_closeCurrentEditorAction, Core::Constants::CLOSE, qmlDesignerMainContext);
@@ -140,10 +130,13 @@ void ShortCutManager::registerActions(const Core::Context &qmlDesignerMainContex
 
     // Undo / Redo
     command = Core::ActionManager::registerAction(&m_undoAction, Core::Constants::UNDO, qmlDesignerMainContext);
-    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 310, Utils::Icons::UNDO_TOOLBAR.icon());
+    command->setDefaultKeySequence(QKeySequence::Undo);
+    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 1, Utils::Icons::UNDO_TOOLBAR.icon());
     command = Core::ActionManager::registerAction(&m_redoAction, Core::Constants::REDO, qmlDesignerMainContext);
-    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 300, Utils::Icons::REDO_TOOLBAR.icon());
+    command->setDefaultKeySequence(QKeySequence::Redo);
+    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 2, Utils::Icons::REDO_TOOLBAR.icon());
 
+    designerActionManager.addDesignerAction(new SeperatorDesignerAction(ComponentCoreConstants::editCategory, 10));
     //Edit Menu
 
     m_deleteAction.setIcon(QIcon::fromTheme(QLatin1String("edit-cut"), Utils::Icons::EDIT_CLEAR_TOOLBAR.icon()));
@@ -154,28 +147,34 @@ void ShortCutManager::registerActions(const Core::Context &qmlDesignerMainContex
     command->setAttribute(Core::Command::CA_Hide); // don't show delete in other modes
     if (!Utils::HostOsInfo::isMacHost())
         editMenu->addAction(command, Core::Constants::G_EDIT_COPYPASTE);
-    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 280);
+    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 14);
 
     Core::ActionManager::registerAction(&m_cutAction, Core::Constants::CUT, qmlDesignerFormEditorContext);
     Core::ActionManager::registerAction(&m_cutAction, Core::Constants::CUT, qmlDesignerEditor3DContext);
     command = Core::ActionManager::registerAction(&m_cutAction, Core::Constants::CUT, qmlDesignerNavigatorContext);
     command->setDefaultKeySequence(QKeySequence::Cut);
     editMenu->addAction(command, Core::Constants::G_EDIT_COPYPASTE);
-    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 260, Utils::Icons::CUT_TOOLBAR.icon());
+    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 13, Utils::Icons::CUT_TOOLBAR.icon());
 
     Core::ActionManager::registerAction(&m_copyAction, Core::Constants::COPY, qmlDesignerFormEditorContext);
     Core::ActionManager::registerAction(&m_copyAction, Core::Constants::COPY, qmlDesignerEditor3DContext);
     command = Core::ActionManager::registerAction(&m_copyAction,  Core::Constants::COPY, qmlDesignerNavigatorContext);
     command->setDefaultKeySequence(QKeySequence::Copy);
     editMenu->addAction(command, Core::Constants::G_EDIT_COPYPASTE);
-    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 250, Utils::Icons::COPY_TOOLBAR.icon());
+    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 11, Utils::Icons::COPY_TOOLBAR.icon());
 
     Core::ActionManager::registerAction(&m_pasteAction,  Core::Constants::PASTE, qmlDesignerFormEditorContext);
     Core::ActionManager::registerAction(&m_pasteAction,  Core::Constants::PASTE, qmlDesignerEditor3DContext);
     command = Core::ActionManager::registerAction(&m_pasteAction,  Core::Constants::PASTE, qmlDesignerNavigatorContext);
     command->setDefaultKeySequence(QKeySequence::Paste);
     editMenu->addAction(command, Core::Constants::G_EDIT_COPYPASTE);
-    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 240, Utils::Icons::PASTE_TOOLBAR.icon());
+    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 12, Utils::Icons::PASTE_TOOLBAR.icon());
+
+    Core::ActionManager::registerAction(&m_duplicateAction,  Constants::C_DUPLICATE, qmlDesignerFormEditorContext);
+    Core::ActionManager::registerAction(&m_duplicateAction,  Constants::C_DUPLICATE, qmlDesignerEditor3DContext);
+    command = Core::ActionManager::registerAction(&m_duplicateAction, Constants::C_DUPLICATE, qmlDesignerMainContext);
+    editMenu->addAction(command, Core::Constants::G_EDIT_COPYPASTE);
+    designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 15);
 
     Core::ActionManager::registerAction(&m_selectAllAction, Core::Constants::SELECTALL, qmlDesignerFormEditorContext);
     command = Core::ActionManager::registerAction(&m_selectAllAction, Core::Constants::SELECTALL, qmlDesignerNavigatorContext);
@@ -195,9 +194,12 @@ void ShortCutManager::registerActions(const Core::Context &qmlDesignerMainContex
         m_pasteAction.setEnabled(true);
     });
 
-    connect(Core::ICore::instance(), &Core::ICore::contextChanged, this, [&designerActionManager, this](const Core::Context &context){
-        if (!context.contains(Constants::C_QMLFORMEDITOR) && !context.contains(Constants::C_QMLEDITOR3D) && !context.contains(Constants::C_QMLNAVIGATOR)) {
-            m_deleteAction.setEnabled(false);
+    connect(Core::ICore::instance(), &Core::ICore::contextChanged, this, [&](const Core::Context &context) {
+        isMatBrowserActive = context.contains(Constants::C_QMLMATERIALBROWSER);
+
+        if (!context.contains(Constants::C_QMLFORMEDITOR) && !context.contains(Constants::C_QMLEDITOR3D)
+         && !context.contains(Constants::C_QMLNAVIGATOR)) {
+            m_deleteAction.setEnabled(isMatBrowserActive);
             m_cutAction.setEnabled(false);
             m_copyAction.setEnabled(false);
             m_pasteAction.setEnabled(false);
@@ -249,8 +251,12 @@ void ShortCutManager::redo()
 
 void ShortCutManager::deleteSelected()
 {
-    if (currentDesignDocument())
+   if (isMatBrowserActive) {
+       DesignerActionManager &designerActionManager = QmlDesignerPlugin::instance()->viewManager().designerActionManager();
+       designerActionManager.view()->emitCustomNotification("delete_selected_material");
+   } else if (currentDesignDocument()) {
         currentDesignDocument()->deleteSelected();
+   }
 }
 
 void ShortCutManager::cutSelected()
@@ -263,6 +269,12 @@ void ShortCutManager::copySelected()
 {
     if (currentDesignDocument())
         currentDesignDocument()->copySelected();
+}
+
+void ShortCutManager::duplicateSelected()
+{
+    if (currentDesignDocument())
+        currentDesignDocument()->duplicateSelected();
 }
 
 void ShortCutManager::paste()

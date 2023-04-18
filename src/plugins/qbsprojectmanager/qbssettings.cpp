@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qbssettings.h"
 
 #include "qbsprojectmanagerconstants.h"
+#include "qbsprojectmanagertr.h"
 
 #include <app/app_version.h>
 #include <coreplugin/icore.h>
@@ -56,11 +35,9 @@ static QString getQbsVersion(const FilePath &qbsExe)
     QtcProcess qbsProc;
     qbsProc.setCommand({qbsExe, {"--version"}});
     qbsProc.start();
-    if (!qbsProc.waitForStarted(3000) || !qbsProc.waitForFinished(5000)
-            || qbsProc.exitCode() != 0) {
+    if (!qbsProc.waitForFinished(5000) || qbsProc.exitCode() != 0)
         return {};
-    }
-    return QString::fromLocal8Bit(qbsProc.readAllStandardOutput()).trimmed();
+    return QString::fromLocal8Bit(qbsProc.readAllRawStandardOutput()).trimmed();
 }
 
 static bool operator==(const QbsSettingsData &s1, const QbsSettingsData &s2)
@@ -167,7 +144,6 @@ void QbsSettings::storeSettings() const
 
 class QbsSettingsPage::SettingsWidget : public QWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(QbsProjectManager::Internal::QbsSettingsPage)
 public:
     SettingsWidget()
     {
@@ -175,17 +151,17 @@ public:
         m_qbsExePathChooser.setFilePath(QbsSettings::qbsExecutableFilePath());
         m_defaultInstallDirLineEdit.setText(QbsSettings::defaultInstallDirTemplate());
         m_versionLabel.setText(getQbsVersionString());
-        m_settingsDirCheckBox.setText(tr("Use %1 settings directory for Qbs")
+        m_settingsDirCheckBox.setText(Tr::tr("Use %1 settings directory for Qbs")
                                       .arg(Core::Constants::IDE_DISPLAY_NAME));
         m_settingsDirCheckBox.setChecked(QbsSettings::useCreatorSettingsDirForQbs());
 
         const auto layout = new QFormLayout(this);
         layout->addRow(&m_settingsDirCheckBox);
-        layout->addRow(tr("Path to qbs executable:"), &m_qbsExePathChooser);
-        layout->addRow(tr("Default installation directory:"), &m_defaultInstallDirLineEdit);
-        layout->addRow(tr("Qbs version:"), &m_versionLabel);
+        layout->addRow(Tr::tr("Path to qbs executable:"), &m_qbsExePathChooser);
+        layout->addRow(Tr::tr("Default installation directory:"), &m_defaultInstallDirLineEdit);
+        layout->addRow(Tr::tr("Qbs version:"), &m_versionLabel);
 
-        connect(&m_qbsExePathChooser, &PathChooser::pathChanged, [this] {
+        connect(&m_qbsExePathChooser, &PathChooser::textChanged, [this] {
             m_versionLabel.setText(getQbsVersionString());
         });
     }
@@ -205,7 +181,7 @@ private:
     QString getQbsVersionString()
     {
         const QString version = getQbsVersion(m_qbsExePathChooser.filePath());
-        return version.isEmpty() ? tr("Failed to retrieve version.") : version;
+        return version.isEmpty() ? Tr::tr("Failed to retrieve version.") : version;
     }
 
     PathChooser m_qbsExePathChooser;
@@ -217,10 +193,9 @@ private:
 QbsSettingsPage::QbsSettingsPage()
 {
     setId("A.QbsProjectManager.QbsSettings");
-    setDisplayName(tr("General"));
+    setDisplayName(Tr::tr("General"));
     setCategory(Constants::QBS_SETTINGS_CATEGORY);
-    setDisplayCategory(QCoreApplication::translate("QbsProjectManager",
-                                                   Constants::QBS_SETTINGS_TR_CATEGORY));
+    setDisplayCategory(Tr::tr(Constants::QBS_SETTINGS_TR_CATEGORY));
     setCategoryIconPath(":/qbsprojectmanager/images/settingscategory_qbsprojectmanager.png");
 }
 

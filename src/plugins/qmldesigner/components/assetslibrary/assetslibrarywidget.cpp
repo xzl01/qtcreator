@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "assetslibrarywidget.h"
 
-#include "assetslibrarymodel.h"
+#include "asset.h"
 #include "assetslibraryiconprovider.h"
+#include "assetslibrarymodel.h"
 
 #include <theme.h>
 
@@ -38,15 +17,21 @@
 #include <qmldesignerplugin.h>
 
 #include <utils/algorithm.h>
+#include <utils/environment.h>
 #include <utils/fileutils.h>
-#include <utils/filesystemwatcher.h>
-#include <utils/stylehelper.h>
 #include <utils/qtcassert.h>
+#include <utils/stylehelper.h>
 #include <utils/utilsicons.h>
+#include "utils/environment.h"
+#include "utils/filepath.h"
 
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/messagebox.h>
+
+#include <projectexplorer/projecttree.h>
+#include <projectexplorer/target.h>
+#include <projectexplorer/project.h>
 
 #include <QApplication>
 #include <QDrag>
@@ -69,7 +54,7 @@ namespace QmlDesigner {
 static QString propertyEditorResourcesPath()
 {
 #ifdef SHARE_QML_PATH
-    if (qEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
+    if (Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
         return QLatin1String(SHARE_QML_PATH) + "/propertyEditorQmlSources";
 #endif
     return Core::ICore::resourcePath("qmldesigner/propertyEditorQmlSources").toString();
@@ -81,30 +66,18 @@ bool AssetsLibraryWidget::eventFilter(QObject *obj, QEvent *event)
         if (obj == m_assetsWidget.data())
             QMetaObject::invokeMethod(m_assetsWidget->rootObject(), "handleViewFocusOut");
     } else if (event->type() == QMouseEvent::MouseMove) {
-        if (!m_assetsToDrag.isEmpty()) {
+        if (!m_assetsToDrag.isEmpty() && !m_model.isNull()) {
             QMouseEvent *me = static_cast<QMouseEvent *>(event);
             if ((me->globalPos() - m_dragStartPoint).manhattanLength() > 10) {
-                auto drag = new QDrag(this);
-                drag->setPixmap(m_assetsIconProvider->requestPixmap(m_assetsToDrag[0], nullptr, {128, 128}));
                 QMimeData *mimeData = new QMimeData;
-                mimeData->setData("application/vnd.bauhaus.libraryresource", m_assetsToDrag.join(',').toUtf8());
-                drag->setMimeData(mimeData);
-                drag->exec();
-                drag->deleteLater();
-
+                mimeData->setData(Constants::MIME_TYPE_ASSETS, m_assetsToDrag.join(',').toUtf8());
+                m_model->startDrag(mimeData,
+                                   m_assetsIconProvider->requestPixmap(m_assetsToDrag[0], nullptr, {128, 128}));
                 m_assetsToDrag.clear();
             }
         }
     } else if (event->type() == QMouseEvent::MouseButtonRelease) {
         m_assetsToDrag.clear();
-        QWidget *view = QmlDesignerPlugin::instance()->viewManager().widget("Navigator");
-        if (view) {
-            NavigatorWidget *navView = qobject_cast<NavigatorWidget *>(view);
-            if (navView) {
-                navView->setDragType("");
-                navView->update();
-            }
-        }
     }
 
     return QObject::eventFilter(obj, event);
@@ -112,16 +85,12 @@ bool AssetsLibraryWidget::eventFilter(QObject *obj, QEvent *event)
 
 AssetsLibraryWidget::AssetsLibraryWidget(AsynchronousImageCache &asynchronousFontImageCache,
                                          SynchronousImageCache &synchronousFontImageCache)
-    : m_itemIconSize(24, 24)
-    , m_fontImageCache(synchronousFontImageCache)
-    , m_assetsIconProvider(new AssetsLibraryIconProvider(synchronousFontImageCache))
-    , m_fileSystemWatcher(new Utils::FileSystemWatcher(this))
-    , m_assetsModel(new AssetsLibraryModel(m_fileSystemWatcher, this))
-    , m_assetsWidget(new QQuickWidget(this))
+    : m_itemIconSize{24, 24}
+    , m_fontImageCache{synchronousFontImageCache}
+    , m_assetsIconProvider{new AssetsLibraryIconProvider(synchronousFontImageCache)}
+    , m_assetsModel{new AssetsLibraryModel(this)}
+    , m_assetsWidget{new QQuickWidget(this)}
 {
-    m_assetCompressionTimer.setInterval(200);
-    m_assetCompressionTimer.setSingleShot(true);
-
     setWindowTitle(tr("Assets Library", "Title of assets library widget"));
     setMinimumWidth(250);
 
@@ -146,16 +115,13 @@ AssetsLibraryWidget::AssetsLibraryWidget(AsynchronousImageCache &asynchronousFon
     m_assetsWidget->setClearColor(Theme::getColor(Theme::Color::QmlDesigner_BackgroundColorDarkAlternate));
     m_assetsWidget->engine()->addImageProvider("qmldesigner_assets", m_assetsIconProvider);
     m_assetsWidget->rootContext()->setContextProperties(QVector<QQmlContext::PropertyPair>{
-        {{"assetsModel"}, QVariant::fromValue(m_assetsModel.data())},
+        {{"assetsModel"}, QVariant::fromValue(m_assetsModel)},
         {{"rootView"}, QVariant::fromValue(this)},
         {{"tooltipBackend"}, QVariant::fromValue(m_fontPreviewTooltipBackend.get())}
     });
 
-    // If project directory contents change, or one of the asset files is modified, we must
-    // reconstruct the model to update the icons
-    connect(m_fileSystemWatcher, &Utils::FileSystemWatcher::directoryChanged, [this](const QString & changedDirPath) {
-        Q_UNUSED(changedDirPath)
-        m_assetCompressionTimer.start();
+    connect(m_assetsModel, &AssetsLibraryModel::fileChanged, [](const QString &changeFilePath) {
+        QmlDesignerPlugin::instance()->emitAssetChanged(changeFilePath);
     });
 
     auto layout = new QVBoxLayout(this);
@@ -170,39 +136,61 @@ AssetsLibraryWidget::AssetsLibraryWidget(AsynchronousImageCache &asynchronousFon
 
     m_qmlSourceUpdateShortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_F6), this);
     connect(m_qmlSourceUpdateShortcut, &QShortcut::activated, this, &AssetsLibraryWidget::reloadQmlSource);
+    connect(this, &AssetsLibraryWidget::extFilesDrop, this, &AssetsLibraryWidget::handleExtFilesDrop, Qt::QueuedConnection);
 
-    connect(&m_assetCompressionTimer, &QTimer::timeout, this, [this]() {
-        // TODO: find a clever way to only refresh the changed directory part of the model
-
-        // Don't bother with asset updates after model has detached, project is probably closing
-        if (!m_model.isNull()) {
-            if (QApplication::activeModalWidget()) {
-                // Retry later, as updating file system watchers can crash when there is an active
-                // modal widget
-                m_assetCompressionTimer.start();
-            } else {
-                m_assetsModel->refresh();
-                // reload assets qml so that an overridden file's image shows the new image
-                QTimer::singleShot(100, this, &AssetsLibraryWidget::reloadQmlSource);
-            }
-        }
-    });
+     QmlDesignerPlugin::trackWidgetFocusTime(this, Constants::EVENT_ASSETSLIBRARY_TIME);
 
     // init the first load of the QML UI elements
     reloadQmlSource();
 }
 
-AssetsLibraryWidget::~AssetsLibraryWidget() = default;
+bool AssetsLibraryWidget::qtVersionIsAtLeast6_4() const
+{
+    return (QT_VERSION >= QT_VERSION_CHECK(6, 4, 0));
+}
+
+
+void AssetsLibraryWidget::addTextures(const QStringList &filePaths)
+{
+    emit addTexturesRequested(filePaths, AddTextureMode::Texture);
+}
+
+void AssetsLibraryWidget::addLightProbe(const QString &filePath)
+{
+    emit addTexturesRequested({filePath}, AddTextureMode::LightProbe);
+}
+
+void AssetsLibraryWidget::invalidateThumbnail(const QString &id)
+{
+    m_assetsIconProvider->invalidateThumbnail(id);
+}
+
+QSize AssetsLibraryWidget::imageSize(const QString &id)
+{
+    return m_assetsIconProvider->imageSize(id);
+}
+
+QString AssetsLibraryWidget::assetFileSize(const QString &id)
+{
+    qint64 fileSize = m_assetsIconProvider->fileSize(id);
+    return QLocale::system().formattedDataSize(fileSize, 2, QLocale::DataSizeTraditionalFormat);
+}
+
+bool AssetsLibraryWidget::assetIsImage(const QString &id)
+{
+    return m_assetsIconProvider->assetIsImage(id);
+}
 
 QList<QToolButton *> AssetsLibraryWidget::createToolBarWidgets()
 {
     return {};
 }
 
-void AssetsLibraryWidget::handleSearchfilterChanged(const QString &filterText)
+void AssetsLibraryWidget::handleSearchFilterChanged(const QString &filterText)
 {
-    if (filterText == m_filterText || (m_assetsModel->isEmpty() && filterText.contains(m_filterText)))
-            return;
+    if (filterText == m_filterText || (!m_assetsModel->haveFiles()
+                                       && filterText.contains(m_filterText, Qt::CaseInsensitive)))
+        return;
 
     m_filterText = filterText;
     updateSearch();
@@ -213,26 +201,42 @@ void AssetsLibraryWidget::handleAddAsset()
     addResources({});
 }
 
-void AssetsLibraryWidget::handleExtFilesDrop(const QStringList &simpleFilesPaths,
-                                             const QStringList &complexFilesPaths,
+void AssetsLibraryWidget::emitExtFilesDrop(const QList<QUrl> &simpleFilePaths,
+                                           const QList<QUrl> &complexFilePaths,
+                                           const QString &targetDirPath)
+{
+    // workaround for but QDS-8010: we need to postpone the call to handleExtFilesDrop, otherwise
+    // the TreeViewDelegate might be recreated (therefore, destroyed) while we're still in a handler
+    // of a QML DropArea which is a child of the delegate being destroyed - this would cause a crash.
+    emit extFilesDrop(simpleFilePaths, complexFilePaths, targetDirPath);
+}
+
+void AssetsLibraryWidget::handleExtFilesDrop(const QList<QUrl> &simpleFilePaths,
+                                             const QList<QUrl> &complexFilePaths,
                                              const QString &targetDirPath)
 {
-    if (!simpleFilesPaths.isEmpty()) {
+    auto toLocalFile = [](const QUrl &url) { return url.toLocalFile(); };
+
+    QStringList simpleFilePathStrings = Utils::transform<QStringList>(simpleFilePaths, toLocalFile);
+    QStringList complexFilePathStrings = Utils::transform<QStringList>(complexFilePaths,
+                                                                       toLocalFile);
+
+    if (!simpleFilePathStrings.isEmpty()) {
         if (targetDirPath.isEmpty()) {
-            addResources(simpleFilesPaths);
+            addResources(simpleFilePathStrings);
         } else {
-            AddFilesResult result = ModelNodeOperations::addFilesToProject(simpleFilesPaths,
+            AddFilesResult result = ModelNodeOperations::addFilesToProject(simpleFilePathStrings,
                                                                            targetDirPath);
-            if (result == AddFilesResult::Failed) {
+            if (result.status() == AddFilesResult::Failed) {
                 Core::AsynchronousMessageBox::warning(tr("Failed to Add Files"),
                                                       tr("Could not add %1 to project.")
-                                                          .arg(simpleFilesPaths.join(' ')));
+                                                          .arg(simpleFilePathStrings.join(' ')));
             }
         }
     }
 
-    if (!complexFilesPaths.empty())
-        addResources(complexFilesPaths);
+    if (!complexFilePathStrings.empty())
+        addResources(complexFilePathStrings);
 }
 
 QSet<QString> AssetsLibraryWidget::supportedAssetSuffixes(bool complex)
@@ -242,11 +246,16 @@ QSet<QString> AssetsLibraryWidget::supportedAssetSuffixes(bool complex)
 
     QSet<QString> suffixes;
     for (const AddResourceHandler &handler : handlers) {
-        if (AssetsLibraryModel::supportedSuffixes().contains(handler.filter) != complex)
+        if (Asset(handler.filter).isSupported() != complex)
             suffixes.insert(handler.filter);
     }
 
     return suffixes;
+}
+
+void AssetsLibraryWidget::openEffectMaker(const QString &filePath)
+{
+    ModelNodeOperations::openEffectMaker(filePath);
 }
 
 void AssetsLibraryWidget::setModel(Model *model)
@@ -257,7 +266,7 @@ void AssetsLibraryWidget::setModel(Model *model)
 QString AssetsLibraryWidget::qmlSourcesPath()
 {
 #ifdef SHARE_QML_PATH
-    if (qEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
+    if (Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
         return QLatin1String(SHARE_QML_PATH) + "/itemLibraryQmlSources";
 #endif
     return Core::ICore::resourcePath("qmldesigner/itemLibraryQmlSources").toString();
@@ -284,6 +293,7 @@ void AssetsLibraryWidget::updateSearch()
 void AssetsLibraryWidget::setResourcePath(const QString &resourcePath)
 {
     m_assetsModel->setRootPath(resourcePath);
+    m_assetsIconProvider->clearCache();
     updateSearch();
 }
 
@@ -297,29 +307,32 @@ void AssetsLibraryWidget::startDragAsset(const QStringList &assetPaths, const QP
 
 QPair<QString, QByteArray> AssetsLibraryWidget::getAssetTypeAndData(const QString &assetPath)
 {
-    QString suffix = "*." + assetPath.split('.').last().toLower();
-    if (!suffix.isEmpty()) {
-        if (AssetsLibraryModel::supportedImageSuffixes().contains(suffix)) {
+    Asset asset(assetPath);
+    if (asset.hasSuffix()) {
+        if (asset.isImage()) {
             // Data: Image format (suffix)
-            return {"application/vnd.bauhaus.libraryresource.image", suffix.toUtf8()};
-        } else if (AssetsLibraryModel::supportedFontSuffixes().contains(suffix)) {
+            return {Constants::MIME_TYPE_ASSET_IMAGE, asset.suffix().toUtf8()};
+        } else if (asset.isFont()) {
             // Data: Font family name
             QRawFont font(assetPath, 10);
             QString fontFamily = font.isValid() ? font.familyName() : "";
-            return {"application/vnd.bauhaus.libraryresource.font", fontFamily.toUtf8()};
-        } else if (AssetsLibraryModel::supportedShaderSuffixes().contains(suffix)) {
+            return {Constants::MIME_TYPE_ASSET_FONT, fontFamily.toUtf8()};
+        } else if (asset.isShader()) {
             // Data: shader type, frament (f) or vertex (v)
-            return {"application/vnd.bauhaus.libraryresource.shader",
-                AssetsLibraryModel::supportedFragmentShaderSuffixes().contains(suffix) ? "f" : "v"};
-        } else if (AssetsLibraryModel::supportedAudioSuffixes().contains(suffix)) {
+            return {Constants::MIME_TYPE_ASSET_SHADER,
+                asset.isFragmentShader() ? "f" : "v"};
+        } else if (asset.isAudio()) {
             // No extra data for sounds
-            return {"application/vnd.bauhaus.libraryresource.sound", {}};
-        } else if (AssetsLibraryModel::supportedVideoSuffixes().contains(suffix)) {
+            return {Constants::MIME_TYPE_ASSET_SOUND, {}};
+        } else if (asset.isVideo()) {
             // No extra data for videos
-            return {"application/vnd.bauhaus.libraryresource.video", {}};
-        } else if (AssetsLibraryModel::supportedTexture3DSuffixes().contains(suffix)) {
+            return {Constants::MIME_TYPE_ASSET_VIDEO, {}};
+        } else if (asset.isTexture3D()) {
             // Data: Image format (suffix)
-            return {"application/vnd.bauhaus.libraryresource.texture3d", suffix.toUtf8()};
+            return {Constants::MIME_TYPE_ASSET_TEXTURE3D, asset.suffix().toUtf8()};
+        } else if (asset.isEffect()) {
+            // Data: Effect Maker format (suffix)
+            return {Constants::MIME_TYPE_ASSET_EFFECT, asset.suffix().toUtf8()};
         }
     }
     return {};
@@ -365,7 +378,7 @@ void AssetsLibraryWidget::addResources(const QStringList &files)
 
         QStringList filters { tr("All Files (%1)").arg("*.*") };
         QString filterTemplate = "%1 (%2)";
-        for (const QString &key : qAsConst(sortedKeys)) {
+        for (const QString &key : std::as_const(sortedKeys)) {
             const QStringList values = map.values(key);
             if (values.contains("*.png")) { // Avoid long filter for images by splitting
                 const QHash<QByteArray, QStringList> imageFormats = allImageFormats();
@@ -400,7 +413,7 @@ void AssetsLibraryWidget::addResources(const QStringList &files)
 
     QMultiMap<QString, QString> categoryFileNames; // filenames grouped by category
 
-    for (const QString &fileName : qAsConst(fileNames)) {
+    for (const QString &fileName : std::as_const(fileNames)) {
         const QString suffix = "*." + QFileInfo(fileName).suffix().toLower();
         const QString category = filterToCategory.value(suffix);
         categoryFileNames.insert(category, fileName);
@@ -412,11 +425,23 @@ void AssetsLibraryWidget::addResources(const QStringList &files)
         QmlDesignerPlugin::emitUsageStatistics(Constants::EVENT_RESOURCE_IMPORTED + category);
         if (operation) {
             AddFilesResult result = operation(fileNames,
-                                              document->fileName().parentDir().toString());
-            if (result == AddFilesResult::Failed) {
+                                              document->fileName().parentDir().toString(), true);
+            if (result.status() == AddFilesResult::Failed) {
                 Core::AsynchronousMessageBox::warning(tr("Failed to Add Files"),
                                                       tr("Could not add %1 to project.")
                                                           .arg(fileNames.join(' ')));
+            } else {
+                if (!result.directory().isEmpty()) {
+                    emit directoryCreated(result.directory());
+                } else if (result.haveDelayedResult()) {
+                    QObject *delayedResult = result.delayedResult();
+                    QObject::connect(delayedResult, &QObject::destroyed, this, [this, delayedResult]() {
+                        QVariant propValue = delayedResult->property(AddFilesResult::directoryPropName);
+                        QString directory = propValue.toString();
+                        if (!directory.isEmpty())
+                            emit directoryCreated(directory);
+                    });
+                }
             }
         } else {
             Core::AsynchronousMessageBox::warning(tr("Failed to Add Files"),

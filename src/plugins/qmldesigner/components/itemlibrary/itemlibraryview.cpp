@@ -1,41 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "itemlibraryview.h"
-#include "itemlibrarywidget.h"
 #include "itemlibraryassetimportdialog.h"
+#include "itemlibrarywidget.h"
 #include "metainfo.h"
 #include <asynchronousimagecache.h>
 #include <bindingproperty.h>
+#include <componentcore_constants.h>
 #include <coreplugin/icore.h>
-#include <imagecache/imagecachecollector.h>
-#include <imagecache/imagecacheconnectionmanager.h>
-#include <imagecache/imagecachefontcollector.h>
-#include <imagecache/imagecachegenerator.h>
-#include <imagecache/imagecachestorage.h>
-#include <imagecache/timestampprovider.h>
+#include <designeractionmanager.h>
 #include <import.h>
 #include <nodelistproperty.h>
 #include <projectexplorer/kit.h>
@@ -44,46 +18,17 @@
 #include <projectexplorer/target.h>
 #include <rewriterview.h>
 #include <sqlitedatabase.h>
-#include <synchronousimagecache.h>
 #include <utils/algorithm.h>
+#include <qmldesignerconstants.h>
 #include <qmldesignerplugin.h>
 #include <qmlitemnode.h>
-#include <qmldesignerconstants.h>
 
 namespace QmlDesigner {
 
-namespace {
-ProjectExplorer::Target *activeTarget(ProjectExplorer::Project *project)
-{
-    if (project)
-        return project->activeTarget();
-
-    return {};
-}
-} // namespace
-
-class ItemLibraryView::ImageCacheData
-{
-public:
-    Sqlite::Database database{Utils::PathString{
-                                  Core::ICore::cacheResourcePath("imagecache-v2.db").toString()},
-                              Sqlite::JournalMode::Wal,
-                              Sqlite::LockingMode::Normal};
-    ImageCacheStorage<Sqlite::Database> storage{database};
-    ImageCacheConnectionManager connectionManager;
-    ImageCacheCollector collector{connectionManager, QSize{300, 300}, QSize{600, 600}};
-    ImageCacheFontCollector fontCollector;
-    ImageCacheGenerator generator{collector, storage};
-    ImageCacheGenerator fontGenerator{fontCollector, storage};
-    TimeStampProvider timeStampProvider;
-    AsynchronousImageCache cache{storage, generator, timeStampProvider};
-    AsynchronousImageCache asynchronousFontImageCache{storage, fontGenerator, timeStampProvider};
-    SynchronousImageCache synchronousFontImageCache{storage, timeStampProvider, fontCollector};
-};
-
-ItemLibraryView::ItemLibraryView(QObject* parent)
-    : AbstractView(parent)
-
+ItemLibraryView::ItemLibraryView(AsynchronousImageCache &imageCache,
+                                 ExternalDependenciesInterface &externalDependencies)
+    : AbstractView(externalDependencies)
+    , m_imageCache(imageCache)
 {}
 
 ItemLibraryView::~ItemLibraryView()
@@ -97,18 +42,10 @@ bool ItemLibraryView::hasWidget() const
 
 WidgetInfo ItemLibraryView::widgetInfo()
 {
-    if (m_widget.isNull()) {
-        m_widget = new ItemLibraryWidget{imageCacheData()->cache,
-                                         imageCacheData()->asynchronousFontImageCache,
-                                         imageCacheData()->synchronousFontImageCache};
-    }
+    if (m_widget.isNull())
+        m_widget = new ItemLibraryWidget{m_imageCache};
 
-    return createWidgetInfo(m_widget.data(),
-                            new WidgetInfo::ToolBarWidgetDefaultFactory<ItemLibraryWidget>(m_widget.data()),
-                            "Components",
-                            WidgetInfo::LeftPane,
-                            0,
-                            tr("Components"));
+    return createWidgetInfo(m_widget.data(), "Components", WidgetInfo::LeftPane, 0, tr("Components"));
 }
 
 void ItemLibraryView::modelAttached(Model *model)
@@ -116,6 +53,7 @@ void ItemLibraryView::modelAttached(Model *model)
     AbstractView::modelAttached(model);
 
     m_widget->clearSearchFilter();
+    m_widget->switchToComponentsView();
     m_widget->setModel(model);
     updateImports();
     if (model)
@@ -182,43 +120,6 @@ void ItemLibraryView::usedImportsChanged(const QList<Import> &usedImports)
     m_widget->updateUsedImports(usedImports);
 }
 
-ItemLibraryView::ImageCacheData *ItemLibraryView::imageCacheData()
-{
-    std::call_once(imageCacheFlag, [this]() {
-        m_imageCacheData = std::make_unique<ImageCacheData>();
-        auto setTargetInImageCache =
-            [imageCacheData = m_imageCacheData.get()](ProjectExplorer::Target *target) {
-                if (target == imageCacheData->collector.target())
-                    return;
-
-                if (target)
-                    imageCacheData->cache.clean();
-
-                imageCacheData->collector.setTarget(target);
-            };
-
-        if (auto project = ProjectExplorer::SessionManager::startupProject(); project) {
-            m_imageCacheData->collector.setTarget(project->activeTarget());
-            connect(project,
-                    &ProjectExplorer::Project::activeTargetChanged,
-                    this,
-                    setTargetInImageCache);
-        }
-        connect(ProjectExplorer::SessionManager::instance(),
-                &ProjectExplorer::SessionManager::startupProjectChanged,
-                this,
-                [=](ProjectExplorer::Project *project) {
-                    setTargetInImageCache(activeTarget(project));
-                });
-    });
-    return m_imageCacheData.get();
-}
-
-AsynchronousImageCache &ItemLibraryView::imageCache()
-{
-    return imageCacheData()->cache;
-}
-
 void ItemLibraryView::documentMessagesChanged(const QList<DocumentMessage> &errors, const QList<DocumentMessage> &)
 {
     if (m_hasErrors && errors.isEmpty())
@@ -245,14 +146,17 @@ void ItemLibraryView::updateImport3DSupport(const QVariantMap &supportMap)
         m_importableExtensions3DMap = extMap;
 
         AddResourceOperation import3DModelOperation = [this](const QStringList &fileNames,
-                                                             const QString &defaultDir) -> AddFilesResult {
+                                                             const QString &defaultDir,
+                                                             bool showDialog) -> AddFilesResult {
+            Q_UNUSED(showDialog)
+
             auto importDlg = new ItemLibraryAssetImportDialog(fileNames, defaultDir,
                                                               m_importableExtensions3DMap,
                                                               m_importOptions3DMap, {}, {},
-                                                              Core::ICore::mainWindow());
+                                                              Core::ICore::dialogParent());
             int result = importDlg->exec();
 
-            return result == QDialog::Accepted ? AddFilesResult::Succeeded : AddFilesResult::Cancelled;
+            return result == QDialog::Accepted ? AddFilesResult::succeeded() : AddFilesResult::cancelled();
         };
 
         auto add3DHandler = [&](const QString &group, const QString &ext) {

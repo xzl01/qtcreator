@@ -1,59 +1,37 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "resourcefile_p.h"
 
-#include <coreplugin/fileiconprovider.h>
+#include "../resourceeditortr.h"
+
 #include <coreplugin/fileutils.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/vcsmanager.h>
+
 #include <projectexplorer/projectexplorerconstants.h>
 
 #include <utils/algorithm.h>
 #include <utils/filepath.h>
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/removefiledialog.h>
 #include <utils/theme/theme.h>
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QDomDocument>
 #include <QFile>
-#include <QMimeData>
-#include <QtAlgorithms>
-#include <QTextCodec>
-#include <QTextStream>
-
 #include <QIcon>
 #include <QImageReader>
-
-#include <QDomDocument>
+#include <QMimeData>
+#include <QTextCodec>
+#include <QTextStream>
+#include <QtAlgorithms>
 
 using namespace Utils;
 
-namespace ResourceEditor {
-namespace Internal {
+namespace ResourceEditor::Internal {
 
 File::File(Prefix *prefix, const QString &_name, const QString &_alias)
     : Node(this, prefix)
@@ -88,9 +66,9 @@ void File::setExists(bool exists)
 ** FileList
 */
 
-bool FileList::containsFile(File *file)
+static bool containsFile(const FileList &list, File *file)
 {
-    foreach (const File *tmpFile, *this)
+    for (const File *tmpFile : list)
         if (tmpFile->name == file->name && tmpFile->prefix() == file->prefix())
             return true;
     return false;
@@ -116,7 +94,7 @@ Core::IDocument::OpenResult ResourceFile::load()
     m_error_message.clear();
 
     if (m_filePath.isEmpty()) {
-        m_error_message = tr("The file name is empty.");
+        m_error_message = Tr::tr("The file name is empty.");
         return Core::IDocument::OpenResult::ReadError;
     }
 
@@ -142,7 +120,7 @@ Core::IDocument::OpenResult ResourceFile::load()
         QString error_msg;
         int error_line, error_col;
         if (!doc.setContent(data, &error_msg, &error_line, &error_col)) {
-            m_error_message = tr("XML error on line %1, col %2: %3")
+            m_error_message = Tr::tr("XML error on line %1, col %2: %3")
                         .arg(error_line).arg(error_col).arg(error_msg);
             return Core::IDocument::OpenResult::CannotHandle;
         }
@@ -153,7 +131,7 @@ Core::IDocument::OpenResult ResourceFile::load()
         QString error_msg;
         int error_line, error_col;
         if (!doc.setContent(m_contents, &error_msg, &error_line, &error_col)) {
-            m_error_message = tr("XML error on line %1, col %2: %3")
+            m_error_message = Tr::tr("XML error on line %1, col %2: %3")
                         .arg(error_line).arg(error_col).arg(error_msg);
             return Core::IDocument::OpenResult::CannotHandle;
         }
@@ -162,7 +140,7 @@ Core::IDocument::OpenResult ResourceFile::load()
 
     QDomElement root = doc.firstChildElement(QLatin1String("RCC"));
     if (root.isNull()) {
-        m_error_message = tr("The <RCC> root element is missing.");
+        m_error_message = Tr::tr("The <RCC> root element is missing.");
         return Core::IDocument::OpenResult::CannotHandle;
     }
 
@@ -205,8 +183,8 @@ QString ResourceFile::contents() const
     QDomElement root = doc.createElement(QLatin1String("RCC"));
     doc.appendChild(root);
 
-    foreach (const Prefix *pref, m_prefix_list) {
-        FileList file_list = pref->file_list;
+    for (const Prefix *pref : m_prefix_list) {
+        const FileList file_list = pref->file_list;
         const QString &name = pref->name;
         const QString &lang = pref->lang;
 
@@ -216,7 +194,7 @@ QString ResourceFile::contents() const
         if (!lang.isEmpty())
             relt.setAttribute(QLatin1String("lang"), lang);
 
-        foreach (const File *f, file_list) {
+        for (const File *f : file_list) {
             const File &file = *f;
             QDomElement felt = doc.createElement(QLatin1String("file"));
             relt.appendChild(felt);
@@ -241,7 +219,7 @@ bool ResourceFile::save()
     m_error_message.clear();
 
     if (m_filePath.isEmpty()) {
-        m_error_message = tr("The file name is empty.");
+        m_error_message = Tr::tr("The file name is empty.");
         return false;
     }
 
@@ -252,7 +230,7 @@ void ResourceFile::refresh()
 {
     for (int i = 0; i < prefixCount(); ++i) {
         const FileList &file_list = m_prefix_list.at(i)->file_list;
-        foreach (File *file, file_list)
+        for (File *file : file_list)
             file->checkExistence();
     }
 }
@@ -366,7 +344,7 @@ bool ResourceFile::renameFile(const QString &fileName, const QString &newFileNam
     FileList entries;
     for (int i = 0; i < prefixCount(); ++i) {
         const FileList &file_list = m_prefix_list.at(i)->file_list;
-        foreach (File *file, file_list) {
+        for (File *file : file_list) {
             if (file->name == fileName)
                 entries.append(file);
             if (file->name == newFileName)
@@ -378,15 +356,15 @@ bool ResourceFile::renameFile(const QString &fileName, const QString &newFileNam
 
     entries.at(0)->checkExistence();
     if (entries.at(0)->exists()) {
-        foreach (File *file, entries)
+        for (File *file : std::as_const(entries))
             file->setExists(true);
         success = Core::FileUtils::renameFile(Utils::FilePath::fromString(entries.at(0)->name),
                                               Utils::FilePath::fromString(newFileName));
     }
 
     if (success) {
-        bool exists = QFile::exists(newFileName);
-        foreach (File *file, entries) {
+        const bool exists = QFile::exists(newFileName);
+        for (File *file : std::as_const(entries)) {
             file->name = newFileName;
             file->setExists(exists);
         }
@@ -454,14 +432,14 @@ QString ResourceFile::absolutePath(const QString &rel_path) const
 
 void ResourceFile::orderList()
 {
-    for (Prefix *p : qAsConst(m_prefix_list)) {
+    for (Prefix *p : std::as_const(m_prefix_list)) {
         std::sort(p->file_list.begin(), p->file_list.end(), [&](File *f1, File *f2) {
             return *f1 < *f2;
         });
     }
 
     if (!save())
-        m_error_message = tr("Cannot save file.");
+        m_error_message = Tr::tr("Cannot save file.");
 }
 
 bool ResourceFile::contains(const QString &prefix, const QString &lang, const QString &file) const
@@ -475,7 +453,7 @@ bool ResourceFile::contains(const QString &prefix, const QString &lang, const QS
     Prefix * const p = m_prefix_list.at(pref_idx);
     Q_ASSERT(p);
     File equalFile(p, absolutePath(file));
-    return p->file_list.containsFile(&equalFile);
+    return containsFile(p->file_list, &equalFile);
 }
 
 bool ResourceFile::contains(int pref_idx, const QString &file) const
@@ -483,7 +461,7 @@ bool ResourceFile::contains(int pref_idx, const QString &file) const
     Q_ASSERT(pref_idx >= 0 && pref_idx < m_prefix_list.count());
     Prefix * const p = m_prefix_list.at(pref_idx);
     File equalFile(p, absolutePath(file));
-    return p->file_list.containsFile(&equalFile);
+    return containsFile(p->file_list, &equalFile);
 }
 
 /*static*/ QString ResourceFile::fixPrefix(const QString &prefix)
@@ -580,7 +558,7 @@ void ResourceFile::clearPrefixList()
 ResourceModel::ResourceModel(QObject *parent)
     : QAbstractItemModel(parent), m_dirty(false)
 {
-    static QIcon resourceFolderIcon = Core::FileIconProvider::directoryIcon(QLatin1String(ProjectExplorer::Constants::FILEOVERLAY_QRC));
+    static QIcon resourceFolderIcon = Utils::FileIconProvider::directoryIcon(QLatin1String(ProjectExplorer::Constants::FILEOVERLAY_QRC));
     m_prefixIcon = resourceFolderIcon;
 }
 
@@ -730,14 +708,14 @@ bool ResourceModel::iconFileExtension(const QString &path)
     static QStringList ext_list;
     if (ext_list.isEmpty()) {
         const QList<QByteArray> _ext_list = QImageReader::supportedImageFormats();
-        foreach (const QByteArray &ext, _ext_list) {
+        for (const QByteArray &ext : _ext_list) {
             QString dotExt = QString(QLatin1Char('.'));
             dotExt  += QString::fromLatin1(ext);
             ext_list.append(dotExt);
         }
     }
 
-    foreach (const QString &ext, ext_list) {
+    for (const QString &ext : std::as_const(ext_list)) {
         if (path.endsWith(ext, Qt::CaseInsensitive))
             return true;
     }
@@ -797,7 +775,7 @@ QVariant ResourceModel::data(const QModelIndex &index, int role) const
                 if (iconFileExtension(path))
                     file->icon = QIcon(path);
                 else
-                    file->icon = Core::FileIconProvider::icon(Utils::FilePath::fromString(path));
+                    file->icon = Utils::FileIconProvider::icon(Utils::FilePath::fromString(path));
             }
             if (!file->icon.isNull())
                 result = file->icon;
@@ -958,7 +936,7 @@ QStringList ResourceModel::existingFilesSubtracted(int prefixIndex, const QStrin
     QStringList uniqueList;
 
     if (prefixModelIdx.isValid()) {
-        foreach (const QString &file, fileNames) {
+        for (const QString &file : fileNames) {
             if (!m_resource_file.contains(prefixIndex, file) && !uniqueList.contains(file))
                 uniqueList.append(file);
         }
@@ -977,7 +955,7 @@ void ResourceModel::addFiles(int prefixIndex, const QStringList &fileNames, int 
     if (!prefix_model_idx.isValid())
         return;
 
-    QStringList unique_list = existingFilesSubtracted(prefixIndex, fileNames);
+    const QStringList unique_list = existingFilesSubtracted(prefixIndex, fileNames);
 
     if (unique_list.isEmpty())
         return;
@@ -985,7 +963,7 @@ void ResourceModel::addFiles(int prefixIndex, const QStringList &fileNames, int 
     const int cnt = m_resource_file.fileCount(prefixIndex);
     beginInsertRows(prefix_model_idx, cnt, cnt + unique_list.count() - 1); // ### FIXME
 
-    foreach (const QString &file, unique_list)
+    for (const QString &file : unique_list)
         m_resource_file.addFile(prefixIndex, file);
 
     const QFileInfo fi(unique_list.last());
@@ -998,7 +976,7 @@ void ResourceModel::addFiles(int prefixIndex, const QStringList &fileNames, int 
     lastFile = cnt + unique_list.count() - 1;
 
     Core::VcsManager::promptToAdd(m_resource_file.filePath().absolutePath(),
-                                  Utils::transform(fileNames, &FilePath::fromString));
+                                  FileUtils::toFilePathList(fileNames));
 }
 
 
@@ -1208,7 +1186,7 @@ public:
 void PrefixEntryBackup::restore() const
 {
     m_model->insertPrefix(m_prefixIndex, m_name, m_language);
-    foreach (const FileEntryBackup &entry, m_files) {
+    for (const FileEntryBackup &entry : m_files) {
         entry.restore();
     }
 }
@@ -1268,5 +1246,4 @@ EntryBackup * RelativeResourceModel::removeEntry(const QModelIndex &index)
     }
 }
 
-} // Internal
-} // ResourceEditor
+} // ResourceEditor::Internal

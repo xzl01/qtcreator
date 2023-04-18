@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jochen Becher
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Jochen Becher
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "componentviewcontroller.h"
 
@@ -50,6 +28,8 @@
 
 // TODO implement removing include dependencies that are not longer used
 // TODO refactor add/remove relations between ancestor packages into extra controller class
+
+using namespace Utils;
 
 namespace ModelEditor {
 namespace Internal {
@@ -168,23 +148,24 @@ void UpdateIncludeDependenciesVisitor::visitMComponent(qmt::MComponent *componen
     CppEditor::CppModelManager *cppModelManager = CppEditor::CppModelManager::instance();
     CPlusPlus::Snapshot snapshot = cppModelManager->snapshot();
 
-    QStringList filePaths = findFilePathOfComponent(component);
-    foreach (const QString &filePath, filePaths) {
-        CPlusPlus::Document::Ptr document = snapshot.document(filePath);
+    const QStringList filePaths = findFilePathOfComponent(component);
+    for (const QString &filePath : filePaths) {
+        CPlusPlus::Document::Ptr document = snapshot.document(FilePath::fromString(filePath));
         if (document) {
-            foreach (const CPlusPlus::Document::Include &include, document->resolvedIncludes()) {
-                QString includeFilePath = include.resolvedFileName();
+            const QList<CPlusPlus::Document::Include> includes = document->resolvedIncludes();
+            for (const CPlusPlus::Document::Include &include : includes) {
+                Utils::FilePath includeFilePath = include.resolvedFileName();
                 // replace proxy header with real one
                 CPlusPlus::Document::Ptr includeDocument = snapshot.document(includeFilePath);
                 if (includeDocument) {
                     QList<CPlusPlus::Document::Include> includes = includeDocument->resolvedIncludes();
                     if (includes.count() == 1 &&
-                            QFileInfo(includes.at(0).resolvedFileName()).fileName() == QFileInfo(includeFilePath).fileName())
+                            includes.at(0).resolvedFileName().fileName() == includeFilePath.fileName())
                     {
                         includeFilePath = includes.at(0).resolvedFileName();
                     }
                 }
-                qmt::MComponent *includeComponent = findComponentFromFilePath(includeFilePath);
+                qmt::MComponent *includeComponent = findComponentFromFilePath(includeFilePath.toString());
                 if (includeComponent && includeComponent != component) {
                     // add dependency between components
                     if (!m_modelUtilities->haveDependency(component, includeComponent)) {
@@ -214,7 +195,8 @@ QStringList UpdateIncludeDependenciesVisitor::findFilePathOfComponent(const qmt:
     }
     QStringList bestFilePaths;
     int maxPathLength = 1;
-    foreach (const Node &node, m_filePaths.values(component->name())) {
+    const QList<Node> nodes = m_filePaths.values(component->name());
+    for (const Node &node : nodes) {
         int i = elementPath.size() - 1;
         int j = node.m_elementPath.size() - 1;
         while (i >= 0 && j >= 0 && elementPath.at(i) == node.m_elementPath.at(j)) {
@@ -235,14 +217,16 @@ QStringList UpdateIncludeDependenciesVisitor::findFilePathOfComponent(const qmt:
 void UpdateIncludeDependenciesVisitor::collectElementPaths(const ProjectExplorer::FolderNode *folderNode,
                                                            QMultiHash<QString, Node> *filePathsMap)
 {
-    foreach (const ProjectExplorer::FileNode *fileNode, folderNode->fileNodes()) {
+    const QList<ProjectExplorer::FileNode *> fileNodes = folderNode->fileNodes();
+    for (const ProjectExplorer::FileNode *fileNode : fileNodes) {
         QString elementName = qmt::NameController::convertFileNameToElementName(fileNode->filePath().toString());
         QFileInfo fileInfo = fileNode->filePath().toFileInfo();
         QString nodePath = fileInfo.path();
         QStringList elementsPath = qmt::NameController::buildElementsPath(nodePath, false);
         filePathsMap->insert(elementName, Node(fileNode->filePath().toString(), elementsPath));
     }
-    foreach (const ProjectExplorer::FolderNode *subNode, folderNode->folderNodes())
+    const QList<ProjectExplorer::FolderNode *> subNodes = folderNode->folderNodes();
+    for (const ProjectExplorer::FolderNode *subNode : subNodes)
         collectElementPaths(subNode, filePathsMap);
 }
 

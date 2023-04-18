@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "testcodeparser.h"
 
 #include "autotestconstants.h"
-#include "testframeworkmanager.h"
-#include "testsettings.h"
+#include "autotesttr.h"
 #include "testtreemodel.h"
 
 #include <coreplugin/editormanager/editormanager.h>
@@ -35,6 +12,7 @@
 #include <coreplugin/progressmanager/progressmanager.h>
 #include <cppeditor/cppeditorconstants.h>
 #include <cppeditor/cppmodelmanager.h>
+#include <projectexplorer/buildsystem.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/session.h>
 #include <qmljstools/qmljsmodelmanager.h>
@@ -48,12 +26,20 @@
 #include <QFutureInterface>
 #include <QLoggingCategory>
 
-static Q_LOGGING_CATEGORY(LOG, "qtc.autotest.testcodeparser", QtWarningMsg)
+using namespace Utils;
 
 namespace Autotest {
 namespace Internal {
 
+Q_LOGGING_CATEGORY(LOG, "qtc.autotest.testcodeparser", QtWarningMsg)
+
 using namespace ProjectExplorer;
+
+static bool isProjectParsing()
+{
+    const BuildSystem *bs = SessionManager::startupBuildSystem();
+    return bs && bs->isParsing();
+}
 
 TestCodeParser::TestCodeParser()
     :  m_threadPool(new QThreadPool(this))
@@ -69,7 +55,7 @@ TestCodeParser::TestCodeParser()
     connect(&m_futureWatcher, &QFutureWatcher<TestParseResultPtr>::finished,
             this, &TestCodeParser::onFinished);
     connect(&m_futureWatcher, &QFutureWatcher<TestParseResultPtr>::resultReadyAt,
-            this, [this] (int index) {
+            this, [this](int index) {
         emit testParseResultReady(m_futureWatcher.resultAt(index));
     });
     connect(this, &TestCodeParser::parsingFinished, this, &TestCodeParser::releaseParserInternals);
@@ -84,7 +70,7 @@ void TestCodeParser::setState(State state)
         return;
     qCDebug(LOG) << "setState(" << state << "), currentState:" << m_parserState;
     // avoid triggering parse before code model parsing has finished, but mark as dirty
-    if (m_codeModelParsing) {
+    if (isProjectParsing() || m_codeModelParsing) {
         m_dirty = true;
         qCDebug(LOG) << "Not setting new state - code model parsing is running, just marking dirty";
         return;
@@ -135,13 +121,13 @@ void TestCodeParser::emitUpdateTestTree(ITestParser *parser)
 
     qCDebug(LOG) << "adding singleShot";
     m_singleShotScheduled = true;
-    QTimer::singleShot(1000, this, [this]() { updateTestTree(m_updateParsers); });
+    QTimer::singleShot(1000, this, [this] { updateTestTree(m_updateParsers); });
 }
 
 void TestCodeParser::updateTestTree(const QSet<ITestParser *> &parsers)
 {
     m_singleShotScheduled = false;
-    if (m_codeModelParsing) {
+    if (isProjectParsing() || m_codeModelParsing) {
         m_postponedUpdateType = UpdateType::FullUpdate;
         m_postponedFiles.clear();
         if (parsers.isEmpty()) {
@@ -158,18 +144,18 @@ void TestCodeParser::updateTestTree(const QSet<ITestParser *> &parsers)
 
     m_postponedUpdateType = UpdateType::NoUpdate;
     qCDebug(LOG) << "calling scanForTests (updateTestTree)";
-    QList<ITestParser *> sortedParsers = Utils::toList(parsers);
-    Utils::sort(sortedParsers, [](const ITestParser *lhs, const ITestParser *rhs) {
+    const QList<ITestParser *> sortedParsers = Utils::sorted(Utils::toList(parsers),
+                [](const ITestParser *lhs, const ITestParser *rhs) {
         return lhs->framework()->priority() < rhs->framework()->priority();
     });
-    scanForTests(Utils::FilePaths(), sortedParsers);
+    scanForTests({}, sortedParsers);
 }
 
 /****** threaded parsing stuff *******/
 
-void TestCodeParser::onDocumentUpdated(const Utils::FilePath &fileName, bool isQmlFile)
+void TestCodeParser::onDocumentUpdated(const FilePath &fileName, bool isQmlFile)
 {
-    if (m_codeModelParsing || m_postponedUpdateType == UpdateType::FullUpdate)
+    if (isProjectParsing() || m_codeModelParsing || m_postponedUpdateType == UpdateType::FullUpdate)
         return;
 
     Project *project = SessionManager::startupProject();
@@ -179,19 +165,20 @@ void TestCodeParser::onDocumentUpdated(const Utils::FilePath &fileName, bool isQ
     if (!isQmlFile && !project->isKnownFile(fileName))
         return;
 
-    scanForTests(Utils::FilePaths{fileName});
+    scanForTests({fileName});
 }
 
 void TestCodeParser::onCppDocumentUpdated(const CPlusPlus::Document::Ptr &document)
 {
-    onDocumentUpdated(Utils::FilePath::fromString(document->fileName()));
+    onDocumentUpdated(document->filePath());
 }
 
 void TestCodeParser::onQmlDocumentUpdated(const QmlJS::Document::Ptr &document)
 {
-    const QString fileName = document->fileName();
-    if (!fileName.endsWith(".qbs"))
-        onDocumentUpdated(Utils::FilePath::fromString(fileName), true);
+    static const QStringList ignoredSuffixes{ "qbs", "ui.qml" };
+    const FilePath fileName = document->fileName();
+    if (!ignoredSuffixes.contains(fileName.suffix()))
+        onDocumentUpdated(fileName, true);
 }
 
 void TestCodeParser::onStartupProjectChanged(Project *project)
@@ -209,7 +196,7 @@ void TestCodeParser::onProjectPartsUpdated(Project *project)
 {
     if (project != SessionManager::startupProject())
         return;
-    if (m_codeModelParsing)
+    if (isProjectParsing() || m_codeModelParsing)
         m_postponedUpdateType = UpdateType::FullUpdate;
     else
         emitUpdateTestTree();
@@ -226,7 +213,7 @@ void TestCodeParser::aboutToShutdown()
     }
 }
 
-bool TestCodeParser::postponed(const Utils::FilePaths &fileList)
+bool TestCodeParser::postponed(const FilePaths &fileList)
 {
     switch (m_parserState) {
     case Idle:
@@ -268,7 +255,7 @@ bool TestCodeParser::postponed(const Utils::FilePaths &fileList)
             if (m_postponedUpdateType == UpdateType::FullUpdate)
                 return true;
             // partial parse triggered, postpone or add current files to already postponed partial
-            for (const Utils::FilePath &file : fileList)
+            for (const FilePath &file : fileList)
                 m_postponedFiles.insert(file);
             m_postponedUpdateType = UpdateType::PartialUpdate;
         }
@@ -281,7 +268,7 @@ bool TestCodeParser::postponed(const Utils::FilePaths &fileList)
 
 static void parseFileForTests(const QList<ITestParser *> &parsers,
                               QFutureInterface<TestParseResultPtr> &futureInterface,
-                              const Utils::FilePath &fileName)
+                              const FilePath &fileName)
 {
     for (ITestParser *parser : parsers) {
         if (futureInterface.isCanceled())
@@ -291,8 +278,7 @@ static void parseFileForTests(const QList<ITestParser *> &parsers,
     }
 }
 
-void TestCodeParser::scanForTests(const Utils::FilePaths &fileList,
-                                  const QList<ITestParser *> &parsers)
+void TestCodeParser::scanForTests(const FilePaths &fileList, const QList<ITestParser *> &parsers)
 {
     if (m_parserState == Shutdown || m_testCodeParsers.isEmpty())
         return;
@@ -307,7 +293,7 @@ void TestCodeParser::scanForTests(const Utils::FilePaths &fileList,
     Project *project = SessionManager::startupProject();
     if (!project)
         return;
-    Utils::FilePaths list;
+    FilePaths list;
     if (isFullParse) {
         list = project->files(Project::SourceFiles);
         if (list.isEmpty()) {
@@ -316,7 +302,11 @@ void TestCodeParser::scanForTests(const Utils::FilePaths &fileList,
             qCDebug(LOG) << "File list empty (FullParse) - trying again in a sec";
             emitUpdateTestTree();
             return;
+        } else if (list.size() == 1 && list.first() == project->projectFilePath()) {
+            qCDebug(LOG) << "File list contains only the project file.";
+            return;
         }
+
         qCDebug(LOG) << "setting state to FullParse (scanForTests)";
         m_parserState = FullParse;
     } else {
@@ -329,7 +319,7 @@ void TestCodeParser::scanForTests(const Utils::FilePaths &fileList,
     TestTreeModel::instance()->updateCheckStateCache();
     if (isFullParse) {
         // remove qml files as they will be found automatically by the referencing cpp file
-        list = Utils::filtered(list, [] (const Utils::FilePath &fn) {
+        list = Utils::filtered(list, [](const FilePath &fn) {
             return !fn.endsWith(".qml");
         });
         if (!parsers.isEmpty()) {
@@ -341,11 +331,11 @@ void TestCodeParser::scanForTests(const Utils::FilePaths &fileList,
         }
     } else if (!parsers.isEmpty()) {
         for (ITestParser *parser: parsers) {
-            for (const Utils::FilePath &filePath : qAsConst(list))
+            for (const FilePath &filePath : std::as_const(list))
                 parser->framework()->rootNode()->markForRemovalRecursively(filePath);
         }
     } else {
-        for (const Utils::FilePath &filePath : qAsConst(list))
+        for (const FilePath &filePath : std::as_const(list))
             emit requestRemoval(filePath);
     }
 
@@ -354,24 +344,44 @@ void TestCodeParser::scanForTests(const Utils::FilePaths &fileList,
     // use only a single parser or all current active?
     const QList<ITestParser *> codeParsers = parsers.isEmpty() ? m_testCodeParsers : parsers;
     qCDebug(LOG) << QDateTime::currentDateTime().toString("hh:mm:ss.zzz") << "StartParsing";
-    for (ITestParser *parser : codeParsers)
-        parser->init(list, isFullParse);
+    QSet<QString> extensions;
+    const auto cppSnapshot = CppEditor::CppModelManager::instance()->snapshot();
 
-    QFuture<TestParseResultPtr> future = Utils::map(list,
-        [codeParsers](QFutureInterface<TestParseResultPtr> &fi, const Utils::FilePath &file) {
+    for (ITestParser *parser : codeParsers) {
+        parser->init(list, isFullParse);
+        for (const QString &ext : parser->supportedExtensions())
+            extensions.insert(ext);
+    }
+    // We are only interested in files that have been either parsed by the c++ parser,
+    // or have an extension that one of the parsers is specifically interested in.
+    const FilePaths filteredList
+        = Utils::filtered(list, [&extensions, &cppSnapshot](const FilePath &fn) {
+              const bool isSupportedExtension = Utils::anyOf(extensions, [&fn](const QString &ext) {
+                  return fn.suffix() == ext;
+              });
+              if (isSupportedExtension)
+                  return true;
+              return cppSnapshot.contains(fn);
+          });
+
+    qCDebug(LOG) << "Starting scan of" << filteredList.size() << "(" << list.size() << ")"
+                 << "files with" << codeParsers.size() << "parsers";
+
+    QFuture<TestParseResultPtr> future = Utils::map(filteredList,
+        [codeParsers](QFutureInterface<TestParseResultPtr> &fi, const FilePath &file) {
             parseFileForTests(codeParsers, fi, file);
         },
-        Utils::MapReduceOption::Unordered,
+        MapReduceOption::Unordered,
         m_threadPool,
         QThread::LowestPriority);
     m_futureWatcher.setFuture(future);
-    if (list.size() > 5) {
-        Core::ProgressManager::addTask(future, tr("Scanning for Tests"),
+    if (filteredList.size() > 5) {
+        Core::ProgressManager::addTask(future, Tr::tr("Scanning for Tests"),
                                        Autotest::Constants::TASK_PARSE);
     }
 }
 
-void TestCodeParser::onTaskStarted(Utils::Id type)
+void TestCodeParser::onTaskStarted(Id type)
 {
     if (type == CppEditor::Constants::TASK_INDEX) {
         m_codeModelParsing = true;
@@ -385,7 +395,7 @@ void TestCodeParser::onTaskStarted(Utils::Id type)
     }
 }
 
-void TestCodeParser::onAllTasksFinished(Utils::Id type)
+void TestCodeParser::onAllTasksFinished(Id type)
 {
     // if we cancel parsing ensure that progress animation is canceled as well
     if (type == Constants::TASK_PARSE && m_parsingHasFailed)
@@ -476,7 +486,7 @@ void TestCodeParser::parsePostponedFiles()
 
 void TestCodeParser::releaseParserInternals()
 {
-    for (ITestParser *parser : qAsConst(m_testCodeParsers))
+    for (ITestParser *parser : std::as_const(m_testCodeParsers))
         parser->release();
 }
 

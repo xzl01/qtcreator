@@ -13,7 +13,7 @@ QtcPlugin {
 
     files: [
         "webassembly.qrc",
-        "webassembly_global.h",
+        "webassembly_global.h", "webassemblytr.h",
         "webassemblyconstants.h",
         "webassemblydevice.cpp",
         "webassemblydevice.h",
@@ -32,4 +32,13 @@ QtcPlugin {
         "webassemblytoolchain.cpp",
         "webassemblytoolchain.h",
     ]
+
+    Group {
+        name: "Unit tests"
+        condition: qtc.testsEnabled
+        files: [
+            "webassembly_test.cpp",
+            "webassembly_test.h",
+        ]
+    }
 }

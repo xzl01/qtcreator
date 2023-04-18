@@ -1,30 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "itemlibraryinfo.h"
 #include "nodemetainfo.h"
+#include "qregularexpression.h"
+
+#include <invalidmetainfoexception.h>
 
 #include <QSharedData>
 
@@ -52,6 +33,7 @@ public:
     QHash<QString, QString> hints;
     QString customComponentSource;
     QStringList extraFilePaths;
+    QString toolTip;
 };
 
 } // namespace Internal
@@ -114,6 +96,11 @@ QString ItemLibraryEntry::customComponentSource() const
 QStringList ItemLibraryEntry::extraFilePaths() const
 {
     return m_data->extraFilePaths;
+}
+
+QString ItemLibraryEntry::toolTip() const
+{
+    return m_data->toolTip;
 }
 
 int ItemLibraryEntry::majorVersion() const
@@ -183,6 +170,16 @@ void ItemLibraryEntry::setQmlPath(const QString &qml)
 void ItemLibraryEntry::setRequiredImport(const QString &requiredImport)
 {
     m_data->requiredImport = requiredImport;
+}
+
+void ItemLibraryEntry::setToolTip(const QString &tooltip)
+{
+    static QRegularExpression regularExpressionPattern(QLatin1String("^qsTr\\(\"(.*)\"\\)$"));
+    const QRegularExpressionMatch match = regularExpressionPattern.match(tooltip);
+    if (match.hasMatch())
+        m_data->toolTip = match.captured(1);
+    else
+        m_data->toolTip = tooltip;
 }
 
 void ItemLibraryEntry::addHints(const QHash<QString, QString> &hints)
@@ -289,7 +286,7 @@ QList<ItemLibraryEntry> ItemLibraryInfo::entriesForType(const QByteArray &typeNa
 {
     QList<ItemLibraryEntry> entries;
 
-    foreach (const ItemLibraryEntry &entry, m_nameToEntryHash) {
+    for (const ItemLibraryEntry &entry : std::as_const(m_nameToEntryHash)) {
         if (entry.typeName() == typeName)
             entries += entry;
     }
@@ -315,7 +312,7 @@ static inline QString keyForEntry(const ItemLibraryEntry &entry)
 
 void ItemLibraryInfo::addEntries(const QList<ItemLibraryEntry> &entries, bool overwriteDuplicate)
 {
-    foreach (const ItemLibraryEntry &entry, entries) {
+    for (const ItemLibraryEntry &entry : entries) {
         const QString key = keyForEntry(entry);
         if (!overwriteDuplicate && m_nameToEntryHash.contains(key))
             throw InvalidMetaInfoException(__LINE__, __FUNCTION__, __FILE__);

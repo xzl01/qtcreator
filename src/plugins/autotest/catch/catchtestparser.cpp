@@ -1,26 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Jochen Seemann
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Jochen Seemann
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "catchtestparser.h"
 
@@ -33,6 +12,8 @@
 #include <utils/qtcassert.h>
 
 #include <QRegularExpression>
+
+using namespace Utils;
 
 namespace Autotest {
 namespace Internal {
@@ -57,10 +38,11 @@ static bool isCatchTestCaseMacro(const QString &macroName)
 
 static bool isCatchMacro(const QString &macroName)
 {
+    QString unprefixed = macroName.startsWith("CATCH_") ? macroName.mid(6) : macroName;
     const QStringList validSectionMacros = {
         QStringLiteral("SECTION"), QStringLiteral("WHEN")
     };
-    return isCatchTestCaseMacro(macroName) || validSectionMacros.contains(macroName);
+    return isCatchTestCaseMacro(unprefixed) || validSectionMacros.contains(unprefixed);
 }
 
 static bool includesCatchHeader(const CPlusPlus::Document::Ptr &doc,
@@ -79,7 +61,7 @@ static bool includesCatchHeader(const CPlusPlus::Document::Ptr &doc,
         }
     }
 
-    for (const QString &include : snapshot.allIncludesForDocument(doc->fileName())) {
+    for (const FilePath &include : snapshot.allIncludesForDocument(doc->filePath())) {
         for (const QString &catchHeader : catchHeaders) {
             if (include.endsWith(catchHeader))
                 return true;
@@ -87,9 +69,7 @@ static bool includesCatchHeader(const CPlusPlus::Document::Ptr &doc,
     }
 
     for (const QString &catchHeader : catchHeaders) {
-        if (CppParser::precompiledHeaderContains(snapshot,
-                                                 Utils::FilePath::fromString(doc->fileName()),
-                                                 catchHeader))
+        if (CppParser::precompiledHeaderContains(snapshot, doc->filePath(), catchHeader))
             return true;
     }
     return false;
@@ -112,18 +92,19 @@ static bool hasCatchNames(const CPlusPlus::Document::Ptr &document)
 }
 
 bool CatchTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futureInterface,
-                                      const Utils::FilePath &fileName)
+                                      const FilePath &fileName)
 {
     CPlusPlus::Document::Ptr doc = document(fileName);
     if (doc.isNull() || !includesCatchHeader(doc, m_cppSnapshot))
         return false;
 
     const CppEditor::CppModelManager *modelManager = CppEditor::CppModelManager::instance();
-    const QString &filePath = doc->fileName();
+    const QString &filePath = doc->filePath().toString();
     const QByteArray &fileContent = getFileContent(fileName);
 
     if (!hasCatchNames(doc)) {
-        const QRegularExpression regex("\\b(SCENARIO|(TEMPLATE_(PRODUCT_)?)?TEST_CASE(_METHOD)?|"
+        const QRegularExpression regex("\\b(CATCH_)?"
+                                       "(SCENARIO|(TEMPLATE_(PRODUCT_)?)?TEST_CASE(_METHOD)?|"
                                        "TEMPLATE_TEST_CASE(_METHOD)?_SIG|"
                                        "TEMPLATE_PRODUCT_TEST_CASE(_METHOD)?_SIG|"
                                        "TEMPLATE_LIST_TEST_CASE_METHOD|METHOD_AS_TEST_CASE|"
@@ -136,9 +117,9 @@ bool CatchTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futu
     const QList<CppEditor::ProjectPart::ConstPtr> projectParts = modelManager->projectPart(fileName);
     if (projectParts.isEmpty()) // happens if shutting down while parsing
         return false;
-    Utils::FilePath proFile;
+    FilePath proFile;
     const CppEditor::ProjectPart::ConstPtr projectPart = projectParts.first();
-    proFile = Utils::FilePath::fromString(projectPart->projectFile);
+    proFile = FilePath::fromString(projectPart->projectFile);
 
     CatchCodeParser codeParser(fileContent, projectPart->languageFeatures);
     const CatchTestCodeLocationList foundTests = codeParser.findTests();

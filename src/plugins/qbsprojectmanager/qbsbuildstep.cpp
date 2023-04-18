@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qbsbuildstep.h"
 
 #include "qbsbuildconfiguration.h"
 #include "qbsproject.h"
 #include "qbsprojectmanagerconstants.h"
+#include "qbsprojectmanagertr.h"
 #include "qbssession.h"
 #include "qbssettings.h"
 
@@ -36,12 +15,15 @@
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/kit.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/projectexplorertr.h>
 #include <projectexplorer/target.h>
 
 #include <qtsupport/qtkitinformation.h>
 #include <qtsupport/qtversionmanager.h>
 
+#include <utils/algorithm.h>
 #include <utils/aspects.h>
+#include <utils/guard.h>
 #include <utils/layoutbuilder.h>
 #include <utils/macroexpander.h>
 #include <utils/outputformatter.h>
@@ -50,7 +32,6 @@
 #include <utils/qtcprocess.h>
 #include <utils/variablechooser.h>
 
-#include <QBoxLayout>
 #include <QCheckBox>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -82,7 +63,7 @@ public:
     ArchitecturesAspect();
 
     void setKit(const ProjectExplorer::Kit *kit) { m_kit = kit; }
-    void addToLayout(Utils::LayoutBuilder &builder) override;
+    void addToLayout(Layouting::LayoutBuilder &builder) override;
     QStringList selectedArchitectures() const;
     void setSelectedArchitectures(const QStringList& architectures);
     bool isManagedByTarget() const { return m_isManagedByTarget; }
@@ -105,7 +86,7 @@ ArchitecturesAspect::ArchitecturesAspect()
     setAllValues(m_abisToArchMap.keys());
 }
 
-void ArchitecturesAspect::addToLayout(LayoutBuilder &builder)
+void ArchitecturesAspect::addToLayout(Layouting::LayoutBuilder &builder)
 {
     MultiSelectionAspect::addToLayout(builder);
     const auto changeHandler = [this] {
@@ -172,7 +153,7 @@ private:
     void updatePropertyEdit(const QVariantMap &data);
 
     void changeUseDefaultInstallDir(bool useDefault);
-    void changeInstallDir(const QString &dir);
+    void changeInstallDir();
     void applyCachedProperties();
 
     QbsBuildStep *qbsStep() const;
@@ -200,7 +181,7 @@ private:
 
     QbsBuildStep *m_qbsStep;
     QList<Property> m_propertyCache;
-    bool m_ignoreChange = false;
+    Guard m_ignoreChanges;
 
     FancyLineEdit *propertyEdit;
     PathChooser *installDirChooser;
@@ -214,8 +195,8 @@ private:
 QbsBuildStep::QbsBuildStep(BuildStepList *bsl, Utils::Id id) :
     BuildStep(bsl, id)
 {
-    setDisplayName(tr("Qbs Build"));
-    setSummaryText(tr("<b>Qbs:</b> %1").arg("build"));
+    setDisplayName(QbsProjectManager::Tr::tr("Qbs Build"));
+    setSummaryText(QbsProjectManager::Tr::tr("<b>Qbs:</b> %1").arg("build"));
 
     setQbsConfiguration(QVariantMap());
 
@@ -225,51 +206,55 @@ QbsBuildStep::QbsBuildStep(BuildStepList *bsl, Utils::Id id) :
             qbsBuildConfig, &QbsBuildConfiguration::qbsConfigurationChanged);
 
     m_buildVariant = addAspect<SelectionAspect>();
-    m_buildVariant->setDisplayName(tr("Build variant:"));
+    m_buildVariant->setDisplayName(QbsProjectManager::Tr::tr("Build variant:"));
     m_buildVariant->setDisplayStyle(SelectionAspect::DisplayStyle::ComboBox);
-    m_buildVariant->addOption(tr("Debug"));
-    m_buildVariant->addOption(tr("Release"));
+    m_buildVariant->addOption({ProjectExplorer::Tr::tr("Debug"), {}, Constants::QBS_VARIANT_DEBUG});
+    m_buildVariant->addOption({ProjectExplorer::Tr::tr("Release"), {},
+                               Constants::QBS_VARIANT_RELEASE});
+    m_buildVariant->addOption({ProjectExplorer::Tr::tr("Profile"), {},
+                               Constants::QBS_VARIANT_PROFILING});
 
     m_selectedAbis = addAspect<ArchitecturesAspect>();
-    m_selectedAbis->setLabelText(tr("ABIs:"));
+    m_selectedAbis->setLabelText(QbsProjectManager::Tr::tr("ABIs:"));
     m_selectedAbis->setDisplayStyle(MultiSelectionAspect::DisplayStyle::ListView);
     m_selectedAbis->setKit(target()->kit());
 
     m_keepGoing = addAspect<BoolAspect>();
     m_keepGoing->setSettingsKey(QBS_KEEP_GOING);
-    m_keepGoing->setToolTip(tr("Keep going when errors occur (if at all possible)."));
-    m_keepGoing->setLabel(tr("Keep going"),
+    m_keepGoing->setToolTip(
+                QbsProjectManager::Tr::tr("Keep going when errors occur (if at all possible)."));
+    m_keepGoing->setLabel(QbsProjectManager::Tr::tr("Keep going"),
                           BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
 
     m_maxJobCount = addAspect<IntegerAspect>();
     m_maxJobCount->setSettingsKey(QBS_MAXJOBCOUNT);
-    m_maxJobCount->setLabel(tr("Parallel jobs:"));
-    m_maxJobCount->setToolTip(tr("Number of concurrent build jobs."));
+    m_maxJobCount->setLabel(QbsProjectManager::Tr::tr("Parallel jobs:"));
+    m_maxJobCount->setToolTip(QbsProjectManager::Tr::tr("Number of concurrent build jobs."));
     m_maxJobCount->setValue(QThread::idealThreadCount());
 
     m_showCommandLines = addAspect<BoolAspect>();
     m_showCommandLines->setSettingsKey(QBS_SHOWCOMMANDLINES);
-    m_showCommandLines->setLabel(tr("Show command lines"),
+    m_showCommandLines->setLabel(QbsProjectManager::Tr::tr("Show command lines"),
                                  BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
 
     m_install = addAspect<BoolAspect>();
     m_install->setSettingsKey(QBS_INSTALL);
     m_install->setValue(true);
-    m_install->setLabel(tr("Install"), BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    m_install->setLabel(QbsProjectManager::Tr::tr("Install"), BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
 
     m_cleanInstallDir = addAspect<BoolAspect>();
     m_cleanInstallDir->setSettingsKey(QBS_CLEAN_INSTALL_ROOT);
-    m_cleanInstallDir->setLabel(tr("Clean install root"),
+    m_cleanInstallDir->setLabel(QbsProjectManager::Tr::tr("Clean install root"),
                                 BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
 
     m_forceProbes = addAspect<BoolAspect>();
     m_forceProbes->setSettingsKey("Qbs.forceProbesKey");
-    m_forceProbes->setLabel(tr("Force probes"),
+    m_forceProbes->setLabel(QbsProjectManager::Tr::tr("Force probes"),
                             BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
 
     m_commandLine = addAspect<StringAspect>();
     m_commandLine->setDisplayStyle(StringAspect::TextEditDisplay);
-    m_commandLine->setLabelText(tr("Equivalent command line:"));
+    m_commandLine->setLabelText(QbsProjectManager::Tr::tr("Equivalent command line:"));
     m_commandLine->setUndoRedoEnabled(false);
     m_commandLine->setReadOnly(true);
 
@@ -280,7 +265,9 @@ QbsBuildStep::QbsBuildStep(BuildStepList *bsl, Utils::Id id) :
     connect(m_cleanInstallDir, &BaseAspect::changed, this, &QbsBuildStep::updateState);
     connect(m_forceProbes, &BaseAspect::changed, this, &QbsBuildStep::updateState);
 
-    connect(m_buildVariant, &SelectionAspect::changed, this, &QbsBuildStep::changeBuildVariant);
+    connect(m_buildVariant, &SelectionAspect::changed, this, [this] {
+        setBuildVariant(m_buildVariant->itemValue().toString());
+    });
     connect(m_selectedAbis, &SelectionAspect::changed, [this] {
         setConfiguredArchitectures(m_selectedAbis->selectedArchitectures()); });
 }
@@ -375,13 +362,16 @@ void QbsBuildStep::setQbsConfiguration(const QVariantMap &config)
 {
     QVariantMap tmp = config;
     tmp.insert(Constants::QBS_CONFIG_PROFILE_KEY, qbsBuildSystem()->profile());
-    if (!tmp.contains(Constants::QBS_CONFIG_VARIANT_KEY))
-        tmp.insert(Constants::QBS_CONFIG_VARIANT_KEY,
-                   QString::fromLatin1(Constants::QBS_VARIANT_DEBUG));
-
+    QString buildVariant = tmp.value(Constants::QBS_CONFIG_VARIANT_KEY).toString();
+    if (buildVariant.isEmpty()) {
+        buildVariant = Constants::QBS_VARIANT_DEBUG;
+        tmp.insert(Constants::QBS_CONFIG_VARIANT_KEY, buildVariant);
+    }
     if (tmp == m_qbsConfiguration)
         return;
     m_qbsConfiguration = tmp;
+    if (m_buildVariant)
+        m_buildVariant->setValue(m_buildVariant->indexForItemValue(buildVariant));
     if (ProjectExplorer::BuildConfiguration *bc = buildConfiguration())
         emit bc->buildTypeChanged();
     emit qbsConfigurationChanged();
@@ -397,11 +387,11 @@ Utils::FilePath QbsBuildStep::installRoot(VariableHandling variableHandling) con
     const QString root =
             qbsConfiguration(variableHandling).value(Constants::QBS_INSTALL_ROOT_KEY).toString();
     if (!root.isNull())
-        return Utils::FilePath::fromString(root);
+        return Utils::FilePath::fromUserInput(root);
     QString defaultInstallDir = QbsSettings::defaultInstallDirTemplate();
     if (variableHandling == VariableHandling::ExpandVariables)
         defaultInstallDir = macroExpander()->expand(defaultInstallDir);
-    return FilePath::fromString(defaultInstallDir);
+    return FilePath::fromUserInput(defaultInstallDir);
 }
 
 int QbsBuildStep::maxJobs() const
@@ -432,7 +422,7 @@ void QbsBuildStep::buildingDone(const ErrorInfo &error)
     m_session->disconnect(this);
     m_session = nullptr;
     m_lastWasSuccess = !error.hasError();
-    for (const ErrorInfoItem &item : qAsConst(error.items)) {
+    for (const ErrorInfoItem &item : std::as_const(error.items)) {
         createTaskAndOutput(
                     ProjectExplorer::Task::Error,
                     item.description,
@@ -548,7 +538,8 @@ void QbsBuildStep::build()
 {
     m_session = qbsBuildSystem()->session();
     if (!m_session) {
-        emit addOutput(tr("No qbs session exists for this target."), OutputFormat::ErrorMessage);
+        emit addOutput(QbsProjectManager::Tr::tr("No qbs session exists for this target."),
+                       OutputFormat::ErrorMessage);
         emit finished(false);
         return;
     }
@@ -581,7 +572,7 @@ void QbsBuildStep::build()
             this, &QbsBuildStep::handleCommandDescription);
     connect(m_session, &QbsSession::processResult, this, &QbsBuildStep::handleProcessResult);
     connect(m_session, &QbsSession::errorOccurred, this, [this] {
-        buildingDone(ErrorInfo(tr("Build canceled: Qbs session failed.")));
+        buildingDone(ErrorInfo(QbsProjectManager::Tr::tr("Build canceled: Qbs session failed.")));
     });
 }
 
@@ -643,9 +634,8 @@ void QbsBuildStep::dropSession()
 // QbsBuildStepConfigWidget:
 // --------------------------------------------------------------------
 
-QbsBuildStepConfigWidget::QbsBuildStepConfigWidget(QbsBuildStep *step) :
-    m_qbsStep(step),
-    m_ignoreChange(false)
+QbsBuildStepConfigWidget::QbsBuildStepConfigWidget(QbsBuildStep *step)
+    : m_qbsStep(step)
 {
     connect(step, &ProjectConfiguration::displayNameChanged,
             this, &QbsBuildStepConfigWidget::updateState);
@@ -672,24 +662,24 @@ QbsBuildStepConfigWidget::QbsBuildStepConfigWidget(QbsBuildStep *step) :
     builder.addRow(m_qbsStep->m_buildVariant);
     builder.addRow(m_qbsStep->m_selectedAbis);
     builder.addRow(m_qbsStep->m_maxJobCount);
-    builder.addRow({tr("Properties:"), propertyEdit});
+    builder.addRow({QbsProjectManager::Tr::tr("Properties:"), propertyEdit});
 
-    builder.addRow(tr("Flags:"));
+    builder.addRow(QbsProjectManager::Tr::tr("Flags:"));
     m_qbsStep->m_keepGoing->addToLayout(builder);
     m_qbsStep->m_showCommandLines->addToLayout(builder);
     m_qbsStep->m_forceProbes->addToLayout(builder);
 
-    builder.addRow(tr("Installation flags:"));
+    builder.addRow(QbsProjectManager::Tr::tr("Installation flags:"));
     m_qbsStep->m_install->addToLayout(builder);
     m_qbsStep->m_cleanInstallDir->addToLayout(builder);
     builder.addItem(defaultInstallDirCheckBox);
 
-    builder.addRow({tr("Installation directory:"), installDirChooser});
+    builder.addRow({QbsProjectManager::Tr::tr("Installation directory:"), installDirChooser});
     builder.addRow(m_qbsStep->m_commandLine);
-    builder.attachTo(this, false);
+    builder.attachTo(this, Layouting::WithoutMargins);
 
-    propertyEdit->setToolTip(tr("Properties to pass to the project."));
-    defaultInstallDirCheckBox->setText(tr("Use default location"));
+    propertyEdit->setToolTip(QbsProjectManager::Tr::tr("Properties to pass to the project."));
+    defaultInstallDirCheckBox->setText(QbsProjectManager::Tr::tr("Use default location"));
 
     auto chooser = new VariableChooser(this);
     chooser->addSupportedWidget(propertyEdit);
@@ -710,7 +700,7 @@ QbsBuildStepConfigWidget::QbsBuildStepConfigWidget(QbsBuildStep *step) :
 
 void QbsBuildStepConfigWidget::updateState()
 {
-    if (!m_ignoreChange) {
+    if (!m_ignoreChanges.isLocked()) {
         updatePropertyEdit(m_qbsStep->qbsConfiguration(QbsBuildStep::PreserveVariables));
         installDirChooser->setFilePath(m_qbsStep->installRoot(QbsBuildStep::PreserveVariables));
         defaultInstallDirCheckBox->setChecked(!m_qbsStep->hasCustomInstallRoot());
@@ -777,38 +767,26 @@ void QbsBuildStepConfigWidget::updatePropertyEdit(const QVariantMap &data)
     propertyEdit->setText(ProcessArgs::joinArgs(propertyList));
 }
 
-void QbsBuildStep::changeBuildVariant()
-{
-    QString variant;
-    if (m_buildVariant->value() == 1)
-        variant = Constants::QBS_VARIANT_RELEASE;
-    else
-        variant = Constants::QBS_VARIANT_DEBUG;
-    setBuildVariant(variant);
-}
-
 void QbsBuildStepConfigWidget::changeUseDefaultInstallDir(bool useDefault)
 {
-    m_ignoreChange = true;
+    const GuardLocker locker(m_ignoreChanges);
     QVariantMap config = m_qbsStep->qbsConfiguration(QbsBuildStep::PreserveVariables);
     installDirChooser->setEnabled(!useDefault);
     if (useDefault)
         config.remove(Constants::QBS_INSTALL_ROOT_KEY);
     else
-        config.insert(Constants::QBS_INSTALL_ROOT_KEY, installDirChooser->rawPath());
+        config.insert(Constants::QBS_INSTALL_ROOT_KEY, installDirChooser->rawFilePath().toString());
     m_qbsStep->setQbsConfiguration(config);
-    m_ignoreChange = false;
 }
 
-void QbsBuildStepConfigWidget::changeInstallDir(const QString &dir)
+void QbsBuildStepConfigWidget::changeInstallDir()
 {
     if (!m_qbsStep->hasCustomInstallRoot())
         return;
-    m_ignoreChange = true;
+    const GuardLocker locker(m_ignoreChanges);
     QVariantMap config = m_qbsStep->qbsConfiguration(QbsBuildStep::PreserveVariables);
-    config.insert(Constants::QBS_INSTALL_ROOT_KEY, dir);
+    config.insert(Constants::QBS_INSTALL_ROOT_KEY, installDirChooser->rawFilePath().toString());
     m_qbsStep->setQbsConfiguration(config);
-    m_ignoreChange = false;
 }
 
 void QbsBuildStepConfigWidget::applyCachedProperties()
@@ -828,7 +806,7 @@ void QbsBuildStepConfigWidget::applyCachedProperties()
                                              Constants::QBS_INSTALL_ROOT_KEY});
     if (m_qbsStep->m_selectedAbis->isManagedByTarget())
         additionalSpecialKeys << Constants::QBS_ARCHITECTURES;
-    for (const QString &key : qAsConst(additionalSpecialKeys)) {
+    for (const QString &key : std::as_const(additionalSpecialKeys)) {
         const auto it = tmp.constFind(key);
         if (it != tmp.cend())
             data.insert(key, it.value());
@@ -839,9 +817,8 @@ void QbsBuildStepConfigWidget::applyCachedProperties()
         data.insert(property.name, property.value);
     }
 
-    m_ignoreChange = true;
+    const GuardLocker locker(m_ignoreChanges);
     m_qbsStep->setQbsConfiguration(data);
-    m_ignoreChange = false;
 }
 
 QbsBuildStep *QbsBuildStepConfigWidget::qbsStep() const
@@ -852,16 +829,16 @@ QbsBuildStep *QbsBuildStepConfigWidget::qbsStep() const
 bool QbsBuildStepConfigWidget::validateProperties(Utils::FancyLineEdit *edit, QString *errorMessage)
 {
     ProcessArgs::SplitError err;
-    QStringList argList = ProcessArgs::splitArgs(edit->text(), HostOsInfo::hostOs(), false, &err);
+    const QStringList argList = ProcessArgs::splitArgs(edit->text(), HostOsInfo::hostOs(), false, &err);
     if (err != ProcessArgs::SplitOk) {
         if (errorMessage)
-            *errorMessage = tr("Could not split properties.");
+            *errorMessage = QbsProjectManager::Tr::tr("Could not split properties.");
         return false;
     }
 
     QList<Property> properties;
     const MacroExpander * const expander = m_qbsStep->macroExpander();
-    foreach (const QString &rawArg, argList) {
+    for (const QString &rawArg : argList) {
         int pos = rawArg.indexOf(':');
         if (pos > 0) {
             const QString propertyName = rawArg.left(pos);
@@ -874,8 +851,8 @@ bool QbsBuildStepConfigWidget::validateProperties(Utils::FancyLineEdit *edit, QS
                 specialProperties << Constants::QBS_ARCHITECTURES;
             if (specialProperties.contains(propertyName)) {
                 if (errorMessage) {
-                    *errorMessage = tr("Property \"%1\" cannot be set here. "
-                                       "Please use the dedicated UI element.").arg(propertyName);
+                    *errorMessage = QbsProjectManager::Tr::tr("Property \"%1\" cannot be set here. "
+                                          "Please use the dedicated UI element.").arg(propertyName);
                 }
                 return false;
             }
@@ -884,7 +861,7 @@ bool QbsBuildStepConfigWidget::validateProperties(Utils::FancyLineEdit *edit, QS
             properties.append(property);
         } else {
             if (errorMessage)
-                *errorMessage = tr("No \":\" found in property definition.");
+                *errorMessage = QbsProjectManager::Tr::tr("No \":\" found in property definition.");
             return false;
         }
     }
@@ -903,7 +880,7 @@ bool QbsBuildStepConfigWidget::validateProperties(Utils::FancyLineEdit *edit, QS
 QbsBuildStepFactory::QbsBuildStepFactory()
 {
     registerStep<QbsBuildStep>(Constants::QBS_BUILDSTEP_ID);
-    setDisplayName(QbsBuildStep::tr("Qbs Build"));
+    setDisplayName(QbsProjectManager::Tr::tr("Qbs Build"));
     setSupportedStepList(ProjectExplorer::Constants::BUILDSTEPS_BUILD);
     setSupportedConfiguration(Constants::QBS_BC_ID);
     setSupportedProjectType(Constants::PROJECT_ID);

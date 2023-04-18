@@ -12,6 +12,7 @@ ProtobufBase {
     property bool useGrpc: false
 
     property bool _linkLibraries: true
+    property stringList _extraGrpcLibs: []
     readonly property bool _hasModules: protobuflib.present && (!useGrpc || grpcpp.present)
 
     property string grpcIncludePath: grpcIncludeProbe.found ? grpcIncludeProbe.path : undefined
@@ -67,10 +68,12 @@ ProtobufBase {
         var result = [];
         if (_libraryName)
             result.push(_libraryName)
-        if (qbs.targetOS.contains("unix"))
+        if (qbs.targetOS.includes("unix"))
             result.push("pthread");
-        if (useGrpc)
+        if (useGrpc) {
+            result = result.concat(_extraGrpcLibs);
             result.push("grpc++");
+        }
         return result;
     }
     cpp.includePaths: {
@@ -95,7 +98,7 @@ ProtobufBase {
                                                     ".pb.h"),
                         HelperFunctions.cppArtifact(outputDir, input, "cpp", ".pb.cc")
                     ];
-            if (input.fileTags.contains("protobuf.grpc")) {
+            if (input.fileTags.includes("protobuf.grpc")) {
                 result.push(
                         HelperFunctions.cppArtifact(outputDir, input, ["hpp", "protobuf.hpp"],
                                                     ".grpc.pb.h"),
@@ -108,7 +111,7 @@ ProtobufBase {
         prepare: {
             var result = HelperFunctions.doPrepare(
                         input.protobuf.cpp, product, input, outputs, "cpp");
-            if (input.fileTags.contains("protobuf.grpc")) {
+            if (input.fileTags.includes("protobuf.grpc")) {
                 result = ModUtils.concatAll(result, HelperFunctions.doPrepare(
                                 input.protobuf.cpp, product, input, outputs, "grpc",
                                 "protoc-gen-grpc=" + input.protobuf.cpp.grpcPluginPath));

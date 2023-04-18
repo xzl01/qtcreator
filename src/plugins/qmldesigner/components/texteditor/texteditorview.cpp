@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "texteditorview.h"
 
@@ -52,6 +30,7 @@
 #include <qmljs/qmljsmodelmanagerinterface.h>
 #include <qmljs/qmljsreformatter.h>
 #include <utils/changeset.h>
+#include <utils/qtcassert.h>
 
 #include <QDebug>
 #include <QPair>
@@ -63,8 +42,8 @@ namespace QmlDesigner {
 
 const char TEXTEDITOR_CONTEXT_ID[] = "QmlDesigner.TextEditorContext";
 
-TextEditorView::TextEditorView(QObject *parent)
-    : AbstractView(parent)
+TextEditorView::TextEditorView(ExternalDependenciesInterface &externalDependencies)
+    : AbstractView{externalDependencies}
     , m_widget(new TextEditorWidget(this))
     , m_textEditorContext(new Internal::TextEditorContext(m_widget))
 {
@@ -145,12 +124,7 @@ void TextEditorView::nodeReparented(const ModelNode &/*node*/, const NodeAbstrac
 
 WidgetInfo TextEditorView::widgetInfo()
 {
-    return createWidgetInfo(m_widget, nullptr, "TextEditor", WidgetInfo::CentralPane, 0, tr("Text Editor"), DesignerWidgetFlags::IgnoreErrors);
-}
-
-void TextEditorView::contextHelp(const Core::IContext::HelpCallback &callback) const
-{
-    AbstractView::contextHelp(callback);
+    return createWidgetInfo(m_widget, "TextEditor", WidgetInfo::CentralPane, 0, tr("Code"), DesignerWidgetFlags::IgnoreErrors);
 }
 
 void TextEditorView::qmlJSEditorContextHelp(const Core::IContext::HelpCallback &callback) const
@@ -222,7 +196,9 @@ void TextEditorView::changeToCustomTool()
 {
 }
 
-void TextEditorView::auxiliaryDataChanged(const ModelNode &/*node*/, const PropertyName &/*name*/, const QVariant &/*data*/)
+void TextEditorView::auxiliaryDataChanged(const ModelNode & /*node*/,
+                                          AuxiliaryDataKeyView /*type*/,
+                                          const QVariant & /*data*/)
 {
 }
 
@@ -258,19 +234,14 @@ void TextEditorView::gotoCursorPosition(int line, int column)
 
 void TextEditorView::reformatFile()
 {
-    int oldLine = -1;
-
-    if (m_widget)
-        oldLine = m_widget->currentLine();
-
-    QByteArray editorState = m_widget->textEditor()->saveState();
+    QTC_ASSERT(!m_widget.isNull(), return);
 
     auto document =
             qobject_cast<QmlJSEditor::QmlJSEditorDocument *>(Core::EditorManager::currentDocument());
 
     // Reformat document if we have a .ui.qml file
     if (document && document->filePath().toString().endsWith(".ui.qml")
-                 && DesignerSettings::getValue(DesignerSettingsKey::REFORMAT_UI_QML_FILES).toBool()) {
+                 && QmlDesignerPlugin::settings().value(DesignerSettingsKey::REFORMAT_UI_QML_FILES).toBool()) {
 
         QmlJS::Document::Ptr currentDocument(document->semanticInfo().document);
         QmlJS::Snapshot snapshot = QmlJS::ModelManagerInterface::instance()->snapshot();
@@ -278,7 +249,7 @@ void TextEditorView::reformatFile()
         if (document->isSemanticInfoOutdated()) {
             QmlJS::Document::MutablePtr latestDocument;
 
-            const QString fileName = document->filePath().toString();
+            const Utils::FilePath fileName = document->filePath();
             latestDocument = snapshot.documentFromSource(QString::fromUtf8(document->contents()),
                                                          fileName,
                                                          QmlJS::ModelManagerInterface::guessLanguageOfFile(fileName));
@@ -292,16 +263,21 @@ void TextEditorView::reformatFile()
             return;
 
         const QString &newText = QmlJS::reformat(currentDocument);
-        QTextCursor tc(document->document());
+        if (currentDocument->source() == newText)
+            return;
+
+        QTextCursor tc = m_widget->textEditor()->textCursor();
+        int pos = m_widget->textEditor()->textCursor().position();
 
         Utils::ChangeSet changeSet;
         changeSet.replace(0, document->plainText().length(), newText);
+
+        tc.beginEditBlock();
         changeSet.apply(&tc);
+        tc.setPosition(pos);
+        tc.endEditBlock();
 
-        m_widget->textEditor()->restoreState(editorState);
-
-        if (m_widget)
-            m_widget->gotoCursorPosition(oldLine, 0);
+        m_widget->textEditor()->setTextCursor(tc);
     }
 }
 

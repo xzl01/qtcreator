@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,7 +7,6 @@
 
 #include <coreplugin/ioutputpane.h>
 
-#include <utils/ansiescapecodehandler.h>
 #include <utils/itemviews.h>
 
 QT_BEGIN_NAMESPACE
@@ -46,6 +23,7 @@ QT_END_NAMESPACE
 
 namespace Core {
 class IContext;
+class OutputWindow;
 }
 
 namespace Autotest {
@@ -93,8 +71,9 @@ public:
     bool canPrevious() const override;
     void goToNext() override;
     void goToPrev() override;
+    void updateFilter() override;
 
-    void addTestResult(const TestResultPtr &result);
+    void addTestResult(const TestResult &result);
     void addOutputLine(const QByteArray &outputLine, OutputChannel channel);
     void showTestResult(const QModelIndex &index);
 private:
@@ -114,11 +93,11 @@ private:
     void onTestRunFinished();
     void onScrollBarRangeChanged(int, int max);
     void onCustomContextMenuRequested(const QPoint &pos);
-    const TestResult *getTestResult(const QModelIndex &idx);
-    void onCopyItemTriggered(const TestResult *result);
+    TestResult getTestResult(const QModelIndex &idx);
+    void onCopyItemTriggered(const TestResult &result);
     void onCopyWholeTriggered();
     void onSaveWholeTriggered();
-    void onRunThisTestTriggered(TestRunMode runMode, const TestResult *result);
+    void onRunThisTestTriggered(TestRunMode runMode, const TestResult &result);
     void toggleOutputStyle();
     QString getWholeOutput(const QModelIndex &parent = QModelIndex());
 
@@ -140,15 +119,12 @@ private:
     QToolButton *m_stopTestRun;
     QToolButton *m_filterButton;
     QToolButton *m_outputToggleButton;
-    QPlainTextEdit *m_textOutput;
+    Core::OutputWindow *m_textOutput;
     QMenu *m_filterMenu;
     bool m_autoScroll = false;
     bool m_atEnd = false;
     bool m_testRunning = false;
     QVector<TestEditorMark *> m_marks;
-    QTextCharFormat m_defaultFormat;
-    Utils::AnsiEscapeCodeHandler m_stdErrHandler;
-    Utils::AnsiEscapeCodeHandler m_stdOutHandler;
 };
 
 } // namespace Internal

@@ -1,34 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Author: Milian Wolff, KDAB (milian.wolff@kdab.com)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "valgrindconfigwidget.h"
 #include "valgrindsettings.h"
-#include "valgrindplugin.h"
+#include "valgrindtr.h"
 
 #include <debugger/analyzer/analyzericons.h>
+#include <debugger/debuggertr.h>
 
 #include <coreplugin/icore.h>
 
@@ -43,8 +21,6 @@ namespace Internal {
 
 class ValgrindConfigWidget : public Core::IOptionsPageWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Valgrind::Internal::ValgrindConfigWidget)
-
 public:
     explicit ValgrindConfigWidget(ValgrindBaseSettings *settings);
 
@@ -63,47 +39,48 @@ public:
 ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings)
 {
     using namespace Layouting;
-    const Break nl;
     ValgrindBaseSettings &s = *settings;
 
     Grid generic {
-        s.valgrindExecutable, nl,
-        s.valgrindArguments, nl,
-        s.selfModifyingCodeDetection, nl
+        s.valgrindExecutable, br,
+        s.valgrindArguments, br,
+        s.selfModifyingCodeDetection, br
     };
 
     Grid memcheck {
-        s.memcheckArguments, nl,
-        s.trackOrigins, nl,
-        s.showReachable, nl,
-        s.leakCheckOnFinish, nl,
-        s.numCallers, nl,
-        s.filterExternalIssues, nl,
+        s.memcheckArguments, br,
+        s.trackOrigins, br,
+        s.showReachable, br,
+        s.leakCheckOnFinish, br,
+        s.numCallers, br,
+        s.filterExternalIssues, br,
         s.suppressions
     };
 
     Grid callgrind {
-        s.callgrindArguments, nl,
-        s.kcachegrindExecutable, nl,
-        s.minimumInclusiveCostRatio, nl,
-        s.visualizationMinimumInclusiveCostRatio, nl,
-        s.enableEventToolTips, nl,
+        s.callgrindArguments, br,
+        s.kcachegrindExecutable, br,
+        s.minimumInclusiveCostRatio, br,
+        s.visualizationMinimumInclusiveCostRatio, br,
+        s.enableEventToolTips, br,
         Span {
             2,
             Group {
-                s.enableCacheSim,
-                s.enableBranchSim,
-                s.collectSystime,
-                s.collectBusEvents,
+                Column {
+                    s.enableCacheSim,
+                    s.enableBranchSim,
+                    s.collectSystime,
+                    s.collectBusEvents,
+                }
             }
         }
     };
 
     Column {
-        Group { Title(tr("Valgrind Generic Settings")), generic },
-        Group { Title(tr("MemCheck Memory Analysis Options")), memcheck },
-        Group { Title(tr("CallGrind Profiling Options")), callgrind },
-        Stretch(),
+        Group { title(Tr::tr("Valgrind Generic Settings")), generic },
+        Group { title(Tr::tr("MemCheck Memory Analysis Options")), memcheck },
+        Group { title(Tr::tr("CallGrind Profiling Options")), callgrind },
+        st,
     }.attachTo(this);
 }
 
@@ -112,9 +89,9 @@ ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings)
 ValgrindOptionsPage::ValgrindOptionsPage()
 {
     setId(ANALYZER_VALGRIND_SETTINGS);
-    setDisplayName(ValgrindConfigWidget::tr("Valgrind"));
+    setDisplayName(Tr::tr("Valgrind"));
     setCategory("T.Analyzer");
-    setDisplayCategory(QCoreApplication::translate("Analyzer", "Analyzer"));
+    setDisplayCategory(::Debugger::Tr::tr("Analyzer"));
     setCategoryIconPath(Analyzer::Icons::SETTINGSCATEGORY_ANALYZER);
     setWidgetCreator([] { return new ValgrindConfigWidget(ValgrindGlobalSettings::instance()); });
 }

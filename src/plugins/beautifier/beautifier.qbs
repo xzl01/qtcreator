@@ -18,17 +18,15 @@ QtcPlugin {
         "beautifierconstants.h",
         "beautifierplugin.cpp",
         "beautifierplugin.h",
+        "beautifiertr.h",
         "configurationdialog.cpp",
         "configurationdialog.h",
-        "configurationdialog.ui",
         "configurationeditor.cpp",
         "configurationeditor.h",
         "configurationpanel.cpp",
         "configurationpanel.h",
-        "configurationpanel.ui",
         "generaloptionspage.cpp",
         "generaloptionspage.h",
-        "generaloptionspage.ui",
         "generalsettings.cpp",
         "generalsettings.h",
     ]
@@ -42,7 +40,6 @@ QtcPlugin {
             "artisticstyleconstants.h",
             "artisticstyleoptionspage.cpp",
             "artisticstyleoptionspage.h",
-            "artisticstyleoptionspage.ui",
             "artisticstylesettings.cpp",
             "artisticstylesettings.h"
         ]
@@ -57,7 +54,6 @@ QtcPlugin {
             "clangformatconstants.h",
             "clangformatoptionspage.cpp",
             "clangformatoptionspage.h",
-            "clangformatoptionspage.ui",
             "clangformatsettings.cpp",
             "clangformatsettings.h"
         ]
@@ -72,7 +68,6 @@ QtcPlugin {
             "uncrustifyconstants.h",
             "uncrustifyoptionspage.cpp",
             "uncrustifyoptionspage.h",
-            "uncrustifyoptionspage.ui",
             "uncrustifysettings.cpp",
             "uncrustifysettings.h"
         ]

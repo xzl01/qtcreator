@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangtoolslogfilereader.h"
 
@@ -44,7 +22,7 @@ static bool checkFilePath(const Utils::FilePath &filePath, QString *errorMessage
     if (!fi.exists() || !fi.isReadable()) {
         if (errorMessage) {
             *errorMessage
-                    = QString(QT_TRANSLATE_NOOP("LogFileReader",
+                    = QString(QT_TRANSLATE_NOOP("QtC::ClangTools",
                                                 "File \"%1\" does not exist or is not readable."))
                     .arg(filePath.toUserOutput());
         }
@@ -53,7 +31,7 @@ static bool checkFilePath(const Utils::FilePath &filePath, QString *errorMessage
     return true;
 }
 
-Utils::optional<LineColumnInfo> byteOffsetInUtf8TextToLineColumn(const char *text,
+std::optional<LineColumnInfo> byteOffsetInUtf8TextToLineColumn(const char *text,
                                                                  int offset,
                                                                  int startLine)
 {
@@ -277,7 +255,7 @@ Diagnostics readExportedDiagnostics(const Utils::FilePath &logFilePath,
     } catch (std::exception &e) {
         if (errorMessage) {
             *errorMessage = QString(
-                                QT_TRANSLATE_NOOP("LogFileReader",
+                                QT_TRANSLATE_NOOP("QtC::ClangTools",
                                                   "Error: Failed to parse YAML file \"%1\": %2."))
                                 .arg(logFilePath.toUserOutput(), QString::fromUtf8(e.what()));
         }

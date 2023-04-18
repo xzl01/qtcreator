@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -34,20 +12,28 @@
 #include <functional>
 
 QT_BEGIN_NAMESPACE
+class QDialogButtonBox;
+class QLabel;
 class QModelIndex;
 class QSortFilterProxyModel;
 class QStringListModel;
 class QPushButton;
+class QTextBrowser;
 QT_END_NAMESPACE
 
-namespace Utils { class ProgressIndicator; }
+namespace Utils {
+class FancyLineEdit;
+class ProgressIndicator;
+class TreeView;
+} // Utils
 
 namespace Gerrit {
 namespace Internal {
-namespace Ui { class GerritDialog; }
+
 class GerritChange;
 class GerritModel;
 class GerritParameters;
+class GerritRemoteChooser;
 class GerritServer;
 
 class GerritDialog : public QDialog
@@ -86,14 +72,13 @@ private:
 
     void setProgressIndicatorVisible(bool v);
     QModelIndex currentIndex() const;
-    QPushButton *addActionButton(const QString &text, const std::function<void()> &buttonSlot);
     void updateCompletions(const QString &query);
+    QPushButton *addActionButton(const QString &text, const std::function<void ()> &buttonSlot);
     void updateButtons();
 
     const QSharedPointer<GerritParameters> m_parameters;
     const QSharedPointer<GerritServer> m_server;
     QSortFilterProxyModel *m_filterModel;
-    Ui::GerritDialog *m_ui;
     GerritModel *m_model;
     QStringListModel *m_queryModel;
     QPushButton *m_displayButton;
@@ -106,6 +91,13 @@ private:
     bool m_fetchRunning = false;
     bool m_updatingRemotes = false;
     bool m_shouldUpdateRemotes = false;
+
+    QLabel *m_repositoryLabel;
+    GerritRemoteChooser *m_remoteComboBox;
+    Utils::TreeView *m_treeView;
+    QTextBrowser *m_detailsBrowser;
+    QDialogButtonBox *m_buttonBox;
+    Utils::FancyLineEdit *m_queryLineEdit;
 };
 
 } // namespace Internal

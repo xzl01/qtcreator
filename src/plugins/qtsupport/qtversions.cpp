@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qtversions.h"
 
 #include "baseqtversion.h"
 #include "qtsupportconstants.h"
+#include "qtsupporttr.h"
 
 #include <projectexplorer/abi.h>
 #include <projectexplorer/projectexplorerconstants.h>
@@ -39,11 +18,7 @@
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 
-#include <QCoreApplication>
-#include <QFileInfo>
-
-namespace QtSupport {
-namespace Internal {
+namespace QtSupport::Internal {
 
 class DesktopQtVersion : public QtVersion
 {
@@ -61,16 +36,16 @@ public:
 QStringList DesktopQtVersion::warningReason() const
 {
     QStringList ret = QtVersion::warningReason();
-    if (qtVersion() >= QtVersionNumber(5, 0, 0)) {
+    if (qtVersion() >= QVersionNumber(5, 0, 0)) {
         if (qmlRuntimeFilePath().isEmpty())
-            ret << QCoreApplication::translate("QtVersion", "No QML utility installed.");
+            ret << Tr::tr("No QML utility installed.");
     }
     return ret;
 }
 
 QString DesktopQtVersion::description() const
 {
-    return QCoreApplication::translate("QtVersion", "Desktop", "Qt Version is meant for the desktop");
+    return Tr::tr("Desktop", "Qt Version is meant for the desktop");
 }
 
 QSet<Utils::Id> DesktopQtVersion::availableFeatures() const
@@ -111,8 +86,7 @@ public:
 
     QString description() const override
     {
-        return QCoreApplication::translate("QtVersion", "Embedded Linux",
-                                           "Qt Version is used for embedded Linux development");
+        return Tr::tr("Embedded Linux", "Qt Version is used for embedded Linux development");
     }
 
     QSet<Utils::Id> targetDeviceTypes() const override
@@ -130,5 +104,4 @@ EmbeddedLinuxQtVersionFactory::EmbeddedLinuxQtVersionFactory()
     setRestrictionChecker([](const SetupData &) { return false; });
 }
 
-} // Internal
-} // QtSupport
+} // QtSupport::Internal

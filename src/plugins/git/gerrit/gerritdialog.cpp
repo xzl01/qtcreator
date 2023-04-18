@@ -1,39 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gerritdialog.h"
-#include "ui_gerritdialog.h"
+
 #include "gerritmodel.h"
 #include "gerritparameters.h"
+#include "gerritremotechooser.h"
 
 #include "../gitplugin.h"
-#include "../gitclient.h"
+#include "../gittr.h"
 
 #include <coreplugin/icore.h>
 
+#include <utils/fancylineedit.h>
 #include <utils/hostosinfo.h>
+#include <utils/itemviews.h>
+#include <utils/layoutbuilder.h>
 #include <utils/progressindicator.h>
 #include <utils/qtcassert.h>
 #include <utils/theme/theme.h>
@@ -45,6 +27,15 @@
 #include <QSortFilterProxyModel>
 #include <QStringListModel>
 #include <QUrl>
+
+#include <QApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QGroupBox>
+#include <QHeaderView>
+#include <QLabel>
+#include <QSplitter>
+#include <QTextBrowser>
 
 using namespace Utils;
 
@@ -61,56 +52,119 @@ GerritDialog::GerritDialog(const QSharedPointer<GerritParameters> &p,
     , m_parameters(p)
     , m_server(s)
     , m_filterModel(new QSortFilterProxyModel(this))
-    , m_ui(new Ui::GerritDialog)
     , m_model(new GerritModel(p, this))
     , m_queryModel(new QStringListModel(this))
 {
-    m_ui->setupUi(this);
-    m_ui->remoteComboBox->setParameters(m_parameters);
-    m_ui->remoteComboBox->setFallbackEnabled(true);
+    setWindowTitle(Git::Tr::tr("Gerrit"));
+    resize(950, 706);
+
+    m_repositoryLabel = new QLabel(this);
+    m_repositoryLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+
+    m_remoteComboBox = new GerritRemoteChooser(this);
+    m_remoteComboBox->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+    m_remoteComboBox->setMinimumSize(QSize(40, 0));
+
+    auto changesGroup = new QGroupBox(Git::Tr::tr("Changes"));
+    changesGroup->setMinimumSize(QSize(0, 350));
+
+    m_queryLineEdit = new FancyLineEdit(changesGroup);
+    m_queryLineEdit->setMinimumSize(QSize(400, 0));
+    m_queryLineEdit->setPlaceholderText(Git::Tr::tr("Change #, SHA-1, tr:id, owner:email or reviewer:email"));
+    m_queryLineEdit->setSpecialCompleter(new QCompleter(m_queryModel, this));
+    m_queryLineEdit->setValidationFunction(
+        [this](FancyLineEdit *, QString *) { return m_model->state() != GerritModel::Error; });
+
+    auto filterLineEdit = new FancyLineEdit(changesGroup);
+    filterLineEdit->setMinimumSize(QSize(300, 0));
+    filterLineEdit->setFiltering(true);
+
+    m_treeView = new TreeView(changesGroup);
+    m_treeView->setMinimumSize(QSize(600, 0));
+    m_treeView->setRootIsDecorated(false);
+    m_treeView->setUniformRowHeights(true);
+    m_treeView->setSortingEnabled(true);
+
+    auto detailsGroup = new QGroupBox(Git::Tr::tr("Details"));
+    detailsGroup->setMinimumSize(QSize(0, 175));
+
+    m_detailsBrowser = new QTextBrowser(detailsGroup);
+    m_detailsBrowser->setOpenExternalLinks(true);
+
+    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Close);
+
+    auto queryLabel = new QLabel(Git::Tr::tr("&Query:"), changesGroup);
+    queryLabel->setBuddy(m_queryLineEdit);
+
+    m_remoteComboBox->setParameters(m_parameters);
+    m_remoteComboBox->setFallbackEnabled(true);
     m_queryModel->setStringList(m_parameters->savedQueries);
-    auto completer = new QCompleter(this);
-    completer->setModel(m_queryModel);
-    m_ui->queryLineEdit->setSpecialCompleter(completer);
-    m_ui->queryLineEdit->setValidationFunction([this](Utils::FancyLineEdit *, QString *) {
-                                               return m_model->state() != GerritModel::Error;
-                                           });
-    m_ui->filterLineEdit->setFiltering(true);
-    connect(m_ui->filterLineEdit, &Utils::FancyLineEdit::filterChanged,
-            m_filterModel, &QSortFilterProxyModel::setFilterFixedString);
-    connect(m_ui->queryLineEdit, &QLineEdit::returnPressed, this, &GerritDialog::refresh);
-    connect(m_model, &GerritModel::stateChanged, m_ui->queryLineEdit, &Utils::FancyLineEdit::validate);
-    connect(m_ui->remoteComboBox, &GerritRemoteChooser::remoteChanged,
-            this, &GerritDialog::remoteChanged);
     m_filterModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
     m_filterModel->setSourceModel(m_model);
     m_filterModel->setFilterRole(GerritModel::FilterRole);
     m_filterModel->setSortRole(GerritModel::SortRole);
-    m_ui->treeView->setModel(m_filterModel);
-    m_ui->treeView->setActivationMode(Utils::DoubleClickActivation);
 
-    connect(&m_progressIndicatorTimer, &QTimer::timeout,
-            [this]() { setProgressIndicatorVisible(true); });
+    m_treeView->setModel(m_filterModel);
+    m_treeView->setActivationMode(Utils::DoubleClickActivation);
+
     m_progressIndicatorTimer.setSingleShot(true);
     m_progressIndicatorTimer.setInterval(50); // don't show progress for < 50ms tasks
 
-    m_progressIndicator = new Utils::ProgressIndicator(Utils::ProgressIndicatorSize::Large,
-                                                       m_ui->treeView);
-    m_progressIndicator->attachToWidget(m_ui->treeView->viewport());
+    m_progressIndicator = new ProgressIndicator(ProgressIndicatorSize::Large, m_treeView);
+    m_progressIndicator->attachToWidget(m_treeView->viewport());
     m_progressIndicator->hide();
 
-    connect(m_model, &GerritModel::stateChanged, this, &GerritDialog::manageProgressIndicator);
+    m_displayButton = addActionButton(Git::Tr::tr("&Show"), [this] { slotFetchDisplay(); });
+    m_cherryPickButton = addActionButton(Git::Tr::tr("Cherry &Pick"), [this] { slotFetchCherryPick(); });
+    m_checkoutButton = addActionButton(Git::Tr::tr("C&heckout"), [this] { slotFetchCheckout(); });
+    m_refreshButton = addActionButton(Git::Tr::tr("&Refresh"), [this] { refresh(); });
+    m_refreshButton->setDefault(true);
 
-    QItemSelectionModel *selectionModel = m_ui->treeView->selectionModel();
-    connect(selectionModel, &QItemSelectionModel::currentChanged,
+    using namespace Layouting;
+
+    Column {
+        Row {
+            queryLabel,
+            m_queryLineEdit,
+            st,
+            filterLineEdit
+        },
+        m_treeView
+    }.attachTo(changesGroup);
+
+    Column {
+        m_detailsBrowser
+    }.attachTo(detailsGroup);
+
+    auto splitter = new QSplitter(this);
+    splitter->setOrientation(Qt::Vertical);
+    splitter->setChildrenCollapsible(false);
+    splitter->addWidget(changesGroup);
+    splitter->addWidget(detailsGroup);
+
+    Column {
+        Row { m_repositoryLabel, st, Git::Tr::tr("Remote:"),  m_remoteComboBox },
+        splitter,
+        m_buttonBox
+    }.attachTo(this);
+
+    connect(filterLineEdit, &Utils::FancyLineEdit::filterChanged,
+            m_filterModel, &QSortFilterProxyModel::setFilterFixedString);
+    connect(m_queryLineEdit, &QLineEdit::returnPressed,
+            this, &GerritDialog::refresh);
+    connect(m_model, &GerritModel::stateChanged,
+            m_queryLineEdit, &Utils::FancyLineEdit::validate);
+    connect(m_remoteComboBox, &GerritRemoteChooser::remoteChanged,
+            this, &GerritDialog::remoteChanged);
+    connect(&m_progressIndicatorTimer, &QTimer::timeout,
+            this, [this] { setProgressIndicatorVisible(true); });
+    connect(m_model, &GerritModel::stateChanged,
+            this, &GerritDialog::manageProgressIndicator);
+
+    connect(m_treeView->selectionModel(), &QItemSelectionModel::currentChanged,
             this, &GerritDialog::slotCurrentChanged);
-    connect(m_ui->treeView, &QAbstractItemView::activated,
+    connect(m_treeView, &QAbstractItemView::activated,
             this, &GerritDialog::slotActivated);
-
-    m_displayButton = addActionButton(tr("&Show"), [this]() { slotFetchDisplay(); });
-    m_cherryPickButton = addActionButton(tr("Cherry &Pick"), [this]() { slotFetchCherryPick(); });
-    m_checkoutButton = addActionButton(tr("C&heckout"), [this]() { slotFetchCheckout(); });
-    m_refreshButton = addActionButton(tr("&Refresh"), [this]() { refresh(); });
 
     connect(m_model, &GerritModel::refreshStateChanged,
             m_refreshButton, &QWidget::setDisabled);
@@ -125,8 +179,10 @@ GerritDialog::GerritDialog(const QSharedPointer<GerritParameters> &p,
     setCurrentPath(repository);
     slotCurrentChanged();
 
-    m_ui->treeView->setFocus();
-    m_refreshButton->setDefault(true);
+    m_treeView->setFocus();
+
+    connect(m_buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(m_buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
 }
 
 FilePath GerritDialog::repositoryPath() const
@@ -139,14 +195,14 @@ void GerritDialog::setCurrentPath(const FilePath &path)
     if (path == m_repository)
         return;
     m_repository = path;
-    m_ui->repositoryLabel->setText(Git::Internal::GitPlugin::msgRepositoryLabel(path));
+    m_repositoryLabel->setText(Git::Internal::GitPlugin::msgRepositoryLabel(path));
     updateRemotes();
 }
 
 QPushButton *GerritDialog::addActionButton(const QString &text,
                                            const std::function<void()> &buttonSlot)
 {
-    QPushButton *button = m_ui->buttonBox->addButton(text, QDialogButtonBox::ActionRole);
+    QPushButton *button = m_buttonBox->addButton(text, QDialogButtonBox::ActionRole);
     connect(button, &QPushButton::clicked, this, buttonSlot);
     return button;
 }
@@ -162,10 +218,7 @@ void GerritDialog::updateCompletions(const QString &query)
     m_parameters->saveQueries(Core::ICore::settings());
 }
 
-GerritDialog::~GerritDialog()
-{
-    delete m_ui;
-}
+GerritDialog::~GerritDialog() = default;
 
 void GerritDialog::slotActivated(const QModelIndex &i)
 {
@@ -177,11 +230,11 @@ void GerritDialog::slotActivated(const QModelIndex &i)
 void GerritDialog::slotRefreshStateChanged(bool v)
 {
     if (!v && m_model->rowCount()) {
-        m_ui->treeView->expandAll();
+        m_treeView->expandAll();
         for (int c = 0; c < GerritModel::ColumnCount; ++c)
-            m_ui->treeView->resizeColumnToContents(c);
-        if (m_ui->treeView->columnWidth(GerritModel::TitleColumn) > maxTitleWidth)
-            m_ui->treeView->setColumnWidth(GerritModel::TitleColumn, maxTitleWidth);
+            m_treeView->resizeColumnToContents(c);
+        if (m_treeView->columnWidth(GerritModel::TitleColumn) > maxTitleWidth)
+            m_treeView->setColumnWidth(GerritModel::TitleColumn, maxTitleWidth);
     }
 }
 
@@ -208,10 +261,10 @@ void GerritDialog::slotFetchCheckout()
 
 void GerritDialog::refresh()
 {
-    const QString &query = m_ui->queryLineEdit->text().trimmed();
+    const QString &query = m_queryLineEdit->text().trimmed();
     updateCompletions(query);
     m_model->refresh(m_server, query);
-    m_ui->treeView->sortByColumn(-1, Qt::DescendingOrder);
+    m_treeView->sortByColumn(-1, Qt::DescendingOrder);
 }
 
 void GerritDialog::scheduleUpdateRemotes()
@@ -233,7 +286,7 @@ void GerritDialog::showEvent(QShowEvent *event)
 
 void GerritDialog::remoteChanged()
 {
-    const GerritServer server = m_ui->remoteComboBox->currentServer();
+    const GerritServer server = m_remoteComboBox->currentServer();
     if (QSharedPointer<GerritServer> modelServer = m_model->server()) {
         if (*modelServer == server)
            return;
@@ -245,11 +298,11 @@ void GerritDialog::remoteChanged()
 
 void GerritDialog::updateRemotes(bool forceReload)
 {
-    m_ui->remoteComboBox->setRepository(m_repository);
+    m_remoteComboBox->setRepository(m_repository);
     if (m_repository.isEmpty() || !m_repository.isDir())
         return;
     *m_server = m_parameters->server;
-    m_ui->remoteComboBox->updateRemotes(forceReload);
+    m_remoteComboBox->updateRemotes(forceReload);
 }
 
 void GerritDialog::manageProgressIndicator()
@@ -264,13 +317,13 @@ void GerritDialog::manageProgressIndicator()
 
 QModelIndex GerritDialog::currentIndex() const
 {
-    const QModelIndex index = m_ui->treeView->selectionModel()->currentIndex();
+    const QModelIndex index = m_treeView->selectionModel()->currentIndex();
     return index.isValid() ? m_filterModel->mapToSource(index) : QModelIndex();
 }
 
 void GerritDialog::updateButtons()
 {
-    const bool enabled = !m_fetchRunning && m_ui->treeView->selectionModel()->currentIndex().isValid();
+    const bool enabled = !m_fetchRunning && m_treeView->selectionModel()->currentIndex().isValid();
     m_displayButton->setEnabled(enabled);
     m_cherryPickButton->setEnabled(enabled);
     m_checkoutButton->setEnabled(enabled);
@@ -279,7 +332,7 @@ void GerritDialog::updateButtons()
 void GerritDialog::slotCurrentChanged()
 {
     const QModelIndex current = currentIndex();
-    m_ui->detailsBrowser->setText(current.isValid() ? m_model->toHtml(current) : QString());
+    m_detailsBrowser->setText(current.isValid() ? m_model->toHtml(current) : QString());
     updateButtons();
 }
 
@@ -288,7 +341,7 @@ void GerritDialog::fetchStarted(const QSharedPointer<GerritChange> &change)
     // Disable buttons to prevent parallel gerrit operations which can cause mix-ups.
     m_fetchRunning = true;
     updateButtons();
-    const QString toolTip = tr("Fetching \"%1\"...").arg(change->title);
+    const QString toolTip = Git::Tr::tr("Fetching \"%1\"...").arg(change->title);
     m_displayButton->setToolTip(toolTip);
     m_cherryPickButton->setToolTip(toolTip);
     m_checkoutButton->setToolTip(toolTip);

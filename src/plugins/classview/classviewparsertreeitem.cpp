@@ -1,51 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Mingulov
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Mingulov
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "classviewparsertreeitem.h"
-#include "classviewsymbollocation.h"
-#include "classviewsymbolinformation.h"
+
 #include "classviewconstants.h"
-#include "classviewutils.h"
 
 #include <cplusplus/Icons.h>
-#include <cplusplus/Name.h>
 #include <cplusplus/Overview.h>
-#include <cplusplus/Symbol.h>
-#include <cplusplus/Symbols.h>
 #include <projectexplorer/project.h>
-#include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/session.h>
-#include <utils/algorithm.h>
-
-#include <QHash>
-#include <QPair>
-#include <QIcon>
-#include <QStandardItem>
 
 #include <QDebug>
+#include <QHash>
+#include <QStandardItem>
 
 namespace ClassView {
 namespace Internal {
@@ -105,17 +73,17 @@ void ParserTreeItemPrivate::mergeSymbol(const CPlusPlus::Symbol *symbol)
     // any symbol which does not contain :: in the name
 
     //! \todo collect statistics and reorder to optimize
-    if (symbol->isForwardClassDeclaration()
+    if (symbol->asForwardClassDeclaration()
         || symbol->isExtern()
         || symbol->isFriend()
         || symbol->isGenerated()
-        || symbol->isUsingNamespaceDirective()
-        || symbol->isUsingDeclaration()
+        || symbol->asUsingNamespaceDirective()
+        || symbol->asUsingDeclaration()
         )
         return;
 
     const CPlusPlus::Name *symbolName = symbol->name();
-    if (symbolName && symbolName->isQualifiedNameId())
+    if (symbolName && symbolName->asQualifiedNameId())
         return;
 
     QString name = g_overview.prettyName(symbolName).trimmed();
@@ -133,13 +101,13 @@ void ParserTreeItemPrivate::mergeSymbol(const CPlusPlus::Symbol *symbol)
         childItem = ParserTreeItem::ConstPtr(new ParserTreeItem());
 
     // locations have 1-based column in Symbol, use the same here.
-    SymbolLocation location(QString::fromUtf8(symbol->fileName() , symbol->fileNameLength()),
+    SymbolLocation location(symbol->filePath(),
                             symbol->line(), symbol->column());
 
     childItem->d->m_symbolLocations.insert(location);
 
     // prevent showing a content of the functions
-    if (!symbol->isFunction()) {
+    if (!symbol->asFunction()) {
         if (const CPlusPlus::Scope *scope = symbol->asScope()) {
             CPlusPlus::Scope::iterator cur = scope->memberBegin();
             CPlusPlus::Scope::iterator last = scope->memberEnd();
@@ -155,7 +123,7 @@ void ParserTreeItemPrivate::mergeSymbol(const CPlusPlus::Symbol *symbol)
     }
 
     // if item is empty and has not to be added
-    if (!symbol->isNamespace() || childItem->childCount())
+    if (!symbol->asNamespace() || childItem->childCount())
         m_symbolInformations.insert(information, childItem);
 }
 

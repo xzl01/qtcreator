@@ -1,12 +1,3 @@
-if (TARGET libclang)
-  set(HAVE_LIBCLANG ON)
-endif()
-
-if (HAVE_LIBCLANG AND NOT QTC_CLANG_BUILDMODE_MATCH)
-    message(STATUS "Disabling libclang tests due to build mode mismatch.")
-    set(HAVE_LIBCLANG OFF)
-endif()
-
 find_package(Googletest MODULE)
 find_package(GoogleBenchmark MODULE)
 
@@ -31,9 +22,9 @@ add_qtc_test(unittest GTEST
     BEFORE "../mockup"
     BEFORE "../mockup/qmldesigner/designercore/include"
   DEPENDS
-    Qt5::Core Qt5::Network Qt5::Widgets
-    Qt5::Xml Qt5::Concurrent Qt5::Qml Qt5::Gui
-    Qt6Core5Compat QmlJS
+    Qt::Core Qt::Network Qt::Widgets
+    Qt::Xml Qt::Concurrent Qt::Qml Qt::Gui
+    Qt6Core5Compat QmlJS Sqlite SqliteC
     Googletest
   DEFINES
     QT_NO_CAST_TO_ASCII
@@ -42,19 +33,14 @@ add_qtc_test(unittest GTEST
     DONT_CHECK_MESSAGE_COUNTER
     QTC_RESOURCE_DIR="${CMAKE_CURRENT_LIST_DIR}/../../../share/qtcreator"
     TESTDATA_DIR="${CMAKE_CURRENT_BINARY_DIR}/data"
-    ECHOSERVER="$<TARGET_FILE_DIR:echo>/echo"
     TEST_RELATIVE_LIBEXEC_PATH="${TEST_RELATIVE_LIBEXEC_PATH}"
   SOURCES
     abstractviewmock.h
-    clientserverinprocess-test.cpp
-    clientserveroutsideprocess-test.cpp
     compare-operators.h
     conditionally-disabled-tests.h
-    dummyclangipcclient.h
     dynamicastmatcherdiagnosticcontainer-matcher.h
     eventspy.cpp eventspy.h
     fakeprocess.cpp fakeprocess.h
-    filesystem-utilities.h
     googletest.h
     google-using-declarations.h
     gtest-creator-printing.cpp gtest-creator-printing.h
@@ -62,26 +48,18 @@ add_qtc_test(unittest GTEST
     gtest-qt-printing.cpp gtest-qt-printing.h
     gtest-std-printing.h
     lastchangedrowid-test.cpp
-    lineprefixer-test.cpp
     matchingtext-test.cpp
-    mockclangcodemodelclient.h
-    mockclangcodemodelserver.h
     mockfutureinterface.h
     mockmutex.h
     mockqfilesystemwatcher.h
-    mockqueue.h
     mocksqlitestatement.h
     mocksqlitetransactionbackend.h
     mocksyntaxhighligher.h
     mocktimer.cpp mocktimer.h
     nodelistproperty-test.cpp
-    processcreator-test.cpp
     processevents-utilities.cpp processevents-utilities.h
-    readandwritemessageblock-test.cpp
-    rundocumentparse-utility.h
     sizedarray-test.cpp
     smallstring-test.cpp
-    sourcerangecontainer-matcher.h
     spydummy.cpp spydummy.h
     sqlitealgorithms-test.cpp
     sqliteindex-test.cpp
@@ -89,7 +67,6 @@ add_qtc_test(unittest GTEST
     sqlitetransaction-test.cpp
     unittests-main.cpp
     unittest-utility-functions.h
-    utf8-test.cpp
     sqlitecolumn-test.cpp
     sqlitedatabasebackend-test.cpp
     sqlitedatabase-test.cpp
@@ -103,6 +80,7 @@ add_qtc_test(unittest GTEST
     synchronousimagecache-test.cpp
     imagecachegenerator-test.cpp
     imagecachestorage-test.cpp
+    imagecachedispatchcollector-test.cpp
     sqlitedatabasemock.h
     sqlitereadstatementmock.cpp sqlitereadstatementmock.h
     sqlitereadwritestatementmock.cpp
@@ -143,91 +121,11 @@ function(extend_qtc_test_with_target_sources target)
   )
 endfunction()
 
-if (HAVE_LIBCLANG AND NOT TARGET clangbackend_lib)
-  add_subdirectory(../../../src/tools/clangbackend/source ${CMAKE_CURRENT_BINARY_DIR}/clangbackend)
-endif()
-extend_qtc_test(unittest DEPENDS clangbackend_lib CONDITION HAVE_LIBCLANG)
-
-if (NOT TARGET Sqlite)
-  add_subdirectory(../../../src/libs/sqlite ${CMAKE_CURRENT_BINARY_DIR}/sqlite)
-endif()
-extend_qtc_test_with_target_sources(Sqlite
-  DEFINES SQLITE_CUSTOM_INCLUDE=config.h
-)
-
-if (APPLE)
-  extend_qtc_test(unittest DEFINES _BSD_SOURCE)
-elseif (UNIX)
-  extend_qtc_test(unittest DEFINES _POSIX_C_SOURCE=200809L _GNU_SOURCE _DEFAULT_SOURCE)
-endif()
-
 # Do not work on the source directory data
 add_custom_command(TARGET unittest POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E copy_directory
           "${CMAKE_CURRENT_SOURCE_DIR}/data"
           "${CMAKE_CURRENT_BINARY_DIR}/data"
-)
-
-extend_qtc_test(unittest
-  CONDITION HAVE_LIBCLANG
-  INCLUDES "${CLANG_INCLUDE_DIRS}"
-  DEFINES CLANG_UNIT_TESTS
-  DEPENDS libclang
-  SOURCES
-    activationsequencecontextprocessor-test.cpp
-    activationsequenceprocessor-test.cpp
-    chunksreportedmonitor.cpp
-    clangasyncjob-base.cpp
-    clangcodecompleteresults-test.cpp
-    clangcodemodelserver-test.cpp
-    clangcompletecodejob-test.cpp
-    clangcompletioncontextanalyzer-test.cpp
-    clangdiagnosticfilter-test.cpp
-    clangdocumentprocessors-test.cpp
-    clangdocumentprocessor-test.cpp
-    clangdocuments-test.cpp
-    clangdocumentsuspenderresumer-test.cpp
-    clangdocument-test.cpp
-    clangfixitoperation-test.cpp
-    clangfollowsymbol-test.cpp
-    clangisdiagnosticrelatedtolocation-test.cpp
-    clangjobqueue-test.cpp
-    clangjobs-test.cpp
-    clangparsesupportivetranslationunitjob-test.cpp
-    clangreferencescollector-test.cpp
-    clangrequestannotationsjob-test.cpp
-    clangrequestreferencesjob-test.cpp
-    clangresumedocumentjob-test.cpp
-    clangstring-test.cpp
-    clangsupportivetranslationunitinitializer-test.cpp
-    clangsuspenddocumentjob-test.cpp
-    clangtooltipinfo-test.cpp
-    clangtranslationunits-test.cpp
-    clangtranslationunit-test.cpp
-    clangupdateannotationsjob-test.cpp
-    codecompleter-test.cpp
-    codecompletionsextractor-test.cpp
-    completionchunkstotextconverter-test.cpp
-    cursor-test.cpp
-    diagnosticset-test.cpp
-    diagnostic-test.cpp
-    fixit-test.cpp
-    gtest-clang-printing.cpp gtest-clang-printing.h
-    highlightingresultreporter-test.cpp
-    readexporteddiagnostics-test.cpp
-    skippedsourceranges-test.cpp
-    sourcelocation-test.cpp
-    sourcerange-test.cpp
-    token-test.cpp
-    tokenprocessor-test.cpp
-    translationunitupdater-test.cpp
-    unsavedfile-test.cpp
-    unsavedfiles-test.cpp
-    utf8positionfromlinecolumn-test.cpp
-    chunksreportedmonitor.h
-    clangasyncjob-base.h
-    clangcompareoperators.h
-    diagnosticcontainer-matcher.h
 )
 
 extend_qtc_test(unittest
@@ -237,12 +135,13 @@ extend_qtc_test(unittest
     smallstring-benchmark.cpp
 )
 
-finalize_qtc_gtest(unittest ".c$")
+finalize_qtc_gtest(unittest
+  EXCLUDE_SOURCES_REGEX ".c$"
+  EXCLUDE_ALL_FROM_PRECHECK)
 
 # Path needs to be before CppEditor
 target_include_directories(unittest
   PRIVATE
-    BEFORE ../../../src/tools/clangbackend/source
     BEFORE ../../../src/plugins
 )
 
@@ -255,10 +154,10 @@ extend_qtc_test(unittest
     "${QmlDesignerDir}/designercore"
     "${QmlDesignerDir}/designercore/include"
     "${QmlDesignerDir}/designercore/imagecache"
-    "${QmlDesignerDir}/../../../share/qtcreator/qml/qmlpuppet/interfaces"
-    "${QmlDesignerDir}/../../../share/qtcreator/qml/qmlpuppet/types"
+    "${QmlDesignerDir}/../../../src/libs/qmlpuppetcommunication/interfaces"
+    "${QmlDesignerDir}/../../../src/libs/qmlpuppetcommunication/types"
   DEFINES
-    QMLDESIGNER_TEST DESIGNER_STATIC_CORE_LIBRARY
+    QMLDESIGNERCORE_STATIC_LIBRARY QMLDESIGNER_STATIC_LIBRARY
   SOURCES_PREFIX
     "${QmlDesignerDir}"
   SOURCES
@@ -267,7 +166,7 @@ extend_qtc_test(unittest
 extend_qtc_test(unittest
   SOURCES_PREFIX "${QmlDesignerDir}/designercore"
   SOURCES
-    ../../../../share/qtcreator/qml/qmlpuppet/interfaces/commondefines.h
+    ../../../../src/libs/qmlpuppetcommunication/interfaces/commondefines.h
     ../components/listmodeleditor/listmodeleditormodel.cpp
     ../components/listmodeleditor/listmodeleditormodel.h
     exceptions/exception.cpp
@@ -292,6 +191,7 @@ extend_qtc_test(unittest
     imagecache/imagecachegenerator.h
     imagecache/imagecachegeneratorinterface.h
     imagecache/imagecachestorage.h
+    imagecache/imagecachedispatchcollector.h
     imagecache/imagecachestorageinterface.h
     imagecache/synchronousimagecache.cpp
     imagecache/timestampproviderinterface.h
@@ -348,9 +248,8 @@ extend_qtc_test(unittest
     projectstorage/filestatus.h
     projectstorage/filestatuscache.cpp projectstorage/filestatuscache.h
     projectstorage/nonlockingmutex.h
-    projectstorage/projectmanagerinterface.h
     projectstorage/projectstorageinterface.h
-    projectstorage/projectstorage.h
+    projectstorage/projectstorage.cpp projectstorage/projectstorage.h
     projectstorage/projectstoragepathwatcher.h
     projectstorage/projectstoragepathwatcherinterface.h
     projectstorage/projectstoragepathwatchernotifierinterface.h
@@ -384,7 +283,6 @@ extend_qtc_test(unittest
     filesystemmock.h
     filestatuscache-test.cpp
     listmodeleditor-test.cpp
-    projectmanagermock.h
     projectstorage-test.cpp
     projectstorageupdater-test.cpp
     projectstoragesqlitefunctionregistry-test.cpp
@@ -409,46 +307,8 @@ if (NOT TARGET CPlusPlus)
   add_subdirectory(../../../src/libs/3rdparty/cplusplus ${CMAKE_CURRENT_BINARY_DIR}/3rd_cplusplus)
   add_subdirectory(../../../src/libs/cplusplus ${CMAKE_CURRENT_BINARY_DIR}/cplusplus)
 endif()
-if (NOT TARGET ClangSupport)
-  add_subdirectory(../../../src/libs/clangsupport ${CMAKE_CURRENT_BINARY_DIR}/clangsupport)
-endif()
 
-extend_qtc_test(unittest DEPENDS Utils CPlusPlus ClangSupport)
-
-extend_qtc_test(unittest
-  SOURCES_PREFIX ../../../src/plugins/clangcodemodel
-  SOURCES
-    clangactivationsequencecontextprocessor.cpp clangactivationsequencecontextprocessor.h
-    clangactivationsequenceprocessor.cpp clangactivationsequenceprocessor.h
-    clangcompletionchunkstotextconverter.cpp clangcompletionchunkstotextconverter.h
-    clangcompletioncontextanalyzer.cpp clangcompletioncontextanalyzer.h
-    clangdiagnosticfilter.cpp clangdiagnosticfilter.h
-    clangfixitoperation.cpp clangfixitoperation.h
-    clanghighlightingresultreporter.cpp clanghighlightingresultreporter.h
-    clanguiheaderondiskmanager.cpp clanguiheaderondiskmanager.h
-    clangisdiagnosticrelatedtolocation.h
-)
-
-find_package(yaml-cpp QUIET MODULE)
-
-extend_qtc_test(unittest
-  DEPENDS yaml-cpp
-  DEFINES CLANGTOOLS_STATIC_LIBRARY
-  SOURCES_PREFIX ../../../src/plugins/clangtools
-  SOURCES
-    clangtoolsdiagnostic.cpp
-    clangtoolsdiagnostic.h
-    clangtoolslogfilereader.cpp
-    clangtoolslogfilereader.h
-)
-
-extend_qtc_test(unittest
-  DEFINES DEBUGGER_STATIC_LIBRARY
-  SOURCES_PREFIX ../../../src/plugins/debugger
-  SOURCES
-    analyzer/diagnosticlocation.cpp
-    analyzer/diagnosticlocation.h
-)
+extend_qtc_test(unittest DEPENDS Utils CPlusPlus)
 
 extend_qtc_test(unittest
   SOURCES_PREFIX ../../../src/plugins/coreplugin
@@ -460,37 +320,24 @@ extend_qtc_test(unittest
 )
 
 extend_qtc_test(unittest
-  SOURCES_PREFIX ../../../src/plugins/cppeditor
-  DEFINES CPPEDITOR_STATIC_LIBRARY
+  CONDITION TARGET qmldomlib
+  DEPENDS qmldomlib
   SOURCES
-    cppprojectfile.cpp cppprojectfile.h
+    qmldocumentparser-test.cpp
+    qmltypesparser-test.cpp
 )
 
-get_filename_component(
-    QMLDOM_STANDALONE_CMAKELISTS
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../qmldom_standalone/src/qmldom/standalone/"
-    ABSOLUTE
+extend_qtc_test(unittest
+  SOURCES_PREFIX "${QmlDesignerDir}/designercore"
+  CONDITION TARGET qmldomlib
+  DEPENDS qmldomlib
+  SOURCES
+    projectstorage/qmldocumentparser.cpp projectstorage/qmldocumentparser.h
+    projectstorage/qmltypesparser.cpp projectstorage/qmltypesparser.h
 )
 
-if(EXISTS ${QMLDOM_STANDALONE_CMAKELISTS} AND Qt6_FOUND)
-  add_subdirectory(
-    ../../../../qmldom_standalone/src/qmldom/standalone
-    ${CMAKE_CURRENT_BINARY_DIR}/qmldom_standalone)
+file(GLOB PROJECTSTORAGE_EXCLUDED_SOURCES ${QmlDesignerDir}/designercore/projectstorage/*.cpp)
+set_property(SOURCE ${PROJECTSTORAGE_EXCLUDED_SOURCES} PROPERTY SKIP_AUTOMOC ON)
 
-  set_target_properties(qmldomlib PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "$<TARGET_PROPERTY:QmlJS,RUNTIME_OUTPUT_DIRECTORY>"
-    LIBRARY_OUTPUT_DIRECTORY "$<TARGET_PROPERTY:QmlJS,LIBRARY_OUTPUT_DIRECTORY>")
-
-  extend_qtc_test(unittest
-    DEPENDS qmldomlib
-    SOURCES
-      qmldocumentparser-test.cpp
-      qmltypesparser-test.cpp
-  )
-  extend_qtc_test(unittest
-    SOURCES_PREFIX "${QmlDesignerDir}/designercore"
-    SOURCES
-      projectstorage/qmldocumentparser.cpp projectstorage/qmldocumentparser.h
-      projectstorage/qmltypesparser.cpp projectstorage/qmltypesparser.h
-    )
-endif()
+file(GLOB UNITTEST_EXCLUDED_SOURCES *.cpp)
+set_property(SOURCE ${UNITTEST_EXCLUDED_SOURCES} PROPERTY SKIP_AUTOMOC ON)

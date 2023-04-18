@@ -1,57 +1,31 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "applicationlauncher.h"
-#include "buildconfiguration.h"
-#include "devicesupport/idevice.h"
-#include "projectexplorerconstants.h"
+#include "devicesupport/idevicefwd.h"
 #include "runconfiguration.h"
 
+#include <utils/commandline.h>
 #include <utils/environment.h>
+#include <utils/outputformatter.h>
 #include <utils/processhandle.h>
 #include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
-#include <utils/icon.h>
 
 #include <QHash>
+#include <QProcess> // FIXME: Remove
 #include <QVariant>
 
 #include <functional>
 #include <memory>
 
 namespace Utils {
+class Icon;
 class MacroExpander;
 class OutputLineParser;
-class OutputFormatter;
 } // Utils
 
 namespace ProjectExplorer {
-class GlobalOrProjectAspect;
-class Node;
 class RunConfiguration;
 class RunControl;
 class Target;
@@ -59,6 +33,7 @@ class Target;
 namespace Internal {
 class RunControlPrivate;
 class RunWorkerPrivate;
+class SimpleTargetRunnerPrivate;
 } // Internal
 
 
@@ -70,11 +45,7 @@ public:
     Utils::CommandLine command;
     Utils::FilePath workingDirectory;
     Utils::Environment environment;
-    IDevice::ConstPtr device; // Override the kit's device. Keep unset by default.
-    QHash<Utils::Id, QVariant> extraData;
-
-    // FIXME: Not necessarily a display name
-    QString displayName() const;
+    QVariantHash extraData;
 };
 
 class PROJECTEXPLORER_EXPORT RunWorker : public QObject
@@ -92,16 +63,13 @@ public:
 
     void setId(const QString &id);
 
-    void setStartTimeout(int ms, const std::function<void()> &callback = {});
-    void setStopTimeout(int ms, const std::function<void()> &callback = {});
-
     void recordData(const QString &channel, const QVariant &data);
     QVariant recordedData(const QString &channel) const;
 
     // Part of read-only interface of RunControl for convenience.
-    void appendMessage(const QString &msg, Utils::OutputFormat format, bool appendNewLine = true);
-    IDevice::ConstPtr device() const;
-    const Runnable &runnable() const;
+    void appendMessage(const QString &msg, Utils::OutputFormat format);
+    void appendMessageChunk(const QString &msg, Utils::OutputFormat format);
+    IDeviceConstPtr device() const;
 
     // States
     void initiateStart();
@@ -129,7 +97,6 @@ signals:
 protected:
     void virtual start();
     void virtual stop();
-    void virtual onFinished() {}
 
 private:
     friend class Internal::RunControlPrivate;
@@ -143,34 +110,24 @@ public:
     using WorkerCreator = std::function<RunWorker *(RunControl *)>;
 
     RunWorkerFactory();
-    RunWorkerFactory(const WorkerCreator &producer,
-                     const QList<Utils::Id> &runModes,
-                     const QList<Utils::Id> &runConfigs = {},
-                     const QList<Utils::Id> &deviceTypes = {});
-
     ~RunWorkerFactory();
 
-    bool canRun(Utils::Id runMode, Utils::Id deviceType, const QString &runConfigId) const;
-    WorkerCreator producer() const { return m_producer; }
-
-    template <typename Worker>
-    static WorkerCreator make()
-    {
-        return [](RunControl *runControl) { return new Worker(runControl); };
-    }
-
-    // For debugging only.
-    static void dumpAll();
+    static void dumpAll(); // For debugging only.
 
 protected:
     template <typename Worker>
     void setProduct() { setProducer([](RunControl *rc) { return new Worker(rc); }); }
     void setProducer(const WorkerCreator &producer);
+    void setSupportedRunConfigs(const QList<Utils::Id> &runConfigs);
     void addSupportedRunMode(Utils::Id runMode);
     void addSupportedRunConfig(Utils::Id runConfig);
     void addSupportedDeviceType(Utils::Id deviceType);
 
 private:
+    friend class RunControl;
+    bool canCreate(Utils::Id runMode, Utils::Id deviceType, const QString &runConfigId) const;
+    RunWorker *create(RunControl *runControl) const;
+
     WorkerCreator m_producer;
     QList<Utils::Id> m_supportedRunModes;
     QList<Utils::Id> m_supportedRunConfigurations;
@@ -193,9 +150,11 @@ public:
     explicit RunControl(Utils::Id mode);
     ~RunControl() override;
 
-    void setRunConfiguration(RunConfiguration *runConfig);
     void setTarget(Target *target);
     void setKit(Kit *kit);
+
+    void copyDataFromRunConfiguration(RunConfiguration *runConfig);
+    void copyDataFromRunControl(RunControl *runControl);
 
     void initiateStart();
     void initiateReStart();
@@ -208,7 +167,7 @@ public:
 
     bool supportsReRunning() const;
 
-    virtual QString displayName() const;
+    QString displayName() const;
     void setDisplayName(const QString &displayName);
 
     bool isRunning() const;
@@ -221,21 +180,21 @@ public:
 
     Utils::ProcessHandle applicationProcessHandle() const;
     void setApplicationProcessHandle(const Utils::ProcessHandle &handle);
-    IDevice::ConstPtr device() const;
+    IDeviceConstPtr device() const;
 
-    RunConfiguration *runConfiguration() const; // FIXME: Remove.
     // FIXME: Try to cut down to amount of functions.
     Target *target() const;
     Project *project() const;
     Kit *kit() const;
     const Utils::MacroExpander *macroExpander() const;
-    Utils::BaseAspect *aspect(Utils::Id id) const;
-    template <typename T> T *aspect() const {
-        return runConfiguration() ? runConfiguration()->aspect<T>() : nullptr;
+
+    const Utils::BaseAspect::Data *aspect(Utils::Id instanceId) const;
+    const Utils::BaseAspect::Data *aspect(Utils::BaseAspect::Data::ClassId classId) const;
+    template <typename T> const typename T::Data *aspect() const {
+        return dynamic_cast<const typename T::Data *>(aspect(&T::staticMetaObject));
     }
 
     QString buildKey() const;
-    BuildConfiguration::BuildType buildType() const;
     Utils::FilePath buildDirectory() const;
     Utils::Environment buildEnvironment() const;
 
@@ -248,7 +207,18 @@ public:
     Utils::Id runMode() const;
 
     const Runnable &runnable() const;
-    void setRunnable(const Runnable &runnable);
+
+    const Utils::CommandLine &commandLine() const;
+    void setCommandLine(const Utils::CommandLine &command);
+
+    const Utils::FilePath &workingDirectory() const;
+    void setWorkingDirectory(const Utils::FilePath &workingDirectory);
+
+    const Utils::Environment &environment() const;
+    void setEnvironment(const Utils::Environment &environment);
+
+    const QVariantHash &extraData() const;
+    void setExtraData(const QVariantHash &extraData);
 
     static bool showPromptToStopDialog(const QString &title, const QString &text,
                                        const QString &stopButtonText = QString(),
@@ -271,7 +241,7 @@ signals:
     void applicationProcessHandleChanged(QPrivateSignal); // Use setApplicationProcessHandle
 
 private:
-    void setDevice(const IDevice::ConstPtr &device);
+    void setDevice(const IDeviceConstPtr &device);
 
     friend class RunWorker;
     friend class Internal::RunWorkerPrivate;
@@ -291,24 +261,33 @@ class PROJECTEXPLORER_EXPORT SimpleTargetRunner : public RunWorker
 
 public:
     explicit SimpleTargetRunner(RunControl *runControl);
+    ~SimpleTargetRunner() override;
 
 protected:
-    void setStarter(const std::function<void()> &starter);
-    void doStart(const Runnable &runnable, const IDevice::ConstPtr &device);
+    void setStartModifier(const std::function<void()> &startModifier);
+
+    Utils::CommandLine commandLine() const;
+    void setCommandLine(const Utils::CommandLine &commandLine);
+
+    void setEnvironment(const Utils::Environment &environment);
+    void setWorkingDirectory(const Utils::FilePath &workingDirectory);
+
+    void forceRunOnHost();
 
 private:
     void start() final;
     void stop() final;
 
     const Runnable &runnable() const = delete;
+    void setRunnable(const Runnable &) = delete;
 
-    ApplicationLauncher m_launcher;
-    std::function<void()> m_starter;
+    const std::unique_ptr<Internal::SimpleTargetRunnerPrivate> d;
+};
 
-    bool m_stopReported = false;
-    bool m_useTerminal = false;
-    bool m_runAsRoot = false;
-    bool m_stopForced = false;
+class PROJECTEXPLORER_EXPORT SimpleTargetRunnerFactory : public RunWorkerFactory
+{
+public:
+    explicit SimpleTargetRunnerFactory(const QList<Utils::Id> &runConfig);
 };
 
 class PROJECTEXPLORER_EXPORT OutputFormatterFactory

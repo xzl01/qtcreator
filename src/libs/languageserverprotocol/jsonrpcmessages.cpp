@@ -1,34 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "jsonrpcmessages.h"
 
-#include "lsputils.h"
 #include "initializemessages.h"
+#include "languageserverprotocoltr.h"
+#include "lsputils.h"
 
-#include <utils/mimetypes/mimedatabase.h>
 #include <utils/qtcassert.h>
 
 #include <QCoreApplication>
@@ -41,21 +19,24 @@ Q_LOGGING_CATEGORY(timingLog, "qtc.languageserverprotocol.timing", QtWarningMsg)
 
 constexpr const char CancelRequest::methodName[];
 
-QHash<QString, JsonRpcMessageHandler::MessageProvider> JsonRpcMessageHandler::m_messageProvider;
-
 QByteArray JsonRpcMessage::toRawData() const
 {
     return QJsonDocument(m_jsonObject).toJson(QJsonDocument::Compact);
 }
 
-QByteArray JsonRpcMessage::mimeType() const
+bool JsonRpcMessage::isValid(QString *errorMessage) const
 {
-    return JsonRpcMessageHandler::jsonRpcMimeType();
+    if (!m_parseError.isEmpty()) {
+        if (errorMessage)
+            *errorMessage = m_parseError;
+        return false;
+    }
+    return m_jsonObject[jsonRpcVersionKey] == "2.0";
 }
 
-bool JsonRpcMessage::isValid(QString * /*errorMessage*/) const
+const QJsonObject &JsonRpcMessage::toJsonObject() const
 {
-    return m_jsonObject[jsonRpcVersionKey] == "2.0";
+    return m_jsonObject;
 }
 
 JsonRpcMessage::JsonRpcMessage()
@@ -64,50 +45,9 @@ JsonRpcMessage::JsonRpcMessage()
     m_jsonObject[jsonRpcVersionKey] = "2.0";
 }
 
-JsonRpcMessage::JsonRpcMessage(const QJsonObject &jsonObject)
-    : m_jsonObject(jsonObject)
-{ }
-
-JsonRpcMessage::JsonRpcMessage(QJsonObject &&jsonObject)
-    : m_jsonObject(std::move(jsonObject))
-{ }
-
-QByteArray JsonRpcMessageHandler::jsonRpcMimeType()
-{
-    return "application/vscode-jsonrpc";
-}
-
-void JsonRpcMessageHandler::registerMessageProvider(
-        const QString &method, JsonRpcMessageHandler::MessageProvider provider)
-{
-    m_messageProvider.insert(method, provider);
-}
-
-void JsonRpcMessageHandler::parseContent(const QByteArray &content,
-                                         QTextCodec *codec,
-                                         QString &parseError,
-                                         const ResponseHandlers &responseHandlers,
-                                         const MethodHandler &methodHandler)
-{
-    const QJsonObject &jsonObject = toJsonObject(content, codec, parseError);
-    if (jsonObject.isEmpty())
-        return;
-
-    const MessageId id(jsonObject.value(idKey));
-    const QString &method = jsonObject.value(methodKey).toString();
-    if (!method.isEmpty()) {
-        if (auto provider = m_messageProvider[method]) {
-            methodHandler(method, id, provider(jsonObject));
-            return;
-        }
-    }
-
-    responseHandlers(id, content, codec);
-}
-
 constexpr int utf8mib = 106;
 
-static QString docTypeName(const QJsonDocument &doc)
+static QString docType(const QJsonDocument &doc)
 {
     if (doc.isArray())
         return QString("array");
@@ -120,29 +60,41 @@ static QString docTypeName(const QJsonDocument &doc)
     return {};
 }
 
-QJsonObject JsonRpcMessageHandler::toJsonObject(const QByteArray &_content,
-                                                QTextCodec *codec,
-                                                QString &parseError)
+JsonRpcMessage::JsonRpcMessage(const BaseMessage &message)
 {
-    if (_content.isEmpty())
-        return QJsonObject();
+    if (message.content.isEmpty())
+        return;
     QByteArray content;
-    if (codec && codec->mibEnum() != utf8mib) {
+    if (message.codec && message.codec->mibEnum() != utf8mib) {
         QTextCodec *utf8 = QTextCodec::codecForMib(utf8mib);
         if (utf8)
-            content = utf8->fromUnicode(codec->toUnicode(_content));
+            content = utf8->fromUnicode(message.codec->toUnicode(message.content));
     }
     if (content.isEmpty())
-        content = _content;
-    QJsonParseError error = {0 , QJsonParseError::NoError};
+        content = message.content;
+    QJsonParseError error = {0, QJsonParseError::NoError};
     const QJsonDocument doc = QJsonDocument::fromJson(content, &error);
     if (doc.isObject())
-        return doc.object();
-    if (doc.isNull())
-        parseError = tr("Could not parse JSON message \"%1\".").arg(error.errorString());
+        m_jsonObject = doc.object();
+    else if (doc.isNull())
+        m_parseError =
+            Tr::tr("Could not parse JSON message \"%1\".").arg(error.errorString());
     else
-        parseError = tr("Expected a JSON object, but got a JSON \"%1\" value.").arg(docTypeName(doc));
-    return QJsonObject();
+        m_parseError =
+            Tr::tr("Expected a JSON object, but got a JSON \"%1\" value.").arg(docType(doc));
+}
+
+JsonRpcMessage::JsonRpcMessage(const QJsonObject &jsonObject)
+    : m_jsonObject(jsonObject)
+{ }
+
+JsonRpcMessage::JsonRpcMessage(QJsonObject &&jsonObject)
+    : m_jsonObject(std::move(jsonObject))
+{ }
+
+QByteArray JsonRpcMessage::jsonRpcMimeType()
+{
+    return "application/vscode-jsonrpc";
 }
 
 CancelRequest::CancelRequest(const CancelParameter &params)

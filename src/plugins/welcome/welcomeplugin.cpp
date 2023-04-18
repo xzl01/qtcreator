@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "introductionwidget.h"
+#include "welcometr.h"
 
 #include <extensionsystem/iplugin.h>
 #include <extensionsystem/pluginmanager.h>
@@ -38,7 +17,6 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/imode.h>
 #include <coreplugin/iwelcomepage.h>
-#include <coreplugin/iwizardfactory.h>
 #include <coreplugin/modemanager.h>
 #include <coreplugin/welcomepagehelper.h>
 
@@ -46,14 +24,12 @@
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/icon.h>
-#include <utils/porting.h>
 #include <utils/qtcassert.h>
 #include <utils/styledbar.h>
 #include <utils/theme/theme.h>
 #include <utils/treemodel.h>
 
 #include <QDesktopServices>
-#include <QHeaderView>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -118,8 +94,6 @@ public:
 
     void initPlugins();
 
-    bool openDroppedFiles(const QList<QUrl> &urls);
-
 private:
     void addPage(IWelcomePage *page);
 
@@ -146,9 +120,9 @@ public:
     {
         m_welcomeMode = new WelcomeMode;
 
-        auto introAction = new QAction(tr("UI Tour"), this);
+        auto introAction = new QAction(Tr::tr("UI Tour"), this);
         connect(introAction, &QAction::triggered, this, []() {
-            auto intro = new IntroductionWidget(ICore::mainWindow());
+            auto intro = new IntroductionWidget(ICore::dialogParent());
             intro->show();
         });
         Command *cmd = ActionManager::registerAction(introAction, "Welcome.UITour");
@@ -158,7 +132,7 @@ public:
 
         if (!arguments.contains("-notour")) {
             connect(ICore::instance(), &ICore::coreOpened, this, []() {
-                IntroductionWidget::askUserAboutIntroduction(ICore::mainWindow(),
+                IntroductionWidget::askUserAboutIntroduction(ICore::dialogParent(),
                                                              ICore::settings());
             }, Qt::QueuedConnection);
         }
@@ -263,7 +237,7 @@ public:
             auto projectVBox = new QVBoxLayout;
             projectVBox->setSpacing(buttonSpacing);
             auto newButton = new WelcomePageButton(mainWidget);
-            newButton->setText(tr("Create Project..."));
+            newButton->setText(Tr::tr("Create Project..."));
             newButton->setWithAccentColor(true);
             newButton->setOnClicked([] {
                 QAction *openAction = ActionManager::command(Core::Constants::NEW)->action();
@@ -271,7 +245,7 @@ public:
             });
 
             auto openButton = new WelcomePageButton(mainWidget);
-            openButton->setText(tr("Open Project..."));
+            openButton->setText(Tr::tr("Open Project..."));
             openButton->setWithAccentColor(true);
             openButton->setOnClicked([] {
                 QAction *openAction = ActionManager::command(Core::Constants::OPEN)->action();
@@ -290,13 +264,13 @@ public:
             newVBox->setSpacing(buttonSpacing / 3);
             vbox->addItem(newVBox);
 
-            auto newLabel = new QLabel(tr("New to Qt?"), mainWidget);
+            auto newLabel = new QLabel(Tr::tr("New to Qt?"), mainWidget);
             newLabel->setFont(brandFont());
             newLabel->setAlignment(Qt::AlignHCenter);
             newVBox->addWidget(newLabel);
 
             auto getStartedButton = new WelcomePageButton(mainWidget);
-            getStartedButton->setText(tr("Get Started"));
+            getStartedButton->setText(Tr::tr("Get Started"));
             getStartedButton->setOnClicked([] {
                 QDesktopServices::openUrl(
                     QString("qthelp://org.qt-project.qtcreator/doc/creator-getting-started.html"));
@@ -337,11 +311,11 @@ public:
         hbox->setContentsMargins(0, 2 * ItemGap, HSpacing, 2 * ItemGap);
 
         const QList<QPair<QString, QString> > links {
-            { tr("Get Qt"), "https://www.qt.io/download" },
-            { tr("Qt Account"), "https://account.qt.io" },
-            { tr("Online Community"), "https://forum.qt.io" },
-            { tr("Blogs"), "https://planet.qt.io" },
-            { tr("User Guide"), "qthelp://org.qt-project.qtcreator/doc/index.html" },
+            { Tr::tr("Get Qt"), "https://www.qt.io/download" },
+            { Tr::tr("Qt Account"), "https://account.qt.io" },
+            { Tr::tr("Online Community"), "https://forum.qt.io" },
+            { Tr::tr("Blogs"), "https://planet.qt.io" },
+            { Tr::tr("User Guide"), "qthelp://org.qt-project.qtcreator/doc/index.html" },
         };
         for (const QPair<QString, QString> &link : links) {
             auto button = new WelcomePageButton(this);
@@ -360,7 +334,7 @@ public:
 
 WelcomeMode::WelcomeMode()
 {
-    setDisplayName(tr("Welcome"));
+    setDisplayName(Tr::tr("Welcome"));
 
     const Icon CLASSIC(":/welcome/images/mode_welcome.png");
     const Icon FLAT({{":/welcome/images/mode_welcome_mask.png",
@@ -443,18 +417,6 @@ void WelcomeMode::initPlugins()
     }
 }
 
-bool WelcomeMode::openDroppedFiles(const QList<QUrl> &urls)
-{
-    const QList<QUrl> localUrls = Utils::filtered(urls, &QUrl::isLocalFile);
-    if (!localUrls.isEmpty()) {
-        QTimer::singleShot(0, [localUrls]() {
-            ICore::openFiles(Utils::transform(localUrls, &FilePath::fromUrl), ICore::SwitchMode);
-        });
-        return true;
-    }
-    return false;
-}
-
 void WelcomeMode::addPage(IWelcomePage *page)
 {
     int idx;
@@ -487,7 +449,7 @@ void WelcomeMode::addPage(IWelcomePage *page)
     auto onClicked = [this, pageId, stackPage] {
         m_activePage = pageId;
         m_pageStack->setCurrentWidget(stackPage);
-        for (WelcomePageButton *pageButton : qAsConst(m_pageButtons))
+        for (WelcomePageButton *pageButton : std::as_const(m_pageButtons))
             pageButton->recheckActive();
     };
 

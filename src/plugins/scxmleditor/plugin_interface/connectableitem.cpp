@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "connectableitem.h"
 #include "cornergrabberitem.h"
@@ -30,6 +8,7 @@
 #include "quicktransitionitem.h"
 #include "sceneutils.h"
 #include "scxmleditorconstants.h"
+#include "scxmleditortr.h"
 #include "serializer.h"
 #include "stateitem.h"
 
@@ -64,19 +43,19 @@ ConnectableItem::~ConnectableItem()
 {
     setBlockUpdates(true);
 
-    foreach (ConnectableItem *item, m_overlappedItems) {
+    const QVector<ConnectableItem *> overlappedItems = m_overlappedItems;
+    for (ConnectableItem *item : overlappedItems)
         item->removeOverlappingItem(this);
-    }
     m_overlappedItems.clear();
 
-    foreach (TransitionItem *transition, m_outputTransitions) {
+    const QVector<TransitionItem *> outputTransitions = m_outputTransitions;
+    for (TransitionItem *transition : outputTransitions)
         transition->disconnectItem(this);
-    }
     m_outputTransitions.clear();
 
-    foreach (TransitionItem *transition, m_inputTransitions) {
+    const QVector<TransitionItem *> inputTransitions = m_inputTransitions;
+    for (TransitionItem *transition : inputTransitions)
         transition->disconnectItem(this);
-    }
     m_inputTransitions.clear();
 
     qDeleteAll(m_quickTransitions);
@@ -220,7 +199,7 @@ bool ConnectableItem::sceneEventFilter(QGraphicsItem *watched, QEvent *event)
 
         if (event->type() == QEvent::GraphicsSceneMousePress) {
             m_newTransitionStartedPoint = mouseEvent->pos();
-            tag()->document()->undoStack()->beginMacro(tr("Add new state"));
+            tag()->document()->undoStack()->beginMacro(Tr::tr("Add new state"));
 
             m_newTransition = new TransitionItem;
             scene()->addItem(m_newTransition);
@@ -291,7 +270,7 @@ void ConnectableItem::removeInputTransition(TransitionItem *transition)
 
 void ConnectableItem::updateInputTransitions()
 {
-    foreach (TransitionItem *transition, m_inputTransitions) {
+    for (TransitionItem *transition : std::as_const(m_inputTransitions)) {
         transition->updateComponents();
         transition->updateUIProperties();
     }
@@ -300,7 +279,7 @@ void ConnectableItem::updateInputTransitions()
 
 void ConnectableItem::updateOutputTransitions()
 {
-    foreach (TransitionItem *transition, m_outputTransitions) {
+    for (TransitionItem *transition : std::as_const(m_outputTransitions)) {
         transition->updateComponents();
         transition->updateUIProperties();
     }
@@ -313,7 +292,8 @@ void ConnectableItem::updateTransitions(bool allChildren)
     updateInputTransitions();
 
     if (allChildren) {
-        foreach (QGraphicsItem *it, childItems()) {
+        const QList<QGraphicsItem *> items = childItems();
+        for (QGraphicsItem *it : items) {
             auto item = static_cast<ConnectableItem*>(it);
             if (item && item->type() >= InitialStateType)
                 item->updateTransitions(allChildren);
@@ -323,14 +303,15 @@ void ConnectableItem::updateTransitions(bool allChildren)
 
 void ConnectableItem::updateTransitionAttributes(bool allChildren)
 {
-    foreach (TransitionItem *transition, m_outputTransitions)
+    for (TransitionItem *transition : std::as_const(m_outputTransitions))
         transition->updateTarget();
 
-    foreach (TransitionItem *transition, m_inputTransitions)
+    for (TransitionItem *transition : std::as_const(m_inputTransitions))
         transition->updateTarget();
 
     if (allChildren) {
-        foreach (QGraphicsItem *it, childItems()) {
+        const QList<QGraphicsItem *> items = childItems();
+        for (QGraphicsItem *it : items) {
             auto item = static_cast<ConnectableItem*>(it);
             if (item && item->type() >= InitialStateType)
                 item->updateTransitionAttributes(allChildren);
@@ -352,7 +333,7 @@ QPointF ConnectableItem::getInternalPosition(const TransitionItem *transition, T
 
     int ind = 0;
     if (type == TransitionItem::InternalNoTarget) {
-        foreach (TransitionItem *item, m_outputTransitions) {
+        for (TransitionItem *item : std::as_const(m_outputTransitions)) {
             if (item->targetType() == TransitionItem::InternalSameTarget)
                 ind++;
         }
@@ -390,13 +371,14 @@ void ConnectableItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 
     if (!m_moveMacroStarted) {
         m_moveMacroStarted = true;
-        tag()->document()->undoStack()->beginMacro(tr("Move State"));
+        tag()->document()->undoStack()->beginMacro(Tr::tr("Move State"));
     }
 
     //Restore old behavior if ctrl & alt modifiers are present
     if (!m_releasedFromParent && !(event->modifiers() & Qt::AltModifier) && !(event->modifiers() & Qt::ControlModifier)) {
         releaseFromParent();
-        foreach (QGraphicsItem *it, scene()->selectedItems()) {
+        const QList<QGraphicsItem *> items = scene()->selectedItems();
+        for (QGraphicsItem *it : items) {
             if (it->type() >= InitialStateType && it != this) {
                 qgraphicsitem_cast<ConnectableItem*>(it)->releaseFromParent();
             }
@@ -431,7 +413,8 @@ void ConnectableItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
             }
         }
         connectToParent(parentItem);
-        foreach (QGraphicsItem *it, scene()->selectedItems()) {
+        const QList<QGraphicsItem *> items = scene()->selectedItems();
+        for (QGraphicsItem *it : items) {
             if (it->type() >= InitialStateType && it != this)
                 qgraphicsitem_cast<ConnectableItem*>(it)->connectToParent(parentItem);
         }
@@ -582,7 +565,7 @@ void ConnectableItem::updateAttributes()
 {
     BaseItem::updateAttributes();
 
-    foreach (TransitionItem *transition, m_inputTransitions) {
+    for (TransitionItem *transition : std::as_const(m_inputTransitions)) {
         if (transition->isEndItem(this))
             transition->setTagValue("target", itemId());
     }
@@ -698,13 +681,13 @@ void ConnectableItem::finalizeCreation()
 
 bool ConnectableItem::hasInputTransitions(const ConnectableItem *parentItem, bool checkChildren) const
 {
-    foreach (const TransitionItem *it, m_inputTransitions) {
+    for (const TransitionItem *it : std::as_const(m_inputTransitions))
         if (!SceneUtils::isChild(parentItem, it->connectedItem(this)))
             return true;
-    }
 
     if (checkChildren) {
-        foreach (QGraphicsItem *it, childItems()) {
+        const QList<QGraphicsItem *> items = childItems();
+        for (QGraphicsItem *it : items) {
             if (it->type() >= InitialStateType) {
                 auto item = qgraphicsitem_cast<ConnectableItem*>(it);
                 if (item && item->hasInputTransitions(parentItem, checkChildren))
@@ -718,13 +701,13 @@ bool ConnectableItem::hasInputTransitions(const ConnectableItem *parentItem, boo
 
 bool ConnectableItem::hasOutputTransitions(const ConnectableItem *parentItem, bool checkChildren) const
 {
-    foreach (TransitionItem *it, m_outputTransitions) {
+    for (TransitionItem *it : std::as_const(m_outputTransitions))
         if (!SceneUtils::isChild(parentItem, it->connectedItem(this)))
             return true;
-    }
 
     if (checkChildren) {
-        foreach (QGraphicsItem *it, childItems()) {
+        const QList<QGraphicsItem *> items = childItems();
+        for (QGraphicsItem *it : items) {
             if (it->type() >= InitialStateType) {
                 auto item = qgraphicsitem_cast<ConnectableItem*>(it);
                 if (item && item->hasOutputTransitions(parentItem, checkChildren))
@@ -755,7 +738,8 @@ void ConnectableItem::removeOverlappingItem(ConnectableItem *item)
 void ConnectableItem::checkOverlapping()
 {
     QVector<ConnectableItem*> overlappedItems;
-    foreach (QGraphicsItem *it, collidingItems()) {
+    const QList<QGraphicsItem *> items = collidingItems();
+    for (QGraphicsItem *it : items) {
         if (it->type() >= InitialStateType && it->parentItem() == parentItem()) {
             overlappedItems << qgraphicsitem_cast<ConnectableItem*>(it);
         }
@@ -770,7 +754,7 @@ void ConnectableItem::checkOverlapping()
     }
 
     // Add new overlapped items
-    foreach (ConnectableItem *it, overlappedItems) {
+    for (ConnectableItem *it : std::as_const(overlappedItems)) {
         if (!m_overlappedItems.contains(it)) {
             m_overlappedItems << it;
             it->addOverlappingItem(this);

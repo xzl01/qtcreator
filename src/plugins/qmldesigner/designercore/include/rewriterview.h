@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -75,7 +53,8 @@ public:
     };
 
 public:
-    RewriterView(DifferenceHandling differenceHandling = RewriterView::Amend, QObject *parent = nullptr);
+    RewriterView(ExternalDependenciesInterface &externalDependencies,
+                 DifferenceHandling differenceHandling = RewriterView::Amend);
     ~RewriterView() override;
 
     void modelAttached(Model *model) override;
@@ -87,6 +66,7 @@ public:
     void variantPropertiesChanged(const QList<VariantProperty>& propertyList, PropertyChangeFlags propertyChange) override;
     void bindingPropertiesChanged(const QList<BindingProperty>& propertyList, PropertyChangeFlags propertyChange) override;
     void signalHandlerPropertiesChanged(const QVector<SignalHandlerProperty>& propertyList,PropertyChangeFlags propertyChange) override;
+    void signalDeclarationPropertiesChanged(const QVector<SignalDeclarationProperty>& propertyList, PropertyChangeFlags propertyChange) override;
     void nodeReparented(const ModelNode &node, const NodeAbstractProperty &newPropertyParent,
                         const NodeAbstractProperty &oldPropertyParent,
                         AbstractView::PropertyChangeFlags propertyChange) override;
@@ -113,7 +93,9 @@ public:
     void reactivateTextMofifierChangeSignals();
     void deactivateTextMofifierChangeSignals();
 
-    void auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &data) override;
+    void auxiliaryDataChanged(const ModelNode &node,
+                              AuxiliaryDataKeyView key,
+                              const QVariant &data) override;
 
     Internal::ModelNodePositionStorage *positionStorage() const;
 
@@ -127,7 +109,6 @@ public:
     void addError(const DocumentMessage &error);
 
     void enterErrorState(const QString &errorMessage);
-    bool inErrorState() const { return !m_rewritingErrorMessage.isEmpty(); }
     void leaveErrorState() { m_rewritingErrorMessage.clear(); }
     void resetToLastCorrectQml();
 
@@ -146,11 +127,13 @@ public:
 
     QString convertTypeToImportAlias(const QString &type) const;
 
-    bool checkSemanticErrors() const
-    { return m_checkErrors; }
+    bool checkSemanticErrors() const { return m_checkSemanticErrors; }
 
-    void setCheckSemanticErrors(bool b)
-    { m_checkErrors = b; }
+    void setCheckSemanticErrors(bool b) { m_checkSemanticErrors = b; }
+
+    bool checkLinkErrors() const { return m_checkLinkErrors; }
+
+    void setCheckLinkErrors(bool b) { m_checkLinkErrors = b; }
 
     QString pathForImport(const Import &import);
 
@@ -181,6 +164,12 @@ public:
 
     void setAllowComponentRoot(bool allow);
     bool allowComponentRoot() const;
+
+    void resetPossibleImports();
+
+    bool possibleImportsEnabled() const;
+    void setPossibleImportsEnabled(bool b);
+
 signals:
     void modelInterfaceProjectUpdated();
 
@@ -202,11 +191,13 @@ private: //variables
     void setupCanonicalHashes() const;
     void handleLibraryInfoUpdate();
     void handleProjectUpdate();
+    bool inErrorState() const { return !m_rewritingErrorMessage.isEmpty(); }
 
     TextModifier *m_textModifier = nullptr;
     int transactionLevel = 0;
     bool m_modificationGroupActive = false;
-    bool m_checkErrors = true;
+    bool m_checkSemanticErrors = true;
+    bool m_checkLinkErrors = true;
 
     DifferenceHandling m_differenceHandling;
     QScopedPointer<Internal::ModelNodePositionStorage> m_positionStorage;
@@ -224,6 +215,7 @@ private: //variables
     bool m_restoringAuxData = false;
     bool m_modelAttachPending = false;
     bool m_allowComponentRoot = false;
+    bool m_possibleImportsEnabled = true;
 
     mutable QHash<int, ModelNode> m_canonicalIntModelNode;
     mutable QHash<ModelNode, int> m_canonicalModelNodeInt;

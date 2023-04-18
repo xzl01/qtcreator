@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -47,9 +25,10 @@ class QMLDESIGNERCORE_EXPORT QmlItemNode : public QmlVisualNode
     friend QmlAnchors;
 
 public:
-    QmlItemNode() : QmlVisualNode() {}
+    QmlItemNode() = default;
     QmlItemNode(const ModelNode &modelNode)  : QmlVisualNode(modelNode) {}
     bool isValid() const override;
+    explicit operator bool() const { return isValid(); }
     static bool isValidQmlItemNode(const ModelNode &modelNode);
 
     static bool isItemOrWindow(const ModelNode &modelNode);
@@ -82,6 +61,18 @@ public:
                                                  NodeAbstractProperty parentproperty,
                                                  bool executeInTransaction = true);
 
+    static QmlItemNode createQmlItemNodeForEffect(AbstractView *view,
+                                                  QmlItemNode parentQmlItemNode,
+                                                  const QString &effectPath,
+                                                  bool isLayerEffect);
+    static QmlItemNode createQmlItemNodeForEffect(AbstractView *view,
+                                                  NodeAbstractProperty parentProperty,
+                                                  const QString &effectPath,
+                                                  bool isLayerEffect);
+    static void placeEffectNode(NodeAbstractProperty &parentProperty,
+                                const QmlItemNode &effectNode,
+                                bool isLayerEffect);
+
     QList<QmlItemNode> children() const;
     QList<QmlObjectNode> resources() const;
     QList<QmlObjectNode> allDirectSubNodes() const;
@@ -103,7 +94,6 @@ public:
 
     bool modelIsMovable() const;
     bool modelIsResizable() const;
-    bool modelIsRotatable() const;
     bool modelIsInLayout() const;
     bool hasFormEditorItem() const;
 
@@ -155,11 +145,12 @@ public:
 class QmlFlowItemNode;
 class QmlFlowViewNode;
 
-class QMLDESIGNERCORE_EXPORT QmlFlowTargetNode : public QmlItemNode
+class QMLDESIGNERCORE_EXPORT QmlFlowTargetNode final : public QmlItemNode
 {
 public:
     QmlFlowTargetNode(const ModelNode &modelNode)  : QmlItemNode(modelNode) {}
     bool isValid() const override;
+    explicit operator bool() const { return isValid(); }
 
     void assignTargetItem(const QmlFlowTargetNode &node);
     void destroyTargets();
@@ -170,11 +161,12 @@ public:
     void removeTransitions();
 };
 
-class QMLDESIGNERCORE_EXPORT QmlFlowActionAreaNode : public QmlItemNode
+class QMLDESIGNERCORE_EXPORT QmlFlowActionAreaNode final : public QmlItemNode
 {
 public:
     QmlFlowActionAreaNode(const ModelNode &modelNode)  : QmlItemNode(modelNode) {}
     bool isValid() const override;
+    explicit operator bool() const { return isValid(); }
     static bool isValidQmlFlowActionAreaNode(const ModelNode &modelNode);
     ModelNode targetTransition() const;
     void assignTargetFlowItem(const QmlFlowTargetNode &flowItem);
@@ -182,11 +174,12 @@ public:
     void destroyTarget();
 };
 
-class QMLDESIGNERCORE_EXPORT QmlFlowItemNode : public QmlItemNode
+class QMLDESIGNERCORE_EXPORT QmlFlowItemNode final : public QmlItemNode
 {
 public:
     QmlFlowItemNode(const ModelNode &modelNode)  : QmlItemNode(modelNode) {}
     bool isValid() const override;
+    explicit operator bool() const { return isValid(); }
     static bool isValidQmlFlowItemNode(const ModelNode &modelNode);
     QList<QmlFlowActionAreaNode> flowActionAreas() const;
     QmlFlowViewNode flowView() const;
@@ -194,11 +187,12 @@ public:
     static ModelNode decisionNodeForTransition(const ModelNode &transition);
 };
 
-class QMLDESIGNERCORE_EXPORT QmlFlowViewNode : public QmlItemNode
+class QMLDESIGNERCORE_EXPORT QmlFlowViewNode final : public QmlItemNode
 {
 public:
     QmlFlowViewNode(const ModelNode &modelNode)  : QmlItemNode(modelNode) {}
     bool isValid() const override;
+    explicit operator bool() const { return isValid(); }
     static bool isValidQmlFlowViewNode(const ModelNode &modelNode);
     QList<QmlFlowItemNode> flowItems() const;
     ModelNode addTransition(const QmlFlowTargetNode &from, const QmlFlowTargetNode &to);
@@ -212,12 +206,14 @@ public:
     void setStartFlowItem(const QmlFlowItemNode &flowItem);
     ModelNode createTransition();
 
-    static PropertyNameList st_mouseSignals;
     static QList<QmlConnections> getAssociatedConnections(const ModelNode &node);
-
+    static const PropertyNameList &mouseSignals() { return s_mouseSignals; }
 
 protected:
     QList<ModelNode> transitionsForProperty(const PropertyName &propertyName, const ModelNode &modelNode);
+
+private:
+    static PropertyNameList s_mouseSignals;
 };
 
 

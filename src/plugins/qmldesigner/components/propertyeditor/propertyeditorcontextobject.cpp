@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "propertyeditorcontextobject.h"
 #include "timelineeditor/easingcurvedialog.h"
@@ -220,7 +198,10 @@ void PropertyEditorContextObject::changeTypeName(const QString &typeName)
         }
 
         // Create a list of properties available for the new type
-        QList<PropertyName> propertiesAndSignals(metaInfo.propertyNames());
+        auto propertiesAndSignals = Utils::transform<PropertyNameList>(metaInfo.properties(),
+                                                                       [](const auto &property) {
+                                                                           return property.name();
+                                                                       });
         // Add signals to the list
         for (const auto &signal : metaInfo.signalNames()) {
             if (signal.isEmpty())
@@ -262,7 +243,7 @@ void PropertyEditorContextObject::changeTypeName(const QString &typeName)
         if (!incompatibleProperties.empty()) {
             QString detailedText = QString("<b>Incompatible properties:</b><br>");
 
-            for (const auto &p : qAsConst(incompatibleProperties))
+            for (const auto &p : std::as_const(incompatibleProperties))
                 detailedText.append("- " + QString::fromUtf8(p) + "<br>");
 
             detailedText.chop(QString("<br>").size());
@@ -282,7 +263,7 @@ void PropertyEditorContextObject::changeTypeName(const QString &typeName)
             if (msgBox.exec() == QMessageBox::Cancel)
                 return;
 
-            for (const auto &p : qAsConst(incompatibleProperties))
+            for (const auto &p : std::as_const(incompatibleProperties))
                 selectedNode.removeProperty(p);
         }
 
@@ -320,6 +301,19 @@ void PropertyEditorContextObject::insertKeyframe(const QString &propertyName)
     rewriterView->executeInTransaction("PropertyEditorContextObject::insertKeyframe", [&]{
         timeline.insertKeyframe(selectedNode, propertyName.toUtf8());
     });
+}
+
+QString PropertyEditorContextObject::activeDragSuffix() const
+{
+    return m_activeDragSuffix;
+}
+
+void PropertyEditorContextObject::setActiveDragSuffix(const QString &suffix)
+{
+    if (m_activeDragSuffix != suffix) {
+        m_activeDragSuffix = suffix;
+        emit activeDragSuffixChanged();
+    }
 }
 
 int PropertyEditorContextObject::majorVersion() const
@@ -414,6 +408,34 @@ QQmlComponent *PropertyEditorContextObject::specificQmlComponent()
     m_qmlComponent->setData(m_specificQmlData.toUtf8(), QUrl::fromLocalFile(QStringLiteral("specfics.qml")));
 
     return m_qmlComponent;
+}
+
+bool PropertyEditorContextObject::hasMultiSelection() const
+{
+    return m_hasMultiSelection;
+}
+
+void PropertyEditorContextObject::setHasMultiSelection(bool b)
+{
+    if (b == m_hasMultiSelection)
+        return;
+
+    m_hasMultiSelection = b;
+    emit hasMultiSelectionChanged();
+}
+
+void PropertyEditorContextObject::setInsightEnabled(bool value)
+{
+    if (value != m_insightEnabled) {
+        m_insightEnabled = value;
+        emit insightEnabledChanged();
+    }
+}
+
+void PropertyEditorContextObject::setInsightCategories(const QStringList &categories)
+{
+    m_insightCategories = categories;
+    emit insightCategoriesChanged();
 }
 
 void PropertyEditorContextObject::setSpecificsUrl(const QUrl &newSpecificsUrl)
@@ -571,6 +593,14 @@ bool PropertyEditorContextObject::isBlocked(const QString &propName) const
         }
     }
     return false;
+}
+
+void PropertyEditorContextObject::verifyInsightImport()
+{
+    Import import = Import::createLibraryImport("QtInsightTracker", "1.0");
+
+    if (!m_model->hasImport(import))
+        m_model->changeImports({import}, {});
 }
 
 void EasingCurveEditor::registerDeclarativeType()

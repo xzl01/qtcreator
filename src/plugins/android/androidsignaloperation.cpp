@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "androidconfigurations.h"
 #include "androidsignaloperation.h"
@@ -36,40 +14,42 @@ namespace Internal {
 
 AndroidSignalOperation::AndroidSignalOperation()
     : m_adbPath(AndroidConfigurations::currentConfig().adbToolPath())
-    , m_adbProcess(new QtcProcess(this))
     , m_timeout(new QTimer(this))
 {
     m_timeout->setInterval(5000);
     connect(m_timeout, &QTimer::timeout, this, &AndroidSignalOperation::handleTimeout);
 }
 
+AndroidSignalOperation::~AndroidSignalOperation() = default;
+
+bool AndroidSignalOperation::handleCrashMessage()
+{
+    if (m_adbProcess->exitStatus() == QProcess::NormalExit)
+        return false;
+    m_errorMessage = QLatin1String(" adb process exit code: ") + QString::number(m_adbProcess->exitCode());
+    const QString adbError = m_adbProcess->errorString();
+    if (!adbError.isEmpty())
+        m_errorMessage += QLatin1String(" adb process error: ") + adbError;
+    return true;
+}
+
 void AndroidSignalOperation::adbFindRunAsFinished()
 {
     QTC_ASSERT(m_state == RunAs, return);
     m_timeout->stop();
-    m_adbProcess->disconnect(this);
 
-    QString runAs = QString::fromLatin1(m_adbProcess->readAllStandardOutput());
-    if (m_adbProcess->exitStatus() != QProcess::NormalExit) {
-        m_errorMessage = QLatin1String(" adb Exit code: ") + QString::number(m_adbProcess->exitCode());
-        QString adbError = m_adbProcess->errorString();
-        if (!adbError.isEmpty())
-            m_errorMessage += QLatin1String(" adb process error: ") + adbError;
-    }
+    handleCrashMessage();
+    const QString runAs = QString::fromLatin1(m_adbProcess->readAllRawStandardOutput());
+    m_adbProcess.release()->deleteLater();
     if (runAs.isEmpty() || !m_errorMessage.isEmpty()) {
-        m_errorMessage = QLatin1String("Cannot find User for process: ")
-                + QString::number(m_pid)
-                + m_errorMessage;
+        m_errorMessage.prepend(QLatin1String("Cannot find User for process: ")
+                               + QString::number(m_pid));
         m_state = Idle;
         emit finished(m_errorMessage);
     } else {
-        connect(m_adbProcess, &QtcProcess::finished,
-                this, &AndroidSignalOperation::adbKillFinished);
-        m_state = Kill;
-        m_timeout->start();
-        m_adbProcess->setCommand({m_adbPath, {"shell", "run-as", runAs,
-            "kill", QString("-%1").arg(m_signal), QString::number(m_pid)}});
-        m_adbProcess->start();
+        startAdbProcess(Kill, {m_adbPath, {"shell", "run-as", runAs, "kill",
+                                           QString("-%1").arg(m_signal), QString::number(m_pid)}},
+                        [this] { adbKillFinished(); });
     }
 }
 
@@ -77,28 +57,19 @@ void AndroidSignalOperation::adbKillFinished()
 {
     QTC_ASSERT(m_state == Kill, return);
     m_timeout->stop();
-    m_adbProcess->disconnect(this);
 
-    if (m_adbProcess->exitStatus() != QProcess::NormalExit) {
-        m_errorMessage = QLatin1String(" adb process exit code: ") + QString::number(m_adbProcess->exitCode());
-        QString adbError = m_adbProcess->errorString();
-        if (!adbError.isEmpty())
-            m_errorMessage += QLatin1String(" adb process error: ") + adbError;
-    } else {
-        m_errorMessage = QString::fromLatin1(m_adbProcess->readAllStandardError());
-    }
-    if (!m_errorMessage.isEmpty()) {
-        m_errorMessage = QLatin1String("Cannot kill process: ") + QString::number(m_pid)
-                + m_errorMessage;
-    }
+    if (!handleCrashMessage())
+        m_errorMessage = QString::fromLatin1(m_adbProcess->readAllRawStandardError());
+    m_adbProcess.release()->deleteLater();
+    if (!m_errorMessage.isEmpty())
+        m_errorMessage.prepend(QLatin1String("Cannot kill process: ") + QString::number(m_pid));
     m_state = Idle;
     emit finished(m_errorMessage);
 }
 
 void AndroidSignalOperation::handleTimeout()
 {
-    m_adbProcess->disconnect(this);
-    m_adbProcess->kill();
+    m_adbProcess.reset();
     m_timeout->stop();
     m_state = Idle;
     m_errorMessage = QLatin1String("adb process timed out");
@@ -108,14 +79,20 @@ void AndroidSignalOperation::handleTimeout()
 void AndroidSignalOperation::signalOperationViaADB(qint64 pid, int signal)
 {
     QTC_ASSERT(m_state == Idle, return);
-    m_adbProcess->disconnect(this);
     m_pid = pid;
     m_signal = signal;
-    connect(m_adbProcess, &QtcProcess::finished,
-            this, &AndroidSignalOperation::adbFindRunAsFinished);
-    m_state = RunAs;
+    startAdbProcess(RunAs, {m_adbPath, {"shell", "cat", QString("/proc/%1/cmdline").arg(m_pid)}},
+                    [this] { adbFindRunAsFinished(); });
+}
+
+void AndroidSignalOperation::startAdbProcess(State state, const Utils::CommandLine &commandLine,
+                                             FinishHandler handler)
+{
+    m_state = state;
     m_timeout->start();
-    m_adbProcess->setCommand({m_adbPath, {"shell", "cat", QString("/proc/%1/cmdline").arg(m_pid)}});
+    m_adbProcess.reset(new QtcProcess);
+    connect(m_adbProcess.get(), &QtcProcess::done, this, handler);
+    m_adbProcess->setCommand(commandLine);
     m_adbProcess->start();
 }
 

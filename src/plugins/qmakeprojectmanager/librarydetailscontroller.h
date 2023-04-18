@@ -1,43 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "addlibrarywizard.h"
 
+#include <utils/guard.h>
+
 namespace QmakeProjectManager {
 class QmakeProFile;
+
 namespace Internal {
 
-namespace Ui { class LibraryDetailsWidget; }
+class LibraryDetailsWidget;
 
 class LibraryDetailsController : public QObject
 {
     Q_OBJECT
 public:
-    explicit LibraryDetailsController(Ui::LibraryDetailsWidget *libraryDetails,
+    explicit LibraryDetailsController(LibraryDetailsWidget *libraryDetails,
                                       const Utils::FilePath &proFile,
                                       QObject *parent = nullptr);
     virtual bool isComplete() const = 0;
@@ -47,7 +28,7 @@ signals:
     void completeChanged();
 
 protected:
-    Ui::LibraryDetailsWidget *libraryDetailsWidget() const;
+    LibraryDetailsWidget *libraryDetailsWidget() const;
 
     AddLibraryWizard::Platforms platforms() const;
     AddLibraryWizard::LinkageType linkageType() const;
@@ -56,15 +37,12 @@ protected:
     QString libraryPlatformFilter() const;
     Utils::FilePath proFile() const;
     bool isIncludePathChanged() const;
-    bool guiSignalsIgnored() const;
 
     void updateGui();
     virtual AddLibraryWizard::LinkageType suggestedLinkageType() const = 0;
     virtual AddLibraryWizard::MacLibraryType suggestedMacLibraryType() const = 0;
     virtual QString suggestedIncludePath() const = 0;
     virtual void updateWindowsOptionsEnablement() = 0;
-
-    void setIgnoreGuiSignals(bool ignore);
 
     void setPlatformsVisible(bool ena);
     void setLinkageRadiosVisible(bool ena);
@@ -81,6 +59,8 @@ protected:
     bool isMacLibraryRadiosVisible() const;
     bool isIncludePathVisible() const;
     bool isWindowsGroupVisible() const;
+
+    Utils::Guard m_ignoreChanges;
 
 private:
     void slotIncludePathChanged();
@@ -101,7 +81,6 @@ private:
 
     Utils::FilePath m_proFile;
 
-    bool m_ignoreGuiSignals = false;
     bool m_includePathChanged = false;
 
     bool m_linkageRadiosVisible = true;
@@ -109,7 +88,7 @@ private:
     bool m_includePathVisible = true;
     bool m_windowsGroupVisible = true;
 
-    Ui::LibraryDetailsWidget *m_libraryDetailsWidget;
+    LibraryDetailsWidget *m_libraryDetailsWidget;
     QWizard *m_wizard = nullptr;
 };
 
@@ -117,7 +96,7 @@ class NonInternalLibraryDetailsController : public LibraryDetailsController
 {
     Q_OBJECT
 public:
-    explicit NonInternalLibraryDetailsController(Ui::LibraryDetailsWidget *libraryDetails,
+    explicit NonInternalLibraryDetailsController(LibraryDetailsWidget *libraryDetails,
                                                  const Utils::FilePath &proFile,
                                                  QObject *parent = nullptr);
     bool isComplete() const override;
@@ -142,7 +121,7 @@ class PackageLibraryDetailsController : public NonInternalLibraryDetailsControll
 {
     Q_OBJECT
 public:
-    explicit PackageLibraryDetailsController(Ui::LibraryDetailsWidget *libraryDetails,
+    explicit PackageLibraryDetailsController(LibraryDetailsWidget *libraryDetails,
                                              const Utils::FilePath &proFile,
                                              QObject *parent = nullptr);
     bool isComplete() const override;
@@ -159,7 +138,7 @@ class SystemLibraryDetailsController : public NonInternalLibraryDetailsControlle
 {
     Q_OBJECT
 public:
-    explicit SystemLibraryDetailsController(Ui::LibraryDetailsWidget *libraryDetails,
+    explicit SystemLibraryDetailsController(LibraryDetailsWidget *libraryDetails,
                                             const Utils::FilePath &proFile,
                                             QObject *parent = nullptr);
 protected:
@@ -172,7 +151,7 @@ class ExternalLibraryDetailsController : public NonInternalLibraryDetailsControl
 {
     Q_OBJECT
 public:
-    explicit ExternalLibraryDetailsController(Ui::LibraryDetailsWidget *libraryDetails,
+    explicit ExternalLibraryDetailsController(LibraryDetailsWidget *libraryDetails,
                                               const Utils::FilePath &proFile,
                                               QObject *parent = nullptr);
 protected:
@@ -183,7 +162,7 @@ class InternalLibraryDetailsController : public LibraryDetailsController
 {
     Q_OBJECT
 public:
-    explicit InternalLibraryDetailsController(Ui::LibraryDetailsWidget *libraryDetails,
+    explicit InternalLibraryDetailsController(LibraryDetailsWidget *libraryDetails,
                                               const Utils::FilePath &proFile,
                                               QObject *parent = nullptr);
     bool isComplete() const override;

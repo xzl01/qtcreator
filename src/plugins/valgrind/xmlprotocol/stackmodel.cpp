@@ -1,34 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Author: Frank Osterfeld, KDAB (frank.osterfeld@kdab.com)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "stackmodel.h"
 #include "error.h"
 #include "frame.h"
 #include "stack.h"
 #include "modelhelpers.h"
+#include "../valgrindtr.h"
 
 #include <utils/qtcassert.h>
 
@@ -155,19 +133,19 @@ QVariant StackModel::headerData(int section, Qt::Orientation orientation, int ro
 
     switch (section) {
     case NameColumn:
-        return tr("Description");
+        return Tr::tr("Description");
     case InstructionPointerColumn:
-        return tr("Instruction Pointer");
+        return Tr::tr("Instruction Pointer");
     case ObjectColumn:
-        return tr("Object");
+        return Tr::tr("Object");
     case FunctionNameColumn:
-        return tr("Function");
+        return Tr::tr("Function");
     case DirectoryColumn:
-        return tr("Directory");
+        return Tr::tr("Directory");
     case FileColumn:
-        return tr("File");
+        return Tr::tr("File");
     case LineColumn:
-        return tr("Line");
+        return Tr::tr("Line");
     }
 
     return QVariant();

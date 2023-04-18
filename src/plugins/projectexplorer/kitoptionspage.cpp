@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "kitoptionspage.h"
 
@@ -29,7 +7,7 @@
 #include "kitmodel.h"
 #include "kit.h"
 #include "projectexplorerconstants.h"
-#include "projectexplorericons.h"
+#include "projectexplorertr.h"
 #include "kitmanagerconfigwidget.h"
 #include "kitmanager.h"
 
@@ -51,8 +29,6 @@ namespace Internal {
 
 class KitOptionsPageWidget : public QWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjextExplorer::Internal::KitOptionsPageWidget)
-
 public:
     KitOptionsPageWidget();
 
@@ -88,14 +64,14 @@ KitOptionsPageWidget::KitOptionsPageWidget()
     m_kitsView->setSizePolicy(m_kitsView->sizePolicy().horizontalPolicy(),
                               QSizePolicy::Ignored);
 
-    m_addButton = new QPushButton(tr("Add"), this);
-    m_cloneButton = new QPushButton(tr("Clone"), this);
-    m_delButton = new QPushButton(tr("Remove"), this);
-    m_makeDefaultButton = new QPushButton(tr("Make Default"), this);
-    m_filterButton = new QPushButton(tr("Settings Filter..."), this);
-    m_filterButton->setToolTip(tr("Choose which settings to display for this kit."));
-    m_defaultFilterButton = new QPushButton(tr("Default Settings Filter..."), this);
-    m_defaultFilterButton->setToolTip(tr("Choose which kit settings to display by default."));
+    m_addButton = new QPushButton(Tr::tr("Add"), this);
+    m_cloneButton = new QPushButton(Tr::tr("Clone"), this);
+    m_delButton = new QPushButton(Tr::tr("Remove"), this);
+    m_makeDefaultButton = new QPushButton(Tr::tr("Make Default"), this);
+    m_filterButton = new QPushButton(Tr::tr("Settings Filter..."), this);
+    m_filterButton->setToolTip(Tr::tr("Choose which settings to display for this kit."));
+    m_defaultFilterButton = new QPushButton(Tr::tr("Default Settings Filter..."), this);
+    m_defaultFilterButton->setToolTip(Tr::tr("Choose which kit settings to display by default."));
 
     auto buttonLayout = new QVBoxLayout;
     buttonLayout->setSpacing(6);
@@ -269,9 +245,9 @@ KitOptionsPage::KitOptionsPage()
 {
     theKitOptionsPage = this;
     setId(Constants::KITS_SETTINGS_PAGE_ID);
-    setDisplayName(Internal::KitOptionsPageWidget::tr("Kits"));
+    setDisplayName(Tr::tr("Kits"));
     setCategory(Constants::KITS_SETTINGS_CATEGORY);
-    setDisplayCategory(QCoreApplication::translate("ProjectExplorer", "Kits"));
+    setDisplayCategory(Tr::tr("Kits"));
     setCategoryIconPath(":/projectexplorer/images/settingscategory_kits.png");
 }
 

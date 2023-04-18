@@ -1,31 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "localqmlprofilerrunner_test.h"
 
 #include <debugger/analyzer/analyzermanager.h>
+
+#include <projectexplorer/projectexplorerconstants.h>
 
 #include <qmlprofiler/qmlprofilerruncontrol.h>
 #include <qmlprofiler/qmlprofilertool.h>
@@ -36,6 +16,9 @@
 #include <QtTest>
 #include <QTcpServer>
 
+using namespace ProjectExplorer;
+using namespace Utils;
+
 namespace QmlProfiler {
 namespace Internal {
 
@@ -45,9 +28,8 @@ LocalQmlProfilerRunnerTest::LocalQmlProfilerRunnerTest(QObject *parent) : QObjec
 
 void LocalQmlProfilerRunnerTest::testRunner()
 {
-    QPointer<ProjectExplorer::RunControl> runControl;
+    QPointer<RunControl> runControl;
     QPointer<LocalQmlProfilerSupport> profiler;
-    ProjectExplorer::Runnable debuggee;
     QUrl serverUrl;
 
     bool running = false;
@@ -56,37 +38,35 @@ void LocalQmlProfilerRunnerTest::testRunner()
     int runCount = 0;
     int stopCount = 0;
 
-    debuggee.command.setExecutable("\\-/|\\-/");
-    debuggee.environment = Utils::Environment::systemEnvironment();
-
     // should not be used anywhere but cannot be empty
     serverUrl.setScheme(Utils::urlSocketScheme());
     serverUrl.setPath("invalid");
 
-    runControl = new ProjectExplorer::RunControl(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
-    runControl->setRunnable(debuggee);
+    runControl = new RunControl(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
+    runControl->setCommandLine({"\\-/|\\-/", {}});
+
     profiler = new LocalQmlProfilerSupport(runControl, serverUrl);
 
     auto connectRunner = [&]() {
-        connect(runControl, &ProjectExplorer::RunControl::aboutToStart, this, [&]() {
+        connect(runControl, &RunControl::aboutToStart, this, [&] {
             QVERIFY(!started);
             QVERIFY(!running);
             ++startCount;
             started = true;
         });
-        connect(runControl, &ProjectExplorer::RunControl::started, this, [&]() {
+        connect(runControl, &RunControl::started, this, [&] {
             QVERIFY(started);
             QVERIFY(!running);
             ++runCount;
             running = true;
         });
-        connect(runControl, &ProjectExplorer::RunControl::stopped, this, [&]() {
+        connect(runControl, &RunControl::stopped, this, [&] {
             QVERIFY(started);
             ++stopCount;
             running = false;
             started = false;
         });
-        connect(runControl, &ProjectExplorer::RunControl::finished, this, [&]() {
+        connect(runControl, &RunControl::finished, this, [&]{
             running = false;
             started = false;
         });
@@ -110,10 +90,10 @@ void LocalQmlProfilerRunnerTest::testRunner()
 
     serverUrl = Utils::urlFromLocalSocket();
     // comma is used to specify a test function. In this case, an invalid one.
-    debuggee.command = Utils::CommandLine(Utils::FilePath::fromString(QCoreApplication::applicationFilePath()),
-                                          {"-test", "QmlProfiler,"});
-    runControl = new ProjectExplorer::RunControl(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
-    runControl->setRunnable(debuggee);
+    runControl = new RunControl(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
+
+    const FilePath app = FilePath::fromString(QCoreApplication::applicationFilePath());
+    runControl->setCommandLine({app, {"-test", "QmlProfiler,"}});
     profiler = new LocalQmlProfilerSupport(runControl, serverUrl);
     connectRunner();
     runControl->initiateStart();
@@ -128,11 +108,10 @@ void LocalQmlProfilerRunnerTest::testRunner()
     QTRY_VERIFY(runControl.isNull());
     QVERIFY(profiler.isNull());
 
-    debuggee.command.setArguments({});
     serverUrl.clear();
     serverUrl = Utils::urlFromLocalHostAndFreePort();
-    runControl = new ProjectExplorer::RunControl(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
-    runControl->setRunnable(debuggee);
+    runControl = new RunControl(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
+    runControl->setCommandLine({app, {}});
     profiler = new LocalQmlProfilerSupport(runControl, serverUrl);
     connectRunner();
     runControl->initiateStart();
@@ -148,7 +127,6 @@ void LocalQmlProfilerRunnerTest::testRunner()
     QTRY_VERIFY(runControl.isNull());
     QVERIFY(profiler.isNull());
 
-    debuggee.command.setArguments("-test QmlProfiler,");
     serverUrl.setScheme(Utils::urlSocketScheme());
     {
         Utils::TemporaryFile file("file with spaces");
@@ -156,8 +134,8 @@ void LocalQmlProfilerRunnerTest::testRunner()
             serverUrl.setPath(file.fileName());
     }
 
-    runControl = new ProjectExplorer::RunControl(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
-    runControl->setRunnable(debuggee);
+    runControl = new RunControl(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
+    runControl->setCommandLine({app, {"-test", "QmlProfiler,"}});
     profiler = new LocalQmlProfilerSupport(runControl, serverUrl);
     connectRunner();
     runControl->initiateStart();

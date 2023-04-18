@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "memoryusagemodel.h"
-#include "qmlprofilermodelmanager.h"
 #include "qmlprofilereventtypes.h"
+#include "qmlprofilermodelmanager.h"
+#include "qmlprofilertr.h"
 
 #include <utils/qtcassert.h>
 
@@ -34,7 +13,7 @@ namespace Internal {
 
 MemoryUsageModel::MemoryUsageModel(QmlProfilerModelManager *manager,
                                    Timeline::TimelineModelAggregator *parent) :
-    QmlProfilerTimelineModel(manager, MemoryAllocation, MaximumRangeType, ProfileMemory, parent)
+    QmlProfilerTimelineModel(manager, MemoryAllocation, UndefinedRangeType, ProfileMemory, parent)
 {
     // Register additional features. The base class already registers the main feature.
     // Don't register initializer, finalizer, or clearer as the base class has done so already.
@@ -85,12 +64,12 @@ QVariantList MemoryUsageModel::labels() const
     QVariantList result;
 
     QVariantMap element;
-    element.insert(QLatin1String("description"), tr("Memory Allocation"));
+    element.insert(QLatin1String("description"), Tr::tr("Memory Allocation"));
     element.insert(QLatin1String("id"), HeapPage);
     result << element;
 
     element.clear();
-    element.insert(QLatin1String("description"), tr("Memory Usage"));
+    element.insert(QLatin1String("description"), Tr::tr("Memory Usage"));
     element.insert(QLatin1String("id"), SmallItem);
     result << element;
 
@@ -112,37 +91,37 @@ QVariantMap MemoryUsageModel::details(int index) const
     const Item *ev = &m_data[index];
 
     if (ev->allocated >= -ev->deallocated)
-        result.insert(QLatin1String("displayName"), tr("Memory Allocated"));
+        result.insert(QLatin1String("displayName"), Tr::tr("Memory Allocated"));
     else
-        result.insert(QLatin1String("displayName"), tr("Memory Freed"));
+        result.insert(QLatin1String("displayName"), Tr::tr("Memory Freed"));
 
-    result.insert(tr("Total"), tr("%n byte(s)", nullptr, toSameSignedInt(ev->size)));
+    result.insert(Tr::tr("Total"), Tr::tr("%n byte(s)", nullptr, toSameSignedInt(ev->size)));
     if (ev->allocations > 0) {
-        result.insert(tr("Allocated"), tr("%n byte(s)", nullptr, toSameSignedInt(ev->allocated)));
-        result.insert(tr("Allocations"), ev->allocations);
+        result.insert(Tr::tr("Allocated"), Tr::tr("%n byte(s)", nullptr, toSameSignedInt(ev->allocated)));
+        result.insert(Tr::tr("Allocations"), ev->allocations);
     }
     if (ev->deallocations > 0) {
-        result.insert(tr("Deallocated"),
-                      tr("%n byte(s)", nullptr, toSameSignedInt(-ev->deallocated)));
-        result.insert(tr("Deallocations"), ev->deallocations);
+        result.insert(Tr::tr("Deallocated"),
+                      Tr::tr("%n byte(s)", nullptr, toSameSignedInt(-ev->deallocated)));
+        result.insert(Tr::tr("Deallocations"), ev->deallocations);
     }
     QString memoryTypeName;
     switch (selectionId(index)) {
-    case HeapPage:  memoryTypeName = tr("Heap Allocation"); break;
-    case LargeItem: memoryTypeName = tr("Large Item Allocation"); break;
-    case SmallItem: memoryTypeName = tr("Heap Usage"); break;
+    case HeapPage:  memoryTypeName = Tr::tr("Heap Allocation"); break;
+    case LargeItem: memoryTypeName = Tr::tr("Large Item Allocation"); break;
+    case SmallItem: memoryTypeName = Tr::tr("Heap Usage"); break;
     default: Q_UNREACHABLE();
     }
-    result.insert(tr("Type"), memoryTypeName);
+    result.insert(Tr::tr("Type"), memoryTypeName);
 
-    result.insert(tr("Location"), modelManager()->eventType(ev->typeId).displayName());
+    result.insert(Tr::tr("Location"), modelManager()->eventType(ev->typeId).displayName());
     return result;
 }
 
 void MemoryUsageModel::loadEvent(const QmlEvent &event, const QmlEventType &type)
 {
     if (type.message() != MemoryAllocation) {
-        if (type.rangeType() != MaximumRangeType) {
+        if (type.rangeType() != UndefinedRangeType) {
             m_continuation = ContinueNothing;
             if (event.rangeStage() == RangeStart)
                 m_rangeStack.push(RangeStackFrame(event.typeIndex(), event.timestamp()));

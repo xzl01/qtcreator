@@ -7,7 +7,6 @@ Project {
         Depends { name: "Qt"; submodules: ["widgets", "network"] }
         Depends { name: "Aggregation" }
         Depends { name: "CPlusPlus" }
-        Depends { name: "QtcSsh" }
         Depends { name: "QmlDebug" }
         Depends { name: "LanguageUtils" }
         Depends { name: "QmlJS" }
@@ -39,7 +38,7 @@ Project {
                 "breakpoint.cpp", "breakpoint.h",
                 "commonoptionspage.cpp", "commonoptionspage.h",
                 "debugger.qrc",
-                "debugger_global.h",
+                "debugger_global.h", "debuggertr.h",
                 "debuggeractions.cpp", "debuggeractions.h",
                 "debuggerconstants.h",
                 "debuggericons.h", "debuggericons.cpp",
@@ -169,7 +168,7 @@ Project {
                 "cdbsymbolpathlisteditor.h",
                 "hostutils.cpp", "hostutils.h",
                 "peutils.cpp", "peutils.h",
-                "symbolpathsdialog.ui", "symbolpathsdialog.cpp", "symbolpathsdialog.h"
+                "symbolpathsdialog.cpp", "symbolpathsdialog.h"
             ]
         }
 
@@ -256,7 +255,6 @@ Project {
         }
 
         Export {
-            Depends { name: "QtcSsh" }
             Depends { name: "CPlusPlus" }
         }
     }

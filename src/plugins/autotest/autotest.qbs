@@ -33,7 +33,7 @@ QtcPlugin {
     files: [
         "autotest.qrc",
         "autotesticons.h",
-        "autotest_global.h",
+        "autotest_global.h", "autotesttr.h",
         "autotestconstants.h",
         "autotestplugin.cpp",
         "autotestplugin.h",
@@ -62,7 +62,6 @@ QtcPlugin {
         "testsettings.h",
         "testsettingspage.cpp",
         "testsettingspage.h",
-        "testsettingspage.ui",
         "testtreeitem.cpp",
         "testtreeitem.h",
         "testtreeitemdelegate.cpp",

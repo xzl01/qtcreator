@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "googletest.h"
 
@@ -117,9 +95,9 @@ protected:
     NiceMock<FileSystemMock> mockFileSystem;
     Watcher watcher{sourcePathCacheMock, mockFileSystem, &notifier};
     NiceMock<MockQFileSytemWatcher> &mockQFileSytemWatcher = watcher.fileSystemWatcher();
-    ProjectChunkId id1{ProjectPartId{2}, SourceType::Qml};
-    ProjectChunkId id2{ProjectPartId{2}, SourceType::QmlUi};
-    ProjectChunkId id3{ProjectPartId{4}, SourceType::QmlTypes};
+    ProjectChunkId id1{ProjectPartId::create(2), SourceType::Qml};
+    ProjectChunkId id2{ProjectPartId::create(2), SourceType::QmlUi};
+    ProjectChunkId id3{ProjectPartId::create(4), SourceType::QmlTypes};
     SourcePathView path1{"/path/path1"};
     SourcePathView path2{"/path/path2"};
     SourcePathView path3{"/path2/path1"};
@@ -132,8 +110,14 @@ protected:
     QString sourceContextPath3 = "/path3";
     Utils::PathString sourceContextPathString = sourceContextPath;
     Utils::PathString sourceContextPathString2 = sourceContextPath2;
-    SourceIds pathIds = {SourceId{1}, SourceId{2}, SourceId{3}, SourceId{4}, SourceId{5}};
-    SourceContextIds sourceContextIds = {SourceContextId{1}, SourceContextId{2}, SourceContextId{3}};
+    SourceIds pathIds = {SourceId::create(1),
+                         SourceId::create(2),
+                         SourceId::create(3),
+                         SourceId::create(4),
+                         SourceId::create(5)};
+    SourceContextIds sourceContextIds = {SourceContextId::create(1),
+                                         SourceContextId::create(2),
+                                         SourceContextId::create(3)};
     ProjectChunkIds ids{id1, id2, id3};
     WatcherEntry watcherEntry1{id1, sourceContextIds[0], pathIds[0]};
     WatcherEntry watcherEntry2{id2, sourceContextIds[0], pathIds[0]};
@@ -273,7 +257,7 @@ TEST_F(ProjectStoragePathWatcher, RemoveEntriesWithId)
                            {id2, {pathIds[0], pathIds[1]}},
                            {id3, {pathIds[1], pathIds[3]}}});
 
-    watcher.removeIds({ProjectPartId{2}});
+    watcher.removeIds({ProjectPartId::create(2)});
 
     ASSERT_THAT(watcher.watchedEntries(), ElementsAre(watcherEntry5, watcherEntry8));
 }
@@ -370,9 +354,9 @@ TEST_F(ProjectStoragePathWatcher, TwoNotifyFileChanges)
         .WillByDefault(Return(FileStatus{pathIds[3], 1, 2}));
 
     EXPECT_CALL(notifier,
-                pathsWithIdsChanged(
-                    ElementsAre(IdPaths{id1, {SourceId{1}, SourceId{2}}},
-                                IdPaths{id2, {SourceId{1}, SourceId{2}, SourceId{4}}})));
+                pathsWithIdsChanged(ElementsAre(
+                    IdPaths{id1, {SourceId::create(1), SourceId::create(2)}},
+                    IdPaths{id2, {SourceId::create(1), SourceId::create(2), SourceId::create(4)}})));
 
     mockQFileSytemWatcher.directoryChanged(sourceContextPath);
     mockQFileSytemWatcher.directoryChanged(sourceContextPath2);

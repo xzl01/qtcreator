@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -104,7 +82,7 @@
     \section1 Configuring External Tools
 
     You can change the configuration of preconfigured tools and configure
-    additional tools in \QC \uicontrol Options.
+    additional tools in \QC \uicontrol Preferences.
 
     \image qtcreator-external-tools.png
 
@@ -135,8 +113,8 @@
             working directory.
 
         \li In the \uicontrol Output field, select how to handle output from the
-            tool. You can ignore the output, view it in the \uicontrol {General
-            Messages} output pane, or replace the selected text with the
+            tool. You can ignore the output, view it in \l{Viewing Output}
+            {General Messages}, or replace the selected text with the
             output in the code editor.
 
         \li In the \uicontrol {Error output} field, select how to handle error
@@ -147,7 +125,7 @@
             the tool in the system environment or the \l{Build Environment}
             {build environment} or \l {Selecting the Run Environment}
             {run environment} of the active project. Select the build or run
-            environment if the system environment does not contain the necessary
+            environment if the system environment does not have the necessary
             PATH settings to find the tool chain, for example.
         \else
         \li In the \uicontrol {Base environment} field, use the default settings.
@@ -163,7 +141,7 @@
 
 
             To globally change the system environment from the one in which
-            \QC is started, select \uicontrol Tools > \uicontrol Options >
+            \QC is started, select \uicontrol Edit > \uicontrol Preferences >
             \uicontrol Environment > \uicontrol System, and then select
             \uicontrol Change in the \uicontrol Environment field.
             \if defined(qtcreator)

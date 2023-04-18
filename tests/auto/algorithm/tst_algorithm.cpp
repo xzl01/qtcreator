@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest>
 
@@ -37,8 +15,6 @@
 // initializer_list related code on the templates inside algorithm.h
 #include <utils/algorithm.h>
 
-#include <utils/porting.h>
-
 class tst_Algorithm : public QObject
 {
     Q_OBJECT
@@ -52,6 +28,7 @@ private slots:
     void findOrDefault();
     void toReferences();
     void take();
+    void sorted();
 };
 
 
@@ -114,8 +91,8 @@ void tst_Algorithm::transform()
         QCOMPARE(i1, QList<int>({1, 3, 132}));
         const QList<int> i2 = Utils::transform(strings, stringToInt);
         QCOMPARE(i2, QList<int>({1, 3, 132}));
-        const QList<Utils::QtSizeType> i3 = Utils::transform(strings, &QString::size);
-        QCOMPARE(i3, QList<Utils::QtSizeType>({1, 1, 3}));
+        const QList<qsizetype> i3 = Utils::transform(strings, &QString::size);
+        QCOMPARE(i3, QList<qsizetype>({1, 1, 3}));
     }
     {
         // QStringList
@@ -124,8 +101,8 @@ void tst_Algorithm::transform()
         QCOMPARE(i1, QList<int>({1, 3, 132}));
         const QList<int> i2 = Utils::transform(strings, stringToInt);
         QCOMPARE(i2, QList<int>({1, 3, 132}));
-        const QList<Utils::QtSizeType> i3 = Utils::transform(strings, &QString::size);
-        QCOMPARE(i3, QList<Utils::QtSizeType>({1, 1, 3}));
+        const QList<qsizetype> i3 = Utils::transform(strings, &QString::size);
+        QCOMPARE(i3, QList<qsizetype>({1, 1, 3}));
     }
     {
         // QSet internally needs special inserter
@@ -134,8 +111,8 @@ void tst_Algorithm::transform()
         QCOMPARE(i1, QSet<int>({1, 3, 132}));
         const QSet<int> i2 = Utils::transform(strings, stringToInt);
         QCOMPARE(i2, QSet<int>({1, 3, 132}));
-        const QSet<Utils::QtSizeType> i3 = Utils::transform(strings, &QString::size);
-        QCOMPARE(i3, QSet<Utils::QtSizeType>({1, 3}));
+        const QSet<qsizetype> i3 = Utils::transform(strings, &QString::size);
+        QCOMPARE(i3, QSet<qsizetype>({1, 3}));
     }
 
     // different container types
@@ -146,8 +123,8 @@ void tst_Algorithm::transform()
         QCOMPARE(i1, QSet<int>({1, 3, 132}));
         const QSet<int> i2 = Utils::transform<QSet>(strings, stringToInt);
         QCOMPARE(i2, QSet<int>({1, 3, 132}));
-        const QSet<Utils::QtSizeType> i3 = Utils::transform<QSet>(strings, &QString::size);
-        QCOMPARE(i3, QSet<Utils::QtSizeType>({1, 3}));
+        const QSet<qsizetype> i3 = Utils::transform<QSet>(strings, &QString::size);
+        QCOMPARE(i3, QSet<qsizetype>({1, 3}));
     }
     {
         // QStringList to QSet
@@ -156,8 +133,8 @@ void tst_Algorithm::transform()
         QCOMPARE(i1, QSet<int>({1, 3, 132}));
         const QSet<int> i2 = Utils::transform<QSet>(strings, stringToInt);
         QCOMPARE(i2, QSet<int>({1, 3, 132}));
-        const QSet<Utils::QtSizeType> i3 = Utils::transform<QSet>(strings, &QString::size);
-        QCOMPARE(i3, QSet<Utils::QtSizeType>({1, 3}));
+        const QSet<qsizetype> i3 = Utils::transform<QSet>(strings, &QString::size);
+        QCOMPARE(i3, QSet<qsizetype>({1, 3}));
     }
     {
         // QSet to QList
@@ -168,9 +145,8 @@ void tst_Algorithm::transform()
         QList<int> i2 = Utils::transform<QList>(strings, stringToInt);
         Utils::sort(i2);
         QCOMPARE(i2, QList<int>({1, 3, 132}));
-        QList<Utils::QtSizeType> i3 = Utils::transform<QList>(strings, &QString::size);
-        Utils::sort(i3);
-        QCOMPARE(i3, QList<Utils::QtSizeType>({1, 1, 3}));
+        QList<qsizetype> i3 = Utils::transform<QList>(strings, &QString::size);
+        QCOMPARE(Utils::sorted(i3), QList<qsizetype>({1, 1, 3}));
     }
     {
         const QList<Struct> list({4, 3, 2, 1, 2});
@@ -445,13 +421,11 @@ void tst_Algorithm::sort()
     // member function with pointers
     QList<QString> arr1({"12345", "3333", "22"});
     QList<QString *> s5({&arr1[0], &arr1[1], &arr1[2]});
-    Utils::sort(s5, &QString::size);
-    QCOMPARE(s5, QList<QString *>({&arr1[2], &arr1[1], &arr1[0]}));
+    QCOMPARE(Utils::sorted(s5, &QString::size), QList<QString *>({&arr1[2], &arr1[1], &arr1[0]}));
     // member with pointers
     QList<Struct> arr2({4, 1, 3});
     QList<Struct *> s6({&arr2[0], &arr2[1], &arr2[2]});
-    Utils::sort(s6, &Struct::member);
-    QCOMPARE(s6, QList<Struct *>({&arr2[1], &arr2[2], &arr2[0]}));
+    QCOMPARE(Utils::sorted(s6, &Struct::member), QList<Struct *>({&arr2[1], &arr2[2], &arr2[0]}));
     // std::array:
     std::array<int, 4> array = {{4, 10, 8, 1}};
     Utils::sort(array);
@@ -556,27 +530,127 @@ void tst_Algorithm::take()
 {
     {
         QList<Struct> v {1, 3, 5, 6, 7, 8, 9, 11, 13, 15, 13, 16, 17};
-        Utils::optional<Struct> r1 = Utils::take(v, [](const Struct &s) { return s.member == 13; });
+        std::optional<Struct> r1 = Utils::take(v, [](const Struct &s) { return s.member == 13; });
         QVERIFY(static_cast<bool>(r1));
         QCOMPARE(r1.value().member, 13);
-        Utils::optional<Struct> r2 = Utils::take(v, [](const Struct &s) { return s.member == 13; });
+        std::optional<Struct> r2 = Utils::take(v, [](const Struct &s) { return s.member == 13; });
         QVERIFY(static_cast<bool>(r2));
         QCOMPARE(r2.value().member, 13);
-        Utils::optional<Struct> r3 = Utils::take(v, [](const Struct &s) { return s.member == 13; });
+        std::optional<Struct> r3 = Utils::take(v, [](const Struct &s) { return s.member == 13; });
         QVERIFY(!static_cast<bool>(r3));
 
-        Utils::optional<Struct> r4 = Utils::take(v, &Struct::isEven);
+        std::optional<Struct> r4 = Utils::take(v, &Struct::isEven);
         QVERIFY(static_cast<bool>(r4));
         QCOMPARE(r4.value().member, 6);
     }
     {
         QList<Struct> v {0, 0, 0, 0, 0, 0, 1, 2, 3};
-        Utils::optional<Struct> r1 = Utils::take(v, &Struct::member);
+        std::optional<Struct> r1 = Utils::take(v, &Struct::member);
         QVERIFY(static_cast<bool>(r1));
         QCOMPARE(r1.value().member, 1);
     }
 }
 
-QTEST_MAIN(tst_Algorithm)
+void tst_Algorithm::sorted()
+{
+    const QList<int> vOrig{4, 3, 6, 5, 8};
+    const QList<int> vExpected{3, 4, 5, 6, 8};
+
+    // plain
+    {
+        // non-const lvalue
+        QList<int> vncl = vOrig;
+        const QList<int> rncl = Utils::sorted(vncl);
+        QCOMPARE(rncl, vExpected);
+        QCOMPARE(vncl, vOrig); // was not modified
+
+        // const lvalue
+        const QList<int> rcl = Utils::sorted(vOrig);
+        QCOMPARE(rcl, vExpected);
+
+        // non-const rvalue
+        const auto vncr = [vOrig]() -> QList<int> { return vOrig; };
+        const QList<int> rncr = Utils::sorted(vncr());
+        QCOMPARE(rncr, vExpected);
+
+        // const rvalue
+        const auto vcr = [vOrig]() -> const QList<int> { return vOrig; };
+        const QList<int> rcr = Utils::sorted(vcr());
+        QCOMPARE(rcr, vExpected);
+    }
+
+    // predicate
+    {
+        // non-const lvalue
+        QList<int> vncl = vOrig;
+        const QList<int> rncl = Utils::sorted(vncl, [](int a, int b) { return a < b; });
+        QCOMPARE(rncl, vExpected);
+        QCOMPARE(vncl, vOrig); // was not modified
+
+        // const lvalue
+        const QList<int> rcl = Utils::sorted(vOrig, [](int a, int b) { return a < b; });
+        QCOMPARE(rcl, vExpected);
+
+        // non-const rvalue
+        const auto vncr = [vOrig]() -> QList<int> { return vOrig; };
+        const QList<int> rncr = Utils::sorted(vncr(), [](int a, int b) { return a < b; });
+        QCOMPARE(rncr, vExpected);
+
+        // const rvalue
+        const auto vcr = [vOrig]() -> const QList<int> { return vOrig; };
+        const QList<int> rcr = Utils::sorted(vcr(), [](int a, int b) { return a < b; });
+        QCOMPARE(rcr, vExpected);
+    }
+
+    const QList<Struct> mvOrig({4, 3, 2, 1});
+    const QList<Struct> mvExpected({1, 2, 3, 4});
+    // member
+    {
+        // non-const lvalue
+        QList<Struct> mvncl = mvOrig;
+        const QList<Struct> rncl = Utils::sorted(mvncl, &Struct::member);
+        QCOMPARE(rncl, mvExpected);
+        QCOMPARE(mvncl, mvOrig); // was not modified
+
+        // const lvalue
+        const QList<Struct> rcl = Utils::sorted(mvOrig, &Struct::member);
+        QCOMPARE(rcl, mvExpected);
+
+        // non-const rvalue
+        const auto vncr = [mvOrig]() -> QList<Struct> { return mvOrig; };
+        const QList<Struct> rncr = Utils::sorted(vncr(), &Struct::member);
+        QCOMPARE(rncr, mvExpected);
+
+        // const rvalue
+        const auto vcr = [mvOrig]() -> const QList<Struct> { return mvOrig; };
+        const QList<Struct> rcr = Utils::sorted(vcr(), &Struct::member);
+        QCOMPARE(rcr, mvExpected);
+    }
+
+    // member function
+    {
+        // non-const lvalue
+        QList<Struct> mvncl = mvOrig;
+        const QList<Struct> rncl = Utils::sorted(mvncl, &Struct::getMember);
+        QCOMPARE(rncl, mvExpected);
+        QCOMPARE(mvncl, mvOrig); // was not modified
+
+        // const lvalue
+        const QList<Struct> rcl = Utils::sorted(mvOrig, &Struct::getMember);
+        QCOMPARE(rcl, mvExpected);
+
+        // non-const rvalue
+        const auto vncr = [mvOrig]() -> QList<Struct> { return mvOrig; };
+        const QList<Struct> rncr = Utils::sorted(vncr(), &Struct::getMember);
+        QCOMPARE(rncr, mvExpected);
+
+        // const rvalue
+        const auto vcr = [mvOrig]() -> const QList<Struct> { return mvOrig; };
+        const QList<Struct> rcr = Utils::sorted(vcr(), &Struct::getMember);
+        QCOMPARE(rcr, mvExpected);
+    }
+}
+
+QTEST_GUILESS_MAIN(tst_Algorithm)
 
 #include "tst_algorithm.moc"

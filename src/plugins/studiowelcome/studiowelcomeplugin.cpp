@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "studiowelcomeplugin.h"
 #include "examplecheckout.h"
@@ -44,6 +22,7 @@
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectmanager.h>
 
+#include <qmlprojectmanager/projectfilecontenttools.h>
 #include <qmlprojectmanager/qmlproject.h>
 
 #include <qmldesigner/components/componentcore/theme.h>
@@ -54,7 +33,6 @@
 #include <utils/hostosinfo.h>
 #include <utils/icon.h>
 #include <utils/infobar.h>
-#include <utils/mimetypes/mimedatabase.h>
 #include <utils/stringutils.h>
 #include <utils/theme/theme.h>
 
@@ -65,6 +43,7 @@
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QGroupBox>
+#include <QMainWindow>
 #include <QPointer>
 #include <QPushButton>
 #include <QQmlContext>
@@ -80,6 +59,9 @@
 #include <algorithm>
 #include <memory>
 
+using namespace ProjectExplorer;
+using namespace Utils;
+
 namespace StudioWelcome {
 namespace Internal {
 
@@ -91,6 +73,16 @@ static bool useNewWelcomePage()
     return settings->value(newWelcomePageEntry, false).toBool();
 }
 
+static void openOpenProjectDialog()
+{
+    const FilePath path = Core::DocumentManager::useProjectsDirectory()
+                              ? Core::DocumentManager::projectsDirectory()
+                              : FilePath();
+    const FilePaths files = Core::DocumentManager::getOpenFileNames("*.qmlproject", path);
+    if (!files.isEmpty())
+        Core::ICore::openFiles(files, Core::ICore::None);
+}
+
 const char DO_NOT_SHOW_SPLASHSCREEN_AGAIN_KEY[] = "StudioSplashScreen";
 
 const char DETAILED_USAGE_STATISTICS[] = "DetailedUsageStatistics";
@@ -100,14 +92,15 @@ const char CRASH_REPORTER_SETTING[] = "CrashReportingEnabled";
 
 const char EXAMPLES_DOWNLOAD_PATH[] = "StudioWelcome/ExamplesDownloadPath";
 
-QPointer<QQuickWidget> s_view = nullptr;
+QPointer<QQuickView> s_viewWindow = nullptr;
+QPointer<QQuickWidget> s_viewWidget = nullptr;
 static StudioWelcomePlugin *s_pluginInstance = nullptr;
 
 std::unique_ptr<QSettings> makeUserFeedbackSettings()
 {
     QStringList domain = QCoreApplication::organizationDomain().split(QLatin1Char('.'));
     std::reverse(domain.begin(), domain.end());
-    QString productId = domain.join(QLatin1String("."));
+    QString productId = domain.join('.');
     if (!productId.isEmpty())
         productId += ".";
     productId += QCoreApplication::applicationName();
@@ -213,12 +206,14 @@ public:
 
     Q_INVOKABLE void createProject()
     {
-        ProjectExplorer::ProjectExplorerPlugin::openNewProjectDialog();
+        QTimer::singleShot(0, this, []() {
+            ProjectExplorer::ProjectExplorerPlugin::openNewProjectDialog();
+        });
     }
 
     Q_INVOKABLE void openProject()
     {
-        ProjectExplorer::ProjectExplorerPlugin::openOpenProjectDialog();
+        QTimer::singleShot(0, this, []() { openOpenProjectDialog(); });
     }
 
     Q_INVOKABLE void openProjectAt(int row)
@@ -227,8 +222,8 @@ public:
             return;
 
         m_blockOpenRecent = true;
-        const QString projectFile = data(index(row, 0), ProjectModel::FilePathRole).toString();
-        if (QFileInfo::exists(projectFile))
+        const FilePath projectFile = FilePath::fromVariant(data(index(row, 0), ProjectModel::FilePathRole));
+        if (projectFile.exists())
             ProjectExplorer::ProjectExplorerPlugin::openProjectWelcomePage(projectFile);
 
         resetProjects();
@@ -256,12 +251,12 @@ public:
         if (!explicitQmlproject.isEmpty())
             projectFile = exampleFolder + explicitQmlproject;
 
-        ProjectExplorer::ProjectExplorerPlugin::openProjectWelcomePage(projectFile);
+        ProjectExplorer::ProjectExplorerPlugin::openProjectWelcomePage(FilePath::fromString(projectFile));
 
         const QString qmlFile = QFileInfo(projectFile).dir().absolutePath() + "/" + formFile;
 
         // This timer should be replaced with a signal send from project loading
-        QTimer::singleShot(1000, [qmlFile](){
+        QTimer::singleShot(1000, this, [qmlFile]() {
             Core::EditorManager::openEditor(Utils::FilePath::fromString(qmlFile));
         });
     }
@@ -277,11 +272,11 @@ public:
         Q_UNUSED(explicitQmlproject)
         Q_UNUSED(tempFile)
         Q_UNUSED(completeBaseName)
-        const Utils::FilePath projectFile = Core::ICore::resourcePath("examples")
-                                            / example / example + ".qmlproject";
-        ProjectExplorer::ProjectExplorerPlugin::openProjectWelcomePage(projectFile.toString());
-        const Utils::FilePath qmlFile = Core::ICore::resourcePath("examples")
-                                            / example / formFile;
+        const FilePath projectFile = Core::ICore::resourcePath("examples")
+                / example / (example + ".qmlproject");
+        ProjectExplorer::ProjectExplorerPlugin::openProjectWelcomePage(projectFile);
+        const FilePath qmlFile = Core::ICore::resourcePath("examples")
+                / example / formFile;
 
         Core::EditorManager::openEditor(qmlFile);
     }
@@ -324,45 +319,12 @@ int ProjectModel::rowCount(const QModelIndex &) const
     return ProjectExplorer::ProjectExplorerPlugin::recentProjects().count();
 }
 
-QString getQDSVersion(const QString &projectFilePath)
+static QString getQDSVersion(const FilePath &projectFilePath)
 {
-    const QString defaultReturn = "";
-    Utils::FileReader reader;
-    if (!reader.fetch(Utils::FilePath::fromString(projectFilePath)))
-        return defaultReturn;
+    const QString qdsVersion = QmlProjectManager::ProjectFileContentTools::qdsVersion(
+                                        projectFilePath);
 
-    const QByteArray data = reader.data();
-
-    QRegularExpression regexp(R"x(qdsVersion: "(.*)")x");
-    QRegularExpressionMatch match = regexp.match(QString::fromUtf8(data));
-
-    if (!match.hasMatch())
-        return defaultReturn;
-
-    return ProjectModel::tr("Created with Qt Design Studio version: %1").arg(match.captured(1));
-}
-
-QString getMainQmlFile(const QString &projectFilePath)
-{
-    const QString defaultReturn = "content/App.qml";
-    Utils::FileReader reader;
-    if (!reader.fetch(Utils::FilePath::fromString(projectFilePath)))
-            return defaultReturn;
-
-    const QByteArray data = reader.data();
-
-    QRegularExpression regexp(R"x(mainFile: "(.*)")x");
-    QRegularExpressionMatch match = regexp.match(QString::fromUtf8(data));
-
-    if (!match.hasMatch())
-        return defaultReturn;
-
-    return match.captured(1);
-}
-
-QString appQmlFile(const QString &projectFilePath)
-{
-    return QFileInfo(projectFilePath).dir().absolutePath() + "/" +  getMainQmlFile(projectFilePath);
+    return ProjectModel::tr("Created with Qt Design Studio version: %1").arg(qdsVersion);
 }
 
 static QString fromCamelCase(const QString &s) {
@@ -376,57 +338,37 @@ static QString fromCamelCase(const QString &s) {
    return result;
 }
 
-static QString resolutionFromConstants(const QString &projectFilePath)
+static QString resolutionFromConstants(const FilePath &projectFilePath)
 {
-    const QFileInfo fileInfo(projectFilePath);
-    const QString fileName = fileInfo.dir().absolutePath()
-            + "/"  + "imports" + "/" + fileInfo.baseName() + "/Constants.qml";
+    QmlProjectManager::ProjectFileContentTools::Resolution res =
+            QmlProjectManager::ProjectFileContentTools::resolutionFromConstants(
+                projectFilePath);
 
-    Utils::FileReader reader;
-    if (!reader.fetch(Utils::FilePath::fromString(fileName)))
-        return {};
-
-    const QByteArray data = reader.data();
-
-    const QRegularExpression regexpWidth(R"x(readonly\s+property\s+int\s+width:\s+(\d*))x");
-    const QRegularExpression regexpHeight(R"x(readonly\s+property\s+int\s+height:\s+(\d*))x");
-
-    int width = -1;
-    int height = -1;
-
-    QRegularExpressionMatch match = regexpHeight.match(QString::fromUtf8(data));
-    if (match.hasMatch())
-        height = match.captured(1).toInt();
-
-    match = regexpWidth.match(QString::fromUtf8(data));
-    if (match.hasMatch())
-        width = match.captured(1).toInt();
-
-    if (width > 0 && height > 0)
-        return ProjectModel::tr("Resolution: %1x%2").arg(width).arg(height);
+    if (res.width > 0 && res.height > 0)
+        return ProjectModel::tr("Resolution: %1x%2").arg(res.width).arg(res.height);
 
     return {};
 }
 
-static QString description(const QString &projectFilePath)
+static QString description(const FilePath &projectFilePath)
 {
 
     const QString created = ProjectModel::tr("Created: %1").arg(
-            QFileInfo(projectFilePath).fileTime(QFileDevice::FileBirthTime).toString());
+            projectFilePath.toFileInfo().fileTime(QFileDevice::FileBirthTime).toString());
     const QString lastEdited =  ProjectModel::tr("Last Edited: %1").arg(
-            QFileInfo(projectFilePath).fileTime(QFileDevice::FileModificationTime).toString());
+            projectFilePath.toFileInfo().fileTime(QFileDevice::FileModificationTime).toString());
 
-    return fromCamelCase(QFileInfo(projectFilePath).baseName()) + "\n\n" + created + "\n" + lastEdited
+    return fromCamelCase(projectFilePath.baseName()) + "\n\n" + created + "\n" + lastEdited
             + "\n" + resolutionFromConstants(projectFilePath)
             + "\n" + getQDSVersion(projectFilePath);
 }
 
-static QString tags(const QString &projectFilePath)
+static QString tags(const FilePath &projectFilePath)
 {
     QStringList ret;
     const QString defaultReturn = "content/App.qml";
     Utils::FileReader reader;
-    if (!reader.fetch(Utils::FilePath::fromString(projectFilePath)))
+    if (!reader.fetch(projectFilePath))
             return defaultReturn;
 
     const QByteArray data = reader.data();
@@ -445,18 +387,20 @@ static QString tags(const QString &projectFilePath)
 
 QVariant ProjectModel::data(const QModelIndex &index, int role) const
 {
-    QPair<QString, QString> data = ProjectExplorer::ProjectExplorerPlugin::recentProjects().at(
-        index.row());
+    const ProjectExplorer::RecentProjectsEntry data =
+            ProjectExplorer::ProjectExplorerPlugin::recentProjects().at(index.row());
     switch (role) {
     case Qt::DisplayRole:
         return data.second;
         break;
     case FilePathRole:
-        return data.first;
+        return data.first.toVariant();
     case PrettyFilePathRole:
-        return Utils::withTildeHomePath(QFileInfo(data.first).dir().absolutePath());
+        return data.first.absolutePath().withTildeHomePath();
     case PreviewUrl:
-        return QVariant(QStringLiteral("image://project_preview/") + appQmlFile(data.first));
+        return QVariant(QStringLiteral("image://project_preview/") +
+                        QmlProjectManager::ProjectFileContentTools::appQmlFile(
+                            data.first));
     case TagData:
         return tags(data.first);
     case Description:
@@ -497,27 +441,23 @@ public:
     ~WelcomeMode() override;
 
 private:
-    QQuickWidget *m_modeWidget = nullptr;
+    void setupQuickWidget(const QString &welcomePagePath);
+    void createQuickWidget();
+
+    QQuickWidget *m_quickWidget = nullptr;
+    QWidget *m_modeWidget = nullptr;
+    DataModelDownloader *m_dataModelDownloader = nullptr;
 };
 
 void StudioWelcomePlugin::closeSplashScreen()
 {
-    if (!s_view.isNull()) {
-        const bool doNotShowAgain = s_view->rootObject()->property("doNotShowAgain").toBool();
-        if (doNotShowAgain)
-            Utils::CheckableMessageBox::doNotAskAgain(Core::ICore::settings(),
-                                                      DO_NOT_SHOW_SPLASHSCREEN_AGAIN_KEY);
+    Utils::CheckableMessageBox::doNotAskAgain(Core::ICore::settings(),
+                                              DO_NOT_SHOW_SPLASHSCREEN_AGAIN_KEY);
+    if (!s_viewWindow.isNull())
+        s_viewWindow->deleteLater();
 
-        s_view->deleteLater();
-    }
-}
-
-void StudioWelcomePlugin::showSystemSettings()
-{
-    Core::ICore::infoBar()->removeInfo("WarnCrashReporting");
-    Core::ICore::infoBar()->globallySuppressInfo("WarnCrashReporting");
-
-    Core::ICore::showOptionsDialog(Core::Constants::SETTINGS_ID_SYSTEM);
+    if (!s_viewWidget.isNull())
+        s_viewWidget->deleteLater();
 }
 
 StudioWelcomePlugin::StudioWelcomePlugin()
@@ -530,17 +470,18 @@ StudioWelcomePlugin::~StudioWelcomePlugin()
     delete m_welcomeMode;
 }
 
-bool StudioWelcomePlugin::initialize(const QStringList &arguments, QString *errorString)
+void StudioWelcomePlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorString)
-
     qmlRegisterType<ProjectModel>("projectmodel", 1, 0, "ProjectModel");
     qmlRegisterType<UsageStatisticPluginModel>("usagestatistics", 1, 0, "UsageStatisticModel");
 
     m_welcomeMode = new WelcomeMode;
+}
 
-    return true;
+static bool forceDownLoad()
+{
+    const QString lastQDSVersionEntry = "QML/Designer/ForceWelcomePageDownload";
+    return Core::ICore::settings()->value(lastQDSVersionEntry, false).toBool();
 }
 
 static bool showSplashScreen()
@@ -577,53 +518,90 @@ void StudioWelcomePlugin::extensionsInitialized()
 
         const QString filters = QString("Project (*.qmlproject);;UI file (*.ui.qml);;QML file "
                                         "(*.qml);;JavaScript file (*.js);;%1")
-                                    .arg(Utils::allFilesFilterString());
+                                    .arg(Core::DocumentManager::allFilesFilterString());
 
         Core::DocumentManager::setFileDialogFilter(filters);
     }
 
     if (showSplashScreen()) {
         connect(Core::ICore::instance(), &Core::ICore::coreOpened, this, [this] {
-            s_view = new QQuickWidget(Core::ICore::dialogParent());
-            s_view->setResizeMode(QQuickWidget::SizeRootObjectToView);
-            s_view->setWindowFlag(Qt::SplashScreen, true);
-            s_view->setWindowModality(Qt::ApplicationModal);
-            s_view->engine()->addImportPath("qrc:/studiofonts");
+            if (Utils::HostOsInfo::isMacHost()) {
+                s_viewWindow = new QQuickView(Core::ICore::mainWindow()->windowHandle());
+
+                s_viewWindow->setFlag(Qt::FramelessWindowHint);
+
+                s_viewWindow->engine()->addImportPath("qrc:/studiofonts");
 #ifdef QT_DEBUG
-            s_view->engine()->addImportPath(QLatin1String(STUDIO_QML_PATH) + "splashscreen/imports");
-            s_view->setSource(
-                QUrl::fromLocalFile(QLatin1String(STUDIO_QML_PATH) + "splashscreen/main.qml"));
+                s_viewWindow->engine()->addImportPath(QLatin1String(STUDIO_QML_PATH)
+                                                      + "splashscreen/imports");
+                s_viewWindow->setSource(
+                    QUrl::fromLocalFile(QLatin1String(STUDIO_QML_PATH) + "splashscreen/main.qml"));
 #else
-            s_view->engine()->addImportPath("qrc:/qml/splashscreen/imports");
-            s_view->setSource(QUrl("qrc:/qml/splashscreen/main.qml"));
+                s_viewWindow->engine()->addImportPath("qrc:/qml/splashscreen/imports");
+                s_viewWindow->setSource(QUrl("qrc:/qml/splashscreen/main.qml"));
 #endif
 
+                QTC_ASSERT(s_viewWindow->rootObject(),
+                           qWarning() << "The StudioWelcomePlugin has a runtime depdendency on "
+                                         "qt/qtquicktimeline.";
+                           return );
 
-            QTC_ASSERT(s_view->rootObject(),
-                       qWarning() << "The StudioWelcomePlugin has a runtime depdendency on "
-                                     "qt/qtquicktimeline.";
-                       return );
+                connect(s_viewWindow->rootObject(),
+                        SIGNAL(closeClicked()),
+                        this,
+                        SLOT(closeSplashScreen()));
 
-            connect(s_view->rootObject(), SIGNAL(closeClicked()), this, SLOT(closeSplashScreen()));
-            connect(s_view->rootObject(),
-                    SIGNAL(configureClicked()),
-                    this,
-                    SLOT(showSystemSettings()));
+                auto mainWindow = Core::ICore::mainWindow()->windowHandle();
+                s_viewWindow->setPosition((mainWindow->width() - s_viewWindow->width()) / 2,
+                                          (mainWindow->height() - s_viewWindow->height()) / 2);
 
-            s_view->show();
-            s_view->raise();
+                Core::ICore::mainWindow()->setEnabled(false);
+                connect(s_viewWindow, &QObject::destroyed, []() {
+                    if (Core::ICore::mainWindow())
+                        Core::ICore::mainWindow()->setEnabled(true);
+                });
+
+                s_viewWindow->show();
+                s_viewWindow->requestActivate();
+            } else {
+                s_viewWidget = new QQuickWidget(Core::ICore::dialogParent());
+
+                s_viewWidget->setWindowFlag(Qt::SplashScreen, true);
+
+                s_viewWidget->setWindowModality(Qt::ApplicationModal);
+                s_viewWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
+                s_viewWidget->engine()->addImportPath("qrc:/studiofonts");
+#ifdef QT_DEBUG
+                s_viewWidget->engine()->addImportPath(QLatin1String(STUDIO_QML_PATH)
+                                                      + "splashscreen/imports");
+                s_viewWidget->setSource(
+                    QUrl::fromLocalFile(QLatin1String(STUDIO_QML_PATH) + "splashscreen/main.qml"));
+#else
+                s_viewWidget->engine()->addImportPath("qrc:/qml/splashscreen/imports");
+                s_viewWidget->setSource(QUrl("qrc:/qml/splashscreen/main.qml"));
+#endif
+
+                QTC_ASSERT(s_viewWidget->rootObject(),
+                           qWarning() << "The StudioWelcomePlugin has a runtime depdendency on "
+                                         "qt/qtquicktimeline.";
+                           return );
+
+                connect(s_viewWidget->rootObject(),
+                        SIGNAL(closeClicked()),
+                        this,
+                        SLOT(closeSplashScreen()));
+
+                s_viewWidget->show();
+                s_viewWidget->raise();
+                s_viewWidget->setFocus();
+            }
         });
     }
 }
 
 bool StudioWelcomePlugin::delayedInitialize()
 {
-    if (s_view.isNull())
-        return false;
-
-    QTC_ASSERT(s_view->rootObject(), return true);
-
-    return false;
+    return true;
 }
 
 Utils::FilePath StudioWelcomePlugin::defaultExamplesPath()
@@ -645,7 +623,21 @@ QString StudioWelcomePlugin::examplesPathSetting()
 
 WelcomeMode::WelcomeMode()
 {
-    setDisplayName(tr("Studio"));
+    setDisplayName(tr("Welcome"));
+
+    const QString welcomePagePath = Core::ICore::resourcePath("qmldesigner/welcomepage").toString();
+
+    m_dataModelDownloader = new DataModelDownloader(this);
+    if (!m_dataModelDownloader->exists()) { //Fallback if data cannot be downloaded
+        // TODO: Check result?
+        Utils::FilePath::fromUserInput(welcomePagePath + "/dataImports")
+            .copyRecursively(m_dataModelDownloader->targetFolder());
+
+        m_dataModelDownloader->setForceDownload(true);
+    }
+    Utils::FilePath readme = Utils::FilePath::fromUserInput(m_dataModelDownloader->targetFolder().toString()
+                                                            + "/readme.txt");
+
 
     const Utils::Icon FLAT({{":/studiowelcome/images/mode_welcome_mask.png",
                       Utils::Theme::IconsBaseColor}});
@@ -661,45 +653,44 @@ WelcomeMode::WelcomeMode()
     QFontDatabase::addApplicationFont(":/studiofonts/TitilliumWeb-Regular.ttf");
     ExampleCheckout::registerTypes();
 
-    m_modeWidget = new QQuickWidget;
-    m_modeWidget->setMinimumSize(640, 480);
-    m_modeWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
-    QmlDesigner::Theme::setupTheme(m_modeWidget->engine());
-    m_modeWidget->engine()->addImportPath("qrc:/studiofonts");
+    createQuickWidget();
 
-    QmlDesigner::QmlDesignerPlugin::registerPreviewImageProvider(m_modeWidget->engine());
+    if (forceDownLoad() || !readme.exists()) // Only downloads contain the readme
+        m_dataModelDownloader->setForceDownload(true);
 
-    m_modeWidget->engine()->setOutputWarningsToStandardError(false);
+    connect(m_dataModelDownloader, &DataModelDownloader::progressChanged, this, [this](){
+        m_quickWidget->rootObject()->setProperty("loadingProgress", m_dataModelDownloader->progress());
+    });
 
-    if (!useNewWelcomePage()) {
+    connect(m_dataModelDownloader, &DataModelDownloader::finished, this, [this, welcomePagePath]() {
+        delete m_quickWidget;
+        createQuickWidget();
+        setupQuickWidget(welcomePagePath);
+        m_modeWidget->layout()->addWidget(m_quickWidget);
+    });
 
-#ifdef QT_DEBUG
-        m_modeWidget->engine()->addImportPath(QLatin1String(STUDIO_QML_PATH)
-                                              + "welcomepage/imports");
-        m_modeWidget->setSource(QUrl::fromLocalFile(QLatin1String(STUDIO_QML_PATH)
-                                                    + "welcomepage/main.qml"));
-#else
-        m_modeWidget->engine()->addImportPath("qrc:/qml/welcomepage/imports");
-        m_modeWidget->setSource(QUrl("qrc:/qml/welcomepage/main.qml"));
-#endif
-    } else {
+    connect(m_dataModelDownloader, &DataModelDownloader::downloadFailed, this, [this]() {
+        m_quickWidget->setEnabled(true);
+    });
 
-        m_modeWidget->engine()->addImportPath(Core::ICore::resourcePath("qmldesigner/propertyEditorQmlSources/imports").toString());
 
-        const QString welcomePagePath = Core::ICore::resourcePath("qmldesigner/welcomepage").toString();
-        m_modeWidget->engine()->addImportPath(welcomePagePath + "/imports");
-        m_modeWidget->setSource(QUrl::fromLocalFile(welcomePagePath + "/main.qml"));
+    if (m_dataModelDownloader->start())
+        m_quickWidget->setEnabled(false);
 
-        QShortcut *updateShortcut = nullptr;
-        if (Utils::HostOsInfo::isMacHost())
-            updateShortcut = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_F5), m_modeWidget);
-        else
-            updateShortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_F5), m_modeWidget);
-        connect(updateShortcut, &QShortcut::activated, this, [this, welcomePagePath](){
-            m_modeWidget->setSource(QUrl::fromLocalFile(welcomePagePath + "/main.qml"));
-        });
-    }
+/*
+    connect(Core::ModeManager::instance(), &Core::ModeManager::currentModeChanged, this, [this](Utils::Id mode){
+       bool active = (mode == Core::Constants::MODE_WELCOME);
+       m_modeWidget->rootObject()->setProperty("active", active);
+    });
+*/
+    setupQuickWidget(welcomePagePath);
 
+    QVBoxLayout *boxLayout = new QVBoxLayout();
+    boxLayout->setContentsMargins(0, 0, 0, 0);
+
+    m_modeWidget = new QWidget;
+    m_modeWidget->setLayout(boxLayout);
+    boxLayout->addWidget(m_quickWidget);
     setWidget(m_modeWidget);
 
     QStringList designStudioQchPathes
@@ -748,6 +739,51 @@ void setSettingIfDifferent(const QString &key, bool value, bool &dirty)
 WelcomeMode::~WelcomeMode()
 {
     delete m_modeWidget;
+}
+
+void WelcomeMode::setupQuickWidget(const QString &welcomePagePath)
+{
+    if (!useNewWelcomePage()) {
+
+#ifdef QT_DEBUG
+        m_quickWidget->engine()->addImportPath(QLatin1String(STUDIO_QML_PATH)
+                                               + "welcomepage/imports");
+        m_quickWidget->setSource(
+            QUrl::fromLocalFile(QLatin1String(STUDIO_QML_PATH) + "welcomepage/main.qml"));
+#else
+        m_quickWidget->engine()->addImportPath("qrc:/qml/welcomepage/imports");
+        m_quickWidget->setSource(QUrl("qrc:/qml/welcomepage/main.qml"));
+#endif
+    } else {
+
+        m_quickWidget->engine()->addImportPath(Core::ICore::resourcePath("qmldesigner/propertyEditorQmlSources/imports").toString());
+
+        m_quickWidget->engine()->addImportPath(welcomePagePath + "/imports");
+        m_quickWidget->engine()->addImportPath(m_dataModelDownloader->targetFolder().toString());
+        m_quickWidget->setSource(QUrl::fromLocalFile(welcomePagePath + "/main.qml"));
+
+        QShortcut *updateShortcut = nullptr;
+        if (Utils::HostOsInfo::isMacHost())
+            updateShortcut = new QShortcut(QKeySequence(Qt::ALT | Qt::Key_F5), m_quickWidget);
+        else
+            updateShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F5), m_quickWidget);
+        connect(updateShortcut, &QShortcut::activated, this, [this, welcomePagePath](){
+            m_quickWidget->setSource(QUrl::fromLocalFile(welcomePagePath + "/main.qml"));
+        });
+    }
+}
+
+void WelcomeMode::createQuickWidget()
+{
+    m_quickWidget = new QQuickWidget;
+    m_quickWidget->setMinimumSize(640, 480);
+    m_quickWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    QmlDesigner::Theme::setupTheme(m_quickWidget->engine());
+    m_quickWidget->engine()->addImportPath("qrc:/studiofonts");
+
+    QmlDesigner::QmlDesignerPlugin::registerPreviewImageProvider(m_quickWidget->engine());
+
+    m_quickWidget->engine()->setOutputWarningsToStandardError(false);
 }
 
 StudioSettingsPage::StudioSettingsPage()

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "progressmanager.h"
 
@@ -29,9 +7,13 @@
 #include <coreplugin/progressmanager/progressmanager.h>
 #include <languageserverprotocol/progresssupport.h>
 
+#include <QTime>
+
 using namespace LanguageServerProtocol;
 
 namespace LanguageClient {
+
+static Q_LOGGING_CATEGORY(LOGPROGRESS, "qtc.languageclient.progress", QtWarningMsg);
 
 ProgressManager::ProgressManager()
 {}
@@ -45,11 +27,11 @@ void ProgressManager::handleProgress(const LanguageServerProtocol::ProgressParam
 {
     const ProgressToken &token = params.token();
     ProgressParams::ProgressType value = params.value();
-    if (auto begin = Utils::get_if<WorkDoneProgressBegin>(&value))
+    if (auto begin = std::get_if<WorkDoneProgressBegin>(&value))
         beginProgress(token, *begin);
-    else if (auto report = Utils::get_if<WorkDoneProgressReport>(&value))
+    else if (auto report = std::get_if<WorkDoneProgressReport>(&value))
         reportProgress(token, *report);
-    else if (auto end = Utils::get_if<WorkDoneProgressEnd>(&value))
+    else if (auto end = std::get_if<WorkDoneProgressEnd>(&value))
         endProgress(token, *end);
 }
 
@@ -59,25 +41,37 @@ void ProgressManager::setTitleForToken(const LanguageServerProtocol::ProgressTok
     m_titles.insert(token, message);
 }
 
+void ProgressManager::setClickHandlerForToken(const LanguageServerProtocol::ProgressToken &token,
+                                              const std::function<void()> &handler)
+{
+    m_clickHandlers.insert(token, handler);
+}
+
+void ProgressManager::setCancelHandlerForToken(const LanguageServerProtocol::ProgressToken &token,
+                                               const std::function<void ()> &handler)
+{
+    m_cancelHandlers.insert(token, handler);
+}
+
 void ProgressManager::reset()
 {
     const QList<ProgressToken> &tokens = m_progress.keys();
     for (const ProgressToken &token : tokens)
-        endProgress(token);
+        endProgressReport(token);
 }
 
 bool ProgressManager::isProgressEndMessage(const LanguageServerProtocol::ProgressParams &params)
 {
-    return Utils::holds_alternative<WorkDoneProgressEnd>(params.value());
+    return std::holds_alternative<WorkDoneProgressEnd>(params.value());
 }
 
 Utils::Id languageClientProgressId(const ProgressToken &token)
 {
     constexpr char k_LanguageClientProgressId[] = "LanguageClient.ProgressId.";
     auto toString = [](const ProgressToken &token){
-        if (Utils::holds_alternative<int>(token))
-            return QString::number(Utils::get<int>(token));
-        return Utils::get<QString>(token);
+        if (std::holds_alternative<int>(token))
+            return QString::number(std::get<int>(token));
+        return std::get<QString>(token);
     };
     return Utils::Id(k_LanguageClientProgressId).withSuffix(toString(token));
 }
@@ -90,7 +84,17 @@ void ProgressManager::beginProgress(const ProgressToken &token, const WorkDonePr
     const QString title = m_titles.value(token, begin.title());
     Core::FutureProgress *progress = Core::ProgressManager::addTask(
             interface->future(), title, languageClientProgressId(token));
+    const std::function<void()> clickHandler = m_clickHandlers.value(token);
+    if (clickHandler)
+        QObject::connect(progress, &Core::FutureProgress::clicked, clickHandler);
+    const std::function<void()> cancelHandler = m_cancelHandlers.value(token);
+    if (cancelHandler)
+        QObject::connect(progress, &Core::FutureProgress::canceled, cancelHandler);
+    else
+        progress->setCancelEnabled(false);
     m_progress[token] = {progress, interface};
+    if (LOGPROGRESS().isDebugEnabled())
+        m_timer[token].start();
     reportProgress(token, begin);
 }
 
@@ -99,7 +103,7 @@ void ProgressManager::reportProgress(const ProgressToken &token,
 {
     const LanguageClientProgress &progress = m_progress.value(token);
     if (progress.progressInterface) {
-        const Utils::optional<QString> &message = report.message();
+        const std::optional<QString> &message = report.message();
         if (message.has_value()) {
             progress.progressInterface->setSubtitle(*message);
             const bool showSubtitle = !message->isEmpty();
@@ -107,7 +111,7 @@ void ProgressManager::reportProgress(const ProgressToken &token,
         }
     }
     if (progress.futureInterface) {
-        if (const Utils::optional<double> &percentage = report.percentage(); percentage.has_value())
+        if (const std::optional<double> &percentage = report.percentage(); percentage.has_value())
             progress.futureInterface->setProgressValue(*percentage);
     }
 }
@@ -123,11 +127,18 @@ void ProgressManager::endProgress(const ProgressToken &token, const WorkDoneProg
         }
         progress.progressInterface->setSubtitle(message);
         progress.progressInterface->setSubtitleVisibleInStatusBar(!message.isEmpty());
+        auto timer = m_timer.take(token);
+        if (timer.isValid()) {
+            qCDebug(LOGPROGRESS) << QString("%1 took %2")
+                                        .arg(progress.progressInterface->title())
+                                        .arg(QTime::fromMSecsSinceStartOfDay(timer.elapsed())
+                                                 .toString(Qt::ISODateWithMs));
+        }
     }
-    endProgress(token);
+    endProgressReport(token);
 }
 
-void ProgressManager::endProgress(const ProgressToken &token)
+void ProgressManager::endProgressReport(const ProgressToken &token)
 {
     const LanguageClientProgress &progress = m_progress.take(token);
     if (progress.futureInterface)

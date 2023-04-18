@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "actionmanager.h"
 #include "actionmanager_p.h"
@@ -37,6 +15,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QDebug>
+#include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
 #include <QSettings>
@@ -45,12 +24,51 @@ namespace {
     enum { warnAboutFindFailures = 0 };
 }
 
-static const char kKeyboardSettingsKey[] = "KeyboardShortcuts";
 static const char kKeyboardSettingsKeyV2[] = "KeyboardShortcutsV2";
 
 using namespace Core;
 using namespace Core::Internal;
 using namespace Utils;
+
+namespace Core::Internal {
+
+class PresentationModeHandler : public QObject
+{
+    Q_OBJECT
+
+public:
+    void connectCommand(Command *command);
+
+private:
+    void showShortcutPopup(const QString &shortcut);
+};
+
+void PresentationModeHandler::connectCommand(Command *command)
+{
+    QAction *action = command->action();
+    if (action) {
+        connect(action, &QAction::triggered,
+                this, [this, action] { showShortcutPopup(action->shortcut().toString()); });
+    }
+}
+
+void PresentationModeHandler::showShortcutPopup(const QString &shortcut)
+{
+    if (shortcut.isEmpty())
+        return;
+
+    QWidget *window = QApplication::activeWindow();
+    if (!window) {
+        if (!QApplication::topLevelWidgets().isEmpty()) {
+            window = QApplication::topLevelWidgets().first();
+        } else {
+            window = ICore::mainWindow();
+        }
+    }
+    Utils::FadingIndicator::showText(window, shortcut);
+}
+
+}
 
 /*!
     \class Core::ActionManager
@@ -78,9 +96,9 @@ using namespace Utils;
     your plugin's ExtensionSystem::IPlugin::initialize() function.
 
     \code
-        QAction *myAction = new QAction(tr("My Action"), this);
+        QAction *myAction = new QAction(Tr::tr("My Action"), this);
         Command *cmd = ActionManager::registerAction(myAction, "myplugin.myaction", Context(C_GLOBAL));
-        cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+Alt+u")));
+        cmd->setDefaultKeySequence(QKeySequence(Tr::tr("Ctrl+Alt+u")));
         connect(myAction, &QAction::triggered, this, &MyPlugin::performMyAction);
     \endcode
 
@@ -244,13 +262,13 @@ ActionContainer *ActionManager::createTouchBar(Id id, const QIcon &icon, const Q
 */
 Command *ActionManager::registerAction(QAction *action, Id id, const Context &context, bool scriptable)
 {
-    Action *a = d->overridableAction(id);
-    if (a) {
-        a->addOverrideAction(action, context, scriptable);
+    Command *cmd = d->overridableAction(id);
+    if (cmd) {
+        cmd->d->addOverrideAction(action, context, scriptable);
         emit m_instance->commandListChanged();
         emit m_instance->commandAdded(id);
     }
-    return a;
+    return cmd;
 }
 
 /*!
@@ -302,11 +320,7 @@ ActionContainer *ActionManager::actionContainer(Id id)
 */
 QList<Command *> ActionManager::commands()
 {
-    // transform list of Action into list of Command
-    QList<Command *> result;
-    foreach (Command *cmd, d->m_idCmdMap)
-        result << cmd;
-    return result;
+    return d->m_idCmdMap.values();
 }
 
 /*!
@@ -319,21 +333,21 @@ QList<Command *> ActionManager::commands()
 */
 void ActionManager::unregisterAction(QAction *action, Id id)
 {
-    Action *a = d->m_idCmdMap.value(id, nullptr);
-    if (!a) {
+    Command *cmd = d->m_idCmdMap.value(id, nullptr);
+    if (!cmd) {
         qWarning() << "unregisterAction: id" << id.name()
                    << "is registered with a different command type.";
         return;
     }
-    a->removeOverrideAction(action);
-    if (a->isEmpty()) {
+    cmd->d->removeOverrideAction(action);
+    if (cmd->d->isEmpty()) {
         // clean up
-        ActionManagerPrivate::saveSettings(a);
-        ICore::mainWindow()->removeAction(a->action());
+        ActionManagerPrivate::saveSettings(cmd);
+        ICore::mainWindow()->removeAction(cmd->action());
         // ActionContainers listen to the commands' destroyed signals
-        delete a->action();
+        delete cmd->action();
         d->m_idCmdMap.remove(id);
-        delete a;
+        delete cmd;
     }
     emit m_instance->commandListChanged();
 }
@@ -346,17 +360,15 @@ void ActionManager::setPresentationModeEnabled(bool enabled)
     if (enabled == isPresentationModeEnabled())
         return;
 
-    // Signal/slots to commands:
-    foreach (Command *c, commands()) {
-        if (c->action()) {
-            if (enabled)
-                connect(c->action(), &QAction::triggered, d, &ActionManagerPrivate::actionTriggered);
-            else
-                disconnect(c->action(), &QAction::triggered, d, &ActionManagerPrivate::actionTriggered);
-        }
+    if (!enabled) {
+        d->m_presentationModeHandler.reset();
+        return;
     }
 
-    d->m_presentationModeEnabled = enabled;
+    d->m_presentationModeHandler.reset(new PresentationModeHandler);
+    const auto commandList = commands();
+    for (Command *command : commandList)
+        d->m_presentationModeHandler->connectCommand(command);
 }
 
 /*!
@@ -368,7 +380,7 @@ void ActionManager::setPresentationModeEnabled(bool enabled)
 */
 bool ActionManager::isPresentationModeEnabled()
 {
-    return d->m_presentationModeEnabled;
+    return bool(d->m_presentationModeHandler);
 }
 
 /*!
@@ -404,10 +416,12 @@ void ActionManager::setContext(const Context &context)
     \internal
 */
 
+ActionManagerPrivate::ActionManagerPrivate() = default;
+
 ActionManagerPrivate::~ActionManagerPrivate()
 {
     // first delete containers to avoid them reacting to command deletion
-    foreach (ActionContainerPrivate *container, m_idContainerMap)
+    for (const ActionContainerPrivate *container : std::as_const(m_idContainerMap))
         disconnect(container, &QObject::destroyed, this, &ActionManagerPrivate::containerDestroyed);
     qDeleteAll(m_idContainerMap);
     qDeleteAll(m_idCmdMap);
@@ -421,7 +435,7 @@ void ActionManagerPrivate::setContext(const Context &context)
     m_context = context;
     const IdCmdMap::const_iterator cmdcend = m_idCmdMap.constEnd();
     for (IdCmdMap::const_iterator it = m_idCmdMap.constBegin(); it != cmdcend; ++it)
-        it.value()->setCurrentContext(m_context);
+        it.value()->d->setCurrentContext(m_context);
 }
 
 bool ActionManagerPrivate::hasContext(const Context &context) const
@@ -433,64 +447,36 @@ bool ActionManagerPrivate::hasContext(const Context &context) const
     return false;
 }
 
-void ActionManagerPrivate::containerDestroyed()
+void ActionManagerPrivate::containerDestroyed(QObject *sender)
 {
-    auto container = static_cast<ActionContainerPrivate *>(sender());
+    auto container = static_cast<ActionContainerPrivate *>(sender);
     m_idContainerMap.remove(m_idContainerMap.key(container));
 }
 
-void ActionManagerPrivate::actionTriggered()
+Command *ActionManagerPrivate::overridableAction(Id id)
 {
-    auto action = qobject_cast<QAction *>(QObject::sender());
-    if (action)
-        showShortcutPopup(action->shortcut().toString());
-}
+    Command *cmd = m_idCmdMap.value(id, nullptr);
+    if (!cmd) {
+        cmd = new Command(id);
+        m_idCmdMap.insert(id, cmd);
+        readUserSettings(id, cmd);
+        QAction *action = cmd->action();
+        ICore::mainWindow()->addAction(action);
+        action->setObjectName(id.toString());
+        action->setShortcutContext(Qt::ApplicationShortcut);
+        cmd->d->setCurrentContext(m_context);
 
-void ActionManagerPrivate::showShortcutPopup(const QString &shortcut)
-{
-    if (shortcut.isEmpty() || !ActionManager::isPresentationModeEnabled())
-        return;
-
-    QWidget *window = QApplication::activeWindow();
-    if (!window) {
-        if (!QApplication::topLevelWidgets().isEmpty()) {
-            window = QApplication::topLevelWidgets().first();
-        } else {
-            window = ICore::mainWindow();
-        }
+        if (d->m_presentationModeHandler)
+            d->m_presentationModeHandler->connectCommand(cmd);
     }
 
-    Utils::FadingIndicator::showText(window, shortcut);
+    return cmd;
 }
 
-Action *ActionManagerPrivate::overridableAction(Id id)
+void ActionManagerPrivate::readUserSettings(Id id, Command *cmd)
 {
-    Action *a = m_idCmdMap.value(id, nullptr);
-    if (!a) {
-        a = new Action(id);
-        m_idCmdMap.insert(id, a);
-        readUserSettings(id, a);
-        ICore::mainWindow()->addAction(a->action());
-        a->action()->setObjectName(id.toString());
-        a->action()->setShortcutContext(Qt::ApplicationShortcut);
-        a->setCurrentContext(m_context);
-
-        if (ActionManager::isPresentationModeEnabled())
-            connect(a->action(), &QAction::triggered, this, &ActionManagerPrivate::actionTriggered);
-    }
-
-    return a;
-}
-
-void ActionManagerPrivate::readUserSettings(Id id, Action *cmd)
-{
-    // TODO Settings V2 were introduced in Qt Creator 4.13, remove old settings at some point
     QSettings *settings = ICore::settings();
-    // transfer from old settings if not done before
-    const QString group = settings->childGroups().contains(kKeyboardSettingsKeyV2)
-                              ? QString(kKeyboardSettingsKeyV2)
-                              : QString(kKeyboardSettingsKey);
-    settings->beginGroup(group);
+    settings->beginGroup(kKeyboardSettingsKeyV2);
     if (settings->contains(id.toString())) {
         const QVariant v = settings->value(id.toString());
         if (QMetaType::Type(v.type()) == QMetaType::QStringList) {
@@ -504,20 +490,17 @@ void ActionManagerPrivate::readUserSettings(Id id, Action *cmd)
     settings->endGroup();
 }
 
-void ActionManagerPrivate::saveSettings(Action *cmd)
+void ActionManagerPrivate::saveSettings(Command *cmd)
 {
     const QString id = cmd->id().toString();
     const QString settingsKey = QLatin1String(kKeyboardSettingsKeyV2) + '/' + id;
-    const QString compatSettingsKey = QLatin1String(kKeyboardSettingsKey) + '/' + id;
     const QList<QKeySequence> keys = cmd->keySequences();
     const QList<QKeySequence> defaultKeys = cmd->defaultKeySequences();
     if (keys != defaultKeys) {
         if (keys.isEmpty()) {
             ICore::settings()->setValue(settingsKey, QString());
-            ICore::settings()->setValue(compatSettingsKey, QString());
         } else if (keys.size() == 1) {
             ICore::settings()->setValue(settingsKey, keys.first().toString());
-            ICore::settings()->setValue(compatSettingsKey, keys.first().toString());
         } else {
             ICore::settings()->setValue(settingsKey,
                                         Utils::transform<QStringList>(keys,
@@ -537,3 +520,5 @@ void ActionManagerPrivate::saveSettings()
         saveSettings(j.value());
     }
 }
+
+#include "actionmanager.moc"

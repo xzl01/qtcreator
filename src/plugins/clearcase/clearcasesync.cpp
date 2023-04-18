@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clearcasesync.h"
-#include "clearcaseconstants.h"
+
+#include "clearcasesettings.h"
 
 #include <QDir>
 #include <QFutureInterface>
@@ -41,8 +20,7 @@
 
 using namespace Utils;
 
-namespace ClearCase {
-namespace Internal {
+namespace ClearCase::Internal {
 
 static void runProcess(QFutureInterface<void> &future,
                        const ClearCaseSettings &settings,
@@ -52,7 +30,7 @@ static void runProcess(QFutureInterface<void> &future,
     const QString viewRoot = ClearCasePlugin::viewData().root;
     QtcProcess process;
     process.setWorkingDirectory(FilePath::fromString(viewRoot));
-    process.setCommand({FilePath::fromString(settings.ccBinaryPath), args});
+    process.setCommand({settings.ccBinaryPath, args});
     process.start();
     if (!process.waitForStarted())
         return;
@@ -60,11 +38,13 @@ static void runProcess(QFutureInterface<void> &future,
     int processed = 0;
     QString buffer;
     while (process.waitForReadyRead() && !future.isCanceled()) {
-        buffer += QString::fromLocal8Bit(process.readAllStandardOutput());
-        while (const int index = buffer.indexOf('\n') != -1) {
+        buffer += QString::fromLocal8Bit(process.readAllRawStandardOutput());
+        int index = buffer.indexOf('\n');
+        while (index != -1) {
             const QString line = buffer.left(index + 1);
             processLine(line, ++processed);
             buffer = buffer.mid(index + 1);
+            index = buffer.indexOf('\n');
         }
     }
     if (!buffer.isEmpty())
@@ -148,17 +128,17 @@ void ClearCaseSync::updateTotalFilesCount(const QString &view, ClearCaseSettings
 
 void ClearCaseSync::updateStatusForNotManagedFiles(const QStringList &files)
 {
-    foreach (const QString &file, files) {
-       QString absFile = QFileInfo(file).absoluteFilePath();
-       if (!m_statusMap->contains(absFile))
-           ClearCasePlugin::setStatus(absFile, FileStatus::NotManaged, false);
+    for (const QString &file : files) {
+        const QString absFile = QFileInfo(file).absoluteFilePath();
+        if (!m_statusMap->contains(absFile))
+            ClearCasePlugin::setStatus(absFile, FileStatus::NotManaged, false);
     }
 }
 
 void ClearCaseSync::syncSnapshotView(QFutureInterface<void> &future, QStringList &files,
                                      const ClearCaseSettings &settings)
 {
-    QString view = ClearCasePlugin::viewData().name;
+    const QString view = ClearCasePlugin::viewData().name;
 
     int totalFileCount = files.size();
     const bool hot = (totalFileCount < 10);
@@ -206,7 +186,7 @@ void ClearCaseSync::syncSnapshotView(QFutureInterface<void> &future, QStringList
 
 void ClearCaseSync::processCleartoolLscheckoutLine(const QString &buffer)
 {
-    QString absFile = buffer.trimmed();
+    const QString absFile = buffer.trimmed();
     ClearCasePlugin::setStatus(absFile, FileStatus::CheckedOut, true);
 }
 
@@ -233,15 +213,14 @@ void ClearCaseSync::run(QFutureInterface<void> &future, QStringList &files)
     if (settings.disableIndexer)
         return;
 
-    const QString program = settings.ccBinaryPath;
-    if (program.isEmpty())
+    if (!settings.ccBinaryPath.isExecutableFile())
         return;
 
     // refresh activities list
     if (ClearCasePlugin::viewData().isUcm)
         ClearCasePlugin::refreshActivities();
 
-    QString view = ClearCasePlugin::viewData().name;
+    const QString view = ClearCasePlugin::viewData().name;
     if (view.isEmpty())
         emit updateStreamAndView();
 
@@ -259,7 +238,7 @@ public:
     TempFile(const QString &fileName)
         : m_fileName(fileName)
     {
-        Utils::FileSaver srcSaver(Utils::FilePath::fromString(fileName));
+        FileSaver srcSaver(FilePath::fromString(fileName));
         srcSaver.write(QByteArray());
         srcSaver.finalize();
 
@@ -317,7 +296,7 @@ void ClearCaseSync::verifyFileCheckedOutDynamicView()
 {
     QCOMPARE(m_statusMap->count(), 0);
 
-    QString fileName("/hello.C");
+    const QString fileName("/hello.C");
     processCleartoolLscheckoutLine(fileName);
 
     QCOMPARE(m_statusMap->count(), 1);
@@ -332,7 +311,7 @@ void ClearCaseSync::verifyFileCheckedInDynamicView()
 {
     QCOMPARE(m_statusMap->count(), 0);
 
-    QString fileName("/hello.C");
+    const QString fileName("/hello.C");
 
     // checked in files are not kept in the index
     QCOMPARE(m_statusMap->count(), 0);
@@ -355,6 +334,4 @@ void ClearCaseSync::verifyFileNotManagedDynamicView()
 
 #endif
 
-
-} // namespace Internal
-} // namespace ClearCase
+} // ClearCase::Internal

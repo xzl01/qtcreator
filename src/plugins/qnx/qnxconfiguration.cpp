@@ -1,32 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: BlackBerry (qt@blackberry.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qnxconfiguration.h"
+
 #include "qnxqtversion.h"
 #include "qnxutils.h"
 #include "qnxtoolchain.h"
+#include "qnxtr.h"
 
 #include "debugger/debuggeritem.h"
 
@@ -47,20 +27,18 @@
 #include <debugger/debuggeritemmanager.h>
 #include <debugger/debuggerkitinformation.h>
 
-#include <coreplugin/icore.h>
 #include <utils/algorithm.h>
 
-#include <QDir>
+#include <QDebug>
+#include <QDomDocument>
 #include <QMessageBox>
-#include <QFileInfo>
 
 using namespace ProjectExplorer;
 using namespace QtSupport;
 using namespace Utils;
 using namespace Debugger;
 
-namespace Qnx {
-namespace Internal {
+namespace Qnx::Internal {
 
 const QLatin1String QNXEnvFileKey("EnvFile");
 const QLatin1String QNXVersionKey("QNXVersion");
@@ -145,21 +123,12 @@ bool QnxConfiguration::activate()
         return true;
 
     if (!isValid()) {
-        QString errorMessage
-                = QCoreApplication::translate("Qnx::Internal::QnxConfiguration",
-                                              "The following errors occurred while activating the QNX configuration:");
-        foreach (const QString &error, validationErrors())
-            errorMessage += QLatin1String("\n") + error;
-
-        QMessageBox::warning(Core::ICore::dialogParent(),
-                             QCoreApplication::translate("Qnx::Internal::QnxConfiguration",
-                                                         "Cannot Set Up QNX Configuration"),
-                             errorMessage,
-                             QMessageBox::Ok);
+        QMessageBox::warning(Core::ICore::dialogParent(), Tr::tr("Cannot Set Up QNX Configuration"),
+                             validationErrorMessage(), QMessageBox::Ok);
         return false;
     }
 
-    foreach (const Target &target, m_targets)
+    for (const Target &target : std::as_const(m_targets))
         createTools(target);
 
     return true;
@@ -174,23 +143,25 @@ void QnxConfiguration::deactivate()
         ToolChainManager::toolchains(Utils::equal(&ToolChain::compilerCommand, qccCompilerPath()));
 
     QList<DebuggerItem> debuggersToRemove;
-    foreach (DebuggerItem debuggerItem,
-             DebuggerItemManager::debuggers()) {
+    const QList<DebuggerItem> debuggerItems = DebuggerItemManager::debuggers();
+    for (const DebuggerItem &debuggerItem : debuggerItems) {
         if (findTargetByDebuggerPath(debuggerItem.command()))
             debuggersToRemove.append(debuggerItem);
     }
 
-    foreach (Kit *kit, KitManager::kits()) {
+    const QList<Kit *> kits = KitManager::kits();
+    for (Kit *kit : kits) {
         if (kit->isAutoDetected()
                 && DeviceTypeKitAspect::deviceTypeId(kit) == Constants::QNX_QNX_OS_TYPE
-                && toolChainsToRemove.contains(ToolChainKitAspect::cxxToolChain(kit)))
+                && toolChainsToRemove.contains(ToolChainKitAspect::cxxToolChain(kit))) {
             KitManager::deregisterKit(kit);
+        }
     }
 
     for (ToolChain *tc : toolChainsToRemove)
         ToolChainManager::deregisterToolChain(tc);
 
-    foreach (DebuggerItem debuggerItem, debuggersToRemove)
+    for (const DebuggerItem &debuggerItem : std::as_const(debuggersToRemove))
         DebuggerItemManager::deregisterDebugger(debuggerItem.id());
 }
 
@@ -205,15 +176,6 @@ bool QnxConfiguration::isActive() const
     return hasToolChain && hasDebugger;
 }
 
-bool QnxConfiguration::canCreateKits() const
-{
-    if (!isValid())
-        return false;
-
-    return Utils::anyOf(m_targets,
-                        [this](const Target &target) -> bool { return qnxQtVersion(target); });
-}
-
 FilePath QnxConfiguration::sdpPath() const
 {
     return envFile().parentDir();
@@ -221,18 +183,18 @@ FilePath QnxConfiguration::sdpPath() const
 
 QnxQtVersion *QnxConfiguration::qnxQtVersion(const Target &target) const
 {
-    foreach (QtVersion *version,
-             QtVersionManager::instance()->versions(Utils::equal(&QtVersion::type,
-                                                                         QString::fromLatin1(Constants::QNX_QNX_QT)))) {
+    const QtVersions versions = QtVersionManager::versions(
+                Utils::equal(&QtVersion::type, QString::fromLatin1(Constants::QNX_QNX_QT)));
+    for (QtVersion *version : versions) {
         auto qnxQt = dynamic_cast<QnxQtVersion *>(version);
         if (qnxQt && qnxQt->sdpPath() == sdpPath()) {
-            foreach (const Abi &qtAbi, version->qtAbis()) {
+            const Abis abis = version->qtAbis();
+            for (const Abi &qtAbi : abis) {
                 if ((qtAbi == target.m_abi) && (qnxQt->cpuDir() == target.cpuDir()))
                     return qnxQt;
             }
         }
     }
-
     return nullptr;
 }
 
@@ -240,7 +202,7 @@ QList<ToolChain *> QnxConfiguration::autoDetect(const QList<ToolChain *> &alread
 {
     QList<ToolChain *> result;
 
-    for (const Target &target : qAsConst(m_targets))
+    for (const Target &target : std::as_const(m_targets))
         result += findToolChain(alreadyKnown, target.m_abi);
 
     return result;
@@ -255,16 +217,13 @@ void QnxConfiguration::createTools(const Target &target)
 
 QVariant QnxConfiguration::createDebugger(const Target &target)
 {
-    Utils::Environment sysEnv = Utils::Environment::systemEnvironment();
+    Environment sysEnv = m_qnxHost.deviceEnvironment();
     sysEnv.modify(qnxEnvironmentItems());
+
     Debugger::DebuggerItem debugger;
     debugger.setCommand(target.m_debuggerPath);
-    debugger.reinitializeFromFile(sysEnv);
-    debugger.setAutoDetected(true);
-    debugger.setUnexpandedDisplayName(
-                QCoreApplication::translate(
-                    "Qnx::Internal::QnxConfiguration",
-                    "Debugger for %1 (%2)")
+    debugger.reinitializeFromFile(nullptr, &sysEnv);
+    debugger.setUnexpandedDisplayName(Tr::tr("Debugger for %1 (%2)")
                 .arg(displayName())
                 .arg(target.shortDescription()));
     return Debugger::DebuggerItemManager::registerDebugger(debugger);
@@ -280,10 +239,7 @@ QnxConfiguration::QnxToolChainMap QnxConfiguration::createToolChain(const Target
         toolChain->setDetection(ToolChain::AutoDetection);
         toolChain->setLanguage(language);
         toolChain->setTargetAbi(target.m_abi);
-        toolChain->setDisplayName(
-                    QCoreApplication::translate(
-                        "Qnx::Internal::QnxConfiguration",
-                        "QCC for %1 (%2)")
+        toolChain->setDisplayName(Tr::tr("QCC for %1 (%2)")
                     .arg(displayName())
                     .arg(target.shortDescription()));
         toolChain->setSdpPath(sdpPath());
@@ -291,7 +247,7 @@ QnxConfiguration::QnxToolChainMap QnxConfiguration::createToolChain(const Target
         toolChain->resetToolChain(qccCompilerPath());
         ToolChainManager::registerToolChain(toolChain);
 
-        toolChainMap.insert(std::make_pair(language, toolChain));
+        toolChainMap.insert({language, toolChain});
     }
 
     return toolChainMap;
@@ -310,10 +266,7 @@ QList<ToolChain *> QnxConfiguration::findToolChain(const QList<ToolChain *> &alr
 void QnxConfiguration::createKit(const Target &target, const QnxToolChainMap &toolChainMap,
                                  const QVariant &debugger)
 {
-    QnxQtVersion *qnxQt = qnxQtVersion(target);
-    // Do not create incomplete kits if no qt qnx version found
-    if (!qnxQt)
-        return;
+    QnxQtVersion *qnxQt = qnxQtVersion(target); // nullptr is ok.
 
     const auto init = [&](Kit *k) {
         QtKitAspect::setQtVersion(k, qnxQt);
@@ -326,14 +279,11 @@ void QnxConfiguration::createKit(const Target &target, const QnxToolChainMap &to
         DeviceTypeKitAspect::setDeviceTypeId(k, Constants::QNX_QNX_OS_TYPE);
         // TODO: Add sysroot?
 
-        k->setUnexpandedDisplayName(
-                    QCoreApplication::translate(
-                        "Qnx::Internal::QnxConfiguration",
-                        "Kit for %1 (%2)")
+        k->setUnexpandedDisplayName(Tr::tr("Kit for %1 (%2)")
                     .arg(displayName())
                     .arg(target.shortDescription()));
 
-        k->setAutoDetected(true);
+        k->setAutoDetected(false);
         k->setAutoDetectionSource(envFile().toString());
         k->setMutable(DeviceKitAspect::id(), true);
 
@@ -350,18 +300,18 @@ void QnxConfiguration::createKit(const Target &target, const QnxToolChainMap &to
     KitManager::registerKit(init);
 }
 
-QStringList QnxConfiguration::validationErrors() const
+QString QnxConfiguration::validationErrorMessage() const
 {
-    QStringList errorStrings;
+    if (isValid())
+        return {};
+
+    QStringList errorStrings
+            = {Tr::tr("The following errors occurred while activating the QNX configuration:")};
     if (m_qccCompiler.isEmpty())
-        errorStrings << QCoreApplication::translate("Qnx::Internal::QnxConfiguration",
-                                                    "- No GCC compiler found.");
-
+        errorStrings << Tr::tr("- No GCC compiler found.");
     if (m_targets.isEmpty())
-        errorStrings << QCoreApplication::translate("Qnx::Internal::QnxConfiguration",
-                                                    "- No targets found.");
-
-    return errorStrings;
+        errorStrings << Tr::tr("- No targets found.");
+    return errorStrings.join('\n');
 }
 
 void QnxConfiguration::setVersion(const QnxVersionNumber &version)
@@ -371,19 +321,43 @@ void QnxConfiguration::setVersion(const QnxVersionNumber &version)
 
 void QnxConfiguration::readInformation()
 {
-    const QString qConfigPath = m_qnxConfiguration.pathAppended("qconfig").toString();
-    const QList <ConfigInstallInformation> installInfoList = QnxUtils::installedConfigs(qConfigPath);
-    if (installInfoList.isEmpty())
+    const FilePath configPath = m_qnxConfiguration / "qconfig";
+    if (!configPath.isDir())
         return;
 
-    for (const ConfigInstallInformation &info : installInfoList) {
-        if (m_qnxHost == FilePath::fromString(info.host).canonicalPath()
-                && m_qnxTarget == FilePath::fromString(info.target).canonicalPath()) {
-            m_configName = info.name;
-            setVersion(QnxVersionNumber(info.version));
-            break;
-        }
-    }
+    configPath.iterateDirectory([this, configPath](const FilePath &sdpFile) {
+        QFile xmlFile(sdpFile.toFSPathString());
+        if (!xmlFile.open(QIODevice::ReadOnly))
+            return IterationPolicy::Continue;
+
+        QDomDocument doc;
+        if (!doc.setContent(&xmlFile))  // Skip error message
+            return IterationPolicy::Continue;
+
+        QDomElement docElt = doc.documentElement();
+        if (docElt.tagName() != QLatin1String("qnxSystemDefinition"))
+            return IterationPolicy::Continue;
+
+        QDomElement childElt = docElt.firstChildElement(QLatin1String("installation"));
+        // The file contains only one installation node
+        if (childElt.isNull()) // The file contains only one base node
+            return IterationPolicy::Continue;
+
+        FilePath host = configPath.withNewPath(
+            childElt.firstChildElement(QLatin1String("host")).text()).canonicalPath();
+        if (m_qnxHost != host)
+            return IterationPolicy::Continue;
+
+        FilePath target = configPath.withNewPath(
+            childElt.firstChildElement(QLatin1String("target")).text()).canonicalPath();
+        if (m_qnxTarget != target)
+            return IterationPolicy::Continue;
+
+        m_configName = childElt.firstChildElement(QLatin1String("name")).text();
+        QString version = childElt.firstChildElement(QLatin1String("version")).text();
+        setVersion(QnxVersionNumber(version));
+        return IterationPolicy::Stop;
+    }, {{"*.xml"}, QDir::Files});
 }
 
 void QnxConfiguration::setDefaultConfiguration(const FilePath &envScript)
@@ -391,18 +365,22 @@ void QnxConfiguration::setDefaultConfiguration(const FilePath &envScript)
     QTC_ASSERT(!envScript.isEmpty(), return);
     m_envFile = envScript;
     m_qnxEnv = QnxUtils::qnxEnvironmentFromEnvFile(m_envFile);
-    foreach (const EnvironmentItem &item, m_qnxEnv) {
+    for (const EnvironmentItem &item : std::as_const(m_qnxEnv)) {
         if (item.name == QNXConfiguration)
-            m_qnxConfiguration = FilePath::fromString(item.value).canonicalPath();
+            m_qnxConfiguration = envScript.withNewPath(item.value).canonicalPath();
         else if (item.name == QNXTarget)
-            m_qnxTarget = FilePath::fromString(item.value).canonicalPath();
+            m_qnxTarget = envScript.withNewPath(item.value).canonicalPath();
         else if (item.name == QNXHost)
-            m_qnxHost = FilePath::fromString(item.value).canonicalPath();
+            m_qnxHost = envScript.withNewPath(item.value).canonicalPath();
     }
 
     const FilePath qccPath = m_qnxHost.pathAppended("usr/bin/qcc").withExecutableSuffix();
     if (qccPath.exists())
         m_qccCompiler = qccPath;
+
+    // Some fall back in case the qconfig dir with .xml files is not found later
+    if (m_configName.isEmpty())
+        m_configName = QString("%1 - %2").arg(m_qnxHost.fileName(), m_qnxTarget.fileName());
 
     updateTargets();
     assignDebuggersToTargets();
@@ -418,9 +396,9 @@ void QnxConfiguration::setDefaultConfiguration(const FilePath &envScript)
 EnvironmentItems QnxConfiguration::qnxEnvironmentItems() const
 {
     Utils::EnvironmentItems envList;
-    envList.push_back(EnvironmentItem(QNXConfiguration, m_qnxConfiguration.toString()));
-    envList.push_back(EnvironmentItem(QNXTarget, m_qnxTarget.toString()));
-    envList.push_back(EnvironmentItem(QNXHost, m_qnxHost.toString()));
+    envList.push_back(EnvironmentItem(QNXConfiguration, m_qnxConfiguration.path()));
+    envList.push_back(EnvironmentItem(QNXTarget, m_qnxTarget.path()));
+    envList.push_back(EnvironmentItem(QNXHost, m_qnxHost.path()));
 
     return envList;
 }
@@ -436,22 +414,26 @@ const QnxConfiguration::Target *QnxConfiguration::findTargetByDebuggerPath(
 void QnxConfiguration::updateTargets()
 {
     m_targets.clear();
-    QList<QnxTarget> targets = QnxUtils::findTargets(m_qnxTarget);
-    for (const auto &target : targets)
+    const QList<QnxTarget> targets = QnxUtils::findTargets(m_qnxTarget);
+    for (const QnxTarget &target : targets)
         m_targets.append(Target(target.m_abi, target.m_path));
 }
 
 void QnxConfiguration::assignDebuggersToTargets()
 {
     const FilePath hostUsrBinDir = m_qnxHost.pathAppended("usr/bin");
-    const FilePaths debuggerNames = hostUsrBinDir.dirEntries(
-                {{HostOsInfo::withExecutableSuffix("nto*-gdb")}, QDir::Files});
-    Environment sysEnv = Environment::systemEnvironment();
+    QString pattern = "nto*-gdb";
+    if (m_qnxHost.osType() == Utils::OsTypeWindows)
+        pattern += ".exe";
+
+    const FilePaths debuggerNames = hostUsrBinDir.dirEntries({{pattern}, QDir::Files});
+    Environment sysEnv = m_qnxHost.deviceEnvironment();
     sysEnv.modify(qnxEnvironmentItems());
+
     for (const FilePath &debuggerPath : debuggerNames) {
         DebuggerItem item;
         item.setCommand(debuggerPath);
-        item.reinitializeFromFile(sysEnv);
+        item.reinitializeFromFile(nullptr, &sysEnv);
         bool found = false;
         for (const Abi &abi : item.abis()) {
             for (Target &target : m_targets) {
@@ -483,5 +465,4 @@ QString QnxConfiguration::Target::cpuDir() const
     return m_path.fileName();
 }
 
-} // namespace Internal
-} // namespace Qnx
+} // Qnx::Internal

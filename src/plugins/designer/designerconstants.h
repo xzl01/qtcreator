@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -33,10 +11,10 @@ namespace Constants {
 const char INFO_READ_ONLY[] = "DesignerXmlEditor.ReadOnly";
 const char K_DESIGNER_XML_EDITOR_ID[] = "FormEditor.DesignerXmlEditor";
 const char C_DESIGNER_XML_EDITOR[] = "Designer Xml Editor";
-const char C_DESIGNER_XML_DISPLAY_NAME[]  = QT_TRANSLATE_NOOP("Designer", "Form Editor");
+const char C_DESIGNER_XML_DISPLAY_NAME[]  = QT_TRANSLATE_NOOP("QtC::Designer", "Form Editor");
 
 const char SETTINGS_CATEGORY[] = "P.Designer";
-const char SETTINGS_TR_CATEGORY[] = QT_TRANSLATE_NOOP("Designer", "Designer");
+const char SETTINGS_TR_CATEGORY[] = QT_TRANSLATE_NOOP("QtC::Designer", "Designer");
 
 // Context
 const char C_FORMEDITOR[] = "FormEditor.FormEditor";

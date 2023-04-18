@@ -1,50 +1,31 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Mingulov.
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Mingulov.
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "imageviewerfile.h"
-#include "imageviewer.h"
+
 #include "imageviewerconstants.h"
+#include "imageviewertr.h"
 
 #include <coreplugin/editormanager/documentmodel.h>
-#include <utils/fileutils.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <coreplugin/editormanager/ieditor.h>
+
+#include <utils/filepath.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
 
 #include <QFileInfo>
 #include <QGraphicsPixmapItem>
-#ifndef QT_NO_SVG
-#include <QGraphicsSvgItem>
-#endif
 #include <QImageReader>
 #include <QMovie>
 #include <QPainter>
 #include <QPixmap>
 
-namespace ImageViewer {
-namespace Internal {
+#ifndef QT_NO_SVG
+#include <QGraphicsSvgItem>
+#endif
+
+namespace ImageViewer::Internal {
 
 class MovieItem : public QObject, public QGraphicsPixmapItem
 {
@@ -103,7 +84,7 @@ Core::IDocument::OpenResult ImageViewerFile::openImpl(QString *errorString,
     // if it is impossible to recognize a file format - file will not be open correctly
     if (format.isEmpty()) {
         if (errorString)
-            *errorString = tr("Image format not supported.");
+            *errorString = Tr::tr("Image format not supported.");
         return OpenResult::CannotHandle;
     }
 
@@ -115,7 +96,7 @@ Core::IDocument::OpenResult ImageViewerFile::openImpl(QString *errorString,
             delete m_tempSvgItem;
             m_tempSvgItem = nullptr;
             if (errorString)
-                *errorString = tr("Failed to read SVG image.");
+                *errorString = Tr::tr("Failed to read SVG image.");
             return OpenResult::CannotHandle;
         }
         m_type = TypeSvg;
@@ -128,7 +109,7 @@ Core::IDocument::OpenResult ImageViewerFile::openImpl(QString *errorString,
         m_movie->jumpToNextFrame();
         if (!m_movie->isValid()) {
             if (errorString)
-                *errorString = tr("Failed to read image.");
+                *errorString = Tr::tr("Failed to read image.");
             delete m_movie;
             m_movie = nullptr;
             return OpenResult::CannotHandle;
@@ -152,7 +133,7 @@ Core::IDocument::OpenResult ImageViewerFile::openImpl(QString *errorString,
         m_pixmap = new QPixmap(fileName);
         if (m_pixmap->isNull()) {
             if (errorString)
-                *errorString = tr("Failed to read image.");
+                *errorString = Tr::tr("Failed to read image.");
             delete m_pixmap;
             m_pixmap = nullptr;
             return OpenResult::CannotHandle;
@@ -243,7 +224,7 @@ void ImageViewerFile::updateVisibility()
     if (!m_movie || m_isPaused)
         return;
     bool visible = false;
-    foreach (Core::IEditor *editor, Core::DocumentModel::editorsForDocument(this)) {
+    for (Core::IEditor *editor : Core::DocumentModel::editorsForDocument(this)) {
         if (editor->widget()->isVisible()) {
             visible = true;
             break;
@@ -265,5 +246,4 @@ void ImageViewerFile::cleanUp()
     m_type = TypeInvalid;
 }
 
-} // namespace Internal
-} // namespace ImageViewer
+} // ImageViewer::Internal

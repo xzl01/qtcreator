@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "itemlibrarywidget.h"
 
@@ -30,27 +8,27 @@
 
 #include <theme.h>
 
+#include "modelnodeoperations.h"
 #include <designeractionmanager.h>
 #include <designermcumanager.h>
 #include <documentmanager.h>
+#include <itemlibraryaddimportmodel.h>
 #include <itemlibraryimageprovider.h>
 #include <itemlibraryinfo.h>
 #include <itemlibrarymodel.h>
-#include <itemlibraryaddimportmodel.h>
-#include "modelnodeoperations.h"
 #include <metainfo.h>
 #include <model.h>
-#include <navigatorwidget.h>
 #include <rewritingexception.h>
 #include <qmldesignerconstants.h>
 #include <qmldesignerplugin.h>
 
 #include <utils/algorithm.h>
-#include <utils/flowlayout.h>
-#include <utils/fileutils.h>
+#include <utils/environment.h>
 #include <utils/filesystemwatcher.h>
-#include <utils/stylehelper.h>
+#include <utils/fileutils.h>
+#include <utils/flowlayout.h>
 #include <utils/qtcassert.h>
+#include <utils/stylehelper.h>
 #include <utils/utilsicons.h>
 
 #include <coreplugin/coreconstants.h>
@@ -81,7 +59,7 @@ namespace QmlDesigner {
 static QString propertyEditorResourcesPath()
 {
 #ifdef SHARE_QML_PATH
-    if (qEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
+    if (Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
         return QLatin1String(SHARE_QML_PATH) + "/propertyEditorQmlSources";
 #endif
     return Core::ICore::resourcePath("qmldesigner/propertyEditorQmlSources").toString();
@@ -89,6 +67,9 @@ static QString propertyEditorResourcesPath()
 
 bool ItemLibraryWidget::eventFilter(QObject *obj, QEvent *event)
 {
+    auto document = QmlDesignerPlugin::instance()->currentDesignDocument();
+    Model *model = document ? document->documentModel() : nullptr;
+
     if (event->type() == QEvent::FocusOut) {
         if (obj == m_itemsWidget.data())
             QMetaObject::invokeMethod(m_itemsWidget->rootObject(), "closeContextMenu");
@@ -115,31 +96,13 @@ bool ItemLibraryWidget::eventFilter(QObject *obj, QEvent *event)
                         }
                     }
                 }
-                QWidget *view = QmlDesignerPlugin::instance()->viewManager().widget("Navigator");
-                if (view) {
-                    NavigatorWidget *navView = qobject_cast<NavigatorWidget *>(view);
-                    if (navView) {
-                        navView->setDragType(entry.typeName());
-                        navView->update();
-                    }
+
+                if (model) {
+                    model->startDrag(m_itemLibraryModel->getMimeData(entry),
+                                     Utils::StyleHelper::dpiSpecificImageFile(entry.libraryEntryIconPath()));
                 }
-                auto drag = new QDrag(this);
-                drag->setPixmap(Utils::StyleHelper::dpiSpecificImageFile(entry.libraryEntryIconPath()));
-                drag->setMimeData(m_itemLibraryModel->getMimeData(entry));
-                drag->exec();
-                drag->deleteLater();
 
                 m_itemToDrag = {};
-            }
-        }
-    } else if (event->type() == QMouseEvent::MouseButtonRelease) {
-        m_itemToDrag = {};
-        QWidget *view = QmlDesignerPlugin::instance()->viewManager().widget("Navigator");
-        if (view) {
-            NavigatorWidget *navView = qobject_cast<NavigatorWidget *>(view);
-            if (navView) {
-                navView->setDragType("");
-                navView->update();
             }
         }
     }
@@ -152,19 +115,14 @@ void ItemLibraryWidget::resizeEvent(QResizeEvent *event)
     isHorizontalLayout = event->size().width() >= HORIZONTAL_LAYOUT_WIDTH_LIMIT;
 }
 
-ItemLibraryWidget::ItemLibraryWidget(AsynchronousImageCache &imageCache,
-                                     AsynchronousImageCache &asynchronousFontImageCache,
-                                     SynchronousImageCache &synchronousFontImageCache)
+ItemLibraryWidget::ItemLibraryWidget(AsynchronousImageCache &imageCache)
     : m_itemIconSize(24, 24)
-    , m_fontImageCache(synchronousFontImageCache)
     , m_itemLibraryModel(new ItemLibraryModel(this))
     , m_addModuleModel(new ItemLibraryAddImportModel(this))
     , m_itemsWidget(new QQuickWidget(this))
     , m_imageCache{imageCache}
 {
-    Q_UNUSED(asynchronousFontImageCache)
-
-    m_compressionTimer.setInterval(200);
+    m_compressionTimer.setInterval(1000);
     m_compressionTimer.setSingleShot(true);
     ItemLibraryModel::registerQmlTypes();
 
@@ -212,6 +170,8 @@ ItemLibraryWidget::ItemLibraryWidget(AsynchronousImageCache &imageCache,
     m_itemsWidget->engine()->addImageProvider("itemlibrary_preview",
                                                       new ItemLibraryIconImageProvider{m_imageCache});
 
+    QmlDesignerPlugin::trackWidgetFocusTime(this, Constants::EVENT_ITEMLIBRARY_TIME);
+
     // init the first load of the QML UI elements
     reloadQmlSource();
 }
@@ -246,7 +206,7 @@ QList<QToolButton *> ItemLibraryWidget::createToolBarWidgets()
 }
 
 
-void ItemLibraryWidget::handleSearchfilterChanged(const QString &filterText)
+void ItemLibraryWidget::handleSearchFilterChanged(const QString &filterText)
 {
     if (filterText != m_filterText) {
         m_filterText = filterText;
@@ -293,7 +253,7 @@ void ItemLibraryWidget::handleAddImport(int index)
     imports.append(import);
     model->changeImports(imports, {});
 
-    QMetaObject::invokeMethod(m_itemsWidget->rootObject(), "switchToComponentsView");
+    switchToComponentsView();
     updateSearch();
 }
 
@@ -304,7 +264,7 @@ void ItemLibraryWidget::goIntoComponent(const QString &source)
 
 void ItemLibraryWidget::delayedUpdateModel()
 {
-    static bool disableTimer = DesignerSettings::getValue(DesignerSettingsKey::DISABLE_ITEM_LIBRARY_UPDATE_TIMER).toBool();
+    static bool disableTimer = QmlDesignerPlugin::settings().value(DesignerSettingsKey::DISABLE_ITEM_LIBRARY_UPDATE_TIMER).toBool();
     if (disableTimer)
         updateModel();
     else
@@ -314,8 +274,10 @@ void ItemLibraryWidget::delayedUpdateModel()
 void ItemLibraryWidget::setModel(Model *model)
 {
     m_model = model;
-    if (!model)
+    if (!model) {
+        m_itemToDrag = {};
         return;
+    }
 
     setItemLibraryInfo(model->metaInfo().itemLibraryInfo());
 
@@ -325,7 +287,7 @@ void ItemLibraryWidget::setModel(Model *model)
             m_subCompEditMode = subCompEditMode;
             // Switch out of add module view if it's active
             if (m_subCompEditMode)
-                QMetaObject::invokeMethod(m_itemsWidget->rootObject(), "switchToComponentsView");
+                switchToComponentsView();
             emit subCompEditModeChanged();
         }
     }
@@ -334,7 +296,7 @@ void ItemLibraryWidget::setModel(Model *model)
 QString ItemLibraryWidget::qmlSourcesPath()
 {
 #ifdef SHARE_QML_PATH
-    if (qEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
+    if (Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
         return QLatin1String(SHARE_QML_PATH) + "/itemLibraryQmlSources";
 #endif
     return Core::ICore::resourcePath("qmldesigner/itemLibraryQmlSources").toString();
@@ -343,6 +305,11 @@ QString ItemLibraryWidget::qmlSourcesPath()
 void ItemLibraryWidget::clearSearchFilter()
 {
     QMetaObject::invokeMethod(m_itemsWidget->rootObject(), "clearSearchFilter");
+}
+
+void ItemLibraryWidget::switchToComponentsView()
+{
+    QMetaObject::invokeMethod(m_itemsWidget->rootObject(), "switchToComponentsView");
 }
 
 void ItemLibraryWidget::reloadQmlSource()

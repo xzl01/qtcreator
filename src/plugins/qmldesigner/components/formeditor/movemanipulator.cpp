@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "movemanipulator.h"
 #include "layeritem.h"
@@ -88,7 +66,7 @@ void MoveManipulator::synchronizeParent(const QList<FormEditorItem*> &itemList, 
 {
     bool snapperUpdated = false;
 
-    foreach (FormEditorItem *item, itemList) {
+    for (FormEditorItem *item : itemList) {
         if (m_itemList.contains(item)) {
             QmlItemNode parentItemNode = QmlItemNode(parentNode);
             if (parentItemNode.isValid()) {
@@ -111,7 +89,7 @@ void MoveManipulator::synchronizeInstanceParent(const QList<FormEditorItem*> &it
 
 bool MoveManipulator::itemsCanReparented() const
 {
-    foreach (FormEditorItem* item, m_itemList) {
+    for (FormEditorItem* item : std::as_const(m_itemList)) {
         if (item
             && item->qmlItemNode().isValid()
             && !item->qmlItemNode().instanceCanReparent())
@@ -123,7 +101,7 @@ bool MoveManipulator::itemsCanReparented() const
 
 void MoveManipulator::setDirectUpdateInNodeInstances(bool directUpdate)
 {
-    foreach (FormEditorItem* item, m_itemList) {
+    for (FormEditorItem* item : std::as_const(m_itemList)) {
         if (item && item->qmlItemNode().isValid())
             item->qmlItemNode().nodeInstance().setDirectUpdate(directUpdate);
     }
@@ -136,7 +114,7 @@ void MoveManipulator::begin(const QPointF &beginPoint)
 
     m_snapper.updateSnappingLines(m_itemList);
 
-    foreach (FormEditorItem* item, m_itemList) {
+    for (FormEditorItem* item : std::as_const(m_itemList)) {
         if (item && item->qmlItemNode().isValid()) {
             QTransform fromItemToSceneTransform = item->qmlItemNode().instanceSceneTransform();
             m_beginItemRectInSceneSpaceHash.insert(item, fromItemToSceneTransform.mapRect(item->qmlItemNode().instanceBoundingRect()));
@@ -144,14 +122,14 @@ void MoveManipulator::begin(const QPointF &beginPoint)
     }
 
     QTransform fromContentItemToSceneTransform = m_snapper.containerFormEditorItem()->qmlItemNode().instanceSceneContentItemTransform();
-    foreach (FormEditorItem* item, m_itemList) {
+    for (FormEditorItem* item : std::as_const(m_itemList)) {
         if (item && item->qmlItemNode().isValid()) {
             QPointF positionInScenesSpace = fromContentItemToSceneTransform.map(item->instancePosition());
             m_beginPositionInSceneSpaceHash.insert(item, positionInScenesSpace);
         }
     }
 
-    foreach (FormEditorItem* item, m_itemList) {
+    for (FormEditorItem* item : std::as_const(m_itemList)) {
         if (item && item->qmlItemNode().isValid()) {
             QmlAnchors anchors(item->qmlItemNode().anchors());
             m_beginTopMarginHash.insert(item, anchors.instanceMargin(AnchorLineTop));
@@ -278,7 +256,7 @@ void MoveManipulator::update(const QPointF& updatePoint, Snapper::Snapping useSn
             generateSnappingLines(tanslatedBoundingRects(m_beginItemRectInSceneSpaceHash, offsetVector, fromSceneToItemTransform));
         }
 
-        foreach (FormEditorItem* item, m_itemList) {
+        for (FormEditorItem* item : std::as_const(m_itemList)) {
             QPointF positionInContainerSpace(fromSceneToContentItemTransform.map(m_beginPositionInSceneSpaceHash.value(item)) + offsetVector);
 
             if (!item || !item->qmlItemNode().isValid())
@@ -363,7 +341,7 @@ void MoveManipulator::reparentTo(FormEditorItem *newParent, ReparentFlag flag)
         else
             parentProperty = parentItemNode.nodeAbstractProperty("data");
 
-        foreach (FormEditorItem* item, m_itemList) {
+        for (FormEditorItem* item : std::as_const(m_itemList)) {
             if (!item || !item->qmlItemNode().isValid())
                 continue;
 
@@ -372,7 +350,7 @@ void MoveManipulator::reparentTo(FormEditorItem *newParent, ReparentFlag flag)
 
         }
 
-        foreach (const ModelNode &nodeToReparented, nodeReparentVector)
+        for (const ModelNode &nodeToReparented : std::as_const(nodeReparentVector))
             parentProperty.reparentHere(nodeToReparented);
 
         synchronizeParent(m_itemList, parentProperty.parentModelNode());
@@ -393,7 +371,7 @@ void MoveManipulator::end()
 void MoveManipulator::end(Snapper::Snapping useSnapping)
 {
     if (useSnapping == Snapper::UseSnappingAndAnchoring) {
-        foreach (FormEditorItem *formEditorItem, m_itemList)
+        for (FormEditorItem* formEditorItem : std::as_const(m_itemList))
             m_snapper.adjustAnchoringOfItem(formEditorItem);
     }
 
@@ -402,7 +380,7 @@ void MoveManipulator::end(Snapper::Snapping useSnapping)
 
 void MoveManipulator::moveBy(double deltaX, double deltaY)
 {
-    foreach (FormEditorItem* item, m_itemList) {
+    for (FormEditorItem* item : std::as_const(m_itemList)) {
         if (!item || !item->qmlItemNode().isValid())
             continue;
 
@@ -444,14 +422,14 @@ void MoveManipulator::endRewriterTransaction()
 
 void MoveManipulator::setOpacityForAllElements(qreal opacity)
 {
-    foreach (FormEditorItem* item, m_itemList)
+    for (FormEditorItem* item : std::as_const(m_itemList))
         item->setOpacity(opacity);
 }
 
 void MoveManipulator::deleteSnapLines()
 {
     if (m_layerItem) {
-        foreach (QGraphicsItem *item, m_graphicsLineList) {
+        for (QGraphicsItem *item : std::as_const(m_graphicsLineList)) {
             m_layerItem->scene()->removeItem(item);
             delete item;
         }

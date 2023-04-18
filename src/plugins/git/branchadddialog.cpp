@@ -1,42 +1,26 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "branchadddialog.h"
+
 #include "branchmodel.h"
-#include "ui_branchadddialog.h"
 #include "gitplugin.h"
+#include "gittr.h"
 
 #include <utils/fancylineedit.h>
 #include <utils/hostosinfo.h>
+#include <utils/layoutbuilder.h>
 
+#include <QApplication>
+#include <QCheckBox>
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QValidator>
 
-namespace Git {
-namespace Internal {
+namespace Git::Internal {
 
 /*!
  * \brief The BranchNameValidator class validates the corresponding string as
@@ -106,84 +90,102 @@ QWidget *BranchValidationDelegate::createEditor(QWidget *parent,
 }
 
 BranchAddDialog::BranchAddDialog(const QStringList &localBranches, Type type, QWidget *parent) :
-    QDialog(parent),
-    m_ui(new Ui::BranchAddDialog)
+    QDialog(parent)
 {
-    m_ui->setupUi(this);
-    m_ui->trackingCheckBox->setVisible(false);
+    resize(590, 138);
+
+    auto branchNameLabel = new QLabel(Tr::tr("Branch Name:"));
+
+    m_branchNameEdit = new QLineEdit(this);
+    m_branchNameEdit->setValidator(new BranchNameValidator(localBranches, this));
+
+    m_checkoutCheckBox = new QCheckBox(Tr::tr("Checkout new branch"));
+
+    m_trackingCheckBox = new QCheckBox(this);
+    m_trackingCheckBox->setVisible(false);
+
+    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+
     setCheckoutVisible(false);
 
     switch (type) {
     case BranchAddDialog::AddBranch:
-        setWindowTitle(tr("Add Branch"));
+        setWindowTitle(Tr::tr("Add Branch"));
         break;
     case BranchAddDialog::RenameBranch:
-        setWindowTitle(tr("Rename Branch"));
+        setWindowTitle(Tr::tr("Rename Branch"));
         break;
     case BranchAddDialog::AddTag:
-        setWindowTitle(tr("Add Tag"));
-        m_ui->branchNameLabel->setText(tr("Tag name:"));
+        setWindowTitle(Tr::tr("Add Tag"));
+        branchNameLabel->setText(Tr::tr("Tag name:"));
         break;
     case BranchAddDialog::RenameTag:
-        setWindowTitle(tr("Rename Tag"));
-        m_ui->branchNameLabel->setText(tr("Tag name:"));
+        setWindowTitle(Tr::tr("Rename Tag"));
+        branchNameLabel->setText(Tr::tr("Tag name:"));
         break;
     }
 
-    m_ui->branchNameEdit->setValidator(new BranchNameValidator(localBranches, this));
-    connect(m_ui->branchNameEdit, &QLineEdit::textChanged, this, &BranchAddDialog::updateButtonStatus);
+    using namespace Utils::Layouting;
+
+    Column {
+        Row { branchNameLabel, m_branchNameEdit },
+        m_checkoutCheckBox,
+        m_trackingCheckBox,
+        st,
+        m_buttonBox
+    }.attachTo(this);
+
+    connect(m_branchNameEdit, &QLineEdit::textChanged, this, &BranchAddDialog::updateButtonStatus);
+    connect(m_buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(m_buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
 }
 
-BranchAddDialog::~BranchAddDialog()
-{
-    delete m_ui;
-}
+BranchAddDialog::~BranchAddDialog() = default;
 
 void BranchAddDialog::setBranchName(const QString &n)
 {
-    m_ui->branchNameEdit->setText(n);
-    m_ui->branchNameEdit->selectAll();
+    m_branchNameEdit->setText(n);
+    m_branchNameEdit->selectAll();
 }
 
 QString BranchAddDialog::branchName() const
 {
-    return m_ui->branchNameEdit->text();
+    return m_branchNameEdit->text();
 }
 
 void BranchAddDialog::setTrackedBranchName(const QString &name, bool remote)
 {
     if (name.isEmpty()) {
-        m_ui->trackingCheckBox->setVisible(false);
-        m_ui->trackingCheckBox->setChecked(false);
+        m_trackingCheckBox->setVisible(false);
+        m_trackingCheckBox->setChecked(false);
     } else {
-        m_ui->trackingCheckBox->setText(remote ? tr("Track remote branch \"%1\"").arg(name) :
-                                                 tr("Track local branch \"%1\"").arg(name));
-        m_ui->trackingCheckBox->setVisible(true);
-        m_ui->trackingCheckBox->setChecked(remote);
+        m_trackingCheckBox->setText(remote ? Tr::tr("Track remote branch \"%1\"").arg(name)
+                                           : Tr::tr("Track local branch \"%1\"").arg(name));
+        m_trackingCheckBox->setVisible(true);
+        m_trackingCheckBox->setChecked(remote);
     }
 }
 
 bool BranchAddDialog::track() const
 {
-    return m_ui->trackingCheckBox->isChecked();
+    return m_trackingCheckBox->isChecked();
 }
 
 void BranchAddDialog::setCheckoutVisible(bool visible)
 {
-    m_ui->checkoutCheckBox->setVisible(visible);
-    m_ui->checkoutCheckBox->setChecked(visible);
+    m_checkoutCheckBox->setVisible(visible);
+    m_checkoutCheckBox->setChecked(visible);
 }
 
 bool BranchAddDialog::checkout() const
 {
-    return m_ui->checkoutCheckBox->isChecked();
+    return m_checkoutCheckBox->isChecked();
 }
 
 /*! Updates the ok button enabled state of the dialog according to the validity of the branch name. */
 void BranchAddDialog::updateButtonStatus()
 {
-    m_ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(m_ui->branchNameEdit->hasAcceptableInput());
+    m_buttonBox->button(QDialogButtonBox::Ok)->setEnabled(m_branchNameEdit->hasAcceptableInput());
 }
 
-} // namespace Internal
-} // namespace Git
+} // Git::Internal

@@ -27,10 +27,9 @@ QtcPlugin {
         "perfeventtype.h",
         "perfloaddialog.cpp",
         "perfloaddialog.h",
-        "perfloaddialog.ui",
         "perfoptionspage.cpp",
         "perfoptionspage.h",
-        "perfprofiler_global.h",
+        "perfprofiler_global.h", "perfprofilertr.h",
         "perfprofilerconstants.h",
         "perfprofilerplugin.cpp",
         "perfprofilerplugin.h",
@@ -66,9 +65,15 @@ QtcPlugin {
         "perfsettings.h",
         "perftracepointdialog.cpp",
         "perftracepointdialog.h",
-        "perftracepointdialog.ui",
         "perfprofiler.qrc",
     ]
+
+    Group {
+        name: "Qml Files"
+        Qt.core.resourcePrefix: "qt/qml/QtCreator/PerfProfiler/"
+        fileTags: "qt.core.resource_data"
+        files: [ "PerfProfilerFlameGraphView.qml" ]
+    }
 
     Group {
         name: "Unit tests"

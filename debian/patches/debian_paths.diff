@@ -5,7 +5,7 @@ Last-Update: 2021-08-15
 
 --- a/cmake/QtCreatorAPIInternal.cmake
 +++ b/cmake/QtCreatorAPIInternal.cmake
-@@ -75,7 +75,7 @@ else ()
+@@ -79,7 +79,7 @@ else ()
    set(_IDE_PLUGIN_PATH "${_IDE_LIBRARY_BASE_PATH}/qtcreator/plugins")
    set(_IDE_LIBEXEC_PATH "${CMAKE_INSTALL_LIBEXECDIR}/qtcreator")
    set(_IDE_DATA_PATH "${CMAKE_INSTALL_DATAROOTDIR}/qtcreator")

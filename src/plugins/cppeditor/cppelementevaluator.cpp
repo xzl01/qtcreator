@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppelementevaluator.h"
 
@@ -43,6 +21,7 @@
 #include <QSet>
 
 using namespace CPlusPlus;
+using namespace Utils;
 
 namespace CppEditor::Internal {
 
@@ -84,18 +63,18 @@ class CppInclude : public CppElement
 {
 public:
     explicit CppInclude(const Document::Include &includeFile)
-        : path(QDir::toNativeSeparators(includeFile.resolvedFileName()))
-        , fileName(Utils::FilePath::fromString(includeFile.resolvedFileName()).fileName())
+        : path(includeFile.resolvedFileName())
+        , fileName(path.fileName())
     {
         helpCategory = Core::HelpItem::Brief;
         helpIdCandidates = QStringList(fileName);
         helpMark = fileName;
-        link = Utils::Link(Utils::FilePath::fromString(path));
-        tooltip = path;
+        link = Utils::Link(path);
+        tooltip = path.toUserOutput();
     }
 
 public:
-    QString path;
+    FilePath path;
     QString fileName;
 };
 
@@ -108,7 +87,7 @@ public:
         const QString macroName = QString::fromUtf8(macro.name(), macro.name().size());
         helpIdCandidates = QStringList(macroName);
         helpMark = macroName;
-        link = Utils::Link(Utils::FilePath::fromString(macro.fileName()), macro.line());
+        link = Link(macro.filePath(), macro.line());
         tooltip = macro.toStringWithLineBreaks();
     }
 };
@@ -116,18 +95,17 @@ public:
 // CppDeclarableElement
 CppDeclarableElement::CppDeclarableElement(Symbol *declaration)
     : CppElement()
-    , declaration(declaration)
-    , icon(Icons::iconForSymbol(declaration))
+    , iconType(CPlusPlus::Icons::iconTypeForSymbol(declaration))
 {
     Overview overview;
     overview.showArgumentNames = true;
     overview.showReturnTypes = true;
     overview.showTemplateParameters = true;
     name = overview.prettyName(declaration->name());
-    if (declaration->enclosingScope()->isClass() ||
-        declaration->enclosingScope()->isNamespace() ||
-        declaration->enclosingScope()->isEnum() ||
-        declaration->enclosingScope()->isTemplate()) {
+    if (declaration->enclosingScope()->asClass() ||
+        declaration->enclosingScope()->asNamespace() ||
+        declaration->enclosingScope()->asEnum() ||
+        declaration->enclosingScope()->asTemplate()) {
         qualifiedName = overview.prettyName(LookupContext::fullyQualifiedName(declaration));
         helpIdCandidates = stripName(qualifiedName);
     } else {
@@ -157,11 +135,6 @@ CppClass::CppClass(Symbol *declaration) : CppDeclarableElement(declaration)
     tooltip = qualifiedName;
 }
 
-bool CppClass::operator==(const CppClass &other)
-{
-    return this->declaration == other.declaration;
-}
-
 CppClass *CppClass::toCppClass()
 {
     return this;
@@ -170,32 +143,30 @@ CppClass *CppClass::toCppClass()
 void CppClass::lookupBases(QFutureInterfaceBase &futureInterface,
                            Symbol *declaration, const LookupContext &context)
 {
-    using Data = QPair<ClassOrNamespace*, CppClass*>;
+    ClassOrNamespace *hierarchy = context.lookupType(declaration);
+    if (!hierarchy)
+        return;
+    QSet<ClassOrNamespace *> visited;
+    addBaseHierarchy(futureInterface, context, hierarchy, &visited);
+}
 
-    if (ClassOrNamespace *clazz = context.lookupType(declaration)) {
-        QSet<ClassOrNamespace *> visited;
-
-        QQueue<Data> q;
-        q.enqueue(qMakePair(clazz, this));
-        while (!q.isEmpty()) {
-            if (futureInterface.isCanceled())
-                return;
-            Data current = q.dequeue();
-            clazz = current.first;
-            visited.insert(clazz);
-            const QList<ClassOrNamespace *> &bases = clazz->usings();
-            foreach (ClassOrNamespace *baseClass, bases) {
-                const QList<Symbol *> &symbols = baseClass->symbols();
-                foreach (Symbol *symbol, symbols) {
-                    if (symbol->isClass() && (
-                        clazz = context.lookupType(symbol)) &&
-                        !visited.contains(clazz)) {
-                        CppClass baseCppClass(symbol);
-                        CppClass *cppClass = current.second;
-                        cppClass->bases.append(baseCppClass);
-                        q.enqueue(qMakePair(clazz, &cppClass->bases.last()));
-                    }
-                }
+void CppClass::addBaseHierarchy(QFutureInterfaceBase &futureInterface, const LookupContext &context,
+                                ClassOrNamespace *hierarchy, QSet<ClassOrNamespace *> *visited)
+{
+    if (futureInterface.isCanceled())
+        return;
+    visited->insert(hierarchy);
+    const QList<ClassOrNamespace *> &baseClasses = hierarchy->usings();
+    for (ClassOrNamespace *baseClass : baseClasses) {
+        const QList<Symbol *> &symbols = baseClass->symbols();
+        for (Symbol *symbol : symbols) {
+            if (!symbol->asClass())
+                continue;
+            ClassOrNamespace *baseHierarchy = context.lookupType(symbol);
+            if (baseHierarchy && !visited->contains(baseHierarchy)) {
+                CppClass classSymbol(symbol);
+                classSymbol.addBaseHierarchy(futureInterface, context, baseHierarchy, visited);
+                bases.append(classSymbol);
             }
         }
     }
@@ -204,26 +175,20 @@ void CppClass::lookupBases(QFutureInterfaceBase &futureInterface,
 void CppClass::lookupDerived(QFutureInterfaceBase &futureInterface,
                              Symbol *declaration, const Snapshot &snapshot)
 {
-    using Data = QPair<CppClass*, TypeHierarchy>;
-
     snapshot.updateDependencyTable(futureInterface);
     if (futureInterface.isCanceled())
         return;
-    const TypeHierarchy &completeHierarchy
-            = TypeHierarchyBuilder::buildDerivedTypeHierarchy(futureInterface, declaration, snapshot);
+    addDerivedHierarchy(TypeHierarchyBuilder::buildDerivedTypeHierarchy(
+                        futureInterface, declaration, snapshot));
+}
 
-    QQueue<Data> q;
-    q.enqueue(qMakePair(this, completeHierarchy));
-    while (!q.isEmpty()) {
-        if (futureInterface.isCanceled())
-            return;
-        const Data &current = q.dequeue();
-        CppClass *clazz = current.first;
-        const TypeHierarchy &classHierarchy = current.second;
-        foreach (const TypeHierarchy &derivedHierarchy, classHierarchy.hierarchy()) {
-            clazz->derived.append(CppClass(derivedHierarchy.symbol()));
-            q.enqueue(qMakePair(&clazz->derived.last(), derivedHierarchy));
-        }
+void CppClass::addDerivedHierarchy(const TypeHierarchy &hierarchy)
+{
+    const QList<TypeHierarchy> derivedHierarchies = hierarchy.hierarchy();
+    for (const TypeHierarchy &derivedHierarchy : derivedHierarchies) {
+        CppClass classSymbol(derivedHierarchy.symbol());
+        classSymbol.addDerivedHierarchy(derivedHierarchy);
+        derived.append(classSymbol);
     }
 }
 
@@ -281,15 +246,15 @@ public:
         const FullySpecifiedType &type = declaration->type();
 
         const Name *typeName = nullptr;
-        if (type->isNamedType()) {
+        if (type->asNamedType()) {
             typeName = type->asNamedType()->name();
-        } else if (type->isPointerType() || type->isReferenceType()) {
+        } else if (type->asPointerType() || type->asReferenceType()) {
             FullySpecifiedType associatedType;
-            if (type->isPointerType())
+            if (type->asPointerType())
                 associatedType = type->asPointerType()->elementType();
             else
                 associatedType = type->asReferenceType()->elementType();
-            if (associatedType->isNamedType())
+            if (associatedType->asNamedType())
                 typeName = associatedType->asNamedType()->name();
         }
 
@@ -344,16 +309,16 @@ public:
 
 static bool isCppClass(Symbol *symbol)
 {
-    return symbol->isClass() || symbol->isForwardClassDeclaration()
-            || (symbol->isTemplate() && symbol->asTemplate()->declaration()
-                && (symbol->asTemplate()->declaration()->isClass()
-                    || symbol->asTemplate()->declaration()->isForwardClassDeclaration()));
+    return symbol->asClass() || symbol->asForwardClassDeclaration()
+            || (symbol->asTemplate() && symbol->asTemplate()->declaration()
+                && (symbol->asTemplate()->declaration()->asClass()
+                    || symbol->asTemplate()->declaration()->asForwardClassDeclaration()));
 }
 
 static Symbol *followClassDeclaration(Symbol *symbol, const Snapshot &snapshot, SymbolFinder symbolFinder,
                                LookupContext *context = nullptr)
 {
-    if (!symbol->isForwardClassDeclaration())
+    if (!symbol->asForwardClassDeclaration())
         return symbol;
 
     Symbol *classDeclaration = symbolFinder.findMatchingClassDeclaration(symbol, snapshot);
@@ -361,9 +326,7 @@ static Symbol *followClassDeclaration(Symbol *symbol, const Snapshot &snapshot, 
         return symbol;
 
     if (context) {
-        const QString fileName = QString::fromUtf8(classDeclaration->fileName(),
-                                                   classDeclaration->fileNameLength());
-        const Document::Ptr declarationDocument = snapshot.document(fileName);
+        const Document::Ptr declarationDocument = snapshot.document(classDeclaration->filePath());
         if (declarationDocument != context->thisDocument())
             (*context) = LookupContext(declarationDocument, snapshot);
     }
@@ -421,7 +384,7 @@ static QSharedPointer<CppElement> handleLookupItemMatch(const Snapshot &snapshot
         element = QSharedPointer<CppElement>(new Unknown(type));
     } else {
         const FullySpecifiedType &type = declaration->type();
-        if (declaration->isNamespace()) {
+        if (declaration->asNamespace()) {
             element = QSharedPointer<CppElement>(new CppNamespace(declaration));
         } else if (isCppClass(declaration)) {
             LookupContext contextToUse = context;
@@ -433,11 +396,11 @@ static QSharedPointer<CppElement> handleLookupItemMatch(const Snapshot &snapshot
             element = QSharedPointer<CppElement>(new CppEnumerator(enumerator));
         } else if (declaration->isTypedef()) {
             element = QSharedPointer<CppElement>(new CppTypedef(declaration));
-        } else if (declaration->isFunction()
-                   || (type.isValid() && type->isFunctionType())
-                   || declaration->isTemplate()) {
+        } else if (declaration->asFunction()
+                   || (type.isValid() && type->asFunctionType())
+                   || declaration->asTemplate()) {
             element = QSharedPointer<CppElement>(new CppFunction(declaration));
-        } else if (declaration->isDeclaration() && type.isValid()) {
+        } else if (declaration->asDeclaration() && type.isValid()) {
             element = QSharedPointer<CppElement>(
                 new CppVariable(declaration, context, lookupItem.scope()));
         } else {
@@ -450,7 +413,7 @@ static QSharedPointer<CppElement> handleLookupItemMatch(const Snapshot &snapshot
 //  special case for bug QTCREATORBUG-4780
 static bool shouldOmitElement(const LookupItem &lookupItem, const Scope *scope)
 {
-    return !lookupItem.declaration() && scope && scope->isFunction()
+    return !lookupItem.declaration() && scope && scope->asFunction()
             && lookupItem.type().match(scope->asFunction()->returnType());
 }
 
@@ -483,8 +446,8 @@ static LookupItem findLookupItem(const CPlusPlus::Snapshot &snapshot, CPlusPlus:
         return LookupItem();
 
     auto isInteresting = [followTypedef](Symbol *symbol) {
-        return symbol && (!followTypedef || (symbol->isClass() || symbol->isTemplate()
-               || symbol->isForwardClassDeclaration() || symbol->isTypedef()));
+        return symbol && (!followTypedef || (symbol->asClass() || symbol->asTemplate()
+               || symbol->asForwardClassDeclaration() || symbol->isTypedef()));
     };
 
     for (const LookupItem &item : lookupItems) {
@@ -539,15 +502,15 @@ static QFuture<QSharedPointer<CppElement>> asyncExec(
 class FromExpressionFunctor
 {
 public:
-    FromExpressionFunctor(const QString &expression, const QString &fileName)
+    FromExpressionFunctor(const QString &expression, const FilePath &filePath)
         : m_expression(expression)
-        , m_fileName(fileName)
+        , m_filePath(filePath)
     {}
 
     bool operator()(const CPlusPlus::Snapshot &snapshot, Document::Ptr &doc, Scope **scope,
                     QString &expression)
     {
-        doc = snapshot.document(m_fileName);
+        doc = snapshot.document(m_filePath);
         if (doc.isNull())
             return false;
 
@@ -559,13 +522,13 @@ public:
     }
 private:
     const QString m_expression;
-    const QString m_fileName;
+    const FilePath m_filePath;
 };
 
 QFuture<QSharedPointer<CppElement>> CppElementEvaluator::asyncExecute(const QString &expression,
-                                                                      const QString &fileName)
+                                                                      const FilePath &filePath)
 {
-    return exec(FromExpressionFunctor(expression, fileName), asyncExec);
+    return exec(FromExpressionFunctor(expression, filePath), asyncExec);
 }
 
 class FromGuiFunctor
@@ -633,8 +596,9 @@ QFuture<QSharedPointer<CppElement>> FromGuiFunctor::syncExec(
 
 void FromGuiFunctor::checkDiagnosticMessage(int pos)
 {
-    foreach (const QTextEdit::ExtraSelection &sel,
-             m_editor->extraSelections(TextEditor::TextEditorWidget::CodeWarningsSelection)) {
+    const QList<QTextEdit::ExtraSelection> &selections = m_editor->extraSelections(
+        TextEditor::TextEditorWidget::CodeWarningsSelection);
+    for (const QTextEdit::ExtraSelection &sel : selections) {
         if (pos >= sel.cursor.selectionStart() && pos <= sel.cursor.selectionEnd()) {
             m_diagnosis = sel.format.toolTip();
             break;
@@ -656,8 +620,7 @@ bool FromGuiFunctor::matchIncludeFile(const Document::Ptr &document, int line)
 
 bool FromGuiFunctor::matchMacroInUse(const Document::Ptr &document, int pos)
 {
-    const QList<Document::MacroUse> macros = document->macroUses();
-    for (const Document::MacroUse &use : macros) {
+    for (const Document::MacroUse &use : document->macroUses()) {
         if (use.containsUtf16charOffset(pos)) {
             const int begin = use.utf16charsBegin();
             if (pos < begin + use.macro().nameToQString().size()) {
@@ -728,10 +691,10 @@ const QString &CppElementEvaluator::diagnosis() const
     return d->m_functor.m_diagnosis;
 }
 
-Utils::Link CppElementEvaluator::linkFromExpression(const QString &expression, const QString &fileName)
+Utils::Link CppElementEvaluator::linkFromExpression(const QString &expression, const FilePath &filePath)
 {
     const Snapshot &snapshot = CppModelManager::instance()->snapshot();
-    Document::Ptr doc = snapshot.document(fileName);
+    Document::Ptr doc = snapshot.document(filePath);
     if (doc.isNull())
         return Utils::Link();
     Scope *scope = doc->globalNamespace();
@@ -747,7 +710,7 @@ Utils::Link CppElementEvaluator::linkFromExpression(const QString &expression, c
         Symbol *symbol = item.declaration();
         if (!symbol)
             continue;
-        if (!symbol->isClass() && !symbol->isTemplate())
+        if (!symbol->asClass() && !symbol->asTemplate())
             continue;
         return symbol->toLink();
     }

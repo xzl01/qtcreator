@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QApplication>
 #include <QQuickView>
 #include <QQmlContext>
+#include <QQmlEngine>
 
 #include <tracing/timelinerenderer.h>
 #include <tracing/timelineoverviewrenderer.h>
@@ -125,17 +104,8 @@ public:
     {
         setResizeMode(QQuickView::SizeRootObjectToView);
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
-        qmlRegisterType<TimelineRenderer>("QtCreator.Tracing", 1, 0, "TimelineRenderer");
-        qmlRegisterType<TimelineOverviewRenderer>(
-                    "QtCreator.Tracing", 1, 0, "TimelineOverviewRenderer");
-        qmlRegisterAnonymousType<TimelineZoomControl>("QtCreator.Tracing", 1);
-        qmlRegisterAnonymousType<TimelineModel>("QtCreator.Tracing", 1);
-        qmlRegisterAnonymousType<TimelineNotesModel>("QtCreator.Tracing", 1);
-#endif // Qt < 6.2
-
+        engine()->addImportPath(":/qt/qml/");
         TimelineTheme::setupTheme(engine());
-        TimeFormatter::setupTimeFormatter();
 
         m_modelAggregator = new TimelineModelAggregator(this);
         m_model = new DummyModel(m_modelAggregator);
@@ -147,7 +117,7 @@ public:
         m_zoomControl = new TimelineZoomControl(this);
         m_zoomControl->setTrace(0, oneMs * 1000); // Total timeline length
         rootContext()->setContextProperty("zoomControl", m_zoomControl);
-        setSource(QUrl(QLatin1String("qrc:/QtCreator/Tracing/MainView.qml")));
+        setSource(QUrl(QLatin1String("qrc:/qt/qml/QtCreator/Tracing/MainView.qml")));
 
         // Zoom onto first timeline third. Needs to be done after loading setSource.
         m_zoomControl->setRange(0, oneMs * 1000 / 3.0);
@@ -162,11 +132,6 @@ public:
 
 int main(int argc, char *argv[])
 {
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-    QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
-#endif // Qt < 6
-
     QApplication app(argc, argv);
 
     ManualTest::ThemeSelector::setTheme(":/themes/flat.creatortheme");

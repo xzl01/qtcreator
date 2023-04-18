@@ -1,54 +1,80 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Hugues Delorme
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Hugues Delorme
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bazaarcommitwidget.h"
+
+#include "bazaartr.h"
 #include "branchinfo.h"
 
 #include <texteditor/texteditorsettings.h>
 #include <texteditor/fontsettings.h>
+
 #include <utils/completingtextedit.h>
+#include <utils/layoutbuilder.h>
 #include <utils/qtcassert.h>
 
+#include <QCheckBox>
+#include <QDebug>
+#include <QLineEdit>
+#include <QRegularExpression>
 #include <QSyntaxHighlighter>
 #include <QTextEdit>
-
-#include <QDebug>
-#include <QRegularExpression>
 
 //see the git submit widget for details of the syntax Highlighter
 
 //TODO Check to see when the Highlighter has been moved to a base class and use that instead
 
-namespace Bazaar {
-namespace Internal {
+namespace Bazaar::Internal {
 
 // Retrieve the comment char format from the text editor.
 static QTextCharFormat commentFormat()
 {
     return TextEditor::TextEditorSettings::fontSettings().toTextCharFormat(TextEditor::C_COMMENT);
 }
+
+class BazaarCommitPanel : public QWidget
+{
+public:
+    BazaarCommitPanel()
+    {
+        branchLineEdit = new QLineEdit;
+        branchLineEdit->setReadOnly(true);
+
+        isLocalCheckBox = new QCheckBox(Tr::tr("Local commit"));
+        isLocalCheckBox->setToolTip(Tr::tr("Performs a local commit in a bound branch.\n"
+                                           "Local commits are not pushed to the master "
+                                           "branch until a normal commit is performed."));
+
+        authorLineEdit = new QLineEdit;
+        emailLineEdit = new QLineEdit;
+        fixedBugsLineEdit = new QLineEdit;
+
+        using namespace Utils::Layouting;
+        Column {
+            Group {
+                title(Tr::tr("General Information")),
+                Form {
+                    Tr::tr("Branch:"), branchLineEdit, br,
+                    empty, isLocalCheckBox
+                }
+            },
+            Group {
+                title(Tr::tr("Commit Information")),
+                Form {
+                    Tr::tr("Author:"), authorLineEdit, br,
+                    Tr::tr("Email:"), emailLineEdit, br,
+                    Tr::tr("Fixed bugs:"), fixedBugsLineEdit
+                }
+            }
+        }.attachTo(this, WithoutMargins);
+    }
+
+    QLineEdit *branchLineEdit;
+    QCheckBox *isLocalCheckBox;
+    QLineEdit *authorLineEdit;
+    QLineEdit *emailLineEdit;
+    QLineEdit *fixedBugsLineEdit;
+};
 
 // Highlighter for Bazaar submit messages. Make the first line bold, indicates
 // comments as such (retrieving the format from the text editor) and marks up
@@ -111,9 +137,9 @@ void BazaarSubmitHighlighter::highlightBlock(const QString &text)
 }
 
 
-BazaarCommitWidget::BazaarCommitWidget() : m_bazaarCommitPanel(new QWidget)
+BazaarCommitWidget::BazaarCommitWidget()
+    : m_bazaarCommitPanel(new BazaarCommitPanel)
 {
-    m_bazaarCommitPanelUi.setupUi(m_bazaarCommitPanel);
     insertTopWidget(m_bazaarCommitPanel);
     new BazaarSubmitHighlighter(descriptionEdit());
 }
@@ -121,16 +147,16 @@ BazaarCommitWidget::BazaarCommitWidget() : m_bazaarCommitPanel(new QWidget)
 void BazaarCommitWidget::setFields(const BranchInfo &branch,
                                    const QString &userName, const QString &email)
 {
-    m_bazaarCommitPanelUi.branchLineEdit->setText(branch.branchLocation);
-    m_bazaarCommitPanelUi.isLocalCheckBox->setVisible(branch.isBoundToBranch);
-    m_bazaarCommitPanelUi.authorLineEdit->setText(userName);
-    m_bazaarCommitPanelUi.emailLineEdit->setText(email);
+    m_bazaarCommitPanel->branchLineEdit->setText(branch.branchLocation);
+    m_bazaarCommitPanel->isLocalCheckBox->setVisible(branch.isBoundToBranch);
+    m_bazaarCommitPanel->authorLineEdit->setText(userName);
+    m_bazaarCommitPanel->emailLineEdit->setText(email);
 }
 
 QString BazaarCommitWidget::committer() const
 {
-    const QString author = m_bazaarCommitPanelUi.authorLineEdit->text();
-    const QString email = m_bazaarCommitPanelUi.emailLineEdit->text();
+    const QString author = m_bazaarCommitPanel->authorLineEdit->text();
+    const QString email = m_bazaarCommitPanel->emailLineEdit->text();
     if (author.isEmpty())
         return QString();
 
@@ -145,13 +171,12 @@ QString BazaarCommitWidget::committer() const
 
 QStringList BazaarCommitWidget::fixedBugs() const
 {
-    return m_bazaarCommitPanelUi.fixedBugsLineEdit->text().split(QRegularExpression("\\s+"));
+    return m_bazaarCommitPanel->fixedBugsLineEdit->text().split(QRegularExpression("\\s+"));
 }
 
 bool BazaarCommitWidget::isLocalOptionEnabled() const
 {
-    return m_bazaarCommitPanelUi.isLocalCheckBox->isChecked();
+    return m_bazaarCommitPanel->isLocalCheckBox->isChecked();
 }
 
-} // namespace Internal
-} // namespace Bazaar
+} // Bazaar::Internal

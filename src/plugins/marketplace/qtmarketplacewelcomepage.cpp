@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qtmarketplacewelcomepage.h"
 
+#include "marketplacetr.h"
 #include "productlistmodel.h"
 
 #include <coreplugin/welcomepagehelper.h>
@@ -47,7 +26,7 @@ using namespace Utils;
 
 QString QtMarketplaceWelcomePage::title() const
 {
-    return tr("Marketplace");
+    return Tr::tr("Marketplace");
 }
 
 int QtMarketplaceWelcomePage::priority() const
@@ -67,7 +46,7 @@ public:
     {
         auto searchBox = new Core::SearchBox(this);
         m_searcher = searchBox->m_lineEdit;
-        m_searcher->setPlaceholderText(QtMarketplaceWelcomePage::tr("Search in Marketplace..."));
+        m_searcher->setPlaceholderText(Tr::tr("Search in Marketplace..."));
 
         auto vbox = new QVBoxLayout(this);
         vbox->setContentsMargins(0, 0, 0, Core::WelcomePageHelpers::ItemGap);
@@ -104,7 +83,7 @@ public:
             f.setPixelSize(20);
             m_errorLabel->setFont(f);
             const QString txt
-                    = QtMarketplaceWelcomePage::tr(
+                    = Tr::tr(
                         "<p>Could not fetch data from Qt Marketplace.</p><p>Try with your browser "
                         "instead: <a href='https://marketplace.qt.io'>https://marketplace.qt.io</a>"
                         "</p><br/><p><small><i>Error: %1</i></small></p>").arg(message);

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 /*
 The main algorithm "diffMyers()" is based on "An O(ND) Difference Algorithm
@@ -33,12 +11,13 @@ publication by Neil Fraser: http://neil.fraser.name/writing/diff/
 
 #include "differ.h"
 
+#include "utilstr.h"
+
 #include <QList>
 #include <QRegularExpression>
 #include <QStringList>
 #include <QMap>
 #include <QPair>
-#include <QCoreApplication>
 #include <QFutureInterfaceBase>
 
 namespace Utils {
@@ -510,15 +489,15 @@ void Differ::unifiedDiffWithWhitespaceReduced(const QString &leftInput,
  */
 static QString encodeExpandedWhitespace(const QString &leftEquality,
                                         const QString &rightEquality,
-                                        QMap<int, QPair<int, QString> > *leftCodeMap,
-                                        QMap<int, QPair<int, QString> > *rightCodeMap,
+                                        QMap<int, QPair<int, QString>> *leftCodeMap,
+                                        QMap<int, QPair<int, QString>> *rightCodeMap,
                                         bool *ok)
 {
     if (ok)
         *ok = false;
 
     if (!leftCodeMap || !rightCodeMap)
-        return QString();
+        return {};
 
     leftCodeMap->clear();
     rightCodeMap->clear();
@@ -542,27 +521,25 @@ static QString encodeExpandedWhitespace(const QString &leftEquality,
 
         if (leftIndex < leftCount && rightIndex < rightCount) {
             if (leftEquality.at(leftIndex) != rightEquality.at(rightIndex))
-                return QString(); // equalities broken
+                return {}; // equalities broken
 
         } else if (leftIndex == leftCount && rightIndex == rightCount) {
             ; // do nothing, the last iteration
         } else {
-            return QString(); // equalities broken
+            return {}; // equalities broken
         }
 
-        if (leftWhitespaces.isEmpty() ^ rightWhitespaces.isEmpty()) {
+        if (leftWhitespaces.isEmpty() != rightWhitespaces.isEmpty()) {
             // there must be at least 1 corresponding whitespace, equalities broken
-            return QString();
+            return {};
         }
 
         if (!leftWhitespaces.isEmpty() && !rightWhitespaces.isEmpty()) {
             const int replacementPosition = output.count();
             const int replacementSize = qMax(leftWhitespaces.count(), rightWhitespaces.count());
             const QString replacement(replacementSize, ' ');
-            leftCodeMap->insert(replacementPosition,
-                                qMakePair(replacementSize, leftWhitespaces));
-            rightCodeMap->insert(replacementPosition,
-                                 qMakePair(replacementSize, rightWhitespaces));
+            leftCodeMap->insert(replacementPosition, {replacementSize, leftWhitespaces});
+            rightCodeMap->insert(replacementPosition, {replacementSize, rightWhitespaces});
             output.append(replacement);
         }
 
@@ -586,7 +563,7 @@ static QString encodeExpandedWhitespace(const QString &leftEquality,
  * the returned value contains decoded diff list.
  */
 static QList<Diff> decodeExpandedWhitespace(const QList<Diff> &input,
-                                            const QMap<int, QPair<int, QString> > &codeMap,
+                                            const QMap<int, QPair<int, QString>> &codeMap,
                                             bool *ok)
 {
     if (ok)
@@ -651,16 +628,16 @@ static bool diffWithWhitespaceExpandedInEqualities(const QList<Diff> &leftInput,
     QString leftText;
     QString rightText;
 
-    QMap<int, QPair<int, QString> > commonLeftCodeMap;
-    QMap<int, QPair<int, QString> > commonRightCodeMap;
+    QMap<int, QPair<int, QString>> commonLeftCodeMap;
+    QMap<int, QPair<int, QString>> commonRightCodeMap;
 
     while (l <= leftCount && r <= rightCount) {
         const Diff leftDiff = l < leftCount ? leftInput.at(l) : Diff(Diff::Equal);
         const Diff rightDiff = r < rightCount ? rightInput.at(r) : Diff(Diff::Equal);
 
         if (leftDiff.command == Diff::Equal && rightDiff.command == Diff::Equal) {
-            QMap<int, QPair<int, QString> > leftCodeMap;
-            QMap<int, QPair<int, QString> > rightCodeMap;
+            QMap<int, QPair<int, QString>> leftCodeMap;
+            QMap<int, QPair<int, QString>> rightCodeMap;
 
             bool ok = false;
             const QString &commonEquality = encodeExpandedWhitespace(leftDiff.text,
@@ -944,10 +921,10 @@ bool Diff::operator!=(const Diff &other) const
 QString Diff::commandString(Command com)
 {
     if (com == Delete)
-        return QCoreApplication::translate("Diff", "Delete");
+        return ::Utils::Tr::tr("Delete");
     else if (com == Insert)
-        return QCoreApplication::translate("Diff", "Insert");
-    return QCoreApplication::translate("Diff", "Equal");
+        return ::Utils::Tr::tr("Insert");
+    return ::Utils::Tr::tr("Equal");
 }
 
 QString Diff::toString() const
@@ -1257,8 +1234,7 @@ QStringList Differ::encode(const QString &text1,
                                   QString *encodedText1,
                                   QString *encodedText2)
 {
-    QStringList lines;
-    lines.append(QString()); // don't use code: 0
+    QStringList lines{{}}; // don't use code: 0
     QMap<QString, int> lineToCode;
 
     *encodedText1 = encode(text1, &lines, &lineToCode);
@@ -1381,18 +1357,17 @@ QList<Diff> Differ::merge(const QList<Diff> &diffList)
     return squashedDiffList;
 }
 
-struct EqualityData
-{
-    int equalityIndex;
-    int textCount;
-    int deletesBefore;
-    int insertsBefore;
-    int deletesAfter;
-    int insertsAfter;
-};
-
 QList<Diff> Differ::cleanupSemantics(const QList<Diff> &diffList)
 {
+    struct EqualityData
+    {
+        int equalityIndex = 0;
+        int textCount = 0;
+        int deletesBefore = 0;
+        int insertsBefore = 0;
+        int deletesAfter = 0;
+        int insertsAfter = 0;
+    };
     int deletes = 0;
     int inserts = 0;
     // equality index, equality data
@@ -1415,7 +1390,6 @@ QList<Diff> Differ::cleanupSemantics(const QList<Diff> &diffList)
                 data.deletesBefore = deletes;
                 data.insertsBefore = inserts;
                 equalities.append(data);
-
                 deletes = 0;
                 inserts = 0;
             }

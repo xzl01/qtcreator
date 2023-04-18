@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projecttree.h"
 
 #include "project.h"
 #include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "projectnodes.h"
 #include "projecttreewidget.h"
 #include "session.h"
@@ -52,7 +31,9 @@
 #include <QMenu>
 #include <QTimer>
 
-namespace { const char EXTERNAL_FILE_WARNING[] = "ExternalFile"; }
+namespace {
+const char EXTERNAL_OR_GENERATED_FILE_WARNING[] = "ExternalOrGeneratedFile";
+}
 
 using namespace Utils;
 
@@ -192,7 +173,7 @@ void ProjectTree::updateFromNode(Node *node)
         project = SessionManager::startupProject();
 
     setCurrent(node, project);
-    foreach (ProjectTreeWidget *widget, m_projectTreeWidgets)
+    for (ProjectTreeWidget *widget : std::as_const(m_projectTreeWidgets))
         widget->sync(node);
 }
 
@@ -214,14 +195,16 @@ void ProjectTree::setCurrent(Node *node, Project *project)
     }
 
     if (Core::IDocument *document = Core::EditorManager::currentDocument()) {
-        if (node) {
-            disconnect(document, &Core::IDocument::changed,
-                       this, &ProjectTree::updateExternalFileWarning);
-            document->infoBar()->removeInfo(EXTERNAL_FILE_WARNING);
+        disconnect(document, &Core::IDocument::changed, this, nullptr);
+        if (!node || node->isGenerated()) {
+            const QString message = node
+                    ? Tr::tr("<b>Warning:</b> This file is generated.")
+                    : Tr::tr("<b>Warning:</b> This file is outside the project directory.");
+            connect(document, &Core::IDocument::changed, this, [this, document, message] {
+                updateFileWarning(document, message);
+            });
         } else {
-            connect(document, &Core::IDocument::changed,
-                    this, &ProjectTree::updateExternalFileWarning,
-                    Qt::UniqueConnection);
+            document->infoBar()->removeInfo(EXTERNAL_OR_GENERATED_FILE_WARNING);
         }
     }
 
@@ -304,20 +287,19 @@ void ProjectTree::changeProjectRootDirectory()
         m_currentProject->changeRootProjectDirectory();
 }
 
-void ProjectTree::updateExternalFileWarning()
+void ProjectTree::updateFileWarning(Core::IDocument *document, const QString &text)
 {
-    auto document = qobject_cast<Core::IDocument *>(sender());
-    if (!document || document->filePath().isEmpty())
+    if (document->filePath().isEmpty())
         return;
     Utils::InfoBar *infoBar = document->infoBar();
-    Utils::Id externalFileId(EXTERNAL_FILE_WARNING);
+    Utils::Id infoId(EXTERNAL_OR_GENERATED_FILE_WARNING);
     if (!document->isModified()) {
-        infoBar->removeInfo(externalFileId);
+        infoBar->removeInfo(infoId);
         return;
     }
-    if (!infoBar->canInfoBeAdded(externalFileId))
+    if (!infoBar->canInfoBeAdded(infoId))
         return;
-    const FilePath fileName = document->filePath();
+    const FilePath filePath = document->filePath();
     const QList<Project *> projects = SessionManager::projects();
     if (projects.isEmpty())
         return;
@@ -325,26 +307,25 @@ void ProjectTree::updateExternalFileWarning()
         FilePath projectDir = project->projectDirectory();
         if (projectDir.isEmpty())
             continue;
-        if (fileName.isChildOf(projectDir))
+        if (filePath.isChildOf(projectDir))
+            return;
+        if (filePath.canonicalPath().isChildOf(projectDir.canonicalPath()))
             return;
         // External file. Test if it under the same VCS
-        QString topLevel;
+        FilePath topLevel;
         if (Core::VcsManager::findVersionControlForDirectory(projectDir, &topLevel)
-                && fileName.isChildOf(FilePath::fromString(topLevel))) {
+                && filePath.isChildOf(topLevel)) {
             return;
         }
     }
     infoBar->addInfo(
-        Utils::InfoBarEntry(externalFileId,
-                            tr("<b>Warning:</b> This file is outside the project directory."),
-                            Utils::InfoBarEntry::GlobalSuppression::Enabled));
+        Utils::InfoBarEntry(infoId, text, Utils::InfoBarEntry::GlobalSuppression::Enabled));
 }
 
 bool ProjectTree::hasFocus(ProjectTreeWidget *widget)
 {
-    return widget
-            && ((widget->focusWidget() && widget->focusWidget()->hasFocus())
-                || s_instance->m_focusForContextMenu == widget);
+    return widget && ((widget->focusWidget() && widget->focusWidget()->hasFocus())
+                      || s_instance->m_focusForContextMenu == widget);
 }
 
 ProjectTreeWidget *ProjectTree::currentWidget() const

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -50,19 +28,19 @@ public:
     ActionContainerPrivate(Utils::Id id);
     ~ActionContainerPrivate() override = default;
 
-    void setOnAllDisabledBehavior(OnAllDisabledBehavior behavior) override;
-    ActionContainer::OnAllDisabledBehavior onAllDisabledBehavior() const override;
+    void setOnAllDisabledBehavior(OnAllDisabledBehavior behavior) final;
+    ActionContainer::OnAllDisabledBehavior onAllDisabledBehavior() const final;
 
-    QAction *insertLocation(Utils::Id groupId) const override;
-    void appendGroup(Utils::Id id) override;
-    void insertGroup(Utils::Id before, Utils::Id groupId) override;
-    void addAction(Command *action, Utils::Id group = {}) override;
-    void addMenu(ActionContainer *menu, Utils::Id group = {}) override;
-    void addMenu(ActionContainer *before, ActionContainer *menu) override;
-    Command *addSeparator(const Context &context, Utils::Id group = {}, QAction **outSeparator = nullptr) override;
-    void clear() override;
+    QAction *insertLocation(Utils::Id groupId) const final;
+    void appendGroup(Utils::Id id) final;
+    void insertGroup(Utils::Id before, Utils::Id groupId) final;
+    void addAction(Command *action, Utils::Id group = {}) final;
+    void addMenu(ActionContainer *menu, Utils::Id group = {}) final;
+    void addMenu(ActionContainer *before, ActionContainer *menu) final;
+    Command *addSeparator(const Context &context, Utils::Id group = {}, QAction **outSeparator = nullptr) final;
+    void clear() final;
 
-    Utils::Id id() const override;
+    Utils::Id id() const final;
 
     QMenu *menu() const override;
     QMenuBar *menuBar() const override;
@@ -90,7 +68,7 @@ protected:
 private:
     void scheduleUpdate();
     void update();
-    void itemDestroyed();
+    void itemDestroyed(QObject *sender);
 
     QList<Group>::const_iterator findGroup(Utils::Id groupId) const;
     QAction *insertLocation(QList<Group>::const_iterator group) const;

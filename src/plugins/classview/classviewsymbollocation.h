@@ -1,37 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Mingulov
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Mingulov
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include <utils/porting.h>
+#include <utils/filepath.h>
 
 #include <QMetaType>
-#include <QString>
 
-namespace ClassView {
-namespace Internal {
+namespace ClassView::Internal {
 
 class SymbolLocation
 {
@@ -40,32 +16,32 @@ public:
     SymbolLocation();
 
     //! Constructor
-    explicit SymbolLocation(const QString &file, int lineNumber = 0, int columnNumber = 0);
+    explicit SymbolLocation(const Utils::FilePath &file, int lineNumber = 0, int columnNumber = 0);
 
-    inline const QString &fileName() const { return m_fileName; }
-    inline int line() const { return m_line; }
-    inline int column() const { return m_column; }
-    inline Utils::QHashValueType hash() const { return m_hash; }
-    inline bool operator==(const SymbolLocation &other) const
+    const Utils::FilePath &filePath() const { return m_fileName; }
+    int line() const { return m_line; }
+    int column() const { return m_column; }
+    size_t hash() const { return m_hash; }
+
+    bool operator==(const SymbolLocation &other) const
     {
         return hash() == other.hash() && line() == other.line() && column() == other.column()
-            && fileName() == other.fileName();
+            && filePath() == other.filePath();
     }
 
 private:
-    const QString m_fileName;
+    const Utils::FilePath m_fileName;
     const int m_line;
     const int m_column;
-    const Utils::QHashValueType m_hash; // precalculated hash value - to speed up qHash
+    const size_t m_hash; // precalculated hash value - to speed up qHash
 };
 
 //! qHash overload for QHash/QSet
-inline Utils::QHashValueType qHash(const ClassView::Internal::SymbolLocation &location)
+inline size_t qHash(const ClassView::Internal::SymbolLocation &location)
 {
     return location.hash();
 }
 
-} // namespace Internal
-} // namespace ClassView
+} // ClassView::Internal
 
 Q_DECLARE_METATYPE(ClassView::Internal::SymbolLocation)

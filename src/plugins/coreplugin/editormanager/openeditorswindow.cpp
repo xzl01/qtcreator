@@ -1,35 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "openeditorswindow.h"
 
 #include "editormanager.h"
 #include "editormanager_p.h"
 #include "editorview.h"
-#include <coreplugin/idocument.h>
+#include "../coreplugintr.h"
+#include "../idocument.h"
 
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 #include <utils/utilsicons.h>
@@ -42,8 +22,7 @@
 Q_DECLARE_METATYPE(Core::Internal::EditorView*)
 Q_DECLARE_METATYPE(Core::IDocument*)
 
-using namespace Core;
-using namespace Core::Internal;
+namespace Core::Internal {
 
 enum class Role
 {
@@ -53,7 +32,6 @@ enum class Role
 
 OpenEditorsWindow::OpenEditorsWindow(QWidget *parent) :
     QFrame(parent, Qt::Popup),
-    m_emptyIcon(Utils::Icons::EMPTY14.icon()),
     m_editorList(new OpenEditorsTreeWidget(this))
 {
     setMinimumSize(300, 200);
@@ -223,7 +201,7 @@ static DocumentModel::Entry *entryForEditLocation(const EditLocation &item)
 void OpenEditorsWindow::addHistoryItems(const QList<EditLocation> &history, EditorView *view,
                                         QSet<const DocumentModel::Entry *> &entriesDone)
 {
-    foreach (const EditLocation &hi, history) {
+    for (const EditLocation &hi : history) {
         if (DocumentModel::Entry *entry = entryForEditLocation(hi))
             addItem(entry, entriesDone, view);
     }
@@ -232,7 +210,8 @@ void OpenEditorsWindow::addHistoryItems(const QList<EditLocation> &history, Edit
 void OpenEditorsWindow::addRemainingItems(EditorView *view,
                                           QSet<const DocumentModel::Entry *> &entriesDone)
 {
-    foreach (DocumentModel::Entry *entry, DocumentModel::entries())
+    const QList<DocumentModel::Entry *> entries = DocumentModel::entries();
+    for (DocumentModel::Entry *entry : entries)
         addItem(entry, entriesDone, view);
 }
 
@@ -247,11 +226,11 @@ void OpenEditorsWindow::addItem(DocumentModel::Entry *entry,
     QTC_ASSERT(!title.isEmpty(), return);
     auto item = new QTreeWidgetItem();
     if (entry->document->isModified())
-        title += tr("*");
-    item->setIcon(0, !entry->fileName().isEmpty() && entry->document->isFileReadOnly()
-                  ? DocumentModel::lockedIcon() : m_emptyIcon);
+        title += Tr::tr("*");
+    item->setIcon(0, !entry->filePath().isEmpty() && entry->document->isFileReadOnly()
+                  ? DocumentModel::lockedIcon() : Utils::FileIconProvider::icon(entry->filePath()));
     item->setText(0, title);
-    item->setToolTip(0, entry->fileName().toString());
+    item->setToolTip(0, entry->filePath().toString());
     item->setData(0, int(Role::Entry), QVariant::fromValue(entry));
     item->setData(0, int(Role::View), QVariant::fromValue(view));
     item->setTextAlignment(0, Qt::AlignLeft);
@@ -261,3 +240,5 @@ void OpenEditorsWindow::addItem(DocumentModel::Entry *entry,
     if (m_editorList->topLevelItemCount() == 1)
         m_editorList->setCurrentItem(item);
 }
+
+} // Core::Internal

@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BogDan Vatra <bog_dan_ro@yahoo.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BogDan Vatra <bog_dan_ro@yahoo.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "androiddebugsupport.h"
 
 #include "androidconstants.h"
-#include "androidglobal.h"
 #include "androidrunner.h"
 #include "androidmanager.h"
 #include "androidqtversion.h"
@@ -42,10 +19,13 @@
 
 #include <qtsupport/qtkitinformation.h>
 
+#include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
+#include <utils/qtcprocess.h>
 
 #include <QHostAddress>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLoggingCategory>
 
 namespace {
@@ -56,60 +36,66 @@ using namespace Debugger;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Android {
-namespace Internal {
+namespace Android::Internal {
 
-static QStringList uniquePaths(const QStringList &files)
-{
-    QSet<QString> paths;
-    for (const QString &file : files)
-        paths << QFileInfo(file).absolutePath();
-    return Utils::toList(paths);
-}
-
-static QStringList getSoLibSearchPath(const ProjectNode *node)
+static FilePaths getSoLibSearchPath(const ProjectNode *node)
 {
     if (!node)
         return {};
 
-    QStringList res;
+    FilePaths res;
     node->forEachProjectNode([&res](const ProjectNode *node) {
-         res.append(node->data(Constants::AndroidSoLibPath).toStringList());
+        const QStringList paths = node->data(Constants::AndroidSoLibPath).toStringList();
+        res.append(Utils::transform(paths, &FilePath::fromUserInput));
     });
 
-    const QString jsonFile = AndroidQtVersion::androidDeploymentSettings(
-                node->getProject()->activeTarget()).toString();
-    QFile deploymentSettings(jsonFile);
-    if (deploymentSettings.open(QIODevice::ReadOnly)) {
+    const FilePath jsonFile = AndroidQtVersion::androidDeploymentSettings(
+                node->getProject()->activeTarget());
+    FileReader reader;
+    if (reader.fetch(jsonFile)) {
         QJsonParseError error;
-        QJsonDocument doc = QJsonDocument::fromJson(deploymentSettings.readAll(), &error);
+        QJsonDocument doc = QJsonDocument::fromJson(reader.data(), &error);
         if (error.error == QJsonParseError::NoError) {
             auto rootObj = doc.object();
             auto it = rootObj.find("stdcpp-path");
             if (it != rootObj.constEnd())
-                res.append(QFileInfo(it.value().toString()).absolutePath());
+                res.append(FilePath::fromUserInput(it.value().toString()));
         }
     }
 
-    res.removeDuplicates();
+    FilePath::removeDuplicates(res);
     return res;
 }
 
-static QStringList getExtraLibs(const ProjectNode *node)
+static FilePaths getExtraLibs(const ProjectNode *node)
 {
     if (!node)
         return {};
-    return node->data(Android::Constants::AndroidExtraLibs).toStringList();
+
+    const QStringList paths = node->data(Constants::AndroidExtraLibs).toStringList();
+    FilePaths res = Utils::transform(paths, &FilePath::fromUserInput);
+
+    FilePath::removeDuplicates(res);
+    return res;
 }
 
-AndroidDebugSupport::AndroidDebugSupport(RunControl *runControl, const QString &intentName)
-    : Debugger::DebuggerRunTool(runControl)
+class AndroidDebugSupport : public Debugger::DebuggerRunTool
 {
-    setId("AndroidDebugger");
-    setLldbPlatform("remote-android");
-    m_runner = new AndroidRunner(runControl, intentName);
-    addStartDependency(m_runner);
-}
+public:
+    explicit AndroidDebugSupport(RunControl *runControl) : Debugger::DebuggerRunTool(runControl)
+    {
+        setId("AndroidDebugger");
+        setLldbPlatform("remote-android");
+        m_runner = new AndroidRunner(runControl, {});
+        addStartDependency(m_runner);
+    }
+
+    void start() override;
+    void stop() override;
+
+private:
+    AndroidRunner *m_runner = nullptr;
+};
 
 void AndroidDebugSupport::start()
 {
@@ -123,7 +109,7 @@ void AndroidDebugSupport::start()
     setAttachPid(m_runner->pid());
 
     QtSupport::QtVersion *qtVersion = QtSupport::QtKitAspect::qtVersion(kit);
-    if (!Utils::HostOsInfo::isWindowsHost()
+    if (!HostOsInfo::isWindowsHost()
         && (qtVersion
             && AndroidConfigurations::currentConfig().ndkVersion(qtVersion)
                    >= QVersionNumber(11, 0, 0))) {
@@ -134,20 +120,24 @@ void AndroidDebugSupport::start()
     if (isCppDebugging()) {
         qCDebug(androidDebugSupportLog) << "C++ debugging enabled";
         const ProjectNode *node = target->project()->findNodeForBuildKey(runControl()->buildKey());
-        QStringList solibSearchPath = getSoLibSearchPath(node);
-        QStringList extraLibs = getExtraLibs(node);
+        FilePaths solibSearchPath = getSoLibSearchPath(node);
         if (qtVersion)
             solibSearchPath.append(qtVersion->qtSoPaths());
-        solibSearchPath.append(uniquePaths(extraLibs));
+        const FilePaths extraLibs = getExtraLibs(node);
+        solibSearchPath.append(extraLibs);
 
+        FilePath buildDir = AndroidManager::buildDirectory(target);
         const RunConfiguration *activeRunConfig = target->activeRunConfiguration();
-        FilePath buildDir;
         if (activeRunConfig)
-            buildDir = activeRunConfig->buildTargetInfo().workingDirectory;
-        solibSearchPath.append(buildDir.toString());
-        solibSearchPath.removeDuplicates();
+            solibSearchPath.append(activeRunConfig->buildTargetInfo().workingDirectory);
+        solibSearchPath.append(buildDir);
+        const FilePath androidLibsPath = AndroidManager::androidBuildDirectory(target)
+                                         .pathAppended("libs")
+                                         .pathAppended(AndroidManager::apkDevicePreferredAbi(target));
+        solibSearchPath.append(androidLibsPath);
+        FilePath::removeDuplicates(solibSearchPath);
         setSolibSearchPath(solibSearchPath);
-        qCDebug(androidDebugSupportLog) << "SoLibSearchPath: "<<solibSearchPath;
+        qCDebug(androidDebugSupportLog).noquote() << "SoLibSearchPath: " << solibSearchPath;
         setSymbolFile(buildDir.pathAppended("app_process"));
         setSkipExecutableValidation(true);
         setUseExtendedRemote(true);
@@ -155,7 +145,14 @@ void AndroidDebugSupport::start()
         setAbi(AndroidManager::androidAbi2Abi(devicePreferredAbi));
 
         if (cppEngineType() == LldbEngineType) {
-            setRemoteChannel("adb://" + AndroidManager::deviceSerialNumber(target),
+            QString deviceSerialNumber = AndroidManager::deviceSerialNumber(target);
+            const int colonPos = deviceSerialNumber.indexOf(QLatin1Char(':'));
+            if (colonPos > 0) {
+                // When wireless debugging is used then the device serial number will include a port number
+                // The port number must be removed to form a valid hostname
+                deviceSerialNumber.truncate(colonPos);
+            }
+            setRemoteChannel("adb://" + deviceSerialNumber,
                              m_runner->debugServerPort().number());
         } else {
             QUrl debugServer;
@@ -171,14 +168,14 @@ void AndroidDebugSupport::start()
         if (qtVersion) {
             const FilePath ndkLocation =
                     AndroidConfigurations::currentConfig().ndkLocation(qtVersion);
-            Utils::FilePath sysRoot = ndkLocation
+            FilePath sysRoot = ndkLocation
                     / "platforms"
                     / QString("android-%1").arg(sdkVersion)
                     / devicePreferredAbi; // Legacy Ndk structure
             if (!sysRoot.exists())
                 sysRoot = AndroidConfig::toolchainPathFromNdk(ndkLocation) / "sysroot";
             setSysRoot(sysRoot);
-            qCDebug(androidDebugSupportLog) << "Sysroot: " << sysRoot;
+            qCDebug(androidDebugSupportLog).noquote() << "Sysroot: " << sysRoot.toUserOutput();
         }
     }
     if (isQmlDebugging()) {
@@ -201,5 +198,13 @@ void AndroidDebugSupport::stop()
     DebuggerRunTool::stop();
 }
 
-} // namespace Internal
-} // namespace Android
+// AndroidDebugWorkerFactory
+
+AndroidDebugWorkerFactory::AndroidDebugWorkerFactory()
+{
+    setProduct<AndroidDebugSupport>();
+    addSupportedRunMode(ProjectExplorer::Constants::DEBUG_RUN_MODE);
+    addSupportedRunConfig(Constants::ANDROID_RUNCONFIG_ID);
+}
+
+} // Android::Internal

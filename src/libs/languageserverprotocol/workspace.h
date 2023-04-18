@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -30,7 +8,7 @@
 namespace LanguageServerProtocol {
 
 class LANGUAGESERVERPROTOCOL_EXPORT WorkSpaceFolderResult
-    : public Utils::variant<QList<WorkSpaceFolder>, std::nullptr_t>
+    : public std::variant<QList<WorkSpaceFolder>, std::nullptr_t>
 {
 public:
     using variant::variant;
@@ -114,11 +92,11 @@ public:
     public:
         using JsonObject::JsonObject;
 
-        Utils::optional<QString> scopeUri() const { return optionalValue<QString>(scopeUriKey); }
+        std::optional<QString> scopeUri() const { return optionalValue<QString>(scopeUriKey); }
         void setScopeUri(const QString &scopeUri) { insert(scopeUriKey, scopeUri); }
         void clearScopeUri() { remove(scopeUriKey); }
 
-        Utils::optional<QString> section() const { return optionalValue<QString>(sectionKey); }
+        std::optional<QString> section() const { return optionalValue<QString>(sectionKey); }
         void setSection(const QString &section) { insert(sectionKey, section); }
         void clearSection() { remove(sectionKey); }
 
@@ -188,7 +166,7 @@ public:
     QString query() const { return typedValue<QString>(queryKey); }
     void setQuery(const QString &query) { insert(queryKey, query); }
 
-    void setLimit(int limit) { insert("limit", limit); } // clangd extension
+    void setLimit(int limit) { insert(u"limit", limit); } // clangd extension
 
     bool isValid() const override { return contains(queryKey); }
 };
@@ -213,7 +191,7 @@ public:
     void setCommand(const QString &command) { insert(commandKey, command); }
     void clearCommand() { remove(commandKey); }
 
-    Utils::optional<QJsonArray> arguments() const { return typedValue<QJsonArray>(argumentsKey); }
+    std::optional<QJsonArray> arguments() const { return typedValue<QJsonArray>(argumentsKey); }
     void setArguments(const QJsonArray &arguments) { insert(argumentsKey, arguments); }
     void clearArguments() { remove(argumentsKey); }
 
@@ -234,7 +212,7 @@ class LANGUAGESERVERPROTOCOL_EXPORT ApplyWorkspaceEditParams : public JsonObject
 public:
     using JsonObject::JsonObject;
 
-    Utils::optional<QString> label() const { return optionalValue<QString>(labelKey); }
+    std::optional<QString> label() const { return optionalValue<QString>(labelKey); }
     void setLabel(const QString &label) { insert(labelKey, label); }
     void clearLabel() { remove(labelKey); }
 

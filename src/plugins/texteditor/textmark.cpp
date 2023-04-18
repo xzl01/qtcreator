@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "textmark.h"
 
@@ -29,6 +7,7 @@
 #include "textdocument.h"
 #include "texteditor.h"
 #include "texteditorplugin.h"
+#include "texteditortr.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/documentmanager.h>
@@ -84,12 +63,11 @@ private:
 
 TextMarkRegistry *m_instance = nullptr;
 
-TextMark::TextMark(const FilePath &fileName, int lineNumber, Id category, double widthFactor)
-    : m_fileName(fileName)
+TextMark::TextMark(const FilePath &filePath, int lineNumber, TextMarkCategory category)
+    : m_fileName(filePath)
     , m_lineNumber(lineNumber)
     , m_visible(true)
     , m_category(category)
-    , m_widthFactor(widthFactor)
 {
     if (!m_fileName.isEmpty())
         TextMarkRegistry::add(this);
@@ -97,9 +75,6 @@ TextMark::TextMark(const FilePath &fileName, int lineNumber, Id category, double
 
 TextMark::~TextMark()
 {
-    qDeleteAll(m_actions);
-    m_actions.clear();
-    delete m_settingsAction;
     if (!m_fileName.isEmpty())
         TextMarkRegistry::remove(this);
     if (m_baseTextDocument)
@@ -107,18 +82,18 @@ TextMark::~TextMark()
     m_baseTextDocument = nullptr;
 }
 
-FilePath TextMark::fileName() const
+FilePath TextMark::filePath() const
 {
     return m_fileName;
 }
 
-void TextMark::updateFileName(const FilePath &fileName)
+void TextMark::updateFilePath(const FilePath &filePath)
 {
-    if (fileName == m_fileName)
+    if (filePath == m_fileName)
         return;
     if (!m_fileName.isEmpty())
         TextMarkRegistry::remove(this);
-    m_fileName = fileName;
+    m_fileName = filePath;
     if (!m_fileName.isEmpty())
         TextMarkRegistry::add(this);
 }
@@ -133,23 +108,34 @@ void TextMark::paintIcon(QPainter *painter, const QRect &rect) const
     icon().paint(painter, rect, Qt::AlignCenter);
 }
 
-void TextMark::paintAnnotation(QPainter &painter, QRectF *annotationRect,
-                               const qreal fadeInOffset, const qreal fadeOutOffset,
+void TextMark::paintAnnotation(QPainter &painter,
+                               const QRect &eventRect,
+                               QRectF *annotationRect,
+                               const qreal fadeInOffset,
+                               const qreal fadeOutOffset,
                                const QPointF &contentOffset) const
 {
     QString text = lineAnnotation();
     if (text.isEmpty())
         return;
 
-    const AnnotationRects &rects = annotationRects(*annotationRect, painter.fontMetrics(),
-                                                   fadeInOffset, fadeOutOffset);
-    const QColor &markColor = m_color.has_value()
-                                  ? Utils::creatorTheme()->color(m_color.value()).toHsl()
-                                  : painter.pen().color();
+    const AnnotationRects &rects = annotationRects(*annotationRect,
+                                                   painter.fontMetrics(),
+                                                   fadeInOffset,
+                                                   fadeOutOffset);
+    annotationRect->setRight(rects.fadeOutRect.right());
+    const QRectF eventRectF(eventRect);
+    if (!(rects.fadeInRect.intersects(eventRectF) || rects.annotationRect.intersects(eventRectF)
+          || rects.fadeOutRect.intersects(eventRectF))) {
+        return;
+    }
+
+    const QColor &markColor = annotationColor();
 
     const FontSettings &fontSettings = m_baseTextDocument->fontSettings();
     const AnnotationColors &colors = AnnotationColors::getAnnotationColors(
-                markColor, fontSettings.toTextCharFormat(C_TEXT).background().color());
+                markColor.isValid() ? markColor : painter.pen().color(),
+                fontSettings.toTextCharFormat(C_TEXT).background().color());
 
     painter.save();
     QLinearGradient grad(rects.fadeInRect.topLeft() - contentOffset,
@@ -169,7 +155,6 @@ void TextMark::paintAnnotation(QPainter &painter, QRectF *annotationRect,
         painter.fillRect(rects.fadeOutRect, grad);
     }
     painter.restore();
-    annotationRect->setRight(rects.fadeOutRect.right());
 }
 
 TextMark::AnnotationRects TextMark::annotationRects(const QRectF &boundingRect,
@@ -190,7 +175,7 @@ TextMark::AnnotationRects TextMark::annotationRects(const QRectF &boundingRect,
     rects.iconRect = QRectF(rects.annotationRect.left(), boundingRect.top(),
                             0, boundingRect.height());
     if (drawIcon)
-        rects.iconRect.setWidth(rects.iconRect.height() * m_widthFactor);
+        rects.iconRect.setWidth(rects.iconRect.height());
     rects.textRect = QRectF(rects.iconRect.right() + margin, boundingRect.top(),
                             qreal(fm.horizontalAdvance(rects.text)), boundingRect.height());
     rects.annotationRect.setRight(rects.textRect.right() + margin);
@@ -232,13 +217,14 @@ void TextMark::removedFromEditor()
 void TextMark::updateMarker()
 {
     if (m_baseTextDocument)
-        m_baseTextDocument->updateMark(this);
+        m_baseTextDocument->scheduleUpdateLayout();
 }
 
 void TextMark::setPriority(TextMark::Priority prioriy)
 {
     m_priority = prioriy;
-    updateMarker();
+    if (m_baseTextDocument)
+        m_baseTextDocument->updateMark(this);
 }
 
 bool TextMark::isVisible() const
@@ -250,16 +236,6 @@ void TextMark::setVisible(bool visible)
 {
     m_visible = visible;
     updateMarker();
-}
-
-double TextMark::widthFactor() const
-{
-    return m_widthFactor;
-}
-
-void TextMark::setWidthFactor(double factor)
-{
-    m_widthFactor = factor;
 }
 
 bool TextMark::isClickable() const
@@ -300,19 +276,46 @@ void TextMark::addToToolTipLayout(QGridLayout *target) const
     target->addLayout(contentLayout, row, 1);
 
     // Right column: action icons/button
-    QVector<QAction *> actions = m_actions;
-    if (m_settingsAction)
-        actions << m_settingsAction;
+    QList<QAction *> actions{m_actions.begin(), m_actions.end()};
+    if (m_actionsProvider)
+        actions = m_actionsProvider();
+    if (m_category.id.isValid() && !m_lineAnnotation.isEmpty()) {
+        auto visibilityAction = new QAction;
+        const bool isHidden = TextDocument::marksAnnotationHidden(m_category.id);
+        visibilityAction->setIcon(Utils::Icons::EYE_OPEN_TOOLBAR.icon());
+        const QString tooltip = (isHidden ? Tr::tr("Show inline annotations for %1")
+                                          : Tr::tr("Temporarily hide inline annotations for %1"))
+                                    .arg(m_category.displayName);
+        visibilityAction->setToolTip(tooltip);
+        auto callback = [id = m_category.id, isHidden] {
+            if (isHidden)
+                TextDocument::showMarksAnnotation(id);
+            else
+                TextDocument::temporaryHideMarksAnnotation(id);
+        };
+        QObject::connect(visibilityAction, &QAction::triggered, Core::ICore::instance(), callback);
+        actions.append(visibilityAction);
+    }
+    if (m_settingsPage.isValid()) {
+        auto settingsAction = new QAction;
+        settingsAction->setIcon(Utils::Icons::SETTINGS_TOOLBAR.icon());
+        settingsAction->setToolTip(Tr::tr("Show Diagnostic Settings"));
+        QObject::connect(settingsAction, &QAction::triggered, Core::ICore::instance(),
+            [id = m_settingsPage] { Core::ICore::showOptionsDialog(id); },
+            Qt::QueuedConnection);
+        actions.append(settingsAction);
+    }
     if (!actions.isEmpty()) {
         auto actionsLayout = new QHBoxLayout;
         QMargins margins = actionsLayout->contentsMargins();
         margins.setLeft(margins.left() + 5);
         actionsLayout->setContentsMargins(margins);
-        for (QAction *action : qAsConst(actions)) {
-            QTC_ASSERT(!action->icon().isNull(), continue);
+        for (QAction *action : std::as_const(actions)) {
+            QTC_ASSERT(!action->icon().isNull(), delete action; continue);
             auto button = new QToolButton;
             button->setIcon(action->icon());
             button->setToolTip(action->toolTip());
+            action->setParent(button);
             QObject::connect(button, &QToolButton::clicked, action, &QAction::triggered);
             QObject::connect(button, &QToolButton::clicked, []() {
                 Utils::ToolTip::hideImmediately();
@@ -344,15 +347,24 @@ bool TextMark::addToolTipContent(QLayout *target) const
     return true;
 }
 
+QColor TextMark::annotationColor() const
+{
+    if (m_color.has_value())
+        return Utils::creatorTheme()->color(*m_color).toHsl();
+    return {};
+}
+
 void TextMark::setIcon(const QIcon &icon)
 {
     m_icon = icon;
     m_iconProvider = std::function<QIcon()>();
+    updateMarker();
 }
 
 void TextMark::setIconProvider(const std::function<QIcon ()> &iconProvider)
 {
     m_iconProvider = iconProvider;
+    updateMarker();
 }
 
 const QIcon TextMark::icon() const
@@ -360,14 +372,23 @@ const QIcon TextMark::icon() const
     return m_iconProvider ? m_iconProvider() : m_icon;
 }
 
-Utils::optional<Theme::Color> TextMark::color() const
+std::optional<Theme::Color> TextMark::color() const
 {
     return m_color;
 }
 
 void TextMark::setColor(const Theme::Color &color)
 {
+    if (m_color.has_value() && *m_color == color)
+        return;
     m_color = color;
+    updateMarker();
+}
+
+void TextMark::setLineAnnotation(const QString &lineAnnotation)
+{
+    m_lineAnnotation = lineAnnotation;
+    updateMarker();
 }
 
 void TextMark::setToolTipProvider(const std::function<QString()> &toolTipProvider)
@@ -396,15 +417,24 @@ void TextMark::setActions(const QVector<QAction *> &actions)
     m_actions = actions;
 }
 
+void TextMark::setActionsProvider(const std::function<QList<QAction *>()> &actionsProvider)
+{
+    m_actionsProvider = actionsProvider;
+}
+
 void TextMark::setSettingsPage(Id settingsPage)
 {
-    delete m_settingsAction;
-    m_settingsAction = new QAction;
-    m_settingsAction->setIcon(Utils::Icons::SETTINGS_TOOLBAR.icon());
-    m_settingsAction->setToolTip(tr("Show Diagnostic Settings"));
-    QObject::connect(m_settingsAction, &QAction::triggered, Core::ICore::instance(),
-        [settingsPage] { Core::ICore::showOptionsDialog(settingsPage); },
-        Qt::QueuedConnection);
+    m_settingsPage = settingsPage;
+}
+
+bool TextMark::isLocationMarker() const
+{
+    return m_isLocationMarker;
+}
+
+void TextMark::setIsLocationMarker(bool newIsLocationMarker)
+{
+    m_isLocationMarker = newIsLocationMarker;
 }
 
 TextMarkRegistry::TextMarkRegistry(QObject *parent)
@@ -421,14 +451,14 @@ TextMarkRegistry::TextMarkRegistry(QObject *parent)
 
 void TextMarkRegistry::add(TextMark *mark)
 {
-    instance()->m_marks[mark->fileName()].insert(mark);
-    if (TextDocument *document = TextDocument::textDocumentForFilePath(mark->fileName()))
+    instance()->m_marks[mark->filePath()].insert(mark);
+    if (TextDocument *document = TextDocument::textDocumentForFilePath(mark->filePath()))
         document->addMark(mark);
 }
 
 bool TextMarkRegistry::remove(TextMark *mark)
 {
-    return instance()->m_marks[mark->fileName()].remove(mark);
+    return instance()->m_marks[mark->filePath()].remove(mark);
 }
 
 TextMarkRegistry *TextMarkRegistry::instance()
@@ -446,7 +476,8 @@ void TextMarkRegistry::editorOpened(IEditor *editor)
     if (!m_marks.contains(document->filePath()))
         return;
 
-    foreach (TextMark *mark, m_marks.value(document->filePath()))
+    const QSet<TextMark *> marks = m_marks.value(document->filePath());
+    for (TextMark *mark : marks)
         document->addMark(mark);
 }
 
@@ -461,14 +492,15 @@ void TextMarkRegistry::documentRenamed(IDocument *document,
         return;
 
     QSet<TextMark *> toBeMoved;
-    foreach (TextMark *mark, baseTextDocument->marks())
+    const QList<TextMark *> marks = baseTextDocument->marks();
+    for (TextMark *mark : marks)
         toBeMoved.insert(mark);
 
     m_marks[oldPath].subtract(toBeMoved);
     m_marks[newPath].unite(toBeMoved);
 
-    foreach (TextMark *mark, toBeMoved)
-        mark->updateFileName(newPath);
+    for (TextMark *mark : std::as_const(toBeMoved))
+        mark->updateFilePath(newPath);
 }
 
 void TextMarkRegistry::allDocumentsRenamed(const FilePath &oldPath, const FilePath &newPath)
@@ -476,13 +508,13 @@ void TextMarkRegistry::allDocumentsRenamed(const FilePath &oldPath, const FilePa
     if (!m_marks.contains(oldPath))
         return;
 
-    QSet<TextMark *> oldFileNameMarks = m_marks.value(oldPath);
+    const QSet<TextMark *> oldFileNameMarks = m_marks.value(oldPath);
 
     m_marks[newPath].unite(oldFileNameMarks);
     m_marks[oldPath].clear();
 
-    foreach (TextMark *mark, oldFileNameMarks)
-        mark->updateFileName(newPath);
+    for (TextMark *mark : oldFileNameMarks)
+        mark->updateFilePath(newPath);
 }
 
 QHash<AnnotationColors::SourceColors, AnnotationColors> AnnotationColors::m_colorCache;

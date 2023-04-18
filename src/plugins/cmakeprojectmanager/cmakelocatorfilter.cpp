@@ -1,35 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Kläralvdalens Datakonsult AB, a KDAB Group company.
-** Contact: Kläralvdalens Datakonsult AB (info@kdab.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Kläralvdalens Datakonsult AB, a KDAB Group company.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cmakelocatorfilter.h"
 
 #include "cmakebuildstep.h"
 #include "cmakebuildsystem.h"
 #include "cmakeproject.h"
+#include "cmakeprojectmanagertr.h"
 
 #include <coreplugin/editormanager/editormanager.h>
+
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/session.h>
@@ -37,10 +17,10 @@
 
 #include <utils/algorithm.h>
 
-using namespace CMakeProjectManager;
-using namespace CMakeProjectManager::Internal;
 using namespace ProjectExplorer;
 using namespace Utils;
+
+namespace CMakeProjectManager::Internal {
 
 // --------------------------------------------------------------------
 // CMakeTargetLocatorFilter:
@@ -73,7 +53,7 @@ void CMakeTargetLocatorFilter::prepareSearch(const QString &entry)
         for (const CMakeBuildTarget &target : buildTargets) {
             if (CMakeBuildSystem::filteredOutTarget(target))
                 continue;
-            const int index = target.title.indexOf(entry);
+            const int index = target.title.indexOf(entry, 0, Qt::CaseInsensitive);
             if (index >= 0) {
                 const FilePath path = target.backtrace.isEmpty() ? cmakeProject->projectFilePath()
                                                                  : target.backtrace.last().path;
@@ -115,8 +95,8 @@ void CMakeTargetLocatorFilter::projectListUpdated()
 BuildCMakeTargetLocatorFilter::BuildCMakeTargetLocatorFilter()
 {
     setId("Build CMake target");
-    setDisplayName(tr("Build CMake target"));
-    setDescription(tr("Builds a target of any open CMake project."));
+    setDisplayName(Tr::tr("Build CMake target"));
+    setDescription(Tr::tr("Builds a target of any open CMake project."));
     setDefaultShortcutString("cm");
     setPriority(High);
 }
@@ -165,8 +145,8 @@ void BuildCMakeTargetLocatorFilter::accept(const Core::LocatorFilterEntry &selec
 OpenCMakeTargetLocatorFilter::OpenCMakeTargetLocatorFilter()
 {
     setId("Open CMake target definition");
-    setDisplayName(tr("Open CMake target"));
-    setDescription(tr("Jumps to the definition of a target of any open CMake project."));
+    setDisplayName(Tr::tr("Open CMake target"));
+    setDescription(Tr::tr("Jumps to the definition of a target of any open CMake project."));
     setDefaultShortcutString("cmo");
     setPriority(Medium);
 }
@@ -191,3 +171,5 @@ void OpenCMakeTargetLocatorFilter::accept(const Core::LocatorFilterEntry &select
     else
         Core::EditorManager::openEditor(file, {}, Core::EditorManager::AllowExternalEditor);
 }
+
+} // CMakeProjectManager::Internal

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "preseteditor.h"
 
@@ -54,6 +32,19 @@ constexpr int unsavedMarkSize = 18;
 constexpr int spacingg = 5;
 
 const QColor background = Qt::white;
+
+
+QString makeNameUnique(const QString& name, const QStringList& currentNames)
+{
+    QString n = name;
+    int idx = 0;
+    while (true) {
+        if (!currentNames.contains(n))
+            return n;
+        n = name + "_" + QString::number(idx++);
+    }
+    return {};
+}
 
 PresetItemDelegate::PresetItemDelegate(const QColor& background)
     : QStyledItemDelegate()
@@ -140,8 +131,8 @@ QIcon paintPreview(const EasingCurve &curve, const QColor& background, const QCo
 
 namespace Internal {
 
-static const char settingsKey[] = "EasingCurveList";
-static const char settingsFileName[] = "EasingCurves.ini";
+const char settingsKey[] = "EasingCurveList";
+const char settingsFileName[] = "EasingCurves.ini";
 
 QString settingsFullFilePath(const QSettings::Scope &scope)
 {
@@ -388,7 +379,7 @@ void PresetList::createItem()
 {
     EasingCurve curve;
     curve.makeDefault();
-    createItem(createUniqueName(), curve);
+    createItem(makeNameUnique("Default", allNames()), curve);
 }
 
 void PresetList::createItem(const QString &name, const EasingCurve &curve)
@@ -422,27 +413,6 @@ void PresetList::setItemData(const QModelIndex &index, const QVariant &curve, co
         model()->setData(index, true, PresetList::ItemRole_Dirty);
         model()->setData(index, icon, Qt::DecorationRole);
     }
-}
-
-QString PresetList::createUniqueName() const
-{
-    QStringList names = allNames();
-    auto nameIsUnique = [&](const QString &name) {
-        auto iter = std::find(names.begin(), names.end(), name);
-        if (iter == names.end())
-            return true;
-        else
-            return false;
-    };
-
-    int counter = 0;
-    QString tmp("Default");
-    QString name = tmp;
-
-    while (!nameIsUnique(name))
-        name = tmp + QString(" %1").arg(counter++);
-
-    return name;
 }
 
 QStringList PresetList::allNames() const
@@ -551,7 +521,8 @@ bool PresetEditor::writePresets(const EasingCurve &curve)
 
             if (ok && !name.isEmpty()) {
                 activate(m_customs->index());
-                m_customs->createItem(name, curve);
+                QString uname = makeNameUnique(name, m_customs->allNames());
+                m_customs->createItem(uname, curve);
             }
         }
 

@@ -1,34 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qtkitinformation.h"
 
-#include "qtsupportconstants.h"
-#include "qtversionmanager.h"
 #include "qtparser.h"
+#include "qtsupportconstants.h"
+#include "qtsupporttr.h"
 #include "qttestparser.h"
+#include "qtversionmanager.h"
 
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/task.h>
@@ -51,13 +30,12 @@ namespace Internal {
 
 class QtKitAspectWidget final : public KitAspectWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(QtSupport::QtKitAspectWidget)
 public:
     QtKitAspectWidget(Kit *k, const KitAspect *ki) : KitAspectWidget(k, ki)
     {
         m_combo = createSubWidget<QComboBox>();
         m_combo->setSizePolicy(QSizePolicy::Ignored, m_combo->sizePolicy().verticalPolicy());
-        m_combo->addItem(tr("None"), -1);
+        m_combo->addItem(Tr::tr("None"), -1);
 
         QList<int> versionIds = Utils::transform(QtVersionManager::versions(), &QtVersion::uniqueId);
         versionsChanged(versionIds, QList<int>(), QList<int>());
@@ -67,9 +45,8 @@ public:
         refresh();
         m_combo->setToolTip(ki->description());
 
-        connect(m_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        connect(m_combo, &QComboBox::currentIndexChanged,
                 this, &QtKitAspectWidget::currentWasChanged);
-
         connect(QtVersionManager::instance(), &QtVersionManager::qtVersionsChanged,
                 this, &QtKitAspectWidget::versionsChanged);
     }
@@ -83,7 +60,7 @@ public:
 private:
     void makeReadOnly() final { m_combo->setEnabled(false); }
 
-    void addToLayout(LayoutBuilder &builder)
+    void addToLayout(Layouting::LayoutBuilder &builder)
     {
         addMutableAction(m_combo);
         builder.addItem(m_combo);
@@ -101,7 +78,7 @@ private:
         QTC_ASSERT(v, return QString());
         QString name = v->displayName();
         if (!v->isValid())
-            name = tr("%1 (invalid)").arg(v->displayName());
+            name = Tr::tr("%1 (invalid)").arg(v->displayName());
         return name;
     }
 
@@ -149,10 +126,10 @@ QtKitAspect::QtKitAspect()
 {
     setObjectName(QLatin1String("QtKitAspect"));
     setId(QtKitAspect::id());
-    setDisplayName(tr("Qt version"));
-    setDescription(tr("The Qt library to use for all projects using this kit.<br>"
-                      "A Qt version is required for qmake-based projects "
-                      "and optional when using other build systems."));
+    setDisplayName(Tr::tr("Qt version"));
+    setDescription(Tr::tr("The Qt library to use for all projects using this kit.<br>"
+                          "A Qt version is required for qmake-based projects "
+                          "and optional when using other build systems."));
     setPriority(26000);
 
     connect(KitManager::instance(), &KitManager::kitsLoaded,
@@ -231,7 +208,8 @@ void QtKitAspect::fix(Kit *k)
         // Prefer exact matches.
         // TODO: We should probably prefer the compiler with the highest version number instead,
         //       but this information is currently not exposed by the ToolChain class.
-        sort(possibleTcs, [version](const ToolChain *tc1, const ToolChain *tc2) {
+        const FilePaths envPathVar = Environment::systemEnvironment().path();
+        sort(possibleTcs, [version, &envPathVar](const ToolChain *tc1, const ToolChain *tc2) {
             const QVector<Abi> &qtAbis = version->qtAbis();
             const bool tc1ExactMatch = qtAbis.contains(tc1->targetAbi());
             const bool tc2ExactMatch = qtAbis.contains(tc2->targetAbi());
@@ -239,24 +217,37 @@ void QtKitAspect::fix(Kit *k)
                 return true;
             if (!tc1ExactMatch && tc2ExactMatch)
                 return false;
-            return tc1->priority() > tc2->priority();
+
+            // For a multi-arch Qt that support the host ABI, prefer toolchains that match
+            // the host ABI.
+            if (qtAbis.size() > 1 && qtAbis.contains(Abi::hostAbi())) {
+                const bool tc1HasHostAbi = tc1->targetAbi() == Abi::hostAbi();
+                const bool tc2HasHostAbi = tc2->targetAbi() == Abi::hostAbi();
+                if (tc1HasHostAbi && !tc2HasHostAbi)
+                    return true;
+                if (!tc1HasHostAbi && tc2HasHostAbi)
+                    return false;
+            }
+
+            if (tc1->priority() > tc2->priority())
+                return true;
+            if (tc1->priority() < tc2->priority())
+                return false;
+
+            // Hack to prefer a tool chain from PATH (e.g. autodetected) over other matches.
+            // This improves the situation a bit if a cross-compilation tool chain has the
+            // same ABI as the host.
+            const bool tc1IsInPath = envPathVar.contains(tc1->compilerCommand().parentDir());
+            const bool tc2IsInPath = envPathVar.contains(tc2->compilerCommand().parentDir());
+            return tc1IsInPath && !tc2IsInPath;
         });
 
+        // TODO: Why is this not done during sorting?
         const Toolchains goodTcs = Utils::filtered(possibleTcs, [&spec](const ToolChain *t) {
             return t->suggestedMkspecList().contains(spec);
         });
-        // Hack to prefer a tool chain from PATH (e.g. autodetected) over other matches.
-        // This improves the situation a bit if a cross-compilation tool chain has the
-        // same ABI as the host.
-        const Environment systemEnvironment = Environment::systemEnvironment();
-        ToolChain *bestTc = Utils::findOrDefault(goodTcs,
-                                                 [&systemEnvironment](const ToolChain *t) {
-            return systemEnvironment.path().contains(t->compilerCommand().parentDir());
-        });
-        if (!bestTc) {
-            bestTc = goodTcs.isEmpty() ? possibleTcs.first() : goodTcs.first();
-        }
-        if (bestTc)
+
+        if (ToolChain * const bestTc = goodTcs.isEmpty() ? possibleTcs.first() : goodTcs.first())
             ToolChainKitAspect::setAllToolChainsToMatch(k, bestTc);
     }
 }
@@ -276,7 +267,7 @@ QString QtKitAspect::displayNamePostfix(const Kit *k) const
 KitAspect::ItemList QtKitAspect::toUserOutput(const Kit *k) const
 {
     QtVersion *version = qtVersion(k);
-    return {{tr("Qt version"), version ? version->displayName() : tr("None")}};
+    return {{Tr::tr("Qt version"), version ? version->displayName() : Tr::tr("None")}};
 }
 
 void QtKitAspect::addToBuildEnvironment(const Kit *k, Environment &env) const
@@ -314,12 +305,12 @@ void QtKitAspect::addToMacroExpander(Kit *kit, MacroExpander *expander) const
     QTC_ASSERT(kit, return);
     expander->registerSubProvider(QtMacroSubProvider(kit));
 
-    expander->registerVariable("Qt:Name", tr("Name of Qt Version"),
+    expander->registerVariable("Qt:Name", Tr::tr("Name of Qt Version"),
                 [kit]() -> QString {
                    QtVersion *version = qtVersion(kit);
-                   return version ? version->displayName() : tr("unknown");
+                   return version ? version->displayName() : Tr::tr("unknown");
                 });
-    expander->registerVariable("Qt:qmakeExecutable", tr("Path to the qmake executable"),
+    expander->registerVariable("Qt:qmakeExecutable", Tr::tr("Path to the qmake executable"),
                 [kit]() -> QString {
                     QtVersion *version = qtVersion(kit);
                     return version ? version->qmakeFilePath().path() : QString();
@@ -418,17 +409,17 @@ Kit::Predicate QtKitAspect::platformPredicate(Id platform)
 }
 
 Kit::Predicate QtKitAspect::qtVersionPredicate(const QSet<Id> &required,
-                                               const QtVersionNumber &min,
-                                               const QtVersionNumber &max)
+                                               const QVersionNumber &min,
+                                               const QVersionNumber &max)
 {
     return [required, min, max](const Kit *kit) -> bool {
         QtVersion *version = QtKitAspect::qtVersion(kit);
         if (!version)
             return false;
-        QtVersionNumber current = version->qtVersion();
-        if (min.majorVersion > -1 && current < min)
+        const QVersionNumber current = version->qtVersion();
+        if (min.majorVersion() > -1 && current < min)
             return false;
-        if (max.majorVersion > -1 && current > max)
+        if (max.majorVersion() > -1 && current > max)
             return false;
         return version->features().contains(required);
     };

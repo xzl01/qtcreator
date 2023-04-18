@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: KDAB (info@kdab.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qnxrunconfiguration.h"
 
 #include "qnxconstants.h"
+#include "qnxtr.h"
 
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/deployablefile.h>
 #include <projectexplorer/project.h>
-#include <projectexplorer/runcontrol.h>
+#include <projectexplorer/runconfigurationaspects.h>
 #include <projectexplorer/target.h>
 
 #include <remotelinux/remotelinuxenvironmentaspect.h>
@@ -41,32 +20,37 @@ using namespace ProjectExplorer;
 using namespace RemoteLinux;
 using namespace Utils;
 
-namespace Qnx {
-namespace Internal {
+namespace Qnx::Internal {
 
-QnxRunConfiguration::QnxRunConfiguration(Target *target, Utils::Id id)
+class QnxRunConfiguration final : public ProjectExplorer::RunConfiguration
+{
+public:
+    QnxRunConfiguration(ProjectExplorer::Target *target, Utils::Id id);
+};
+
+QnxRunConfiguration::QnxRunConfiguration(Target *target, Id id)
     : RunConfiguration(target, id)
 {
-    auto exeAspect = addAspect<ExecutableAspect>();
-    exeAspect->setLabelText(tr("Executable on device:"));
-    exeAspect->setExecutablePathStyle(OsTypeLinux);
-    exeAspect->setPlaceHolderText(tr("Remote path not set"));
+    auto exeAspect = addAspect<ExecutableAspect>(target, ExecutableAspect::RunDevice);
+    exeAspect->setLabelText(Tr::tr("Executable on device:"));
+    exeAspect->setPlaceHolderText(Tr::tr("Remote path not set"));
     exeAspect->makeOverridable("RemoteLinux.RunConfig.AlternateRemoteExecutable",
                                "RemoteLinux.RunConfig.UseAlternateRemoteExecutable");
     exeAspect->setHistoryCompleter("RemoteLinux.AlternateExecutable.History");
 
     auto symbolsAspect = addAspect<SymbolFileAspect>();
-    symbolsAspect->setLabelText(tr("Executable on host:"));
+    symbolsAspect->setLabelText(Tr::tr("Executable on host:"));
     symbolsAspect->setDisplayStyle(SymbolFileAspect::LabelDisplay);
 
-    addAspect<ArgumentsAspect>();
-    addAspect<WorkingDirectoryAspect>();
+    auto envAspect = addAspect<RemoteLinuxEnvironmentAspect>(target);
+
+    addAspect<ArgumentsAspect>(macroExpander());
+    addAspect<WorkingDirectoryAspect>(macroExpander(), envAspect);
     addAspect<TerminalAspect>();
-    addAspect<RemoteLinuxEnvironmentAspect>(target);
 
     auto libAspect = addAspect<StringAspect>();
     libAspect->setSettingsKey("Qt4ProjectManager.QnxRunConfiguration.QtLibPath");
-    libAspect->setLabelText(tr("Path to Qt libraries on device"));
+    libAspect->setLabelText(Tr::tr("Path to Qt libraries on device"));
     libAspect->setDisplayStyle(StringAspect::LineEditDisplay);
 
     setUpdater([this, target, exeAspect, symbolsAspect] {
@@ -96,9 +80,8 @@ QnxRunConfiguration::QnxRunConfiguration(Target *target, Utils::Id id)
 
 QnxRunConfigurationFactory::QnxRunConfigurationFactory()
 {
-    registerRunConfiguration<QnxRunConfiguration>("Qt4ProjectManager.QNX.QNXRunConfiguration.");
+    registerRunConfiguration<QnxRunConfiguration>(Constants::QNX_RUNCONFIG_ID);
     addSupportedTargetDeviceType(Constants::QNX_QNX_OS_TYPE);
 }
 
-} // namespace Internal
-} // namespace Qnx
+} // Qnx::Internal

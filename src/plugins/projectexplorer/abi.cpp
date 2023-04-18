@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "abi.h"
 
 #include <utils/algorithm.h>
+#include <utils/environment.h>
 #include <utils/fileutils.h>
 #include <utils/qtcassert.h>
 
@@ -221,7 +200,7 @@ static Abi macAbiForCpu(quint32 type) {
     }
 }
 
-static Abis parseCoffHeader(const QByteArray &data)
+static Abis parseCoffHeader(const QByteArray &data, int pePos)
 {
     Abis result;
     if (data.size() < 20)
@@ -262,7 +241,11 @@ static Abis parseCoffHeader(const QByteArray &data)
         break;
     }
 
-    if (data.size() >= 24) {
+    if (pePos == 132 || pePos == 124) {
+        // 132 (0x84) => GNU ld.bfd
+        // 124 (0x7c) => LLVM lld
+        flavor = Abi::WindowsMSysFlavor;
+    } else if (data.size() >= 24) {
         // Get Major and Minor Image Version from optional header fields
         quint8 minorLinker = data.at(23);
         switch (data.at(22)) {
@@ -448,7 +431,7 @@ static Abis abiOf(const QByteArray &data)
             return result;
         if (getUint8(data, pePos) == 'P' && getUint8(data, pePos + 1) == 'E'
             && getUint8(data, pePos + 2) == 0 && getUint8(data, pePos + 3) == 0)
-            result = parseCoffHeader(data.mid(pePos + 4));
+            result = parseCoffHeader(data.mid(pePos + 4), pePos + 4);
     }
     return result;
 }
@@ -606,7 +589,8 @@ Abi Abi::abiFromTargetTriplet(const QString &triple)
         } else if (p == "mingw32" || p == "win32"
                    || p == "mingw32msvc" || p == "msys"
                    || p == "cygwin" || p == "windows") {
-            arch = X86Architecture;
+            if (arch == UnknownArchitecture)
+                arch = X86Architecture;
             os = WindowsOS;
             flavor = WindowsMSysFlavor;
             format = PEFormat;
@@ -1170,7 +1154,7 @@ Abis Abi::abisOfBinary(const Utils::FilePath &path)
     if (path.isEmpty())
         return tmp;
 
-    QByteArray data = path.fileContents(1024);
+    QByteArray data = path.fileContents(1024).value_or(QByteArray());
     if (data.size() >= 67
             && getUint8(data, 0) == '!' && getUint8(data, 1) == '<' && getUint8(data, 2) == 'a'
             && getUint8(data, 3) == 'r' && getUint8(data, 4) == 'c' && getUint8(data, 5) == 'h'
@@ -1196,14 +1180,20 @@ Abis Abi::abisOfBinary(const Utils::FilePath &path)
             offset += fileLength.toInt() + 60 /* header */;
 
             tmp.append(abiOf(data.mid(toSkip)));
-            if (tmp.isEmpty() && fileName == "/0              ")
-                tmp = parseCoffHeader(data.mid(toSkip, 20)); // This might be windws...
+            if (tmp.isEmpty() && fileName == "/0              ") {
+                tmp = parseCoffHeader(data.mid(toSkip, 20), toSkip); // This might be windws...
+                if (tmp.isEmpty()) {
+                    // Qt 6.2 static builds have the coff headers for both MSVC and MinGW at offset 66
+                    toSkip = 66 + fileNameOffset;
+                    tmp = parseCoffHeader(data.mid(toSkip, 20), toSkip);
+                }
+            }
 
             if (!tmp.isEmpty() && tmp.at(0).binaryFormat() != MachOFormat)
                 break;
 
             offset += (offset % 2); // ar is 2 byte aligned
-            data = path.fileContents(1024, offset);
+            data = path.fileContents(1024, offset).value_or(QByteArray());
         }
     } else {
         tmp = abiOf(data);
@@ -1211,7 +1201,7 @@ Abis Abi::abisOfBinary(const Utils::FilePath &path)
 
     // Remove duplicates:
     Abis result;
-    for (const Abi &a : qAsConst(tmp)) {
+    for (const Abi &a : std::as_const(tmp)) {
         if (!result.contains(a))
             result.append(a);
     }
@@ -1284,7 +1274,7 @@ void ProjectExplorer::ProjectExplorerPlugin::testAbiOfBinary_data()
 
     // Clone test data from: https://git.qt.io/chstenge/creator-test-data
     // Set up prefix for test data now that we can be sure to have some tests to run:
-    QString prefix = QString::fromLocal8Bit(qgetenv("QTC_TEST_EXTRADATALOCATION"));
+    QString prefix = Utils::qtcEnvironmentVariable("QTC_TEST_EXTRADATALOCATION");
     if (prefix.isEmpty())
         return;
     prefix += "/projectexplorer/abi";

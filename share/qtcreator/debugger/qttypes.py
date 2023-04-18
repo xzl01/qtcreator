@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import platform
 import struct
@@ -256,14 +234,14 @@ def qdump__QStandardItem(d, value):
     vtable, dptr = value.split('pp')
     if d.qtVersion() >= 0x060000:
         model, parent, values, children, rows, cols, item = \
-            d.split('pp{@QList<@QStandardItemData>}{@QList<@QStandardItem*>}IIp', dptr)
+            d.split('pp{@QList<@QStandardItemData>}{@QList<@QStandardItem *>}IIp', dptr)
     else:
         # There used to be a virtual destructor that got removed in
         # 88b6abcebf29b455438 on Apr 18 17:01:22 2017
         if d.qtVersion() < 0x050900 and not d.isMsvcTarget():
             dptr += d.ptrSize();
         model, parent, values, children, rows, cols, item = \
-            d.split('pp{@QVector<@QStandardItemData>}{@QVector<@QStandardItem*>}IIp', dptr)
+            d.split('pp{@QVector<@QStandardItemData>}{@QVector<@QStandardItem *>}IIp', dptr)
 
     d.putEmptyValue()
     d.putExpandable()
@@ -440,7 +418,24 @@ def qdump__QDir(d, value):
     d.putExpandable()
     privAddress = d.extractPointer(value)
     bit32 = d.ptrSize() == 4
-    qt5 = d.qtVersion() >= 0x050000
+
+    # change fc3942114da adds FileCache
+    # QStringList nameFilters;
+    # QDir::SortFlags sort;
+    # QDir::Filters filters;
+    # std::unique_ptr<QAbstractFileEngine> fileEngine;
+    # QFileSystemEntry dirEntry;
+    # struct FileCache
+    # {
+    #     QMutex mutex;
+    #     QStringList files;
+    #     QFileInfoList fileInfos;
+    #     std::atomic<bool> fileListsInitialized = false;
+    #     QFileSystemEntry absoluteDirEntry;
+    #     QFileSystemMetaData metaData;
+    # };
+    # mutable FileCache fileCache;
+
 
     # Change 9fc0965 reorders members again.
     #   bool fileListsInitialized
@@ -476,7 +471,9 @@ def qdump__QDir(d, value):
     #   + 2 byte padding
     fileSystemEntrySize = 2 * d.ptrSize() + 8
 
-    if d.qtVersion() >= 0x060000:
+    if d.qtVersion() >= 0x060600:
+        case = 3
+    elif d.qtVersion() >= 0x060000:
         case = 2
     elif d.qtVersion() >= 0x050300:
         case = 1
@@ -489,7 +486,20 @@ def qdump__QDir(d, value):
         firstValue = d.extractInt(privAddress + d.ptrSize())
         case = 1 if firstValue == 0 or firstValue == 1 else 0
 
-    if case == 2:
+    if case == 3:
+        if bit32:
+            dirEntryOffset = 24
+            fileCacheOffset = 52
+            filesOffset = fileCacheOffset + 4
+            fileInfosOffset = fileCacheOffset + 16
+            absoluteDirEntryOffset = fileCacheOffset + 32
+        else:
+            dirEntryOffset = 48
+            fileCacheOffset = 104
+            filesOffset = fileCacheOffset + 8
+            fileInfosOffset = fileCacheOffset + 32
+            absoluteDirEntryOffset = fileCacheOffset + 64
+    elif case == 2:
         if bit32:
             filesOffset = 4
             fileInfosOffset = 16
@@ -529,6 +539,7 @@ def qdump__QDir(d, value):
                     d.call('int', value, 'count')  # Fill cache.
                 except:
                     pass
+
                 #d.putCallItem('absolutePath', '@QString', value, 'absolutePath')
                 #d.putCallItem('canonicalPath', '@QString', value, 'canonicalPath')
                 with SubItem(d, 'absolutePath'):
@@ -652,21 +663,36 @@ def qdump__QKeyEvent(d, value):
             d.putFields(value, dumpBase=True)
 
 
+def qdump__QKeySequence(d, value):
+    dd = d.extractPointer(value)
+    _, k0, k1, k2, k3 = d.split('iiiii', dd)
+    d.putValue("(0x%x, 0x%x, 0x%x, 0x%x)" % (k0, k1, k2, k3));
+    d.putPlainChildren(value)
+
+
 def qdump__QFile(d, value):
     # 9fc0965 and a373ffcd change the layout of the private structure
     qtVersion = d.qtVersion()
     is32bit = d.ptrSize() == 4
-    if qtVersion >= 0x060000:
-        # FIXME:  values 0 are wrong. As the file name is the
-        # only direct member of QFilePrivate, the offsets are
-        # equal to sizeof(QFileDevicePrivate), the base class.
+    # FIXME:  values 0 are wrong. As the file name is the
+    # only direct member of QFilePrivate, the offsets are
+    # equal to sizeof(QFileDevicePrivate), the base class.
+    if qtVersion >= 0x060300 and d.qtTypeInfoVersion() >= 22:
+        if d.isWindowsTarget():
+            if d.isMsvcTarget():
+                offset = 0 if is32bit else 424
+            else:
+                offset = 0 if is32bit else 424
+        else:
+            offset = 300 if is32bit else 424
+    elif qtVersion >= 0x060000 and d.qtTypeInfoVersion() >= 20:
         if d.isWindowsTarget():
             if d.isMsvcTarget():
                 offset = 0 if is32bit else 304
             else:
                 offset = 0 if is32bit else 304
         else:
-            offset = 0 if is32bit else 304
+            offset = 196 if is32bit else 304
     elif qtVersion >= 0x050600 and d.qtTypeInfoVersion() >= 17:
         # Some QRingBuffer member got removed in 8f92baf5c9
         if d.isWindowsTarget():
@@ -1732,6 +1758,11 @@ def qdump__QString(d, value):
             d.putArrayData(data, size, d.createType('@QChar'))
 
 
+def qdump__QSettingsKey(d, value):
+    qdump__QString(d, value)
+    d.putBetterType(value.type)
+
+
 def qdump__QStaticStringData(d, value):
     size = value.type[0]
     (ref, size, alloc, pad, offset, data) = value.split('iii@p%ss' % (2 * size))
@@ -1751,6 +1782,26 @@ def qdump__QStringData(d, value):
     elided, shown = d.computeLimit(size, d.displayStringLimit)
     data = d.readMemory(value.address() + offset, shown * 2)
     d.putValue(data, 'utf16', elided=elided)
+    d.putPlainChildren(value)
+
+
+def qdump__QAnyStringView(d, value):
+    data, size = value.split('pp')
+    bits = d.ptrSize() * 8 - 2
+    tag = size >> bits
+    size = size & (2**bits - 1)
+    elided, shown = d.computeLimit(size, d.displayStringLimit)
+    if tag == 0:
+        mem = d.readMemory(data, shown)
+        d.putValue(mem, 'utf8', elided=elided)
+    elif tag == 1:
+        mem = d.readMemory(data, shown)
+        d.putValue(mem, 'latin1', elided=elided)
+    elif tag == 2:
+        mem = d.readMemory(data, shown * 2)
+        d.putValue(mem, 'utf16', elided=elided)
+    else:
+        d.putSpecialValue('empty')
     d.putPlainChildren(value)
 
 
@@ -2105,7 +2156,7 @@ def qdumpHelper__QVariant6(d, value):
         d.split('HHIIIpp', metaTypeInterface)
 
     # Well-known simple type.
-    if variantType <= 6:
+    if variantType >= 1 and variantType <= 6:
         qdumpHelper_QVariants_A[variantType](d, value)
         return None
 
@@ -2310,7 +2361,10 @@ def qdump_QWeakPointerHelper(d, value, isWeak, innerType=None):
     if innerType is None:
         innerType = value.type[0]
     with Children(d):
-        short = d.putSubItem('data', d.createValue(val, innerType))
+        dataAddress = value.laddress
+        if isWeak:
+            dataAddress = dataAddress + d.ptrSize()
+        short = d.putSubItem('data', d.createValue(dataAddress, d.createPointerType(innerType)))
         d.putIntItem('weakref', weakref)
         d.putIntItem('strongref', strongref)
     d.putValue(short.value, short.encoding)
@@ -2833,43 +2887,82 @@ def qdump_32__QJSValue(d, value):
 
 def qdump_64__QJSValue_6(d, value):
     dd = value.split('Q')[0]
-    typ = dd >> 47
-
     if dd == 0:
         d.putValue('(undefined)')
         d.putType(value.type.name + ' (undefined)')
-    elif typ == 5:
-        d.putValue('(null)')
-        d.putType(value.type.name + ' (null)')
-    elif typ == 6:
-        d.putValue('true' if dd & 1 else 'false')
-        d.putType(value.type.name + ' (bool)')
-    elif typ == 7:
-        d.putValue(dd & 0xfffffffff)
-        d.putType(value.type.name + ' (int)')
-    elif typ > 7:
-        val = d.Value(d)
-        val.ldata = struct.pack('q', dd ^ 0xfffc000000000000)
-        val._type = d.createType('double')
-        d.putItem(val)
-        d.putType(value.type.name + ' (double)')
-    elif typ <= 3: # Heap
-        if dd & 1: # String
+    if d.qtVersion() < 0x60500:
+        typ = dd >> 47
+        if typ == 5:
+            d.putValue('(null)')
+            d.putType(value.type.name + ' (null)')
+        elif typ == 6:
+            d.putValue('true' if dd & 1 else 'false')
+            d.putType(value.type.name + ' (bool)')
+        elif typ == 7:
+            d.putValue(dd & 0xfffffffff)
+            d.putType(value.type.name + ' (int)')
+        elif typ > 7:
             val = d.Value(d)
-            val.ldata = struct.pack('q', dd & ~1)
-            val._type = d.createType('@QString*')
+            val.ldata = struct.pack('q', dd ^ 0xfffc000000000000)
+            val._type = d.createType('double')
             d.putItem(val)
-            d.putType(value.type.name + ' (QString)')
+            d.putType(value.type.name + ' (double)')
+        elif typ <= 3: # Heap
+            if dd & 1: # String
+                val = d.Value(d)
+                val.ldata = struct.pack('q', dd & ~1)
+                val._type = d.createType('@QString*')
+                d.putItem(val)
+                d.putType(value.type.name + ' (QString)')
+            else:
+                # FIXME: Arrays, Objects missing.
+                val = d.split('{@QV4::Managed*}', value)[0]
+                d.putItem(val)
+                d.putItemCount(1)
         else:
-            # FIXME: Arrays, Objects missing.
-            val = d.split('{@QV4::Managed*}', value)[0]
-            d.putItem(val)
+            d.putEmptyValue()
             d.putItemCount(1)
+            d.putPlainChildren(value)
+            return
+
     else:
-        d.putEmptyValue()
-        d.putItemCount(1)
-        d.putPlainChildren(value)
-        return
+        typ = dd & 7
+        isPointer = typ & 1
+        if typ == 0:
+            d.putValue('(undefined)')
+            d.putType(value.type.name + ' (undefined)')
+        elif typ == 2:
+            d.putValue('(null)')
+            d.putType(value.type.name + ' (null)')
+        elif typ == 4:
+            d.putValue(dd >> 32)
+            d.putType(value.type.name + ' (int)')
+        elif typ == 6:
+            d.putValue('true' if dd >> 32 & 1 else 'false')
+            d.putType(value.type.name + ' (bool)')
+        elif isPointer:
+            pointer = dd >> 3
+            pointer = pointer << 3
+            val = d.Value(d)
+            val.ldata = struct.pack('q', pointer)
+            if typ == 1:
+                val._type = d.createType('double*')
+                d.putItem(val)
+                d.putType(value.type.name + ' (double)')
+            elif typ == 3:
+                val._type = d.createType('@QV4::Value*')
+                d.putItem(val)
+                d.putType(value.type.name + ' (QV4::Value)')
+            elif typ == 5:
+                val._type = d.createType('@QString*')
+                d.putItem(val)
+                d.putType(value.type.name + ' (QString)')
+
+        else:
+            d.putEmptyValue()
+            d.putItemCount(1)
+            d.putPlainChildren(value)
+            return
 
     if d.isExpanded():
         with Children(d):

@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cmaketool.h"
 
+#include "cmakeprojectmanagertr.h"
 #include "cmaketoolmanager.h"
 
 #include <coreplugin/helpmanager.h>
@@ -37,6 +16,7 @@
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLoggingCategory>
 #include <QRegularExpression>
 #include <QSet>
 #include <QUuid>
@@ -46,6 +26,9 @@
 using namespace Utils;
 
 namespace CMakeProjectManager {
+
+static Q_LOGGING_CATEGORY(cmakeToolLog, "qtc.cmake.tool", QtWarningMsg);
+
 
 const char CMAKE_INFORMATION_ID[] = "Id";
 const char CMAKE_INFORMATION_COMMAND[] = "Binary";
@@ -67,7 +50,7 @@ namespace Internal {
 
 const char READER_TYPE_FILEAPI[] = "fileapi";
 
-static Utils::optional<CMakeTool::ReaderType> readerTypeFromString(const QString &input)
+static std::optional<CMakeTool::ReaderType> readerTypeFromString(const QString &input)
 {
     // Do not try to be clever here, just use whatever is in the string!
     if (input == READER_TYPE_FILEAPI)
@@ -139,7 +122,7 @@ CMakeTool::CMakeTool(const QVariantMap &map, bool fromSdk) :
 
     setFilePath(FilePath::fromString(map.value(CMAKE_INFORMATION_COMMAND).toString()));
 
-    m_qchFilePath = FilePath::fromVariant(map.value(CMAKE_INFORMATION_QCH_FILE_PATH));
+    m_qchFilePath = FilePath::fromSettings(map.value(CMAKE_INFORMATION_QCH_FILE_PATH));
 
     if (m_qchFilePath.isEmpty())
         m_qchFilePath = searchQchFile(m_executable);
@@ -168,15 +151,6 @@ FilePath CMakeTool::filePath() const
     return m_executable;
 }
 
-void CMakeTool::setAutorun(bool autoRun)
-{
-    if (m_isAutoRun == autoRun)
-        return;
-
-    m_isAutoRun = autoRun;
-    CMakeToolManager::notifyAboutUpdate(this);
-}
-
 bool CMakeTool::isValid() const
 {
     if (!m_id.isValid() || !m_introspection)
@@ -190,13 +164,14 @@ bool CMakeTool::isValid() const
 
 void CMakeTool::runCMake(QtcProcess &cmake, const QStringList &args, int timeoutS) const
 {
+    const FilePath executable = cmakeExecutable();
     cmake.setTimeoutS(timeoutS);
     cmake.setDisableUnixTerminal();
-    Environment env = Environment::systemEnvironment();
+    Environment env = executable.deviceEnvironment();
     env.setupEnglishOutput();
     cmake.setEnvironment(env);
     cmake.setTimeOutMessageBoxEnabled(false);
-    cmake.setCommand({cmakeExecutable(), args});
+    cmake.setCommand({executable, args});
     cmake.runBlocking();
 }
 
@@ -275,20 +250,20 @@ TextEditor::Keywords CMakeTool::keywords()
     if (m_introspection->m_functions.isEmpty() && m_introspection->m_didRun) {
         QtcProcess proc;
         runCMake(proc, {"--help-command-list"}, 5);
-        if (proc.result() == QtcProcess::FinishedWithSuccess)
-            m_introspection->m_functions = proc.stdOut().split('\n');
+        if (proc.result() == ProcessResult::FinishedWithSuccess)
+            m_introspection->m_functions = proc.cleanedStdOut().split('\n');
 
         runCMake(proc, {"--help-commands"}, 5);
-        if (proc.result() == QtcProcess::FinishedWithSuccess)
-            parseFunctionDetailsOutput(proc.stdOut());
+        if (proc.result() == ProcessResult::FinishedWithSuccess)
+            parseFunctionDetailsOutput(proc.cleanedStdOut());
 
         runCMake(proc, {"--help-property-list"}, 5);
-        if (proc.result() == QtcProcess::FinishedWithSuccess)
-            m_introspection->m_variables = parseVariableOutput(proc.stdOut());
+        if (proc.result() == ProcessResult::FinishedWithSuccess)
+            m_introspection->m_variables = parseVariableOutput(proc.cleanedStdOut());
 
         runCMake(proc, {"--help-variable-list"}, 5);
-        if (proc.result() == QtcProcess::FinishedWithSuccess) {
-            m_introspection->m_variables.append(parseVariableOutput(proc.stdOut()));
+        if (proc.result() == ProcessResult::FinishedWithSuccess) {
+            m_introspection->m_variables.append(parseVariableOutput(proc.cleanedStdOut()));
             m_introspection->m_variables = Utils::filteredUnique(m_introspection->m_variables);
             Utils::sort(m_introspection->m_variables);
         }
@@ -306,13 +281,16 @@ bool CMakeTool::hasFileApi() const
 
 CMakeTool::Version CMakeTool::version() const
 {
-    return m_introspection ? m_introspection->m_version : CMakeTool::Version();
+    return isValid() ? m_introspection->m_version : CMakeTool::Version();
 }
 
 QString CMakeTool::versionDisplay() const
 {
-    if (!m_introspection)
-        return CMakeToolManager::tr("Version not parseable");
+    if (m_executable.isEmpty())
+        return {};
+
+    if (!isValid())
+        return Tr::tr("Version not parseable");
 
     const Version &version = m_introspection->m_version;
     if (version.fullVersion.isEmpty())
@@ -349,7 +327,7 @@ CMakeTool::PathMapper CMakeTool::pathMapper() const
     return [](const FilePath &fn) { return fn; };
 }
 
-Utils::optional<CMakeTool::ReaderType> CMakeTool::readerType() const
+std::optional<CMakeTool::ReaderType> CMakeTool::readerType() const
 {
     if (m_readerType)
         return m_readerType; // Allow overriding the auto-detected value via .user files
@@ -428,7 +406,7 @@ static QStringList parseDefinition(const QString &definition)
     bool ignoreWord = false;
     QVector<QChar> braceStack;
 
-    foreach (const QChar &c, definition) {
+    for (const QChar &c : definition) {
         if (c == '[' || c == '<' || c == '(') {
             braceStack.append(c);
             ignoreWord = false;
@@ -475,8 +453,8 @@ void CMakeTool::parseFunctionDetailsOutput(const QString &output)
                 if (!words.isEmpty()) {
                     const QString command = words.takeFirst();
                     if (functionSet.contains(command)) {
-                        QStringList tmp = words + m_introspection->m_functionArgs[command];
-                        Utils::sort(tmp);
+                        const QStringList tmp = Utils::sorted(
+                                    words + m_introspection->m_functionArgs[command]);
                         m_introspection->m_functionArgs[command] = Utils::filteredUnique(tmp);
                     }
                 }
@@ -494,7 +472,7 @@ QStringList CMakeTool::parseVariableOutput(const QString &output)
 {
     const QStringList variableList = output.split('\n');
     QStringList result;
-    foreach (const QString &v, variableList) {
+    for (const QString &v : variableList) {
         if (v.startsWith("CMAKE_COMPILER_IS_GNU<LANG>")) { // This key takes a compiler name :-/
             result << "CMAKE_COMPILER_IS_GNUCC"
                    << "CMAKE_COMPILER_IS_GNUCXX";
@@ -517,10 +495,11 @@ void CMakeTool::fetchFromCapabilities() const
     QtcProcess cmake;
     runCMake(cmake, {"-E", "capabilities"});
 
-    if (cmake.result() == QtcProcess::FinishedWithSuccess) {
+    if (cmake.result() == ProcessResult::FinishedWithSuccess) {
         m_introspection->m_didRun = true;
-        parseFromCapabilities(cmake.stdOut());
+        parseFromCapabilities(cmake.cleanedStdOut());
     } else {
+        qCCritical(cmakeToolLog) << "Fetching capabilities failed: " << cmake.allOutput() << cmake.error();
         m_introspection->m_didRun = false;
     }
 }
@@ -557,13 +536,11 @@ void CMakeTool::parseFromCapabilities(const QString &input) const
             const QVariantMap object = r.toMap();
             const QString kind = object.value("kind").toString();
             const QVariantList versionList = object.value("version").toList();
-            std::pair<int, int> highestVersion = std::make_pair(-1, -1);
+            std::pair<int, int> highestVersion{-1, -1};
             for (const QVariant &v : versionList) {
                 const QVariantMap versionObject = v.toMap();
-                const std::pair<int, int> version = std::make_pair(getVersion(versionObject,
-                                                                              "major"),
-                                                                   getVersion(versionObject,
-                                                                              "minor"));
+                const std::pair<int, int> version{getVersion(versionObject, "major"),
+                                                  getVersion(versionObject, "minor")};
                 if (version.first > highestVersion.first
                     || (version.first == highestVersion.first
                         && version.second > highestVersion.second))
@@ -579,13 +556,6 @@ void CMakeTool::parseFromCapabilities(const QString &input) const
     m_introspection->m_version.minor = versionInfo.value("minor").toInt();
     m_introspection->m_version.patch = versionInfo.value("patch").toInt();
     m_introspection->m_version.fullVersion = versionInfo.value("string").toByteArray();
-
-    // Fix up fileapi support for cmake 3.14:
-    if (m_introspection->m_version.major == 3 && m_introspection->m_version.minor == 14) {
-        m_introspection->m_fileApis.append({QString("codemodel"), std::make_pair(2, 0)});
-        m_introspection->m_fileApis.append({QString("cache"), std::make_pair(2, 0)});
-        m_introspection->m_fileApis.append({QString("cmakefiles"), std::make_pair(1, 0)});
-    }
 }
 
 } // namespace CMakeProjectManager

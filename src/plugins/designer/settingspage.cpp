@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "settingspage.h"
+#include "designertr.h"
 #include "formeditorw.h"
+#include "settingspage.h"
 
 #include <coreplugin/icontext.h>
 
@@ -69,8 +48,7 @@ void SettingsPage::finish()
 SettingsPageProvider::SettingsPageProvider()
 {
     setCategory(Designer::Constants::SETTINGS_CATEGORY);
-    setDisplayCategory(QCoreApplication::translate("Designer",
-        Designer::Constants::SETTINGS_TR_CATEGORY));
+    setDisplayCategory(Tr::tr(Designer::Constants::SETTINGS_TR_CATEGORY));
     setCategoryIcon(Utils::Icon({{":/core/images/settingscategory_design.png",
                     Utils::Theme::PanelTextColorDark}}, Utils::Icon::Tint));
 }
@@ -118,7 +96,7 @@ bool SettingsPageProvider::matches(const QRegularExpression &regex) const
         for (size_t i = 0; i < itemCount; ++i)
             m_keywords << Utils::stripAccelerator(QCoreApplication::translate(uitext[i].context, uitext[i].value));
     }
-    for (const QString &key : qAsConst(m_keywords)) {
+    for (const QString &key : std::as_const(m_keywords)) {
         if (key.contains(regex))
             return true;
     }

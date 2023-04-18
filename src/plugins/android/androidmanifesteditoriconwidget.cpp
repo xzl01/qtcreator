@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "androidmanifesteditoriconwidget.h"
+#include "androidtr.h"
 
 #include <texteditor/textdocument.h>
 #include <texteditor/texteditor.h>
@@ -87,10 +66,10 @@ AndroidManifestEditorIconWidget::AndroidManifestEditorIconWidget(
         m_scaleWarningLabel->setMinimumSize(clearAndWarningSize);
         m_scaleWarningLabel->setMaximumSize(clearAndWarningSize);
         m_scaleWarningLabel->setPixmap(Utils::Icons::WARNING.icon().pixmap(clearAndWarningSize));
-        m_scaleWarningLabel->setToolTip(tr("Icon scaled up."));
+        m_scaleWarningLabel->setToolTip(Tr::tr("Icon scaled up."));
         m_scaleWarningLabel->setVisible(false);
     }
-    auto label = new QLabel(tr("Click to select..."), parent);
+    auto label = new QLabel(Tr::tr("Click to select..."), parent);
     iconLayout->addWidget(iconTitle);
     iconLayout->setAlignment(iconTitle, Qt::AlignHCenter);
     iconLayout->addStretch(50);
@@ -158,7 +137,7 @@ void AndroidManifestEditorIconWidget::setIconFromPath(const FilePath &iconPath)
         }
     }
     copyIcon();
-    FilePath iconFile = baseDir + m_targetIconPath + m_targetIconFileName;
+    FilePath iconFile = baseDir / m_targetIconPath / m_targetIconFileName;
     m_button->setIcon(QIcon(iconFile.toString()));
 }
 
@@ -166,7 +145,7 @@ void AndroidManifestEditorIconWidget::selectIcon()
 {
     FilePath file = FileUtils::getOpenFilePath(this, m_iconSelectionText,
                                                FileUtils::homePath(),
-                                               tr("Images (*.png *.jpg *.jpeg *.webp *.svg)"));
+                                               Tr::tr("Images (*.png *.jpg *.jpeg *.webp *.svg)")); // TODO: See SplashContainterWidget
     if (file.isEmpty())
         return;
     setIconFromPath(file);

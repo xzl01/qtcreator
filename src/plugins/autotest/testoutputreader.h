@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,8 +7,9 @@
 
 #include <QFutureInterface>
 #include <QObject>
-#include <QProcess>
 #include <QString>
+
+namespace Utils { class QtcProcess; }
 
 namespace Autotest {
 
@@ -38,8 +17,8 @@ class TestOutputReader : public QObject
 {
     Q_OBJECT
 public:
-    TestOutputReader(const QFutureInterface<TestResultPtr> &futureInterface,
-                     QProcess *testApplication, const Utils::FilePath &buildDirectory);
+    TestOutputReader(const QFutureInterface<TestResult> &futureInterface,
+                     Utils::QtcProcess *testApplication, const Utils::FilePath &buildDirectory);
     virtual ~TestOutputReader();
     void processStdOutput(const QByteArray &outputLine);
     virtual void processStdError(const QByteArray &outputLine);
@@ -54,6 +33,7 @@ public:
 
     void resetCommandlineColor();
 signals:
+    void newResult(const TestResult &result);
     void newOutputLineAvailable(const QByteArray &outputLine, OutputChannel channel);
 protected:
     static Utils::FilePath constructSourceFilePath(const Utils::FilePath &base,
@@ -61,20 +41,19 @@ protected:
 
     QString removeCommandlineColors(const QString &original);
     virtual void processOutputLine(const QByteArray &outputLine) = 0;
-    virtual TestResultPtr createDefaultResult() const = 0;
+    virtual TestResult createDefaultResult() const = 0;
     void checkForSanitizerOutput(const QByteArray &line);
     void sendAndResetSanitizerResult();
 
-    void reportResult(const TestResultPtr &result);
-    QFutureInterface<TestResultPtr> m_futureInterface;
-    QProcess *m_testApplication;  // not owned
+    void reportResult(const TestResult &result);
+    QFutureInterface<TestResult> m_futureInterface;
     Utils::FilePath m_buildDir;
     QString m_id;
     QHash<ResultType, int> m_summary;
     int m_disabled = -1;
 private:
     enum class SanitizerOutputMode { None, Asan, Ubsan};
-    TestResultPtr m_sanitizerResult;
+    TestResult m_sanitizerResult;
     QStringList m_sanitizerLines;
     SanitizerOutputMode m_sanitizerOutputMode = SanitizerOutputMode::None;
     bool m_hadValidOutput = false;

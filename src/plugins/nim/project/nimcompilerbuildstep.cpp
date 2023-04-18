@@ -1,41 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
-** Contact: http://www.qt.io/licensing
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nimcompilerbuildstep.h"
 
 #include "nimbuildconfiguration.h"
-#include "nimbuildsystem.h"
 #include "nimconstants.h"
 #include "nimoutputtaskparser.h"
-#include "nimtoolchain.h"
+#include "nimtr.h"
 
-#include <projectexplorer/processparameters.h>
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/ioutputparser.h>
 #include <projectexplorer/kitinformation.h>
+#include <projectexplorer/processparameters.h>
+#include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/toolchain.h>
 
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
@@ -52,12 +31,12 @@ using namespace Utils;
 
 namespace Nim {
 
-NimCompilerBuildStep::NimCompilerBuildStep(BuildStepList *parentList, Utils::Id id)
+NimCompilerBuildStep::NimCompilerBuildStep(BuildStepList *parentList, Id id)
     : AbstractProcessStep(parentList, id)
 {
     setCommandLineProvider([this] { return commandLine(); });
 
-    connect(project(), &ProjectExplorer::Project::fileListChanged,
+    connect(project(), &Project::fileListChanged,
             this, &NimCompilerBuildStep::updateTargetNimFile);
 }
 
@@ -73,8 +52,8 @@ QWidget *NimCompilerBuildStep::createConfigWidget()
 {
     auto widget = new QWidget;
 
-    setDisplayName(tr("Nim build step"));
-    setSummaryText(tr("Nim build step"));
+    setDisplayName(Tr::tr("Nim build step"));
+    setSummaryText(Tr::tr("Nim build step"));
 
     auto targetComboBox = new QComboBox(widget);
 
@@ -85,15 +64,15 @@ QWidget *NimCompilerBuildStep::createConfigWidget()
     commandTextEdit->setMinimumSize(QSize(0, 0));
 
     auto defaultArgumentsComboBox = new QComboBox(widget);
-    defaultArgumentsComboBox->addItem(tr("None"));
-    defaultArgumentsComboBox->addItem(tr("Debug"));
-    defaultArgumentsComboBox->addItem(tr("Release"));
+    defaultArgumentsComboBox->addItem(Tr::tr("None"));
+    defaultArgumentsComboBox->addItem(Tr::tr("Debug"));
+    defaultArgumentsComboBox->addItem(Tr::tr("Release"));
 
     auto formLayout = new QFormLayout(widget);
-    formLayout->addRow(tr("Target:"), targetComboBox);
-    formLayout->addRow(tr("Default arguments:"), defaultArgumentsComboBox);
-    formLayout->addRow(tr("Extra arguments:"),  additionalArgumentsLineEdit);
-    formLayout->addRow(tr("Command:"), commandTextEdit);
+    formLayout->addRow(Tr::tr("Target:"), targetComboBox);
+    formLayout->addRow(Tr::tr("Default arguments:"), defaultArgumentsComboBox);
+    formLayout->addRow(Tr::tr("Extra arguments:"),  additionalArgumentsLineEdit);
+    formLayout->addRow(Tr::tr("Command:"), commandTextEdit);
 
     auto updateUi = [=] {
         const CommandLine cmd = commandLine();
@@ -120,8 +99,7 @@ QWidget *NimCompilerBuildStep::createConfigWidget()
 
     connect(project(), &Project::fileListChanged, this, updateUi);
 
-    connect(targetComboBox, QOverload<int>::of(&QComboBox::activated),
-            this, [this, targetComboBox, updateUi] {
+    connect(targetComboBox, &QComboBox::activated, this, [this, targetComboBox, updateUi] {
         const QVariant data = targetComboBox->currentData();
         m_targetNimFile = FilePath::fromString(data.toString());
         updateUi();
@@ -133,8 +111,7 @@ QWidget *NimCompilerBuildStep::createConfigWidget()
         updateUi();
     });
 
-    connect(defaultArgumentsComboBox, QOverload<int>::of(&QComboBox::activated),
-            this, [this, updateUi](int index) {
+    connect(defaultArgumentsComboBox, &QComboBox::activated, this, [this, updateUi](int index) {
         m_defaultOptions = static_cast<DefaultBuildOptions>(index);
         updateUi();
     });
@@ -199,7 +176,7 @@ CommandLine NimCompilerBuildStep::commandLine()
     cmd.addArg("--out:" + outFilePath().toString());
     cmd.addArg("--nimCache:" + bc->cacheDirectory().toString());
 
-    for (const QString &arg : qAsConst(m_userCompilerOptions)) {
+    for (const QString &arg : std::as_const(m_userCompilerOptions)) {
         if (!arg.isEmpty())
             cmd.addArg(arg);
     }
@@ -235,7 +212,7 @@ void NimCompilerBuildStep::updateTargetNimFile()
 NimCompilerBuildStepFactory::NimCompilerBuildStepFactory()
 {
     registerStep<NimCompilerBuildStep>(Constants::C_NIMCOMPILERBUILDSTEP_ID);
-    setDisplayName(NimCompilerBuildStep::tr("Nim Compiler Build Step"));
+    setDisplayName(Tr::tr("Nim Compiler Build Step"));
     setSupportedStepList(ProjectExplorer::Constants::BUILDSTEPS_BUILD);
     setSupportedConfiguration(Constants::C_NIMBUILDCONFIGURATION_ID);
     setRepeatable(false);

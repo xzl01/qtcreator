@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Research In Motion
-** Contact: KDAB (info@kdab.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Research In Motion
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "devicecheckbuildstep.h"
 
 #include "../kitinformation.h"
-#include "../target.h"
+#include "../projectexplorertr.h"
+
 #include "devicemanager.h"
 #include "idevice.h"
 #include "idevicefactory.h"
@@ -48,22 +27,22 @@ bool DeviceCheckBuildStep::init()
         Utils::Id deviceTypeId = DeviceTypeKitAspect::deviceTypeId(kit());
         IDeviceFactory *factory = IDeviceFactory::find(deviceTypeId);
         if (!factory || !factory->canCreate()) {
-            emit addOutput(tr("No device configured."), BuildStep::OutputFormat::ErrorMessage);
+            emit addOutput(Tr::tr("No device configured."), BuildStep::OutputFormat::ErrorMessage);
             return false;
         }
 
-        QMessageBox msgBox(QMessageBox::Question, tr("Set Up Device"),
-                              tr("There is no device set up for this kit. Do you want to add a device?"),
+        QMessageBox msgBox(QMessageBox::Question, Tr::tr("Set Up Device"),
+                              Tr::tr("There is no device set up for this kit. Do you want to add a device?"),
                               QMessageBox::Yes|QMessageBox::No);
         msgBox.setDefaultButton(QMessageBox::Yes);
         if (msgBox.exec() == QMessageBox::No) {
-            emit addOutput(tr("No device configured."), BuildStep::OutputFormat::ErrorMessage);
+            emit addOutput(Tr::tr("No device configured."), BuildStep::OutputFormat::ErrorMessage);
             return false;
         }
 
         IDevice::Ptr newDevice = factory->create();
         if (newDevice.isNull()) {
-            emit addOutput(tr("No device configured."), BuildStep::OutputFormat::ErrorMessage);
+            emit addOutput(Tr::tr("No device configured."), BuildStep::OutputFormat::ErrorMessage);
             return false;
         }
 
@@ -88,5 +67,5 @@ Utils::Id DeviceCheckBuildStep::stepId()
 
 QString DeviceCheckBuildStep::displayName()
 {
-    return tr("Check for a configured device");
+    return Tr::tr("Check for a configured device");
 }

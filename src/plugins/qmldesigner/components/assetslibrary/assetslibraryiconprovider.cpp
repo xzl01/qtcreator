@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "assetslibraryiconprovider.h"
-#include "assetslibrarymodel.h"
+#include "asset.h"
+#include "modelnodeoperations.h"
 
-#include <hdrimage.h>
 #include <theme.h>
+#include <utils/hdrimage.h>
 #include <utils/stylehelper.h>
 
 namespace QmlDesigner {
@@ -41,29 +20,15 @@ AssetsLibraryIconProvider::AssetsLibraryIconProvider(SynchronousImageCache &font
 QPixmap AssetsLibraryIconProvider::requestPixmap(const QString &id, QSize *size, const QSize &requestedSize)
 {
     QPixmap pixmap;
-    const QString suffix = "*." + id.split('.').last().toLower();
-    if (id == "browse") {
-        pixmap = Utils::StyleHelper::dpiSpecificImageFile(":/AssetsLibrary/images/browse.png");
-    } else if (AssetsLibraryModel::supportedFontSuffixes().contains(suffix)) {
-        pixmap = generateFontIcons(id, requestedSize);
-    } else if (AssetsLibraryModel::supportedImageSuffixes().contains(suffix)) {
-        pixmap = Utils::StyleHelper::dpiSpecificImageFile(id);
-    } else if (AssetsLibraryModel::supportedTexture3DSuffixes().contains(suffix)) {
-        pixmap = HdrImage{id}.toPixmap();
+
+    if (m_thumbnails.contains(id)) {
+        pixmap = m_thumbnails[id].pixmap;
     } else {
-        QString type;
-        if (AssetsLibraryModel::supportedShaderSuffixes().contains(suffix))
-            type = "shader";
-        else if (AssetsLibraryModel::supportedAudioSuffixes().contains(suffix))
-            type = "sound";
-        else if (AssetsLibraryModel::supportedVideoSuffixes().contains(suffix))
-            type = "video";
+        Thumbnail thumbnail = createThumbnail(id, requestedSize);
+        pixmap = thumbnail.pixmap;
 
-        QString pathTemplate = QString(":/AssetsLibrary/images/asset_%1%2.png").arg(type);
-        QString path = pathTemplate.arg('_' + QString::number(requestedSize.width()));
-
-        pixmap = Utils::StyleHelper::dpiSpecificImageFile(QFileInfo::exists(path) ? path
-                                                                                  : pathTemplate.arg(""));
+        if (thumbnail.assetType != Asset::MissingImage)
+            m_thumbnails[id] = thumbnail;
     }
 
     if (size) {
@@ -71,13 +36,26 @@ QPixmap AssetsLibraryIconProvider::requestPixmap(const QString &id, QSize *size,
         size->setHeight(pixmap.height());
     }
 
-    if (pixmap.isNull())
+    return pixmap;
+}
+
+Thumbnail AssetsLibraryIconProvider::createThumbnail(const QString &id, const QSize &requestedSize)
+{
+    auto [pixmap, fileSize] = fetchPixmap(id, requestedSize);
+    QSize originalSize = pixmap.size();
+    Asset::Type assetType = Asset(id).type();
+
+    if (pixmap.isNull()) {
         pixmap = Utils::StyleHelper::dpiSpecificImageFile(":/AssetsLibrary/images/assets_default.png");
 
-    if (requestedSize.isValid())
-        return pixmap.scaled(requestedSize);
+        if (assetType == Asset::Image)
+            assetType = Asset::MissingImage;
+    }
 
-    return pixmap;
+    if (requestedSize.isValid())
+        pixmap = pixmap.scaled(requestedSize, Qt::KeepAspectRatio);
+
+    return Thumbnail{pixmap, originalSize, assetType, fileSize};
 }
 
 QPixmap AssetsLibraryIconProvider::generateFontIcons(const QString &filePath, const QSize &requestedSize) const
@@ -87,6 +65,75 @@ QPixmap AssetsLibraryIconProvider::generateFontIcons(const QString &filePath, co
            ImageCache::FontCollectorSizesAuxiliaryData{Utils::span{iconSizes},
                                                        Theme::getColor(Theme::DStextColor).name(),
                                                        "Abc"}).pixmap(reqSize);
+}
+
+QPair<QPixmap, qint64> AssetsLibraryIconProvider::fetchPixmap(const QString &id, const QSize &requestedSize) const
+{
+    Asset asset(id);
+
+    if (id == "browse") {
+        QString filePath = Utils::StyleHelper::dpiSpecificImageFile(":/AssetsLibrary/images/browse.png");
+        return {QPixmap{filePath}, 0};
+    } else if (asset.isFont()) {
+        qint64 size = QFileInfo(id).size();
+        QPixmap pixmap = generateFontIcons(id, requestedSize);
+        return {pixmap, size};
+    } else if (asset.isImage()) {
+        QString filePath = Utils::StyleHelper::dpiSpecificImageFile(id);
+        qint64 size = QFileInfo(filePath).size();
+        return {QPixmap{filePath}, size};
+    } else if (asset.isHdrFile()) {
+        qint64 size = QFileInfo(id).size();
+        QPixmap pixmap = HdrImage{id}.toPixmap();
+        return {pixmap, size};
+    } else {
+        QString type;
+        if (asset.isShader())
+            type = "shader";
+        else if (asset.isAudio())
+            type = "sound";
+        else if (asset.isVideo())
+            type = "video";
+        else if (asset.isEffect())
+            type = QmlDesigner::ModelNodeOperations::getEffectIcon(id);
+
+        QString pathTemplate = QString(":/AssetsLibrary/images/asset_%1%2.png").arg(type);
+        QString path = pathTemplate.arg('_' + QString::number(requestedSize.width()));
+
+        QString filePath = Utils::StyleHelper::dpiSpecificImageFile(QFileInfo::exists(path)
+                                                                        ? path
+                                                                        : pathTemplate.arg(""));
+        qint64 size = QFileInfo(filePath).size();
+        return {QPixmap{filePath}, size};
+    }
+}
+
+void AssetsLibraryIconProvider::clearCache()
+{
+    m_thumbnails.clear();
+}
+
+void AssetsLibraryIconProvider::invalidateThumbnail(const QString &id)
+{
+    m_thumbnails.remove(id);
+}
+
+QSize AssetsLibraryIconProvider::imageSize(const QString &id)
+{
+    static QSize invalidSize = {};
+    return m_thumbnails.contains(id) ? m_thumbnails[id].originalSize : invalidSize;
+}
+
+qint64 AssetsLibraryIconProvider::fileSize(const QString &id)
+{
+    return m_thumbnails.contains(id) ? m_thumbnails[id].fileSize : 0;
+}
+
+bool AssetsLibraryIconProvider::assetIsImage(const QString &id)
+{
+    return m_thumbnails.contains(id)
+               ? (m_thumbnails[id].assetType == Asset::Type::Image || Asset(id).isHdrFile())
+               : false;
 }
 
 } // namespace QmlDesigner

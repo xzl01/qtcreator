@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "callgrindparser.h"
 
@@ -219,17 +197,19 @@ void Parser::Private::parse(const FilePath &filePath)
 
     // build fast lookup of functions by their nameId
     QHash<qint64, QList<const Function *> > functionLookup;
-    foreach (const Function *function, data->functions()) {
+    const QVector<const Function *> functions = data->functions();
+    for (const Function *function : functions) {
         functionLookup[function->nameId()].append(function);
     }
 
     // functions that need to accumulate their calees
     QSet<Function *> pendingFunctions;
-    foreach (const CallData &callData, pendingCallees) {
+    for (const CallData &callData : std::as_const(pendingCallees)) {
         Function *calledFunction = nullptr;
         QTC_ASSERT(callData.call, continue);
         QTC_ASSERT(callData.call->caller(), continue);
-        foreach (const Function *function, functionLookup.value(callData.calledFunction)) {
+        const QList<const Function *> functions = functionLookup.value(callData.calledFunction);
+        for (const Function *function : functions) {
             QTC_ASSERT(function->nameId() == callData.calledFunction, continue);
             if (function->objectId() == callData.calledObject
                 && function->fileId() == callData.calledFile)
@@ -245,7 +225,7 @@ void Parser::Private::parse(const FilePath &filePath)
             qDebug() << "caller is:" << callData.call->caller()->name() << callData.call->caller()->nameId();
             qDebug() << "called file:" << callData.calledFile << "object:" << callData.calledObject;
             qDebug() << data->stringForFileCompression(callData.calledFile) << data->stringForObjectCompression(callData.calledObject);
-            foreach (const Function *function, functionLookup.value(callData.calledFunction)) {
+            for (const Function *function, functionLookup.value(callData.calledFunction)) {
                 qDebug() << "available function file:" << function->fileId() << function->file() << "object:" << function->objectId() << function->object();
             }
         }
@@ -263,7 +243,7 @@ void Parser::Private::parse(const FilePath &filePath)
     // lookup done
 
     // now accumulate callees
-    foreach (Function *func, pendingFunctions)
+    for (Function *func : std::as_const(pendingFunctions))
         func->finalize();
 
     emit q->parserDataReady();
@@ -322,7 +302,8 @@ void Parser::Private::parseHeader(QIODevice *device)
         } else if (line.startsWith("summary: ")) {
             QString values = getValue(line, 9);
             uint i = 0;
-            foreach (const QString &value, values.split(' ', Qt::SkipEmptyParts))
+            const QStringList valueList = values.split(' ', Qt::SkipEmptyParts);
+            for (const QString &value : valueList)
                 data->setTotalCost(i++, value.toULongLong());
         } else if (!line.trimmed().isEmpty()) {
             // handle line and exit parseHeader
@@ -339,11 +320,11 @@ Parser::Private::NamePair Parser::Private::parseName(const char *begin, const ch
     if (*current == '(') {
         current++;
         if ((nameShorthand = parseNameShorthand(&current, end)) == -1)
-            return qMakePair(qint64(-1), QString()); // error
+            return {qint64(-1), {}}; // error
     }
 
     skipSpace(&current, end);
-    return qMakePair(nameShorthand, QString::fromUtf8(QByteArray(current, end - current)));
+    return {nameShorthand, QString::fromUtf8(QByteArray(current, end - current))};
 }
 
 /*

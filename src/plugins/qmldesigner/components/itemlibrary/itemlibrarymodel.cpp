@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "itemlibrarymodel.h"
 #include "itemlibrarycategoriesmodel.h"
@@ -36,6 +14,7 @@
 #include <nodemetainfo.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/session.h>
+#include "qmldesignerconstants.h"
 #include "qmldesignerplugin.h"
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
@@ -306,7 +285,10 @@ void ItemLibraryModel::setSearchText(const QString &searchText)
         m_searchText = lowerSearchText;
 
         bool changed = false;
-        updateVisibility(&changed);
+        if (updateVisibility(&changed); changed) {
+            beginResetModel();
+            endResetModel();
+        }
 
         selectImportFirstVisibleCategory();
     }
@@ -357,11 +339,16 @@ void ItemLibraryModel::update(ItemLibraryInfo *itemLibraryInfo, Model *model)
     ProjectExplorer::Project *project = ProjectExplorer::SessionManager::projectForFile(qmlFileName);
     QString projectName = project ? project->displayName() : "";
 
+    QString materialBundlePrefix = QLatin1String(Constants::COMPONENT_BUNDLES_FOLDER).mid(1);
+    materialBundlePrefix.append(".MaterialBundle");
+
     // create import sections
     const QList<Import> usedImports = model->usedImports();
     QHash<QString, ItemLibraryImport *> importHash;
     for (const Import &import : model->imports()) {
         if (import.url() != projectName) {
+            if (import.url() == materialBundlePrefix)
+                continue;
             bool addNew = true;
             bool isQuick3DAsset = import.url().startsWith("Quick3DAssets.");
             QString importUrl = import.url();
@@ -392,7 +379,7 @@ void ItemLibraryModel::update(ItemLibraryInfo *itemLibraryInfo, Model *model)
         }
     }
 
-    for (const auto itemLibImport : qAsConst(importHash)) {
+    for (const auto itemLibImport : std::as_const(importHash)) {
         m_importList.append(itemLibImport);
         itemLibImport->setImportExpanded(loadExpandedState(itemLibImport->importUrl()));
     }
@@ -406,13 +393,11 @@ void ItemLibraryModel::update(ItemLibraryInfo *itemLibraryInfo, Model *model)
                      && (metaInfo.majorVersion() >= entry.majorVersion()
                          || metaInfo.majorVersion() < 0);
 
-        bool isItem = valid && metaInfo.isSubclassOf("QtQuick.Item");
+        bool isItem = valid && metaInfo.isQtQuickItem();
         bool forceVisibility = valid && NodeHints::fromItemLibraryEntry(entry).visibleInLibrary();
 
-        if (m_flowMode && metaInfo.isValid()) {
-            isItem = metaInfo.isSubclassOf("FlowView.FlowItem")
-                    || metaInfo.isSubclassOf("FlowView.FlowWildcard")
-                    || metaInfo.isSubclassOf("FlowView.FlowDecision");
+        if (m_flowMode) {
+            isItem = metaInfo.isFlowViewItem();
             forceVisibility = isItem;
         }
 
@@ -512,9 +497,9 @@ QMimeData *ItemLibraryModel::getMimeData(const ItemLibraryEntry &itemLibraryEntr
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
     stream << itemLibraryEntry;
-    mimeData->setData(QStringLiteral("application/vnd.bauhaus.itemlibraryinfo"), data);
+    mimeData->setData(Constants::MIME_TYPE_ITEM_LIBRARY_INFO, data);
 
-    mimeData->removeFormat(QStringLiteral("text/plain"));
+    mimeData->removeFormat("text/plain");
 
     return mimeData;
 }
@@ -590,11 +575,6 @@ void ItemLibraryModel::updateVisibility(bool *changed)
         if (!m_searchText.isEmpty() && hasVisibleItems && !import->importExpanded())
             import->setImportExpanded();
     }
-
-    if (changed) {
-        beginResetModel();
-        endResetModel();
-    }
 }
 
 void ItemLibraryModel::addRoleNames()
@@ -613,7 +593,7 @@ void ItemLibraryModel::sortSections()
 
     std::sort(m_importList.begin(), m_importList.end(), sectionSort);
 
-    for (ItemLibraryImport *itemLibImport : qAsConst(m_importList))
+    for (ItemLibraryImport *itemLibImport : std::as_const(m_importList))
         itemLibImport->sortCategorySections();
 }
 

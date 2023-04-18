@@ -1,55 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "resourceeditorw.h"
-#include "resourceeditorplugin.h"
+
 #include "resourceeditorconstants.h"
+#include "resourceeditorplugin.h"
+#include "resourceeditortr.h"
+#include "qrceditor/qrceditor.h"
+#include "qrceditor/resourcefile_p.h"
 
-#include <resourceeditor/qrceditor/resourcefile_p.h>
-#include <resourceeditor/qrceditor/qrceditor.h>
-
-#include <coreplugin/icore.h>
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/commandbutton.h>
 #include <coreplugin/editormanager/editormanager.h>
-#include <utils/reloadpromptutils.h>
-#include <utils/fileutils.h>
+#include <coreplugin/icore.h>
 
-#include <QFileInfo>
-#include <QDir>
-#include <qdebug.h>
-#include <QHBoxLayout>
+#include <utils/fileutils.h>
+#include <utils/reloadpromptutils.h>
+#include <utils/stringutils.h>
+
+#include <QDebug>
 #include <QMenu>
 #include <QToolBar>
-#include <QInputDialog>
-#include <QClipboard>
 
 using namespace Utils;
 
-namespace ResourceEditor {
-namespace Internal {
+namespace ResourceEditor::Internal {
 
 enum { debugResourceEditorW = 0 };
 
@@ -87,13 +62,13 @@ ResourceEditorW::ResourceEditorW(const Core::Context &context,
     m_toolBar->addWidget(refreshButton);
 
     m_resourceEditor->setResourceDragEnabled(true);
-    m_contextMenu->addAction(tr("Open File"), this, &ResourceEditorW::openCurrentFile);
-    m_openWithMenu = m_contextMenu->addMenu(tr("Open With"));
-    m_renameAction = m_contextMenu->addAction(tr("Rename File..."), this,
+    m_contextMenu->addAction(Tr::tr("Open File"), this, &ResourceEditorW::openCurrentFile);
+    m_openWithMenu = m_contextMenu->addMenu(Tr::tr("Open With"));
+    m_renameAction = m_contextMenu->addAction(Tr::tr("Rename File..."), this,
                                               &ResourceEditorW::renameCurrentFile);
-    m_copyFileNameAction = m_contextMenu->addAction(tr("Copy Resource Path to Clipboard"),
+    m_copyFileNameAction = m_contextMenu->addAction(Tr::tr("Copy Resource Path to Clipboard"),
                                                     this, &ResourceEditorW::copyCurrentResourcePath);
-    m_orderList = m_contextMenu->addAction(tr("Sort Alphabetically"), this, &ResourceEditorW::orderList);
+    m_orderList = m_contextMenu->addAction(Tr::tr("Sort Alphabetically"), this, &ResourceEditorW::orderList);
 
     connect(m_resourceDocument, &ResourceEditorDocument::loaded,
             m_resourceEditor, &QrcEditor::loaded);
@@ -319,7 +294,7 @@ void ResourceEditorW::renameCurrentFile()
 
 void ResourceEditorW::copyCurrentResourcePath()
 {
-    QApplication::clipboard()->setText(m_resourceEditor->currentResourcePath());
+    setClipboardAndSelection(m_resourceEditor->currentResourcePath());
 }
 
 void ResourceEditorW::orderList()
@@ -337,5 +312,4 @@ void ResourceEditorW::onRedo()
     m_resourceEditor->onRedo();
 }
 
-} // namespace Internal
-} // namespace ResourceEditor
+} // ResourceEditor::Internal

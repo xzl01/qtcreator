@@ -1,38 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljslink.h"
 
 #include "parser/qmljsast_p.h"
-#include "qmljsdocument.h"
-#include "qmljsbind.h"
-#include "qmljsutils.h"
-#include "qmljsmodelmanagerinterface.h"
-#include "qmljsconstants.h"
 
-#include <utils/porting.h>
+#include "qmljsbind.h"
+#include "qmljsconstants.h"
+#include "qmljsdocument.h"
+#include "qmljsmodelmanagerinterface.h"
+#include "qmljstr.h"
+#include "qmljsutils.h"
+
+#include <utils/algorithm.h>
+#include <utils/filepath.h>
 #include <utils/qrcparser.h>
 
 #include <QDir>
@@ -55,7 +36,7 @@ public:
     {}
 
 private:
-    friend Utils::QHashValueType qHash(const ImportCacheKey &);
+    friend size_t qHash(const ImportCacheKey &);
     friend bool operator==(const ImportCacheKey &, const ImportCacheKey &);
 
     int m_type;
@@ -64,7 +45,7 @@ private:
     int m_minorVersion;
 };
 
-Utils::QHashValueType qHash(const ImportCacheKey &info)
+size_t qHash(const ImportCacheKey &info)
 {
     return ::qHash(info.m_type) ^ ::qHash(info.m_path) ^
             ::qHash(info.m_majorVersion) ^ ::qHash(info.m_minorVersion);
@@ -93,16 +74,18 @@ public:
         const ImportInfo &importInfo);
 
     bool importLibrary(const Document::Ptr &doc,
-                       const QString &libraryPath,
-                       Import *import, ObjectValue *targetObject,
-                       const QString &importPath = QString(),
+                       const Utils::FilePath &libraryPath,
+                       Import *import,
+                       ObjectValue *targetObject,
+                       const Utils::FilePath &importPath = Utils::FilePath(),
                        bool optional = false);
     void loadQmldirComponents(ObjectValue *import,
                               LanguageUtils::ComponentVersion version,
                               const LibraryInfo &libraryInfo,
-                              const QString &libraryPath);
+                              const Utils::FilePath &libraryPath);
     void loadImplicitDirectoryImports(Imports *imports, const Document::Ptr &doc);
     void loadImplicitDefaultImports(Imports *imports);
+    void loadImplicitBuiltinsImports(Imports *imports);
 
     void error(const Document::Ptr &doc, const SourceLocation &loc, const QString &message);
     void warning(const Document::Ptr &doc, const SourceLocation &loc, const QString &message);
@@ -111,10 +94,12 @@ public:
 private:
     friend class Link;
 
+    void loadImplicitImports(Imports *imports, const QString &packageName, const QString &moduleName);
+
     Snapshot m_snapshot;
     ValueOwner *m_valueOwner = nullptr;
-    QStringList m_importPaths;
-    QStringList m_applicationDirectories;
+    QList<Utils::FilePath> m_importPaths;
+    QList<Utils::FilePath> m_applicationDirectories;
     LibraryInfo m_builtins;
     ViewerContext m_vContext;
 
@@ -124,7 +109,7 @@ private:
     Document::Ptr document;
 
     QList<DiagnosticMessage> *diagnosticMessages = nullptr;
-    QHash<QString, QList<DiagnosticMessage>> *allDiagnosticMessages = nullptr;
+    QHash<Utils::FilePath, QList<DiagnosticMessage>> *allDiagnosticMessages = nullptr;
 };
 
 /*!
@@ -143,7 +128,8 @@ Link::Link(const Snapshot &snapshot, const ViewerContext &vContext, const Librar
 {
     d->m_valueOwner = new ValueOwner;
     d->m_snapshot = snapshot;
-    d->m_importPaths = vContext.paths;
+    const QList<Utils::FilePath> list(vContext.paths.begin(), vContext.paths.end());
+    d->m_importPaths = list;
     d->m_applicationDirectories = vContext.applicationDirectories;
     d->m_builtins = builtins;
     d->m_vContext = vContext;
@@ -182,7 +168,7 @@ Link::Link(const Snapshot &snapshot, const ViewerContext &vContext, const Librar
     fi.reportFinished();
 }
 
-ContextPtr Link::operator()(QHash<QString, QList<DiagnosticMessage> > *messages)
+ContextPtr Link::operator()(QHash<Utils::FilePath, QList<DiagnosticMessage>> *messages)
 {
     d->allDiagnosticMessages = messages;
     return Context::create(d->m_snapshot, d->m_valueOwner, d->linkImports(), d->m_vContext);
@@ -232,7 +218,7 @@ Context::ImportsPerDocument LinkPrivate::linkImports()
         importsPerDocument.insert(document.data(), QSharedPointer<Imports>(imports));
     }
 
-    for (const Document::Ptr &doc : qAsConst(m_snapshot)) {
+    for (const Document::Ptr &doc : std::as_const(m_snapshot)) {
         if (doc == document)
             continue;
 
@@ -274,8 +260,11 @@ void LinkPrivate::populateImportedTypes(Imports *imports, const Document::Ptr &d
 {
     importableModuleApis.clear();
 
-    // implicit imports: the <default> package is always available
+    // implicit imports: the <default> package is always available (except when the QML package was loaded).
+    // In the latter case, still try to load the <default>'s module <defaults>.
     loadImplicitDefaultImports(imports);
+    // Load the <builtins> import, if the QML package was loaded.
+    loadImplicitBuiltinsImports(imports);
 
     // implicit imports:
     // qml files in the same directory are available without explicit imports
@@ -306,7 +295,7 @@ void LinkPrivate::populateImportedTypes(Imports *imports, const Document::Ptr &d
                 imports->setImportFailed();
                 if (info.ast()) {
                     error(doc, info.ast()->fileNameToken,
-                          Link::tr("File or directory not found."));
+                          Tr::tr("File or directory not found."));
                 }
                 break;
             default:
@@ -339,7 +328,8 @@ Import LinkPrivate::importFileOrDirectory(const Document::Ptr &doc, const Import
     import.object = nullptr;
     import.valid = true;
 
-    QString path = importInfo.path();
+    QString pathStr = importInfo.path();
+    Utils::FilePath path = Utils::FilePath::fromString(pathStr);
 
     if (importInfo.type() == ImportType::Directory
             || importInfo.type() == ImportType::ImplicitDirectory) {
@@ -360,11 +350,15 @@ Import LinkPrivate::importFileOrDirectory(const Document::Ptr &doc, const Import
     } else if (importInfo.type() == ImportType::QrcFile) {
         QLocale locale;
         QStringList filePaths = ModelManagerInterface::instance()
-                ->filesAtQrcPath(path, &locale, nullptr, ModelManagerInterface::ActiveQrcResources);
+                                    ->filesAtQrcPath(pathStr,
+                                                     &locale,
+                                                     nullptr,
+                                                     ModelManagerInterface::ActiveQrcResources);
         if (filePaths.isEmpty())
-            filePaths = ModelManagerInterface::instance()->filesAtQrcPath(path);
+            filePaths = ModelManagerInterface::instance()->filesAtQrcPath(pathStr);
         if (!filePaths.isEmpty()) {
-            if (Document::Ptr importedDoc = m_snapshot.document(filePaths.at(0)))
+            if (Document::Ptr importedDoc = m_snapshot.document(
+                    Utils::FilePath::fromString(filePaths.at(0))))
                 import.object = importedDoc->bind()->rootObjectValue();
         }
     } else if (importInfo.type() == ImportType::QrcDirectory){
@@ -372,11 +366,13 @@ Import LinkPrivate::importFileOrDirectory(const Document::Ptr &doc, const Import
 
         importLibrary(doc, path, &import, import.object);
 
-        const QMap<QString, QStringList> paths
-                = ModelManagerInterface::instance()->filesInQrcPath(path);
+        const QMap<QString, QStringList> paths = ModelManagerInterface::instance()->filesInQrcPath(
+            pathStr);
         for (auto iter = paths.cbegin(), end = paths.cend(); iter != end; ++iter) {
-            if (ModelManagerInterface::guessLanguageOfFile(iter.key()).isQmlLikeLanguage()) {
-                Document::Ptr importedDoc = m_snapshot.document(iter.value().at(0));
+            if (ModelManagerInterface::guessLanguageOfFile(Utils::FilePath::fromString(iter.key()))
+                    .isQmlLikeLanguage()) {
+                Document::Ptr importedDoc = m_snapshot.document(
+                    Utils::FilePath::fromString(iter.value().at(0)));
                 if (importedDoc && importedDoc->bind()->rootObjectValue()) {
                     const QString targetName = QFileInfo(iter.key()).baseName();
                     import.object->setMember(targetName, importedDoc->bind()->rootObjectValue());
@@ -414,21 +410,24 @@ Import LinkPrivate::importNonFile(const Document::Ptr &doc, const ImportInfo &im
     const QString packageName = importInfo.name();
     const ComponentVersion version = importInfo.version();
 
-    QStringList libraryPaths = modulePaths(packageName, version.toString(), m_importPaths + m_applicationDirectories);
+    QList<Utils::FilePath> libraryPaths = modulePaths(packageName,
+                                                      version.toString(),
+                                                      m_importPaths + m_applicationDirectories);
 
     bool importFound = false;
-    for (const QString &libPath : libraryPaths) {
+    for (const Utils::FilePath &libPath : libraryPaths) {
         importFound = !libPath.isEmpty() && importLibrary(doc, libPath, &import, import.object);
         if (importFound)
             break;
     }
 
     if (!importFound) {
-        for (const QString &dir : qAsConst(m_applicationDirectories)) {
-            QDirIterator it(dir, QStringList { "*.qmltypes" }, QDir::Files);
+        for (const Utils::FilePath &dir : std::as_const(m_applicationDirectories)) {
+            auto qmltypes = dir.dirEntries(
+                Utils::FileFilter(QStringList{"*.qmltypes"}, QDir::Files));
 
             // This adds the types to the C++ types, to be found below if applicable.
-            if (it.hasNext())
+            if (!qmltypes.isEmpty())
                 importLibrary(doc, dir, &import, import.object);
         }
     }
@@ -455,9 +454,10 @@ Import LinkPrivate::importNonFile(const Document::Ptr &doc, const ImportInfo &im
 
     if (!importFound && importInfo.ast()) {
         import.valid = false;
-        error(doc, locationFromRange(importInfo.ast()->firstSourceLocation(),
-                                     importInfo.ast()->lastSourceLocation()),
-              Link::tr(
+        error(doc,
+              locationFromRange(importInfo.ast()->firstSourceLocation(),
+                                importInfo.ast()->lastSourceLocation()),
+              Tr::tr(
                   "QML module not found (%1).\n\n"
                   "Import paths:\n"
                   "%2\n\n"
@@ -465,20 +465,23 @@ Import LinkPrivate::importNonFile(const Document::Ptr &doc, const ImportInfo &im
                   "For Qbs projects, declare and set a qmlImportPaths property in your product "
                   "to add import paths.\n"
                   "For qmlproject projects, use the importPaths property to add import paths.\n"
-                  "For CMake projects, make sure QML_IMPORT_PATH variable is in CMakeCache.txt.\n")
-              .arg(importInfo.name(), m_importPaths.join(QLatin1Char('\n'))));
+                  "For CMake projects, make sure QML_IMPORT_PATH variable is in CMakeCache.txt.\n"
+                  "For qmlRegister... calls, make sure that you define the Module URI as a string literal.\n")
+                  .arg(importInfo.name(),
+                       Utils::transform(m_importPaths, [](const Utils::FilePath &p) {
+                           return p.toString();
+                       }).join("\n")));
     }
 
     return import;
 }
 
 bool LinkPrivate::importLibrary(const Document::Ptr &doc,
-                                const QString &libraryPath,
+                                const Utils::FilePath &libraryPath,
                                 Import *import,
                                 ObjectValue *targetObject,
-                                const QString &importPath,
-                                bool optional
-                                )
+                                const Utils::FilePath &importPath,
+                                bool optional)
 {
     const ImportInfo &importInfo = import->info;
 
@@ -512,25 +515,36 @@ bool LinkPrivate::importLibrary(const Document::Ptr &doc,
         subImport.valid = true;
         subImport.info = ImportInfo::moduleImport(importName, vNow, importInfo.as(), importInfo.ast());
 
-        const QStringList libraryPaths = modulePaths(importName, vNow.toString(), m_importPaths);
+        const QList<Utils::FilePath> libraryPaths = modulePaths(importName,
+                                                                vNow.toString(),
+                                                                m_importPaths);
         subImport.libraryPath = libraryPaths.value(0); // first is the best match
 
         bool subImportFound = importLibrary(doc, subImport.libraryPath, &subImport, targetObject, importPath, true);
 
         if (!subImportFound && errorLoc.isValid()) {
             import->valid = false;
-            if (!(optional || (toImport.flags & QmlDirParser::Import::Optional)))
-                error(doc, errorLoc,
-                      Link::tr(
-                          "Implicit import '%1' of QML module '%2' not found.\n\n"
-                      "Import paths:\n"
-                      "%3\n\n"
-                      "For qmake projects, use the QML_IMPORT_PATH variable to add import paths.\n"
-                      "For Qbs projects, declare and set a qmlImportPaths property in your product "
-                      "to add import paths.\n"
-                      "For qmlproject projects, use the importPaths property to add import paths.\n"
-                      "For CMake projects, make sure QML_IMPORT_PATH variable is in CMakeCache.txt.\n")
-                  .arg(importName, importInfo.name(), m_importPaths.join(QLatin1Char('\n'))));
+            if (!(optional || (toImport.flags & QmlDirParser::Import::Optional))) {
+                error(doc,
+                      errorLoc,
+                      Tr::tr("Implicit import '%1' of QML module '%2' not found.\n\n"
+                             "Import paths:\n"
+                             "%3\n\n"
+                             "For qmake projects, use the QML_IMPORT_PATH variable to add import "
+                             "paths.\n"
+                             "For Qbs projects, declare and set a qmlImportPaths property in "
+                             "your product "
+                             "to add import paths.\n"
+                             "For qmlproject projects, use the importPaths property to add "
+                             "import paths.\n"
+                             "For CMake projects, make sure QML_IMPORT_PATH variable is in "
+                             "CMakeCache.txt.\n")
+                      .arg(importName,
+                               importInfo.name(),
+                               Utils::transform(m_importPaths, [](const Utils::FilePath &p) {
+                                   return p.toString();
+                               }).join(QLatin1Char('\n'))));
+            }
         } else if (!subImport.valid) {
             import->valid = false;
         }
@@ -557,8 +571,9 @@ bool LinkPrivate::importLibrary(const Document::Ptr &doc,
             if (!optional && errorLoc.isValid()) {
                 appendDiagnostic(doc, DiagnosticMessage(
                                      Severity::ReadingTypeInfoWarning, errorLoc,
-                                     Link::tr("QML module contains C++ plugins, "
-                                              "currently reading type information... %1").arg(import->info.name())));
+                                     Tr::tr("QML module contains C++ plugins, "
+                                            "currently reading type information... %1")
+                                     .arg(import->info.name())));
                 import->valid = false;
             }
         } else if (libraryInfo.pluginTypeInfoStatus() == LibraryInfo::DumpError
@@ -575,7 +590,9 @@ bool LinkPrivate::importLibrary(const Document::Ptr &doc,
             }
         } else {
             const QString packageName = importInfo.name();
-            m_valueOwner->cppQmlTypes().load(libraryPath, libraryInfo.metaObjects(), packageName);
+            m_valueOwner->cppQmlTypes().load(libraryPath.toString(),
+                                             libraryInfo.metaObjects(),
+                                             packageName);
             const auto objects = m_valueOwner->cppQmlTypes().createObjectsForImport(packageName,
                                                                                     version);
             for (const CppComponentValue *object : objects)
@@ -626,8 +643,10 @@ void LinkPrivate::appendDiagnostic(const Document::Ptr &doc, const DiagnosticMes
         (*allDiagnosticMessages)[doc->fileName()].append(message);
 }
 
-void LinkPrivate::loadQmldirComponents(ObjectValue *import, ComponentVersion version,
-                                const LibraryInfo &libraryInfo, const QString &libraryPath)
+void LinkPrivate::loadQmldirComponents(ObjectValue *import,
+                                       ComponentVersion version,
+                                       const LibraryInfo &libraryInfo,
+                                       const Utils::FilePath &libraryPath)
 {
     // if the version isn't valid, import the latest
     if (!version.isValid())
@@ -646,7 +665,7 @@ void LinkPrivate::loadQmldirComponents(ObjectValue *import, ComponentVersion ver
 
         importedTypes.insert(component.typeName);
         if (Document::Ptr importedDoc = m_snapshot.document(
-                    libraryPath + QLatin1Char('/') + component.fileName)) {
+                libraryPath.pathAppended(component.fileName))) {
             if (ObjectValue *v = importedDoc->bind()->rootObjectValue())
                 import->setMember(component.typeName, v);
         }
@@ -666,7 +685,7 @@ void LinkPrivate::loadImplicitDirectoryImports(Imports *imports, const Document:
             imports->append(directoryImport);
     };
 
-    processImport(ImportInfo::implicitDirectoryImport(doc->path()));
+    processImport(ImportInfo::implicitDirectoryImport(doc->path().path()));
     const auto qrcPaths = ModelManagerInterface::instance()->qrcPathsForFile(doc->fileName());
     for (const QString &path : qrcPaths) {
         processImport(ImportInfo::qrcDirectoryImport(
@@ -674,20 +693,19 @@ void LinkPrivate::loadImplicitDirectoryImports(Imports *imports, const Document:
     }
 }
 
-void LinkPrivate::loadImplicitDefaultImports(Imports *imports)
+void LinkPrivate::loadImplicitImports(Imports *imports, const QString &packageName, const QString &moduleName)
 {
-    const QString defaultPackage = CppQmlTypes::defaultPackage;
-    if (m_valueOwner->cppQmlTypes().hasModule(defaultPackage)) {
+    if (m_valueOwner->cppQmlTypes().hasModule(packageName)) {
         const ComponentVersion maxVersion(ComponentVersion::MaxVersion,
                                           ComponentVersion::MaxVersion);
-        const ImportInfo info = ImportInfo::moduleImport(defaultPackage, maxVersion, QString());
+        const ImportInfo info = ImportInfo::moduleImport(packageName, maxVersion, QString());
         Import import = importCache.value(ImportCacheKey(info));
         if (!import.object) {
             import.valid = true;
             import.info = info;
-            import.object = new ObjectValue(m_valueOwner, QLatin1String("<defaults>"));
+            import.object = new ObjectValue(m_valueOwner, moduleName);
 
-            const auto objects = m_valueOwner->cppQmlTypes().createObjectsForImport(defaultPackage,
+            const auto objects = m_valueOwner->cppQmlTypes().createObjectsForImport(packageName,
                                                                                     maxVersion);
             for (const CppComponentValue *object : objects)
                 import.object->setMember(object->className(), object);
@@ -696,6 +714,16 @@ void LinkPrivate::loadImplicitDefaultImports(Imports *imports)
         }
         imports->append(import);
     }
+}
+
+void LinkPrivate::loadImplicitDefaultImports(Imports *imports)
+{
+    loadImplicitImports(imports, CppQmlTypes::defaultPackage, QLatin1String("<defaults>"));
+}
+
+void LinkPrivate::loadImplicitBuiltinsImports(Imports *imports)
+{
+    loadImplicitImports(imports, QLatin1String("QML"), QLatin1String("<builtins>"));
 }
 
 } // namespace QmlJS

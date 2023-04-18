@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qtoutputformatter.h"
 
@@ -38,6 +16,7 @@
 #include <utils/fileinprojectfinder.h>
 #include <utils/hostosinfo.h>
 #include <utils/outputformatter.h>
+#include <utils/stylehelper.h>
 #include <utils/theme/theme.h>
 
 #include <QPlainTextEdit>
@@ -51,8 +30,7 @@
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace QtSupport {
-namespace Internal {
+namespace QtSupport::Internal {
 
 class QtOutputFormatterPrivate
 {
@@ -87,10 +65,10 @@ public:
     ~QtOutputLineParser() override;
 
 protected:
-    virtual void openEditor(const QString &fileName, int line, int column = -1);
+    virtual void openEditor(const FilePath &filePath, int line, int column = -1);
 
 private:
-    Result handleLine(const QString &text, Utils::OutputFormat format) override;
+    Result handleLine(const QString &text, OutputFormat format) override;
     bool handleLink(const QString &href) override;
 
     void updateProjectFileList();
@@ -170,7 +148,7 @@ bool QtOutputLineParser::handleLink(const QString &href)
     const QRegularExpressionMatch qmlLineColumnMatch = qmlLineColumnLink.match(href);
 
     const auto getFileToOpen = [this](const QUrl &fileUrl) {
-        return chooseFileFromList(d->projectFinder.findFile(fileUrl)).toString();
+        return chooseFileFromList(d->projectFinder.findFile(fileUrl));
     };
     if (qmlLineColumnMatch.hasMatch()) {
         const QUrl fileUrl = QUrl(qmlLineColumnMatch.captured(1));
@@ -220,16 +198,16 @@ bool QtOutputLineParser::handleLink(const QString &href)
     }
 
     if (!fileName.isEmpty()) {
-        fileName = getFileToOpen(QUrl::fromLocalFile(fileName));
-        openEditor(fileName, line);
+        const FilePath filePath = getFileToOpen(QUrl::fromLocalFile(fileName));
+        openEditor(filePath, line);
         return true;
     }
     return false;
 }
 
-void QtOutputLineParser::openEditor(const QString &fileName, int line, int column)
+void QtOutputLineParser::openEditor(const FilePath &filePath, int line, int column)
 {
-    Core::EditorManager::openEditorAt({FilePath::fromString(fileName), line, column});
+    Core::EditorManager::openEditorAt({filePath, line, column});
 }
 
 void QtOutputLineParser::updateProjectFileList()
@@ -249,8 +227,7 @@ QtOutputFormatterFactory::QtOutputFormatterFactory()
     });
 }
 
-} // namespace Internal
-} // namespace QtSupport
+} // QtSupport::Internal
 
 // Unit tests:
 
@@ -274,9 +251,9 @@ public:
     {
     }
 
-    void openEditor(const QString &fileName, int line, int column = -1)
+    void openEditor(const FilePath &filePath, int line, int column = -1) override
     {
-        this->fileName = fileName;
+        this->fileName = filePath.toString();
         this->line = line;
         this->column = column;
     }
@@ -436,6 +413,16 @@ static QTextCharFormat blueFormat()
     return result;
 }
 
+static QTextCharFormat tweakedBlueFormat()
+{
+    // foreground gets tweaked when passing doAppendMessage()
+    QTextCharFormat tweakedBlue = blueFormat();
+    QColor foreground = tweakedBlue.foreground().color();
+    foreground = StyleHelper::ensureReadableOn(tweakedBlue.background().color(), foreground);
+    tweakedBlue.setForeground(foreground);
+    return tweakedBlue;
+}
+
 static QTextCharFormat greenFormat()
 {
     QTextCharFormat result;
@@ -464,12 +451,12 @@ void QtSupportPlugin::testQtOutputFormatter_appendMessage_data()
             << "blue da ba dee"
             << "blue da ba dee"
             << blueFormat()
-            << blueFormat();
+            << tweakedBlueFormat();
     QTest::newRow("ANSI color change")
             << "\x1b[38;2;0;0;127mHello"
             << "Hello"
             << QTextCharFormat()
-            << blueFormat();
+            << tweakedBlueFormat();
 }
 
 void QtSupportPlugin::testQtOutputFormatter_appendMessage()
@@ -524,7 +511,7 @@ void QtSupportPlugin::testQtOutputFormatter_appendMixedAssertAndAnsi()
              OutputFormatter::linkFormat(QTextCharFormat(), "file://test.cpp:123"));
 
     edit.moveCursor(QTextCursor::End);
-    QCOMPARE(edit.currentCharFormat(), blueFormat());
+    QCOMPARE(edit.currentCharFormat(), tweakedBlueFormat());
 }
 
 } // namespace QtSupport

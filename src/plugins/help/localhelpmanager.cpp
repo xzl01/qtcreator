@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "localhelpmanager.h"
 
 #include "bookmarkmanager.h"
 #include "helpconstants.h"
 #include "helpmanager.h"
+#include "helptr.h"
 #include "helpviewer.h"
 #include "textbrowserhelpviewer.h"
 
@@ -46,15 +25,18 @@
 #include <coreplugin/icore.h>
 
 #include <utils/algorithm.h>
+#include <utils/environment.h>
 #include <utils/hostosinfo.h>
-#include <utils/optional.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
 
 #include <QDesktopServices>
 #include <QFontDatabase>
 #include <QHelpEngine>
+#include <QHelpLink>
 #include <QMutexLocker>
+
+#include <optional>
 
 using namespace Help::Internal;
 
@@ -68,14 +50,6 @@ QHelpEngine* LocalHelpManager::m_guiEngine = nullptr;
 
 QMutex LocalHelpManager::m_bkmarkMutex;
 BookmarkManager* LocalHelpManager::m_bookmarkManager = nullptr;
-
-#ifndef HELP_NEW_FILTER_ENGINE
-
-QStandardItemModel *LocalHelpManager::m_filterModel = nullptr;
-QString LocalHelpManager::m_currentFilter = QString();
-int LocalHelpManager::m_currentFilterIndex = -1;
-
-#endif
 
 static const char kHelpHomePageKey[] = "Help/HomePage";
 static const char kFontFamilyKey[] = "Help/FallbackFontFamily";
@@ -118,9 +92,6 @@ LocalHelpManager::LocalHelpManager(QObject *parent)
 {
     m_instance = this;
     qRegisterMetaType<Help::Internal::LocalHelpManager::HelpData>("Help::Internal::LocalHelpManager::HelpData");
-#ifndef HELP_NEW_FILTER_ENGINE
-    m_filterModel = new QStandardItemModel(this);
-#endif
 }
 
 LocalHelpManager::~LocalHelpManager()
@@ -310,7 +281,7 @@ void LocalHelpManager::setLastSelectedTab(int index)
     Core::ICore::settings()->setValueWithDefault(kLastSelectedTabKey, index, -1);
 }
 
-static Utils::optional<HelpViewerFactory> backendForId(const QByteArray &id)
+static std::optional<HelpViewerFactory> backendForId(const QByteArray &id)
 {
     const QVector<HelpViewerFactory> factories = LocalHelpManager::viewerBackends();
     const auto backend = std::find_if(std::begin(factories),
@@ -323,14 +294,14 @@ static Utils::optional<HelpViewerFactory> backendForId(const QByteArray &id)
 
 HelpViewerFactory LocalHelpManager::defaultViewerBackend()
 {
-    const QByteArray backend = qgetenv("QTC_HELPVIEWER_BACKEND");
+    const QString backend = Utils::qtcEnvironmentVariable("QTC_HELPVIEWER_BACKEND");
     if (!backend.isEmpty()) {
-        const Utils::optional<HelpViewerFactory> factory = backendForId(backend);
+        const std::optional<HelpViewerFactory> factory = backendForId(backend.toLatin1());
         if (factory)
             return *factory;
     }
     if (!backend.isEmpty())
-        qWarning("Help viewer backend \"%s\" not found, using default.", backend.constData());
+        qWarning("Help viewer backend \"%s\" not found, using default.", qPrintable(backend));
     const QVector<HelpViewerFactory> backends = viewerBackends();
     return backends.isEmpty() ? HelpViewerFactory() : backends.first();
 }
@@ -339,7 +310,7 @@ QVector<HelpViewerFactory> LocalHelpManager::viewerBackends()
 {
     QVector<HelpViewerFactory> result;
 #ifdef QTC_LITEHTML_HELPVIEWER
-    result.append({"litehtml", tr("litehtml"), []() { return new LiteHtmlHelpViewer; }});
+    result.append({"litehtml", Tr::tr("litehtml"), []() { return new LiteHtmlHelpViewer; }});
 #endif
 #ifdef QTC_WEBENGINE_HELPVIEWER
     static bool schemeRegistered = false;
@@ -349,11 +320,12 @@ QVector<HelpViewerFactory> LocalHelpManager::viewerBackends()
         scheme.setFlags(QWebEngineUrlScheme::LocalScheme | QWebEngineUrlScheme::LocalAccessAllowed);
         QWebEngineUrlScheme::registerScheme(scheme);
     }
-    result.append({"qtwebengine", tr("QtWebEngine"), []() { return new WebEngineHelpViewer; }});
+    result.append({"qtwebengine", Tr::tr("QtWebEngine"), []() { return new WebEngineHelpViewer; }});
 #endif
-    result.append({"textbrowser", tr("QTextBrowser"), []() { return new TextBrowserHelpViewer; }});
+    result.append(
+        {"textbrowser", Tr::tr("QTextBrowser"), []() { return new TextBrowserHelpViewer; }});
 #ifdef QTC_MAC_NATIVE_HELPVIEWER
-    result.append({"native", tr("WebKit"), []() { return new MacWebKitHelpViewer; }});
+    result.append({"native", Tr::tr("WebKit"), []() { return new MacWebKitHelpViewer; }});
 #endif
 #ifdef QTC_DEFAULT_HELPVIEWER_BACKEND
     const int index = Utils::indexOf(result, [](const HelpViewerFactory &f) {
@@ -410,13 +382,8 @@ QHelpEngine &LocalHelpManager::helpEngine()
         QMutexLocker _(&m_guiMutex);
         if (!m_guiEngine) {
             m_guiEngine = new QHelpEngine(QString());
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             m_guiEngine->setReadOnly(false);
-#endif
-
-#ifdef HELP_NEW_FILTER_ENGINE
             m_guiEngine->setUsesFilterEngine(true);
-#endif
         }
     }
     return *m_guiEngine;
@@ -485,15 +452,15 @@ QByteArray LocalHelpManager::loadErrorMessage(const QUrl &url, const QString &er
         "</html>";
 
     // some of the values we will replace %1...6 inside the former html
-    const QString g_percent1 = QCoreApplication::translate("Help", "Error loading page");
+    const QString g_percent1 = Tr::tr("Error loading page");
     // percent2 will be the error details
     // percent3 will be the url of the page we got the error from
-    const QString g_percent4 = QCoreApplication::translate("Help", "<p>Check that you have the corresponding "
-        "documentation set installed.</p>");
+    const QString g_percent4 = Tr::tr("<p>Check that you have the corresponding "
+                                      "documentation set installed.</p>");
 
-    return QString::fromLatin1(g_htmlPage).arg(g_percent1, errorString,
-                QCoreApplication::translate("Help", "Error loading: %1").arg(url.toString()),
-                g_percent4).toUtf8();
+    return QString::fromLatin1(g_htmlPage)
+        .arg(g_percent1, errorString, Tr::tr("Error loading: %1").arg(url.toString()), g_percent4)
+        .toUtf8();
 }
 
 LocalHelpManager::HelpData LocalHelpManager::helpData(const QUrl &url)
@@ -508,72 +475,16 @@ LocalHelpManager::HelpData LocalHelpManager::helpData(const QUrl &url)
         if (data.mimeType.isEmpty())
             data.mimeType = "application/octet-stream";
     } else {
-        data.data = loadErrorMessage(url, QCoreApplication::translate(
-                                         "Help", "The page could not be found"));
+        data.data = loadErrorMessage(url, Tr::tr("The page could not be found"));
         data.mimeType = "text/html";
     }
     return data;
 }
 
-#ifndef HELP_NEW_FILTER_ENGINE
-
-QAbstractItemModel *LocalHelpManager::filterModel()
-{
-    return m_filterModel;
-}
-
-void LocalHelpManager::setFilterIndex(int index)
-{
-    if (index == m_currentFilterIndex)
-        return;
-    m_currentFilterIndex = index;
-    QStandardItem *item = m_filterModel->item(index);
-    if (!item) {
-        helpEngine().setCurrentFilter(QString());
-        return;
-    }
-    helpEngine().setCurrentFilter(item->text());
-    emit m_instance->filterIndexChanged(m_currentFilterIndex);
-}
-
-int LocalHelpManager::filterIndex()
-{
-    return m_currentFilterIndex;
-}
-
-void LocalHelpManager::updateFilterModel()
-{
-    const QHelpEngine &engine = helpEngine();
-    if (m_currentFilter.isEmpty())
-        m_currentFilter = engine.currentFilter();
-    m_filterModel->clear();
-    m_currentFilterIndex = -1;
-    int count = 0;
-    const QStringList &filters = engine.customFilters();
-    foreach (const QString &filterString, filters) {
-        m_filterModel->appendRow(new QStandardItem(filterString));
-        if (filterString == m_currentFilter)
-            m_currentFilterIndex = count;
-        count++;
-    }
-
-    if (filters.size() < 1)
-        return;
-    if (m_currentFilterIndex < 0) {
-        m_currentFilterIndex = 0;
-        m_currentFilter = filters.at(0);
-    }
-    emit m_instance->filterIndexChanged(m_currentFilterIndex);
-}
-
-#else
-
 QHelpFilterEngine *LocalHelpManager::filterEngine()
 {
     return helpEngine().filterEngine();
 }
-
-#endif
 
 bool LocalHelpManager::canOpenOnlineHelp(const QUrl &url)
 {
@@ -610,4 +521,9 @@ bool LocalHelpManager::openOnlineHelp(const QUrl &url)
         return true;
     }
     return false;
+}
+
+QMultiMap<QString, QUrl> LocalHelpManager::linksForKeyword(const QString &keyword)
+{
+    return HelpManager::linksForKeyword(&LocalHelpManager::helpEngine(), keyword, std::nullopt);
 }

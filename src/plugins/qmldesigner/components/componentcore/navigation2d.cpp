@@ -1,28 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "navigation2d.h"
+#include <utils/hostosinfo.h>
+#include <designersettings.h>
+#include <qmldesignerplugin.h>
 
 #include <QGestureEvent>
 #include <QScrollBar>
@@ -82,41 +63,61 @@ bool Navigation2dFilter::gestureEvent(QGestureEvent *event)
 
 bool Navigation2dFilter::wheelEvent(QWheelEvent *event)
 {
-    if (event->source() == Qt::MouseEventSynthesizedBySystem) {
-        if (event->modifiers().testFlag(Qt::ControlModifier)) {
-            if (QPointF delta = event->pixelDelta(); !delta.isNull()) {
-                double dist = std::abs(delta.x()) > std::abs(delta.y()) ? -delta.x() : delta.y();
-                emit zoomChanged(dist/200.0, event->position());
-                event->accept();
-                return true;
-            }
-        } else {
+    if (!event->modifiers().testFlag(Qt::ControlModifier)) {
+        if (event->source() == Qt::MouseEventSynthesizedBySystem) {
             emit panChanged(QPointF(event->pixelDelta()));
             event->accept();
             return true;
         }
-    } else if (event->source() == Qt::MouseEventNotSynthesized) {
+        return false;
+    }
 
-        auto zoomInSignal = QMetaMethod::fromSignal(&Navigation2dFilter::zoomIn);
-        bool zoomInConnected = QObject::isSignalConnected(zoomInSignal);
+    auto zoomChangedSignal = QMetaMethod::fromSignal(&Navigation2dFilter::zoomChanged);
+    bool zoomChangedConnected = QObject::isSignalConnected(zoomChangedSignal);
 
-        auto zoomOutSignal = QMetaMethod::fromSignal(&Navigation2dFilter::zoomOut);
-        bool zoomOutConnected = QObject::isSignalConnected(zoomOutSignal);
+    if (zoomChangedConnected) {
+        double speed = 1.0 / 200.0;
+        bool isMac = Utils::HostOsInfo::isMacHost();
+        if (QPointF delta = event->pixelDelta(); !delta.isNull() && isMac) {
+            double dist = std::abs(delta.x()) > std::abs(delta.y()) ? -delta.x() : delta.y();
+            emit zoomChanged(dist * speed, event->position());
+            event->accept();
+            return true;
+        } else if (QPointF delta = event->angleDelta(); !delta.isNull()) {
 
-        if (zoomInConnected && zoomOutConnected) {
-            if (event->modifiers().testFlag(Qt::ControlModifier)) {
-                if (QPointF angle = event->angleDelta(); !angle.isNull()) {
-                    double delta = std::abs(angle.x()) > std::abs(angle.y()) ? angle.x() : angle.y();
-                    if (delta > 0)
-                        emit zoomIn();
-                    else
-                        emit zoomOut();
-                    event->accept();
-                    return true;
-                }
-            }
+            const double globalMouseSpeed =
+                QmlDesignerPlugin::settings().value(DesignerSettingsKey::EDITOR_ZOOM_FACTOR).toDouble();
+            speed = globalMouseSpeed / 20.0;
+
+            constexpr double degreePerStep = 15.;
+            constexpr double stepCount = 8.;
+            double dist = std::abs(delta.x()) > std::abs(delta.y()) ? -delta.x() : delta.y();
+            dist = dist / (stepCount*degreePerStep);
+            emit zoomChanged(dist * speed, event->position());
+            event->accept();
+            return true;
+        }
+        return false;
+    }
+
+    auto zoomInSignal = QMetaMethod::fromSignal(&Navigation2dFilter::zoomIn);
+    bool zoomInConnected = QObject::isSignalConnected(zoomInSignal);
+
+    auto zoomOutSignal = QMetaMethod::fromSignal(&Navigation2dFilter::zoomOut);
+    bool zoomOutConnected = QObject::isSignalConnected(zoomOutSignal);
+
+    if (zoomInConnected && zoomOutConnected) {
+        if (QPointF angle = event->angleDelta(); !angle.isNull()) {
+            double delta = std::abs(angle.x()) > std::abs(angle.y()) ? angle.x() : angle.y();
+            if (delta > 0)
+                emit zoomIn();
+            else
+                emit zoomOut();
+             event->accept();
+            return true;
         }
     }
+
     return false;
 }
 

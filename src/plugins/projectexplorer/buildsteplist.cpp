@@ -1,38 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "buildsteplist.h"
 
-#include "buildconfiguration.h"
 #include "buildmanager.h"
 #include "buildstep.h"
-#include "deployconfiguration.h"
-#include "projectexplorer.h"
+#include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "target.h"
 
 #include <utils/algorithm.h>
+#include <utils/qtcassert.h>
+
+#include <QDebug>
 
 namespace ProjectExplorer {
 
@@ -102,15 +82,15 @@ QString BuildStepList::displayName() const
 {
     if (m_id == Constants::BUILDSTEPS_BUILD) {
         //: Display name of the build build step list. Used as part of the labels in the project window.
-        return tr("Build");
+        return Tr::tr("Build");
     }
     if (m_id == Constants::BUILDSTEPS_CLEAN) {
         //: Display name of the clean build step list. Used as part of the labels in the project window.
-        return tr("Clean");
+        return Tr::tr("Clean");
     }
     if (m_id == Constants::BUILDSTEPS_DEPLOY) {
         //: Display name of the deploy build step list. Used as part of the labels in the project window.
-        return tr("Deploy");
+        return Tr::tr("Deploy");
     }
     QTC_CHECK(false);
     return {};
@@ -131,6 +111,11 @@ bool BuildStepList::fromMap(const QVariantMap &map)
         }
         bool handled = false;
         Utils::Id stepId = idFromMap(bsData);
+
+        // pre-8.0 compat
+        if (stepId == "RemoteLinux.CheckForFreeDiskSpaceStep")
+            continue;
+
         for (BuildStepFactory *factory : factories) {
             if (factory->stepId() == stepId) {
                 if (factory->canHandle(this)) {
@@ -196,7 +181,7 @@ void BuildStepList::moveStepUp(int position)
     emit stepMoved(position, position - 1);
 }
 
-BuildStep *BuildStepList::at(int position)
+BuildStep *BuildStepList::at(int position) const
 {
     return m_steps.at(position);
 }

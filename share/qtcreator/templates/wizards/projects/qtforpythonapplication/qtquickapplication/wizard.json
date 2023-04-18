@@ -4,11 +4,11 @@
     "id": "F.QtQuickQtForPythonApplicationEmpty",
     "category": "F.ApplicationPySide",
     "trDescription": "Creates a Qt Quick application that contains an empty window.",
-    "trDisplayName": "Qt for Python - Qt Quick Application - Empty",
+    "trDisplayName": "Qt Quick Application - Empty",
     "trDisplayCategory": "Application (Qt for Python)",
     "icon": "../icons/icon.png",
     "iconKind": "Themed",
-    "enabled": "%{JS: value('Plugins').indexOf('Python') >= 0}",
+    "enabled": "%{JS: value('Plugins').indexOf('Python') >= 0 && (!value('Platform').length || ['Desktop', 'DockerDeviceType', 'GenericLinuxOsType'].includes(value('Platform')))}",
 
     "options":
     [
@@ -39,7 +39,7 @@
                     "type": "ComboBox",
                     "data":
                     {
-                        "index": 2,
+                        "index": 0,
                         "items":
                         [
                             {

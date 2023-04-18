@@ -1,37 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "propertyeditorview.h"
 
 #include "propertyeditorqmlbackend.h"
-#include "propertyeditorvalue.h"
 #include "propertyeditortransaction.h"
+#include "propertyeditorvalue.h"
 
+#include <auxiliarydataproperties.h>
+#include <nodemetainfo.h>
 #include <qmldesignerconstants.h>
 #include <qmltimeline.h>
-#include <nodemetainfo.h>
 
 #include <invalididexception.h>
 #include <rewritingexception.h>
@@ -46,6 +25,7 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/messagebox.h>
 #include <utils/fileutils.h>
+#include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 
 #include <QCoreApplication>
@@ -69,16 +49,22 @@ static bool propertyIsAttachedLayoutProperty(const PropertyName &propertyName)
     return propertyName.contains("Layout.");
 }
 
-PropertyEditorView::PropertyEditorView(QWidget *parent) :
-        AbstractView(parent),
-        m_parent(parent),
-        m_updateShortcut(nullptr),
-        m_timerId(0),
-        m_stackedWidget(new PropertyEditorWidget(parent)),
-        m_qmlBackEndForCurrentType(nullptr),
-        m_locked(false),
-        m_setupCompleted(false),
-        m_singleShotTimer(new QTimer(this))
+static bool propertyIsAttachedInsightProperty(const PropertyName &propertyName)
+{
+    return propertyName.contains("InsightCategory.");
+}
+
+PropertyEditorView::PropertyEditorView(AsynchronousImageCache &imageCache,
+                                       ExternalDependenciesInterface &externalDependencies)
+    : AbstractView(externalDependencies)
+    , m_imageCache(imageCache)
+    , m_updateShortcut(nullptr)
+    , m_timerId(0)
+    , m_stackedWidget(new PropertyEditorWidget())
+    , m_qmlBackEndForCurrentType(nullptr)
+    , m_locked(false)
+    , m_setupCompleted(false)
+    , m_singleShotTimer(new QTimer(this))
 {
     m_qmlDir = PropertyEditorQmlBackend::propertyEditorResourcesPath();
 
@@ -96,7 +82,6 @@ PropertyEditorView::PropertyEditorView(QWidget *parent) :
 
     m_stackedWidget->insertWidget(0, new QWidget(m_stackedWidget));
 
-    Quick2PropertyEditorView::registerQmlTypes();
     m_stackedWidget->setWindowTitle(tr("Properties"));
 }
 
@@ -117,7 +102,7 @@ void PropertyEditorView::setupPane(const TypeName &typeName)
     PropertyEditorQmlBackend *qmlBackend = m_qmlBackendHash.value(qmlFile.toString());
 
     if (!qmlBackend) {
-        qmlBackend = new PropertyEditorQmlBackend(this);
+        qmlBackend = new PropertyEditorQmlBackend(this, m_imageCache);
 
         qmlBackend->initialSetup(typeName, qmlSpecificsFile, this);
         qmlBackend->setSource(qmlFile);
@@ -183,9 +168,10 @@ void PropertyEditorView::changeValue(const QString &name)
 
     QVariant castedValue;
 
-    if (metaInfo.isValid() && metaInfo.hasProperty(propertyName)) {
-        castedValue = metaInfo.propertyCastedValue(propertyName, value->value());
-    } else if (propertyIsAttachedLayoutProperty(propertyName)) {
+    if (auto property = metaInfo.property(propertyName)) {
+        castedValue = property.castedValue(value->value());
+    } else if (propertyIsAttachedLayoutProperty(propertyName)
+               || propertyIsAttachedInsightProperty(propertyName)) {
         castedValue = value->value();
     } else {
         qWarning() << "PropertyEditor:" << propertyName << "cannot be casted (metainfo)";
@@ -199,17 +185,14 @@ void PropertyEditorView::changeValue(const QString &name)
 
     bool propertyTypeUrl = false;
 
-    if (metaInfo.isValid() && metaInfo.hasProperty(propertyName)) {
-        if (metaInfo.propertyTypeName(propertyName) == "QUrl"
-                || metaInfo.propertyTypeName(propertyName) == "url") {
-            // turn absolute local file paths into relative paths
-            propertyTypeUrl = true;
-            QString filePath = castedValue.toUrl().toString();
-            QFileInfo fi(filePath);
-            if (fi.exists() && fi.isAbsolute()) {
-                QDir fileDir(QFileInfo(model()->fileUrl().toLocalFile()).absolutePath());
-                castedValue = QUrl(fileDir.relativeFilePath(filePath));
-            }
+    if (metaInfo.property(propertyName).propertyType().isUrl()) {
+        // turn absolute local file paths into relative paths
+        propertyTypeUrl = true;
+        QString filePath = castedValue.toUrl().toString();
+        QFileInfo fi(filePath);
+        if (fi.exists() && fi.isAbsolute()) {
+            QDir fileDir(QFileInfo(model()->fileUrl().toLocalFile()).absolutePath());
+            castedValue = QUrl(fileDir.relativeFilePath(filePath));
         }
     }
 
@@ -256,6 +239,9 @@ void PropertyEditorView::changeExpression(const QString &propertyName)
     if (noValidSelection())
         return;
 
+    QScopeGuard unlock([&](){ m_locked = false; });
+    m_locked = true;
+
     executeInTransaction("PropertyEditorView::changeExpression", [this, name](){
         PropertyName underscoreName(name);
         underscoreName.replace('.', '_');
@@ -268,13 +254,14 @@ void PropertyEditorView::changeExpression(const QString &propertyName)
             return;
         }
 
-        if (qmlObjectNode->modelNode().metaInfo().isValid() && qmlObjectNode->modelNode().metaInfo().hasProperty(name)) {
-            if (qmlObjectNode->modelNode().metaInfo().propertyTypeName(name) == "QColor") {
+        if (auto property = qmlObjectNode->modelNode().metaInfo().property(name)) {
+            const auto &propertType = property.propertyType();
+            if (propertType.isColor()) {
                 if (QColor(value->expression().remove('"')).isValid()) {
                     qmlObjectNode->setVariantProperty(name, QColor(value->expression().remove('"')));
                     return;
                 }
-            } else if (qmlObjectNode->modelNode().metaInfo().propertyTypeName(name) == "bool") {
+            } else if (propertType.isBool()) {
                 if (isTrueFalseLiteral(value->expression())) {
                     if (value->expression().compare("true", Qt::CaseInsensitive) == 0)
                         qmlObjectNode->setVariantProperty(name, true);
@@ -282,21 +269,21 @@ void PropertyEditorView::changeExpression(const QString &propertyName)
                         qmlObjectNode->setVariantProperty(name, false);
                     return;
                 }
-            } else if (qmlObjectNode->modelNode().metaInfo().propertyTypeName(name) == "int") {
+            } else if (propertType.isInteger()) {
                 bool ok;
                 int intValue = value->expression().toInt(&ok);
                 if (ok) {
                     qmlObjectNode->setVariantProperty(name, intValue);
                     return;
                 }
-            } else if (qmlObjectNode->modelNode().metaInfo().propertyTypeName(name) == "qreal") {
+            } else if (propertType.isFloat()) {
                 bool ok;
                 qreal realValue = value->expression().toDouble(&ok);
                 if (ok) {
                     qmlObjectNode->setVariantProperty(name, realValue);
                     return;
                 }
-            } else if (qmlObjectNode->modelNode().metaInfo().propertyTypeName(name) == "QVariant") {
+            } else if (propertType.isVariant()) {
                 bool ok;
                 qreal realValue = value->expression().toDouble(&ok);
                 if (ok) {
@@ -317,13 +304,13 @@ void PropertyEditorView::changeExpression(const QString &propertyName)
             return;
         }
 
-        if (qmlObjectNode->expression(name) != value->expression() || !qmlObjectNode->propertyAffectedByCurrentState(name))
+        if (qmlObjectNode->expression(name) != value->expression()
+            || !qmlObjectNode->propertyAffectedByCurrentState(name))
             qmlObjectNode->setBindingProperty(name, value->expression());
-
     }); /* end of transaction */
 }
 
-void PropertyEditorView::exportPopertyAsAlias(const QString &name)
+void PropertyEditorView::exportPropertyAsAlias(const QString &name)
 {
     if (name.isNull())
         return;
@@ -334,7 +321,7 @@ void PropertyEditorView::exportPopertyAsAlias(const QString &name)
     if (noValidSelection())
         return;
 
-    executeInTransaction("PropertyEditorView::exportPopertyAsAlias", [this, name](){
+    executeInTransaction("PropertyEditorView::exportPropertyAsAlias", [this, name](){
         const QString id = m_selectedNode.validId();
         QString upperCasePropertyName = name;
         upperCasePropertyName.replace(0, 1, upperCasePropertyName.at(0).toUpper());
@@ -362,7 +349,7 @@ void PropertyEditorView::removeAliasExport(const QString &name)
     if (noValidSelection())
         return;
 
-    executeInTransaction("PropertyEditorView::exportPopertyAsAlias", [this, name](){
+    executeInTransaction("PropertyEditorView::exportPropertyAsAlias", [this, name](){
         const QString id = m_selectedNode.validId();
 
         for (const BindingProperty &property : rootModelNode().bindingProperties())
@@ -460,7 +447,8 @@ void PropertyEditorView::setupQmlBackend()
     TypeName diffClassName;
     if (commonAncestor.isValid()) {
         diffClassName = commonAncestor.typeName();
-        foreach (const NodeMetaInfo &metaInfo, commonAncestor.classHierarchy()) {
+        const NodeMetaInfos hierarchy = commonAncestor.classHierarchy();
+        for (const NodeMetaInfo &metaInfo : hierarchy) {
             if (PropertyEditorQmlBackend::checkIfUrlExists(qmlSpecificsFile))
                 break;
             qmlSpecificsFile = PropertyEditorQmlBackend::getQmlFileUrl(metaInfo.typeName() + "Specifics", metaInfo);
@@ -481,7 +469,7 @@ void PropertyEditorView::setupQmlBackend()
     QString currentStateName = currentState().isBaseState() ? currentState().name() : QStringLiteral("invalid state");
 
     if (!currentQmlBackend) {
-        currentQmlBackend = new PropertyEditorQmlBackend(this);
+        currentQmlBackend = new PropertyEditorQmlBackend(this, m_imageCache);
 
         m_stackedWidget->addWidget(currentQmlBackend->widget());
         m_qmlBackendHash.insert(qmlFile.toString(), currentQmlBackend);
@@ -519,6 +507,13 @@ void PropertyEditorView::setupQmlBackend()
 
     m_qmlBackEndForCurrentType = currentQmlBackend;
 
+    if (rootModelNode().hasAuxiliaryData(insightEnabledProperty))
+        m_qmlBackEndForCurrentType->contextObject()->setInsightEnabled(
+            rootModelNode().auxiliaryData(insightEnabledProperty)->toBool());
+
+    if (rootModelNode().hasAuxiliaryData(insightCategoriesProperty))
+        m_qmlBackEndForCurrentType->contextObject()->setInsightCategories(
+            rootModelNode().auxiliaryData(insightCategoriesProperty)->toStringList());
 }
 
 void PropertyEditorView::commitVariantValueToModel(const PropertyName &propertyName, const QVariant &value)
@@ -551,11 +546,11 @@ void PropertyEditorView::commitAuxValueToModel(const PropertyName &propertyName,
     try {
         if (value.isValid()) {
             for (const ModelNode &node : m_selectedNode.view()->selectedModelNodes()) {
-                node.setAuxiliaryData(name, value);
+                node.setAuxiliaryData(AuxiliaryDataType::Document, name, value);
             }
         } else {
             for (const ModelNode &node : m_selectedNode.view()->selectedModelNodes()) {
-                node.removeAuxiliaryData(name);
+                node.removeAuxiliaryData(AuxiliaryDataType::Document, name);
             }
         }
     }
@@ -612,10 +607,12 @@ void PropertyEditorView::modelAttached(Model *model)
     m_locked = true;
 
     if (!m_setupCompleted) {
-        QTimer::singleShot(50, this, [this]{
-            PropertyEditorView::setupPanes();
-            /* workaround for QTBUG-75847 */
-            reloadQml();
+        QTimer::singleShot(50, this, [this] {
+            if (isAttached()) {
+                PropertyEditorView::setupPanes();
+                /* workaround for QTBUG-75847 */
+                reloadQml();
+            }
         });
     }
 
@@ -637,7 +634,7 @@ void PropertyEditorView::propertiesRemoved(const QList<AbstractProperty>& proper
     if (noValidSelection())
         return;
 
-    foreach (const AbstractProperty &property, propertyList) {
+    for (const AbstractProperty &property : propertyList) {
         ModelNode node(property.parentModelNode());
 
         if (node.isRootNode() && !m_selectedNode.isRootNode())
@@ -658,9 +655,14 @@ void PropertyEditorView::propertiesRemoved(const QList<AbstractProperty>& proper
                 }
             }
 
+            if (propertyIsAttachedInsightProperty(property.name())) {
+                m_qmlBackEndForCurrentType->setValueforInsightAttachedProperties(m_selectedNode,
+                                                                                 property.name());
+            }
+
             if ("width" == property.name() || "height" == property.name()) {
                 const QmlItemNode qmlItemNode = m_selectedNode;
-                if (qmlItemNode.isValid() && qmlItemNode.isInLayout())
+                if (qmlItemNode.isInLayout())
                     resetPuppet();
             }
 
@@ -675,11 +677,16 @@ void PropertyEditorView::variantPropertiesChanged(const QList<VariantProperty>& 
     if (noValidSelection())
         return;
 
-    foreach (const VariantProperty &property, propertyList) {
+    for (const VariantProperty &property : propertyList) {
         ModelNode node(property.parentModelNode());
 
         if (propertyIsAttachedLayoutProperty(property.name()))
-            m_qmlBackEndForCurrentType->setValueforLayoutAttachedProperties(m_selectedNode, property.name());
+            m_qmlBackEndForCurrentType->setValueforLayoutAttachedProperties(m_selectedNode,
+                                                                            property.name());
+
+        if (propertyIsAttachedInsightProperty(property.name()))
+            m_qmlBackEndForCurrentType->setValueforInsightAttachedProperties(m_selectedNode,
+                                                                             property.name());
 
         if (node == m_selectedNode || QmlObjectNode(m_selectedNode).propertyChangeForCurrentState() == node) {
             if ( QmlObjectNode(m_selectedNode).modelNode().property(property.name()).isBindingProperty())
@@ -692,10 +699,13 @@ void PropertyEditorView::variantPropertiesChanged(const QList<VariantProperty>& 
 
 void PropertyEditorView::bindingPropertiesChanged(const QList<BindingProperty>& propertyList, PropertyChangeFlags /*propertyChange*/)
 {
+    if (locked())
+        return;
+
     if (noValidSelection())
         return;
 
-    foreach (const BindingProperty &property, propertyList) {
+    for (const BindingProperty &property : propertyList) {
         ModelNode node(property.parentModelNode());
 
         if (property.isAliasExport())
@@ -713,17 +723,23 @@ void PropertyEditorView::bindingPropertiesChanged(const QList<BindingProperty>& 
     }
 }
 
-void PropertyEditorView::auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &)
+void PropertyEditorView::auxiliaryDataChanged(const ModelNode &node,
+                                              [[maybe_unused]] AuxiliaryDataKeyView key,
+                                              const QVariant &data)
 {
-
     if (noValidSelection())
         return;
 
     if (!node.isSelected())
         return;
 
-    m_qmlBackEndForCurrentType->setValueforAuxiliaryProperties(m_selectedNode, name);
+    m_qmlBackEndForCurrentType->setValueforAuxiliaryProperties(m_selectedNode, key);
 
+    if (key == insightEnabledProperty)
+        m_qmlBackEndForCurrentType->contextObject()->setInsightEnabled(data.toBool());
+
+    if (key == insightCategoriesProperty)
+        m_qmlBackEndForCurrentType->contextObject()->setInsightCategories(data.toStringList());
 }
 
 void PropertyEditorView::instanceInformationsChanged(const QMultiHash<ModelNode, InformationName> &informationChangedHash)
@@ -760,6 +776,12 @@ void PropertyEditorView::select()
         m_qmlBackEndForCurrentType->emitSelectionToBeChanged();
 
     delayedResetView();
+
+    auto nodes = selectedModelNodes();
+
+    for (const auto &n : nodes) {
+        n.metaInfo().isFileComponent();
+    }
 }
 
 void PropertyEditorView::setSelelectedModelNode()
@@ -784,7 +806,7 @@ bool PropertyEditorView::hasWidget() const
 
 WidgetInfo PropertyEditorView::widgetInfo()
 {
-    return createWidgetInfo(m_stackedWidget, nullptr, QStringLiteral("Properties"), WidgetInfo::RightPane, 0, tr("Properties"));
+    return createWidgetInfo(m_stackedWidget, QStringLiteral("Properties"), WidgetInfo::RightPane, 0, tr("Properties"));
 }
 
 void PropertyEditorView::currentStateChanged(const ModelNode &node)
@@ -803,7 +825,7 @@ void PropertyEditorView::instancePropertyChanged(const QList<QPair<ModelNode, Pr
     m_locked = true;
 
     using ModelNodePropertyPair = QPair<ModelNode, PropertyName>;
-    foreach (const ModelNodePropertyPair &propertyPair, propertyList) {
+    for (const ModelNodePropertyPair &propertyPair : propertyList) {
         const ModelNode modelNode = propertyPair.first;
         const QmlObjectNode qmlObjectNode(modelNode);
         const PropertyName propertyName = propertyPair.second;
@@ -844,7 +866,26 @@ void PropertyEditorView::nodeReparented(const ModelNode &node,
         m_qmlBackEndForCurrentType->backendAnchorBinding().setup(QmlItemNode(m_selectedNode));
 }
 
-void PropertyEditorView::setValue(const QmlObjectNode &qmlObjectNode, const PropertyName &name, const QVariant &value)
+void PropertyEditorView::dragStarted(QMimeData *mimeData)
+{
+    if (!mimeData->hasFormat(Constants::MIME_TYPE_ASSETS))
+        return;
+
+    const QString assetPath = QString::fromUtf8(mimeData->data(Constants::MIME_TYPE_ASSETS))
+                                  .split(',')[0];
+    const QString suffix = "*." + assetPath.split('.').last().toLower();
+
+    m_qmlBackEndForCurrentType->contextObject()->setActiveDragSuffix(suffix);
+}
+
+void PropertyEditorView::dragEnded()
+{
+    m_qmlBackEndForCurrentType->contextObject()->setActiveDragSuffix("");
+}
+
+void PropertyEditorView::setValue(const QmlObjectNode &qmlObjectNode,
+                                  const PropertyName &name,
+                                  const QVariant &value)
 {
     m_locked = true;
     m_qmlBackEndForCurrentType->setValue(qmlObjectNode, name, value);
@@ -863,6 +904,4 @@ void PropertyEditorView::reloadQml()
     resetView();
 }
 
-
-} //QmlDesigner
-
+} // namespace QmlDesigner

@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qbssession.h"
 
 #include "qbspmlogging.h"
 #include "qbsprojectmanagerconstants.h"
+#include "qbsprojectmanagertr.h"
 #include "qbssettings.h"
 
 #include <app/app_version.h>
@@ -34,6 +13,7 @@
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/taskhub.h>
 #include <utils/algorithm.h>
+#include <utils/environment.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 
@@ -131,7 +111,7 @@ private:
     {
         switch (m_currentPacket.parseInput(m_incomingData)) {
         case Packet::Status::Invalid:
-            emit errorOccurred(tr("Received invalid input."));
+            emit errorOccurred(Tr::tr("Received invalid input."));
             break;
         case Packet::Status::Complete:
             emit packetReceived(m_currentPacket.retrievePacket());
@@ -156,7 +136,7 @@ public:
     QEventLoop eventLoop;
     QJsonObject reply;
     QHash<QString, QStringList> generatedFilesForSources;
-    optional<Error> lastError;
+    std::optional<Error> lastError;
     State state = State::Inactive;
 };
 
@@ -169,40 +149,28 @@ void QbsSession::initialize()
 {
     Environment env = Environment::systemEnvironment();
     env.set("QT_FORCE_STDERR_LOGGING", "1");
+
     d->packetReader = new PacketReader(this);
-    d->qbsProcess = new QtcProcess(ProcessMode::Writer, this);
+
+    d->qbsProcess = new QtcProcess(this);
+    d->qbsProcess->setProcessMode(ProcessMode::Writer);
     d->qbsProcess->setEnvironment(env);
     connect(d->qbsProcess, &QtcProcess::readyReadStandardOutput, this, [this] {
-        d->packetReader->handleData(d->qbsProcess->readAllStandardOutput());
+        d->packetReader->handleData(d->qbsProcess->readAllRawStandardOutput());
     });
     connect(d->qbsProcess, &QtcProcess::readyReadStandardError, this, [this] {
-        qCDebug(qbsPmLog) << "[qbs stderr]: " << d->qbsProcess->readAllStandardError();
+        qCDebug(qbsPmLog) << "[qbs stderr]: " << d->qbsProcess->readAllRawStandardError();
     });
-    connect(d->qbsProcess, &QtcProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
-        d->eventLoop.exit(1);
-        if (state() == State::ShuttingDown || state() == State::Inactive)
-            return;
-        switch (e) {
-        case QProcess::FailedToStart:
+    connect(d->qbsProcess, &QtcProcess::done, this, [this] {
+        if (d->qbsProcess->result() == ProcessResult::StartFailed) {
+            d->eventLoop.exit(1);
             setError(Error::QbsFailedToStart);
-            break;
-        case QProcess::WriteError:
-        case QProcess::ReadError:
-            setError(Error::ProtocolError);
-            break;
-        case QProcess::Crashed:
-        case QProcess::Timedout:
-        case QProcess::UnknownError:
-            break;
+            return;
         }
-    });
-    connect(d->qbsProcess, &QtcProcess::finished, this, [this] {
         d->qbsProcess->deleteLater();
-        switch (state()) {
+        switch (d->state) {
         case State::Inactive:
-            break;
-        case State::ShuttingDown:
-            setInactive();
+            QTC_CHECK(false);
             break;
         case State::Active:
             setError(Error::QbsQuit);
@@ -211,7 +179,6 @@ void QbsSession::initialize()
             setError(Error::ProtocolError);
             break;
         }
-        d->qbsProcess = nullptr;
     });
     connect(d->packetReader, &PacketReader::errorOccurred, this, [this](const QString &msg) {
         qCDebug(qbsPmLog) << "session error" << msg;
@@ -220,8 +187,12 @@ void QbsSession::initialize()
     connect(d->packetReader, &PacketReader::packetReceived, this, &QbsSession::handlePacket);
     d->state = State::Initializing;
     const FilePath qbsExe = QbsSettings::qbsExecutableFilePath();
-    if (qbsExe.isEmpty() || !qbsExe.exists()) {
-        QTimer::singleShot(0, this, [this] { setError(Error::QbsFailedToStart); });
+    if (qbsExe.isEmpty()) {
+        QTimer::singleShot(0, this, [this] { setError(Error::NoQbsPath); });
+        return;
+    }
+    if (!qbsExe.isExecutableFile()) {
+        QTimer::singleShot(0, this, [this] { setError(Error::InvalidQbsExecutable); });
         return;
     }
     d->qbsProcess->setCommand({qbsExe, {"session"}});
@@ -230,8 +201,7 @@ void QbsSession::initialize()
 
 void QbsSession::sendQuitPacket()
 {
-    d->qbsProcess->write(Packet::createPacket(QJsonObject{qMakePair(QString("type"),
-                                                          QJsonValue("quit"))}));
+    d->qbsProcess->writeRaw(Packet::createPacket({{"type", "quit"}}));
 }
 
 QbsSession::~QbsSession()
@@ -240,22 +210,16 @@ QbsSession::~QbsSession()
         d->packetReader->disconnect(this);
     if (d->qbsProcess) {
         d->qbsProcess->disconnect(this);
-        quit();
-        if (d->qbsProcess->state() == QProcess::Running && !d->qbsProcess->waitForFinished(10000))
-            d->qbsProcess->terminate();
-        if (d->qbsProcess->state() == QProcess::Running && !d->qbsProcess->waitForFinished(10000))
-            d->qbsProcess->kill();
-        d->qbsProcess->waitForFinished(1000);
+        if (d->qbsProcess->state() == QProcess::Running) {
+            sendQuitPacket();
+            d->qbsProcess->waitForFinished(10000);
+        }
+        delete d->qbsProcess;
     }
     delete d;
 }
 
-QbsSession::State QbsSession::state() const
-{
-    return d->state;
-}
-
-optional<QbsSession::Error> QbsSession::lastError() const
+std::optional<QbsSession::Error> QbsSession::lastError() const
 {
     return d->lastError;
 }
@@ -263,15 +227,22 @@ optional<QbsSession::Error> QbsSession::lastError() const
 QString QbsSession::errorString(QbsSession::Error error)
 {
     switch (error) {
+    case Error::NoQbsPath:
+        return Tr::tr("No qbs executable was found, please set the path in the settings.");
+    case Error::InvalidQbsExecutable:
+        return Tr::tr("The qbs executable was not found at the specified path, or it is not "
+                      "executable (\"%1\").")
+            .arg(QbsSettings::qbsExecutableFilePath().toUserOutput());
     case Error::QbsQuit:
-        return tr("The qbs process quit unexpectedly.");
+        return Tr::tr("The qbs process quit unexpectedly.");
     case Error::QbsFailedToStart:
-        return tr("The qbs process failed to start.");
+        return Tr::tr("The qbs process failed to start.");
     case Error::ProtocolError:
-        return tr("The qbs process sent unexpected data.");
+        return Tr::tr("The qbs process sent unexpected data.");
     case Error::VersionMismatch:
-        return tr("The qbs API level is not compatible with "
-                  "what %1 expects.").arg(Core::Constants::IDE_DISPLAY_NAME);
+        return Tr::tr("The qbs API level is not compatible with "
+                      "what %1 expects.")
+            .arg(Core::Constants::IDE_DISPLAY_NAME);
     }
     return QString(); // For dumb compilers.
 }
@@ -287,10 +258,10 @@ void QbsSession::sendRequest(const QJsonObject &request)
                qDebug() << request.value("type").toString()
                << d->currentRequest.value("type").toString(); return);
     d->currentRequest = request;
-    const QString logLevelFromEnv = qEnvironmentVariable("QBS_LOG_LEVEL");
+    const QString logLevelFromEnv = qtcEnvironmentVariable("QBS_LOG_LEVEL");
     if (!logLevelFromEnv.isEmpty())
         d->currentRequest.insert("log-level", logLevelFromEnv);
-    if (!qEnvironmentVariableIsEmpty(Constants::QBS_PROFILING_ENV))
+    if (!qtcEnvironmentVariableIsEmpty(Constants::QBS_PROFILING_ENV))
         d->currentRequest.insert("log-time", true);
     if (d->state == State::Active)
         sendQueuedRequest();
@@ -301,15 +272,7 @@ void QbsSession::sendRequest(const QJsonObject &request)
 void QbsSession::cancelCurrentJob()
 {
     if (d->state == State::Active)
-        sendRequest(QJsonObject{qMakePair(QString("type"), QJsonValue("cancel-job"))});
-}
-
-void QbsSession::quit()
-{
-    if (d->state == State::ShuttingDown || d->state == State::Inactive)
-        return;
-    d->state = State::ShuttingDown;
-    sendQuitPacket();
+        sendRequest({{"type", "cancel-job"}});
 }
 
 void QbsSession::requestFilesGeneratedFrom(const QHash<QString, QStringList> &sourceFilesPerProduct)
@@ -322,7 +285,7 @@ void QbsSession::requestFilesGeneratedFrom(const QHash<QString, QStringList> &so
         product.insert("full-display-name", it.key());
         QJsonArray requests;
         for (const QString &sourceFile : it.value())
-            requests << QJsonObject({qMakePair(QString("source-file"), sourceFile)});
+            requests << QJsonObject({{"source-file", sourceFile}});
         product.insert("requests", requests);
         products << product;
     }
@@ -365,7 +328,7 @@ RunEnvironmentResult QbsSession::getRunEnvironment(
     sendRequest(request);
     QTimer::singleShot(10000, this, [this] { d->eventLoop.exit(1); });
     if (d->eventLoop.exec(QEventLoop::ExcludeUserInputEvents) == 1)
-        return RunEnvironmentResult(ErrorInfo(tr("Request timed out.")));
+        return RunEnvironmentResult(ErrorInfo(Tr::tr("Request timed out.")));
     QProcessEnvironment env;
     const QJsonObject outEnv = d->reply.value("full-environment").toObject();
     for (auto it = outEnv.begin(); it != outEnv.end(); ++it)
@@ -376,8 +339,6 @@ RunEnvironmentResult QbsSession::getRunEnvironment(
 void QbsSession::insertRequestedModuleProperties(QJsonObject &request)
 {
     request.insert("module-properties", QJsonArray::fromStringList({
-        "qbs.architecture",
-        "qbs.architectures",
         "cpp.commonCompilerFlags",
         "cpp.compilerVersionMajor",
         "cpp.compilerVersionMinor",
@@ -409,6 +370,9 @@ void QbsSession::insertRequestedModuleProperties(QJsonObject &request)
         "cpp.useCxxPrecompiledHeader",
         "cpp.useObjcPrecompiledHeader",
         "cpp.useObjcxxPrecompiledHeader",
+        "qbs.architecture",
+        "qbs.architectures",
+        "qbs.sysroot",
         "qbs.targetOS",
         "qbs.toolchain",
         "Qt.core.enableKeywords",
@@ -441,14 +405,14 @@ QbsSession::BuildGraphInfo QbsSession::getBuildGraphInfo(const FilePath &bgFileP
     bgInfo.bgFilePath = bgFilePath;
     QTimer::singleShot(10000, &session, [&session] { session.d->eventLoop.exit(1); });
     connect(&session, &QbsSession::errorOccurred, [&] {
-        bgInfo.error = ErrorInfo(tr("Failed to load qbs build graph."));
+        bgInfo.error = ErrorInfo(Tr::tr("Failed to load qbs build graph."));
     });
     connect(&session, &QbsSession::projectResolved, [&](const ErrorInfo &error) {
         bgInfo.error = error;
         session.d->eventLoop.quit();
     });
     if (session.d->eventLoop.exec(QEventLoop::ExcludeUserInputEvents) == 1) {
-        bgInfo.error = ErrorInfo(tr("Request timed out."));
+        bgInfo.error = ErrorInfo(Tr::tr("Request timed out."));
         return bgInfo;
     }
     if (bgInfo.error.hasError())
@@ -561,7 +525,7 @@ void QbsSession::sendRequestNow(const QJsonObject &request)
 {
     QTC_ASSERT(d->state == State::Active, return);
     if (!request.isEmpty())
-        d->qbsProcess->write(Packet::createPacket(request));
+        d->qbsProcess->writeRaw(Packet::createPacket(request));
 }
 
 ErrorInfo QbsSession::getErrorInfo(const QJsonObject &packet)
@@ -606,7 +570,7 @@ FileChangeResult QbsSession::updateFileList(const char *action, const QStringLis
                                             const QString &product, const QString &group)
 {
     if (d->state != State::Active)
-        return FileChangeResult(files, tr("The qbs session is not in a valid state."));
+        return FileChangeResult(files, Tr::tr("The qbs session is not in a valid state."));
     sendRequestNow(QJsonObject{
         {"type", QLatin1String(action)},
         {"files", QJsonArray::fromStringList(files)},
@@ -622,7 +586,7 @@ void QbsSession::handleFileListUpdated(const QJsonObject &reply)
     const QStringList failedFiles = arrayToStringList(reply.value("failed-files"));
     if (!failedFiles.isEmpty()) {
         Core::MessageManager::writeFlashing(
-            tr("Failed to update files in Qbs project: %1.\n"
+            Tr::tr("Failed to update files in Qbs project: %1.\n"
                "The affected files are: \n\t%2")
                 .arg(getErrorInfo(reply).toString(), failedFiles.join("\n\t")));
     }

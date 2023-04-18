@@ -1,10 +1,9 @@
 add_qtc_plugin(Valgrind
-  DEPENDS CPlusPlus QtcSsh
+  DEPENDS CPlusPlus
   PLUGIN_DEPENDS Core Debugger ProjectExplorer TextEditor
   SOURCES
     callgrind/callgrindabstractmodel.h
     callgrind/callgrindcallmodel.cpp callgrind/callgrindcallmodel.h
-    callgrind/callgrindcontroller.cpp callgrind/callgrindcontroller.h
     callgrind/callgrindcostitem.cpp callgrind/callgrindcostitem.h
     callgrind/callgrindcycledetection.cpp callgrind/callgrindcycledetection.h
     callgrind/callgrinddatamodel.cpp callgrind/callgrinddatamodel.h
@@ -29,7 +28,7 @@ add_qtc_plugin(Valgrind
     valgrind.qrc
     valgrindconfigwidget.cpp valgrindconfigwidget.h
     valgrindengine.cpp valgrindengine.h
-    valgrindplugin.cpp valgrindplugin.h
+    valgrindplugin.cpp
     valgrindrunner.cpp valgrindrunner.h
     valgrindsettings.cpp valgrindsettings.h
     xmlprotocol/announcethread.cpp xmlprotocol/announcethread.h

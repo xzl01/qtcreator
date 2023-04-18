@@ -1,37 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "uvscserverprovider.h"
 
 #include "uvproject.h"
 #include "uvprojectwriter.h"
 #include "uvtargetdeviceviewer.h"
 #include "uvtargetdriverviewer.h"
 
-#include "uvscserverprovider.h"
-
 #include <baremetal/baremetaldebugsupport.h>
 #include <baremetal/baremetaldevice.h>
+#include <baremetal/baremetaltr.h>
 #include <baremetal/debugserverprovidermanager.h>
 
 #include <debugger/debuggerkitinformation.h>
@@ -52,8 +31,7 @@ using namespace Debugger;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
+namespace BareMetal::Internal {
 
 using namespace Uv;
 
@@ -91,12 +69,12 @@ UvscServerProvider::UvscServerProvider(const UvscServerProvider &other)
     setEngineType(UvscEngineType);
 }
 
-void UvscServerProvider::setToolsIniFile(const Utils::FilePath &toolsIniFile)
+void UvscServerProvider::setToolsIniFile(const FilePath &toolsIniFile)
 {
     m_toolsIniFile = toolsIniFile;
 }
 
-Utils::FilePath UvscServerProvider::toolsIniFile() const
+FilePath UvscServerProvider::toolsIniFile() const
 {
     return m_toolsIniFile;
 }
@@ -171,7 +149,7 @@ FilePath UvscServerProvider::buildOptionsFilePath(DebuggerRunTool *runTool) cons
 QVariantMap UvscServerProvider::toMap() const
 {
     QVariantMap data = IDebugServerProvider::toMap();
-    data.insert(toolsIniKeyC, m_toolsIniFile.toVariant());
+    data.insert(toolsIniKeyC, m_toolsIniFile.toSettings());
     data.insert(deviceSelectionKeyC, m_deviceSelection.toMap());
     data.insert(driverSelectionKeyC, m_driverSelection.toMap());
     return data;
@@ -194,12 +172,12 @@ bool UvscServerProvider::aboutToRun(DebuggerRunTool *runTool, QString &errorMess
     const auto exeAspect = runControl->aspect<ExecutableAspect>();
     QTC_ASSERT(exeAspect, return false);
 
-    const FilePath bin = exeAspect->executable();
+    const FilePath bin = exeAspect->executable;
     if (bin.isEmpty()) {
-        errorMessage = BareMetalDebugSupport::tr("Cannot debug: Local executable is not set.");
+        errorMessage = Tr::tr("Cannot debug: Local executable is not set.");
         return false;
     } else if (!bin.exists()) {
-        errorMessage = BareMetalDebugSupport::tr(
+        errorMessage = Tr::tr(
                     "Cannot debug: Could not find executable for \"%1\".").arg(bin.toString());
         return false;
     }
@@ -216,11 +194,10 @@ bool UvscServerProvider::aboutToRun(DebuggerRunTool *runTool, QString &errorMess
 
     Runnable inferior;
     inferior.command.setExecutable(bin);
-    inferior.extraData.insert(Debugger::Constants::kPeripheralDescriptionFile,
-                              peripheralDescriptionFile.toVariant());
-    inferior.extraData.insert(Debugger::Constants::kUVisionProjectFilePath, projFilePath.toString());
-    inferior.extraData.insert(Debugger::Constants::kUVisionOptionsFilePath, optFilePath.toString());
-    inferior.extraData.insert(Debugger::Constants::kUVisionSimulator, isSimulator());
+    runTool->runParameters().peripheralDescriptionFile = peripheralDescriptionFile;
+    runTool->runParameters().uVisionProjectFilePath = projFilePath;
+    runTool->runParameters().uVisionOptionsFilePath = optFilePath;
+    runTool->runParameters().uVisionSimulator = isSimulator();
     runTool->setInferior(inferior);
     runTool->setSymbolFile(bin);
     runTool->setStartMode(AttachToRemoteServer);
@@ -246,22 +223,20 @@ bool UvscServerProvider::fromMap(const QVariantMap &data)
 {
     if (!IDebugServerProvider::fromMap(data))
         return false;
-    m_toolsIniFile = FilePath::fromVariant(data.value(toolsIniKeyC));
+    m_toolsIniFile = FilePath::fromSettings(data.value(toolsIniKeyC));
     m_deviceSelection.fromMap(data.value(deviceSelectionKeyC).toMap());
     m_driverSelection.fromMap(data.value(driverSelectionKeyC).toMap());
     return true;
 }
 
-Utils::FilePath UvscServerProvider::projectFilePath(DebuggerRunTool *runTool,
-                                                    QString &errorMessage) const
+FilePath UvscServerProvider::projectFilePath(DebuggerRunTool *runTool, QString &errorMessage) const
 {
     const FilePath projectPath = buildProjectFilePath(runTool);
     std::ofstream ofs(projectPath.toString().toStdString(), std::ofstream::out);
     Uv::ProjectWriter writer(&ofs);
     const Uv::Project project(this, runTool);
     if (!writer.write(&project)) {
-        errorMessage = BareMetalDebugSupport::tr(
-                    "Unable to create a uVision project template.");
+        errorMessage = Tr::tr("Unable to create a uVision project template.");
         return {};
     }
     return projectPath;
@@ -286,35 +261,35 @@ UvscServerProviderConfigWidget::UvscServerProviderConfigWidget(UvscServerProvide
     : IDebugServerProviderConfigWidget(provider)
 {
     m_hostWidget = new HostWidget;
-    m_mainLayout->addRow(tr("Host:"), m_hostWidget);
+    m_mainLayout->addRow(Tr::tr("Host:"), m_hostWidget);
     m_toolsIniChooser = new PathChooser;
     m_toolsIniChooser->setExpectedKind(PathChooser::File);
     m_toolsIniChooser->setPromptDialogFilter("tools.ini");
-    m_toolsIniChooser->setPromptDialogTitle(tr("Choose Keil Toolset Configuration File"));
-    m_mainLayout->addRow(tr("Tools file path:"), m_toolsIniChooser);
+    m_toolsIniChooser->setPromptDialogTitle(Tr::tr("Choose Keil Toolset Configuration File"));
+    m_mainLayout->addRow(Tr::tr("Tools file path:"), m_toolsIniChooser);
     m_deviceSelector = new DeviceSelector;
-    m_mainLayout->addRow(tr("Target device:"), m_deviceSelector);
+    m_mainLayout->addRow(Tr::tr("Target device:"), m_deviceSelector);
     m_driverSelector = new DriverSelector(provider->supportedDrivers());
-    m_mainLayout->addRow(tr("Target driver:"), m_driverSelector);
+    m_mainLayout->addRow(Tr::tr("Target driver:"), m_driverSelector);
 
     setFromProvider();
 
     connect(m_hostWidget, &HostWidget::dataChanged,
             this, &UvscServerProviderConfigWidget::dirty);
-    connect(m_toolsIniChooser, &PathChooser::pathChanged,
+    connect(m_toolsIniChooser, &PathChooser::textChanged,
             this, &UvscServerProviderConfigWidget::dirty);
     connect(m_deviceSelector, &DeviceSelector::selectionChanged,
             this, &UvscServerProviderConfigWidget::dirty);
     connect(m_driverSelector, &DriverSelector::selectionChanged,
             this, &UvscServerProviderConfigWidget::dirty);
 
-    auto updateSelectors = [this]() {
+    auto updateSelectors = [this] {
         const FilePath toolsIniFile = m_toolsIniChooser->filePath();
         m_deviceSelector->setToolsIniFile(toolsIniFile);
         m_driverSelector->setToolsIniFile(toolsIniFile);
     };
 
-    connect(m_toolsIniChooser, &PathChooser::pathChanged, updateSelectors);
+    connect(m_toolsIniChooser, &PathChooser::textChanged, this, updateSelectors);
     updateSelectors();
 }
 
@@ -333,12 +308,12 @@ void UvscServerProviderConfigWidget::discard()
     IDebugServerProviderConfigWidget::discard();
 }
 
-void UvscServerProviderConfigWidget::setToolsIniFile(const Utils::FilePath &toolsIniFile)
+void UvscServerProviderConfigWidget::setToolsIniFile(const FilePath &toolsIniFile)
 {
     m_toolsIniChooser->setFilePath(toolsIniFile);
 }
 
-Utils::FilePath UvscServerProviderConfigWidget::toolsIniFile() const
+FilePath UvscServerProviderConfigWidget::toolsIniFile() const
 {
     return m_toolsIniChooser->filePath();
 }
@@ -387,25 +362,17 @@ UvscServerProviderRunner::UvscServerProviderRunner(ProjectExplorer::RunControl *
         this->runControl()->setApplicationProcessHandle(pid);
         reportStarted();
     });
-    connect(&m_process, &QtcProcess::finished, this, [this] {
+    connect(&m_process, &QtcProcess::done, this, [this] {
         appendMessage(m_process.exitMessage(), NormalMessageFormat);
-        reportStopped();
-    });
-    connect(&m_process, &QtcProcess::errorOccurred, this, [this] (QProcess::ProcessError error) {
-        if (error == QProcess::Timedout)
-            return; // No actual change on the process side.
-        const QString msg = userMessageForProcessError(
-                    error, m_process.commandLine().executable());
-        appendMessage(msg, Utils::NormalMessageFormat);
         reportStopped();
     });
 }
 
 void UvscServerProviderRunner::start()
 {
-    const QString msg = RunControl::tr("Starting %1 ...")
-            .arg(m_process.commandLine().toUserOutput());
-    appendMessage(msg, Utils::NormalMessageFormat);
+    const QString msg = Tr::tr("Starting %1 ...")
+            .arg(m_process.commandLine().displayName());
+    appendMessage(msg, NormalMessageFormat);
 
     m_process.start();
 }
@@ -415,5 +382,4 @@ void UvscServerProviderRunner::stop()
     m_process.terminate();
 }
 
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal

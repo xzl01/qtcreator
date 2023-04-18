@@ -1,22 +1,25 @@
 import qbs
 import qbs.Environment
 import qbs.FileInfo
+import qbs.Utilities
 
 Module {
-    property string qtcreator_display_version: '7.0.1'
-    property string ide_version_major: '7'
+    Depends { name: "cpp"; required: false }
+
+    property string qtcreator_display_version: '10.0.0'
+    property string ide_version_major: '10'
     property string ide_version_minor: '0'
-    property string ide_version_release: '1'
+    property string ide_version_release: '0'
     property string qtcreator_version: ide_version_major + '.' + ide_version_minor + '.'
                                        + ide_version_release
 
-    property string ide_compat_version_major: '7'
+    property string ide_compat_version_major: '10'
     property string ide_compat_version_minor: '0'
     property string ide_compat_version_release: '0'
     property string qtcreator_compat_version: ide_compat_version_major + '.'
             + ide_compat_version_minor + '.' + ide_compat_version_release
 
-    property string qtcreator_copyright_year: '2022'
+    property string qtcreator_copyright_year: '2023'
     property string qtcreator_copyright_string: "(C) " + qtcreator_copyright_year + " The Qt Company Ltd"
 
     property string ide_display_name: 'Qt Creator'
@@ -92,4 +95,14 @@ Module {
         "QT_USE_QSTRINGBUILDER",
     ].concat(testsEnabled ? ["WITH_TESTS"] : [])
      .concat(qbs.toolchain.contains("msvc") ? ["_CRT_SECURE_NO_WARNINGS"] : [])
+     .concat((qbs.toolchain.contains("msvc") && Utilities.versionCompare(qbs.version, "1.23.2") < 0)
+        ? ["_ENABLE_EXTENDED_ALIGNED_STORAGE"] : [])
+
+    Properties {
+        condition: cpp.present && qbs.toolchain.contains("msvc") && product.Qt
+                   && Utilities.versionCompare(Qt.core.version, "6.3") >= 0
+                   && Utilities.versionCompare(cpp.compilerVersion, "19.10") >= 0
+                   && Utilities.versionCompare(qbs.version, "1.23") < 0
+        cpp.cxxFlags: "/permissive-"
+    }
 }

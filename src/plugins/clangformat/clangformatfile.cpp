@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangformatfile.h"
 #include "clangformatsettings.h"
+#include "clangformatutils.h"
 #include <cppeditor/cppcodestylesettings.h>
 #include <projectexplorer/project.h>
 #include <texteditor/tabsettings.h>
@@ -38,19 +17,27 @@ ClangFormatFile::ClangFormatFile(Utils::FilePath filePath)
     : m_filePath(filePath)
 {
     if (!m_filePath.exists()) {
-        resetStyleToLLVM();
+        // create file and folder
+        m_filePath.parentDir().createDir();
+        std::fstream newStyleFile(m_filePath.path().toStdString(), std::fstream::out);
+        if (newStyleFile.is_open()) {
+            newStyleFile.close();
+        }
+        resetStyleToQtC();
         return;
     }
 
     m_style.Language = clang::format::FormatStyle::LK_Cpp;
-    const std::error_code error
-        = clang::format::parseConfiguration(m_filePath.fileContents().toStdString(), &m_style);
+    const std::error_code error = clang::format::parseConfiguration(m_filePath.fileContents()
+                                                                        .value_or(QByteArray())
+                                                                        .toStdString(),
+                                                                    &m_style);
     if (error.value() != static_cast<int>(clang::format::ParseError::Success)) {
-        resetStyleToLLVM();
+        resetStyleToQtC();
     }
 }
 
-clang::format::FormatStyle ClangFormatFile::format() {
+clang::format::FormatStyle ClangFormatFile::style() {
     return m_style;
 }
 
@@ -65,10 +52,20 @@ void ClangFormatFile::setStyle(clang::format::FormatStyle style)
     saveNewFormat();
 }
 
-void ClangFormatFile::resetStyleToLLVM()
+bool ClangFormatFile::isReadOnly() const
 {
-    m_style = clang::format::getLLVMStyle();
-    saveNewFormat();
+    return m_isReadOnly;
+}
+
+void ClangFormatFile::setIsReadOnly(bool isReadOnly)
+{
+    m_isReadOnly = isReadOnly;
+}
+
+void ClangFormatFile::resetStyleToQtC()
+{
+    m_style = qtcStyle();
+    saveStyleToFile(m_style, m_filePath);
 }
 
 void ClangFormatFile::setBasedOnStyle(QString styleName)
@@ -107,18 +104,30 @@ QString ClangFormatFile::changeFields(QList<Field> fields)
 
 void ClangFormatFile::saveNewFormat()
 {
-    std::string style = clang::format::configurationAsText(m_style);
+    if (m_isReadOnly)
+        return;
 
-    // workaround: configurationAsText() add comment "# " before BasedOnStyle line
-    const int pos = style.find("# BasedOnStyle");
-    if (pos != int(std::string::npos))
-        style.erase(pos, 2);
-    m_filePath.writeFileContents(QByteArray::fromStdString(style));
+    saveStyleToFile(m_style, m_filePath);
 }
 
 void ClangFormatFile::saveNewFormat(QByteArray style)
 {
+    if (m_isReadOnly)
+        return;
+
     m_filePath.writeFileContents(style);
+}
+
+void ClangFormatFile::saveStyleToFile(clang::format::FormatStyle style, Utils::FilePath filePath)
+{
+    std::string styleStr = clang::format::configurationAsText(style);
+
+    // workaround: configurationAsText() add comment "# " before BasedOnStyle line
+    const int pos = styleStr.find("# BasedOnStyle");
+    if (pos != int(std::string::npos))
+        styleStr.erase(pos, 2);
+    styleStr.append("\n");
+    filePath.writeFileContents(QByteArray::fromStdString(styleStr));
 }
 
 CppEditor::CppCodeStyleSettings ClangFormatFile::toCppCodeStyleSettings(
@@ -129,8 +138,8 @@ CppEditor::CppCodeStyleSettings ClangFormatFile::toCppCodeStyleSettings(
 
     FormatStyle style;
     style.Language = clang::format::FormatStyle::LK_Cpp;
-    const std::error_code error = parseConfiguration(m_filePath.fileContents().toStdString(),
-                                                     &style);
+    const std::error_code error
+        = parseConfiguration(m_filePath.fileContents().value_or(QByteArray()).toStdString(), &style);
     QTC_ASSERT(error.value() == static_cast<int>(ParseError::Success), return settings);
 
     // Modifier offset should be opposite to indent width in order indentAccessSpecifiers
@@ -153,7 +162,7 @@ CppEditor::CppCodeStyleSettings ClangFormatFile::toCppCodeStyleSettings(
     settings.indentControlFlowRelativeToSwitchLabels = style.IndentCaseBlocks;
 #endif
     if (style.DerivePointerAlignment
-        && ClangFormatSettings::instance().formatCodeInsteadOfIndent()) {
+        && ClangFormatSettings::instance().mode() == ClangFormatSettings::Mode::Formatting) {
         settings.bindStarToIdentifier = style.PointerAlignment == FormatStyle::PAS_Right;
         settings.bindStarToTypeName = style.PointerAlignment == FormatStyle::PAS_Left;
         settings.bindStarToLeftSpecifier = style.PointerAlignment == FormatStyle::PAS_Left;
@@ -173,6 +182,8 @@ void ClangFormatFile::fromCppCodeStyleSettings(const CppEditor::CppCodeStyleSett
 
     if (settings.indentNamespaceBody || settings.indentNamespaceBraces)
         m_style.NamespaceIndentation = FormatStyle::NamespaceIndentationKind::NI_All;
+    else
+        m_style.NamespaceIndentation = FormatStyle::NamespaceIndentationKind::NI_None;
 
     if (settings.indentClassBraces || settings.indentEnumBraces || settings.indentBlockBraces
         || settings.indentFunctionBraces)
@@ -196,11 +207,11 @@ void ClangFormatFile::fromCppCodeStyleSettings(const CppEditor::CppCodeStyleSett
                                      || settings.bindStarToRightSpecifier;
 
     if ((settings.bindStarToIdentifier || settings.bindStarToRightSpecifier)
-        && ClangFormatSettings::instance().formatCodeInsteadOfIndent())
+        && ClangFormatSettings::instance().mode() == ClangFormatSettings::Mode::Formatting)
         m_style.PointerAlignment = FormatStyle::PAS_Right;
 
     if ((settings.bindStarToTypeName || settings.bindStarToLeftSpecifier)
-        && ClangFormatSettings::instance().formatCodeInsteadOfIndent())
+        && ClangFormatSettings::instance().mode() == ClangFormatSettings::Mode::Formatting)
         m_style.PointerAlignment = FormatStyle::PAS_Left;
 
     saveNewFormat();
@@ -213,8 +224,8 @@ TextEditor::TabSettings ClangFormatFile::toTabSettings(ProjectExplorer::Project 
 
     FormatStyle style;
     style.Language = clang::format::FormatStyle::LK_Cpp;
-    const std::error_code error = parseConfiguration(m_filePath.fileContents().toStdString(),
-                                                     &style);
+    const std::error_code error
+        = parseConfiguration(m_filePath.fileContents().value_or(QByteArray()).toStdString(), &style);
     QTC_ASSERT(error.value() == static_cast<int>(ParseError::Success), return settings);
 
     settings.m_indentSize = style.IndentWidth;

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "TypePrettyPrinter.h"
 
@@ -312,8 +290,8 @@ void TypePrettyPrinter::visit(PointerToMemberType *type)
 
 void TypePrettyPrinter::prependSpaceBeforeIndirection(const FullySpecifiedType &type)
 {
-    const bool elementTypeIsPointerOrReference = type.type()->isPointerType()
-        || type.type()->isReferenceType();
+    const bool elementTypeIsPointerOrReference = type.type()->asPointerType()
+        || type.type()->asReferenceType();
     const bool elementIsConstPointerOrReference = elementTypeIsPointerOrReference && type.isConst();
     const bool shouldBindToLeftSpecifier = _overview->starBindFlags & Overview::BindToLeftSpecifier;
     if (elementIsConstPointerOrReference && ! shouldBindToLeftSpecifier)
@@ -342,8 +320,8 @@ void TypePrettyPrinter::prependSpaceAfterIndirection(bool hasName)
 
 void TypePrettyPrinter::visit(PointerType *type)
 {
-    const bool isIndirectionToFunction = type->elementType().type()->isFunctionType();
-    const bool isIndirectionToArray = type->elementType().type()->isArrayType();
+    const bool isIndirectionToFunction = type->elementType().type()->asFunctionType();
+    const bool isIndirectionToArray = type->elementType().type()->asArrayType();
 
     visitIndirectionType(aPointerType, type->elementType(),
         isIndirectionToFunction || isIndirectionToArray);
@@ -351,8 +329,8 @@ void TypePrettyPrinter::visit(PointerType *type)
 
 void TypePrettyPrinter::visit(ReferenceType *type)
 {
-    const bool isIndirectionToFunction = type->elementType().type()->isFunctionType();
-    const bool isIndirectionToArray = type->elementType().type()->isArrayType();
+    const bool isIndirectionToFunction = type->elementType().type()->asFunctionType();
+    const bool isIndirectionToArray = type->elementType().type()->asArrayType();
     const IndirectionType indirectionType = type->isRvalueReference()
         ? aRvalueReferenceType : aReferenceType;
 
@@ -383,11 +361,13 @@ static bool endsWithPtrOrRef(const QString &type)
 
 void TypePrettyPrinter::visit(Function *type)
 {
-    if (_overview->showTemplateParameters) {
+    bool showTemplateParameters = _overview->showTemplateParameters;
         QStringList nameParts = _name.split("::");
         int i = nameParts.length() - 1;
         for (Scope *s = type->enclosingScope(); s && i >= 0; s = s->enclosingScope()) {
-            if (Template *templ = s->asTemplate()) {
+            if (s->asClass())
+                showTemplateParameters = true;
+            if (Template *templ = s->asTemplate(); templ && showTemplateParameters) {
                 QString &n = nameParts[i];
                 const int paramCount = templ->templateParameterCount();
                 if (paramCount > 0) {
@@ -410,7 +390,6 @@ void TypePrettyPrinter::visit(Function *type)
                 --i;
         }
         _name = nameParts.join("::");
-    }
 
     if (_needsParens) {
         _text.prepend(QLatin1Char('('));

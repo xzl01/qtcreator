@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Studio documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page studio-designer-developer-workflow.html
@@ -49,13 +27,13 @@
     working Qt 6 application that you can build and run in Qt Creator using
     CMake. Therefore, you can open, build, and run the projects with Qt Creator.
 
-    \QDS continues to use the \e .qmlproject file format, while \QC uses a
+    \QDS continues to use the \e .qmlproject file format, while Qt Creator uses a
     \e CMakeLists.txt file as the project file. This enables you to share
     your project as a fully working C++ application with developers.
 
     If you add or remove QML files in \QDS, you have to regenerate the
-    \e CMakeLists.txt project configuration file by selecting \uicontrol Build
-    > \uicontrol Run > \uicontrol {Generate CMakeLists.txt Files}.
+    \e CMakeLists.txt project configuration file by selecting \uicontrol File
+    > \uicontrol {Export Project} > \uicontrol {Generate CMake Build Files}.
 
     If you use Git, you can clone an example project
     \l{https://git.qt.io/public-demos/qtdesign-studio/-/tree/master/playground/AuroraCluster0}
@@ -68,10 +46,11 @@
 
     \section1 Converting Project Structure for CMake
 
-    \QDS can generate \e CMakeLists.txt and other related files to use with \QC and to compile into
-    an executable application but only if the project has a certain folder structure. If you have a
-    \QDS QML project that doesn't have the CMake configuration, follow these steps to convert it's
-    file structure to correct format.
+    \QDS can generate \e CMakeLists.txt and other related files to use with
+    Qt Creator and to compile into an executable application but only if the
+    project has a certain folder structure. If you have a \QDS QML project that
+    doesn't have the CMake configuration, follow these steps to convert its
+    file structure to the correct format.
 
     \list 1
     \li Create a folder named \e content in the project's folder. This folder contains the
@@ -120,6 +99,8 @@
     This isn't mandatory.
 
     \li Generate CMake files and C++ source files that are used to compile the application into
-    an executable file by selecting \uicontrol Build > \uicontrol{Generate CMakeLists.txt files}.
+    an executable file by selecting \uicontrol File > \uicontrol {Export Project} >
+    \uicontrol {Generate CMake Build Files}.
+
     \endlist
 */

@@ -1,36 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "iosprobe.h"
 
 #include <utils/algorithm.h>
 #include <utils/qtcprocess.h>
 
-#include <QDir>
 #include <QFileInfo>
-#include <QFileInfoList>
 #include <QLoggingCategory>
 
 static Q_LOGGING_CATEGORY(probeLog, "qtc.ios.probe", QtWarningMsg)
@@ -68,11 +44,11 @@ void XcodeProbe::detectDeveloperPaths()
     selectedXcode.setTimeoutS(5);
     selectedXcode.setCommand({"/usr/bin/xcode-select", {"--print-path"}});
     selectedXcode.runBlocking();
-    if (selectedXcode.result() != QtcProcess::FinishedWithSuccess)
+    if (selectedXcode.result() != ProcessResult::FinishedWithSuccess)
         qCWarning(probeLog)
                 << QString::fromLatin1("Could not detect selected Xcode using xcode-select");
     else
-        addDeveloperPath(selectedXcode.stdOut().trimmed());
+        addDeveloperPath(selectedXcode.cleanedStdOut().trimmed());
     addDeveloperPath(defaultDeveloperPath);
 }
 
@@ -125,7 +101,7 @@ void XcodeProbe::setupDefaultToolchains(const QString &devPath)
     }
 
     if (!clangProfile.cCompilerPath.isEmpty() || !clangProfile.cxxCompilerPath.isEmpty()) {
-        for (const QString &arch : qAsConst(allArchitectures)) {
+        for (const QString &arch : std::as_const(allArchitectures)) {
             const QString clangFullName = QString(QLatin1String("Apple Clang (%1)")).arg(arch)
                     + ((devPath != defaultDeveloperPath)
                        ? QString(QLatin1String(" in %1")).arg(devPath)
@@ -159,12 +135,12 @@ bool XcodePlatform::operator==(const XcodePlatform &other) const
     return developerPath == other.developerPath;
 }
 
-Utils::QHashValueType qHash(const XcodePlatform &platform)
+size_t qHash(const XcodePlatform &platform)
 {
     return qHash(platform.developerPath);
 }
 
-Utils::QHashValueType qHash(const XcodePlatform::ToolchainTarget &target)
+size_t qHash(const XcodePlatform::ToolchainTarget &target)
 {
     return qHash(target.name);
 }

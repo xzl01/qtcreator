@@ -21,7 +21,7 @@ QtcPlugin {
     ])
 
     files: [
-        "scxmleditor_global.h",
+        "scxmleditor_global.h", "scxmleditortr.h",
         "scxmleditorconstants.h",
         "scxmleditordata.cpp", "scxmleditordata.h",
         "scxmleditordocument.cpp", "scxmleditordocument.h",
@@ -64,17 +64,6 @@ QtcPlugin {
             "treeview.h", "treeview.cpp",
 
             "common.qrc",
-
-            "magnifier.ui",
-            "colorpicker.ui",
-            "colorsettings.ui",
-            "colorthemedialog.ui",
-            "navigatorslider.ui",
-            "search.ui",
-            "shapestoolbox.ui",
-            "stateview.ui",
-            "statistics.ui",
-            "statisticsdialog.ui",
         ]
     }
 

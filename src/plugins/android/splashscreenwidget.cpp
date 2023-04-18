@@ -1,36 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include "androidtr.h"
 #include "splashscreenwidget.h"
 
 #include <texteditor/textdocument.h>
 #include <texteditor/texteditor.h>
 #include <utils/utilsicons.h>
 
-#include <QFileDialog>
-#include <QFileInfo>
 #include <QGridLayout>
 #include <QLabel>
 #include <QLoggingCategory>
@@ -40,8 +17,7 @@
 
 using namespace Utils;
 
-namespace Android {
-namespace Internal {
+namespace Android::Internal {
 
 static Q_LOGGING_CATEGORY(androidManifestEditorLog, "qtc.android.splashScreenWidget", QtWarningMsg)
 
@@ -89,10 +65,10 @@ SplashScreenWidget::SplashScreenWidget(
         m_scaleWarningLabel->setMinimumSize(clearAndWarningSize);
         m_scaleWarningLabel->setMaximumSize(clearAndWarningSize);
         m_scaleWarningLabel->setPixmap(Utils::Icons::WARNING.icon().pixmap(clearAndWarningSize));
-        m_scaleWarningLabel->setToolTip(tr("Icon scaled up."));
+        m_scaleWarningLabel->setToolTip(Tr::tr("Icon scaled up."));
         m_scaleWarningLabel->setVisible(false);
     }
-    auto label = new QLabel(tr("Click to select..."), parent);
+    auto label = new QLabel(Tr::tr("Click to select..."), parent);
     splashLayout->addWidget(splashTitle);
     splashLayout->setAlignment(splashTitle, Qt::AlignHCenter);
     splashButtonLayout->setColumnMinimumWidth(0, 16);
@@ -181,7 +157,8 @@ void SplashScreenWidget::setImageFromPath(const FilePath &imagePath, bool resize
         emit imageChanged();
     }
     else {
-        qCDebug(androidManifestEditorLog) << "Cannot save image.";
+        qCDebug(androidManifestEditorLog).noquote()
+                << "Cannot save image." << targetPath.toUserOutput();
     }
 }
 
@@ -190,7 +167,7 @@ void SplashScreenWidget::selectImage()
     const FilePath file = FileUtils::getOpenFilePath(this, m_imageSelectionText,
                                                      FileUtils::homePath(),
                                                      QStringLiteral("%1 (*.png *.jpg *.jpeg)")
-                                                     .arg(tr("Images")));
+                                                     .arg(Tr::tr("Images")));
     if (file.isEmpty())
         return;
     setImageFromPath(file, false);
@@ -231,7 +208,8 @@ void SplashScreenWidget::loadImage()
     }
     QImage image = QImage(targetPath.toString());
     if (image.isNull()) {
-        qCDebug(androidManifestEditorLog) << "Cannot load image.";
+        qCDebug(androidManifestEditorLog).noquote()
+                << "Cannot load image." << targetPath.toUserOutput();
         return;
     }
     if (m_showImageFullScreen) {
@@ -264,5 +242,4 @@ void SplashScreenWidget::setImageFileName(const QString &imageFileName)
     m_imageFileName = imageFileName;
 }
 
-} // namespace Internal
-} // namespace Android
+} // Android::Internal

@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jochen Becher
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Jochen Becher
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "extpropertiesmview.h"
+
+#include "modeleditortr.h"
 
 #include "qmt/model/mpackage.h"
 #include "qmt/project/project.h"
@@ -59,15 +39,15 @@ void ExtPropertiesMView::visitMPackage(const qmt::MPackage *package)
         qmt::Project *project = m_projectController->project();
         if (!m_configPath) {
             m_configPath = new Utils::PathChooser(m_topWidget);
-            m_configPath->setPromptDialogTitle(tr("Select Custom Configuration Folder"));
+            m_configPath->setPromptDialogTitle(Tr::tr("Select Custom Configuration Folder"));
             m_configPath->setExpectedKind(Utils::PathChooser::ExistingDirectory);
             m_configPath->setValidationFunction([=](Utils::FancyLineEdit *edit, QString *errorMessage) {
                 return edit->text().isEmpty() || m_configPath->defaultValidationFunction()(edit, errorMessage);
             });
             m_configPath->setInitialBrowsePathBackup(
                 Utils::FilePath::fromString(project->fileName()).absolutePath());
-            addRow(tr("Config path:"), m_configPath, "configpath");
-            connect(m_configPath, &Utils::PathChooser::pathChanged,
+            addRow(Tr::tr("Config path:"), m_configPath, "configpath");
+            connect(m_configPath, &Utils::PathChooser::textChanged,
                     this, &ExtPropertiesMView::onConfigPathChanged);
         }
         if (!m_configPath->hasFocus()) {
@@ -86,8 +66,9 @@ void ExtPropertiesMView::visitMPackage(const qmt::MPackage *package)
     }
 }
 
-void ExtPropertiesMView::onConfigPathChanged(const QString &path)
+void ExtPropertiesMView::onConfigPathChanged()
 {
+    const Utils::FilePath path = m_configPath->rawFilePath();
     bool modified = false;
     qmt::Project *project = m_projectController->project();
     if (path.isEmpty()) {
@@ -98,7 +79,7 @@ void ExtPropertiesMView::onConfigPathChanged(const QString &path)
         }
     } else {
         // make path relative to current project's directory
-        QFileInfo absConfigPath(path);
+        QFileInfo absConfigPath = path.toFileInfo();
         absConfigPath.makeAbsolute();
         QDir projectDir = QFileInfo(project->fileName()).dir();
         QString configPath = projectDir.relativeFilePath(absConfigPath.filePath());
@@ -109,7 +90,7 @@ void ExtPropertiesMView::onConfigPathChanged(const QString &path)
         }
     }
     if (modified && m_configPathInfo)
-        m_configPathInfo->setText(tr("<font color=red>Model file must be reloaded.</font>"));
+        m_configPathInfo->setText(Tr::tr("<font color=red>Model file must be reloaded.</font>"));
 }
 
 } // namespace Interal

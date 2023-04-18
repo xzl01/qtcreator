@@ -1,37 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "fileapidataextractor.h"
 
+#include "cmakeprojectmanagertr.h"
+#include "cmakeprojectplugin.h"
+#include "cmakespecificsettings.h"
 #include "fileapiparser.h"
 #include "projecttreehelper.h"
 
 #include <cppeditor/cppeditorconstants.h>
 
 #include <utils/algorithm.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 #include <utils/utilsicons.h>
@@ -42,12 +23,9 @@
 
 using namespace ProjectExplorer;
 using namespace Utils;
-
-namespace {
-
-using namespace CMakeProjectManager;
-using namespace CMakeProjectManager::Internal;
 using namespace CMakeProjectManager::Internal::FileApiDetails;
+
+namespace CMakeProjectManager::Internal {
 
 // --------------------------------------------------------------------
 // Helpers:
@@ -286,18 +264,18 @@ QList<CMakeBuildTarget> generateBuildTargets(const PreprocessedData &input,
                             continue;
 
                         const FilePath buildDir = haveLibrariesRelativeToBuildDirectory ? buildDirectory : currentBuildDir;
-                        FilePath tmp = buildDir.resolvePath(FilePath::fromUserInput(part));
+                        FilePath tmp = buildDir.resolvePath(FilePath::fromUserInput(part).onDevice(buildDir));
 
                         if (f.role == "libraries")
                             tmp = tmp.parentDir();
 
                         if (!tmp.isEmpty() && tmp.isDir()) {
                             // f.role is libraryPath or frameworkPath
-                            // On Linux, exclude sub-paths from "/lib(64)", "/usr/lib(64)" and
+                            // On *nix, exclude sub-paths from "/lib(64)", "/usr/lib(64)" and
                             // "/usr/local/lib" since these are usually in the standard search
                             // paths. There probably are more, but the naming schemes are arbitrary
                             // so we'd need to ask the linker ("ld --verbose | grep SEARCH_DIR").
-                            if (!HostOsInfo::isLinuxHost()
+                            if (buildDir.osType() == OsTypeWindows
                                 || !isChildOf(tmp,
                                               {"/lib",
                                                "/lib64",
@@ -307,9 +285,8 @@ QList<CMakeBuildTarget> generateBuildTargets(const PreprocessedData &input,
                                 librarySeachPaths.append(tmp);
                                 // Libraries often have their import libs in ../lib and the
                                 // actual dll files in ../bin on windows. Qt is one example of that.
-                                if (tmp.fileName() == "lib" && HostOsInfo::isWindowsHost()) {
+                                if (tmp.fileName() == "lib" && buildDir.osType() == OsTypeWindows) {
                                     const FilePath path = tmp.parentDir().pathAppended("bin");
-
                                     if (path.isDir())
                                         librarySeachPaths.append(path);
                                 }
@@ -402,18 +379,18 @@ RawProjectParts generateRawProjectParts(const PreprocessedData &input,
             const bool hasPchSource = anyOf(sources, [buildDirectory](const QString &path) {
                 return isPchFile(buildDirectory, FilePath::fromString(path));
             });
-            if (!hasPchSource) {
-                QString headerMimeType;
-                if (ci.language == "C")
-                    headerMimeType = CppEditor::Constants::C_HEADER_MIMETYPE;
-                else if (ci.language == "CXX")
-                    headerMimeType = CppEditor::Constants::CPP_HEADER_MIMETYPE;
 
+            QString headerMimeType;
+            if (ci.language == "C")
+                headerMimeType = CppEditor::Constants::C_HEADER_MIMETYPE;
+            else if (ci.language == "CXX")
+                headerMimeType = CppEditor::Constants::CPP_HEADER_MIMETYPE;
+            if (!hasPchSource) {
                 for (const SourceInfo &si : t.sources) {
                     if (si.isGenerated)
                         continue;
                     const auto mimeTypes = Utils::mimeTypesForFileName(si.path);
-                    for (auto mime : mimeTypes)
+                    for (const auto &mime : mimeTypes)
                         if (mime.name() == headerMimeType)
                             sources.push_back(sourceDir.absoluteFilePath(si.path));
                 }
@@ -421,8 +398,14 @@ RawProjectParts generateRawProjectParts(const PreprocessedData &input,
 
             // Set project files except pch files
             rpp.setFiles(Utils::filtered(sources, [buildDirectory](const QString &path) {
-                return !isPchFile(buildDirectory, FilePath::fromString(path));
-            }));
+                             return !isPchFile(buildDirectory, FilePath::fromString(path));
+                         }), {}, [headerMimeType](const QString &path) {
+                             // Similar to ProjectFile::classify but classify headers with language
+                             // of compile group instead of ambiguous header
+                             if (path.endsWith(".h"))
+                                 return headerMimeType;
+                             return Utils::mimeTypeForFile(path).name();
+                         });
 
             FilePath precompiled_header
                 = FilePath::fromString(findOrDefault(t.sources, [&ending](const SourceInfo &si) {
@@ -481,7 +464,7 @@ FilePath directorySourceDir(const Configuration &c, const FilePath &sourceDir, i
     const size_t di = static_cast<size_t>(directoryIndex);
     QTC_ASSERT(di < c.directories.size(), return FilePath());
 
-    return sourceDir.resolvePath(c.directories[di].sourcePath).cleanPath();
+    return sourceDir.resolvePath(c.directories[di].sourcePath);
 }
 
 FilePath directoryBuildDir(const Configuration &c, const FilePath &buildDir, int directoryIndex)
@@ -489,7 +472,7 @@ FilePath directoryBuildDir(const Configuration &c, const FilePath &buildDir, int
     const size_t di = static_cast<size_t>(directoryIndex);
     QTC_ASSERT(di < c.directories.size(), return FilePath());
 
-    return buildDir.resolvePath(c.directories[di].buildPath).cleanPath();
+    return buildDir.resolvePath(c.directories[di].buildPath);
 }
 
 void addProjects(const QHash<Utils::FilePath, ProjectNode *> &cmakeListsNodes,
@@ -542,6 +525,7 @@ void addCompileGroups(ProjectNode *targetRoot,
                       const Utils::FilePath &buildDirectory,
                       const TargetDetails &td)
 {
+    const bool showSourceFolders = CMakeSpecificSettings::instance()->showSourceSubFolders.value();
     const bool inSourceBuild = (sourceDirectory == buildDirectory);
 
     std::vector<std::unique_ptr<FileNode>> toList;
@@ -556,7 +540,7 @@ void addCompileGroups(ProjectNode *targetRoot,
     std::vector<std::vector<std::unique_ptr<FileNode>>> sourceGroupFileNodes{td.sourceGroups.size()};
 
     for (const SourceInfo &si : td.sources) {
-        const FilePath sourcePath = topSourceDirectory.resolvePath(si.path).cleanPath();
+        const FilePath sourcePath = topSourceDirectory.resolvePath(si.path);
 
         // Filter out already known files:
         const int count = alreadyListed.count();
@@ -574,9 +558,9 @@ void addCompileGroups(ProjectNode *targetRoot,
             node->setIsGenerated(true);
 
         // Where does the file node need to go?
-        if (sourcePath.isChildOf(buildDirectory) && !inSourceBuild) {
+        if (showSourceFolders && sourcePath.isChildOf(buildDirectory) && !inSourceBuild) {
             buildFileNodes.emplace_back(std::move(node));
-        } else if (sourcePath.isChildOf(sourceDirectory)) {
+        } else if (!showSourceFolders || sourcePath.isChildOf(sourceDirectory)) {
             sourceGroupFileNodes[si.sourceGroup].emplace_back(std::move(node));
         } else {
             otherFileNodes.emplace_back(std::move(node));
@@ -599,20 +583,25 @@ void addCompileGroups(ProjectNode *targetRoot,
         FolderNode *insertNode = createSourceGroupNode(td.sourceGroups[i],
                                                        baseDirectory,
                                                        targetRoot);
-        insertNode->addNestedNodes(std::move(current), baseDirectory);
+
+        if (showSourceFolders) {
+            insertNode->addNestedNodes(std::move(current), baseDirectory);
+        } else {
+            for (auto &fileNodes : current) {
+                insertNode->addNode(std::move(fileNodes));
+            }
+        }
     }
 
     addCMakeVFolder(targetRoot,
                     buildDirectory,
                     100,
-                    QCoreApplication::translate("CMakeProjectManager::Internal::FileApi",
-                                                "<Build Directory>"),
+                    Tr::tr("<Build Directory>"),
                     std::move(buildFileNodes));
     addCMakeVFolder(targetRoot,
                     Utils::FilePath(),
                     10,
-                    QCoreApplication::translate("CMakeProjectManager::Internal::FileApi",
-                                                "<Other Locations>"),
+                    Tr::tr("<Other Locations>"),
                     std::move(otherFileNodes));
 }
 
@@ -707,7 +696,7 @@ void setupLocationInfoForTargets(CMakeProjectNode *rootNode, const QList<CMakeBu
                 QVector<FolderNode::LocationInfo> result;
                 for (const FolderNode::LocationInfo &i : bt) {
                     int count = locations.count();
-                    locations.insert(std::make_pair(i.path, i.line));
+                    locations.insert({i.path, i.line});
                     if (count != locations.count()) {
                         result.append(i);
                     }
@@ -733,11 +722,6 @@ void setupLocationInfoForTargets(CMakeProjectNode *rootNode, const QList<CMakeBu
         }
     }
 }
-
-} // namespace
-
-namespace CMakeProjectManager {
-namespace Internal {
 
 using namespace FileApiDetails;
 
@@ -781,5 +765,4 @@ FileApiQtcData extractData(FileApiData &input,
     return result;
 }
 
-} // namespace Internal
-} // namespace CMakeProjectManager
+} // CMakeProjectManager::Internal

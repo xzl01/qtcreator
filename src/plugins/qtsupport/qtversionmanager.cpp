@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qtversionmanager.h"
 
@@ -149,8 +127,7 @@ void QtVersionManager::triggerQtVersionRestore()
         m_configFileWatcher = new FileSystemWatcher(m_instance);
         connect(m_configFileWatcher, &FileSystemWatcher::fileChanged,
                 m_fileWatcherTimer, QOverload<>::of(&QTimer::start));
-        m_configFileWatcher->addFile(configFileName.toString(),
-                                     FileSystemWatcher::WatchModifiedDate);
+        m_configFileWatcher->addFile(configFileName, FileSystemWatcher::WatchModifiedDate);
     } // exists
 
     const QtVersions vs = versions();
@@ -248,8 +225,8 @@ void QtVersionManager::updateFromInstaller(bool emitSignal)
     const FilePath path = globalSettingsFileName();
     // Handle overwritting of data:
     if (m_configFileWatcher) {
-        m_configFileWatcher->removeFile(path.toString());
-        m_configFileWatcher->addFile(path.toString(), FileSystemWatcher::WatchModifiedDate);
+        m_configFileWatcher->removeFile(path);
+        m_configFileWatcher->addFile(path, FileSystemWatcher::WatchModifiedDate);
     }
 
     QList<int> added;
@@ -264,7 +241,7 @@ void QtVersionManager::updateFromInstaller(bool emitSignal)
 
     if (log().isDebugEnabled()) {
         qCDebug(log) << "======= Existing Qt versions =======";
-        for (QtVersion *version : qAsConst(m_versions)) {
+        for (QtVersion *version : std::as_const(m_versions)) {
             qCDebug(log) << version->qmakeFilePath().toUserOutput() << "id:"<<version->uniqueId();
             qCDebug(log) << "  autodetection source:" << version->detectionSource();
             qCDebug(log) << "";
@@ -340,7 +317,7 @@ void QtVersionManager::updateFromInstaller(bool emitSignal)
 
     if (log().isDebugEnabled()) {
         qCDebug(log) << "======= Before removing outdated sdk versions =======";
-        for (QtVersion *version : qAsConst(m_versions)) {
+        for (QtVersion *version : std::as_const(m_versions)) {
             qCDebug(log) << version->qmakeFilePath().toUserOutput() << "id:" << version->uniqueId();
             qCDebug(log) << "  autodetection source:" << version->detectionSource();
             qCDebug(log) << "";
@@ -359,7 +336,7 @@ void QtVersionManager::updateFromInstaller(bool emitSignal)
 
     if (log().isDebugEnabled()) {
         qCDebug(log)<< "======= End result =======";
-        for (QtVersion *version : qAsConst(m_versions)) {
+        for (QtVersion *version : std::as_const(m_versions)) {
             qCDebug(log) << version->qmakeFilePath().toUserOutput() << "id:" << version->uniqueId();
             qCDebug(log) << "  autodetection source:" << version->detectionSource();
             qCDebug(log) << "";
@@ -378,7 +355,7 @@ static void saveQtVersions()
     data.insert(QTVERSION_FILE_VERSION_KEY, 1);
 
     int count = 0;
-    for (QtVersion *qtv : qAsConst(m_versions)) {
+    for (QtVersion *qtv : std::as_const(m_versions)) {
         QVariantMap tmp = qtv->toMap();
         if (tmp.isEmpty())
             continue;
@@ -397,7 +374,7 @@ static QList<QByteArray> runQtChooser(const QString &qtchooser, const QStringLis
     p.start();
     p.waitForFinished();
     const bool success = p.exitCode() == 0;
-    return success ? p.readAllStandardOutput().split('\n') : QList<QByteArray>();
+    return success ? p.readAllRawStandardOutput().split('\n') : QList<QByteArray>();
 }
 
 // Asks qtchooser for the qmake path of a given version
@@ -439,12 +416,11 @@ static void findSystemQt()
     FilePaths systemQMakes
             = BuildableHelperLibrary::findQtsInEnvironment(Environment::systemEnvironment());
     systemQMakes.append(gatherQmakePathsFromQtChooser());
-    for (const FilePath &qmakePath : qAsConst(systemQMakes)) {
+    for (const FilePath &qmakePath : std::as_const(systemQMakes)) {
         if (BuildableHelperLibrary::isQtChooser(qmakePath))
             continue;
         const auto isSameQmake = [qmakePath](const QtVersion *version) {
-            return Environment::systemEnvironment().
-                    isSameExecutable(qmakePath.toString(), version->qmakeFilePath().toString());
+            return qmakePath.isSameExecutable(version->qmakeFilePath());
         };
         if (contains(m_versions, isSameQmake))
             continue;
@@ -509,7 +485,7 @@ static QStringList documentationFiles(const QtVersions &vs, bool highestOnly = f
     QSet<QString> filePaths;
     const QtVersions versions = highestOnly ? QtVersionManager::sortVersions(vs) : vs;
     for (QtVersion *v : versions) {
-        const int majorVersion = v->qtVersion().majorVersion;
+        const int majorVersion = v->qtVersion().majorVersion();
         QSet<QString> &majorVersionFileNames = includedFileNames[majorVersion];
         for (const std::pair<Path, FileName> &file : documentationFiles(v)) {
             if (!highestOnly || !majorVersionFileNames.contains(file.second)) {
@@ -559,9 +535,7 @@ QtVersions QtVersionManager::versions(const QtVersion::Predicate &predicate)
 
 QtVersions QtVersionManager::sortVersions(const QtVersions &input)
 {
-    QtVersions result = input;
-    Utils::sort(result, qtVersionNumberCompare);
-    return result;
+    return Utils::sorted(input, qtVersionNumberCompare);
 }
 
 QtVersion *QtVersionManager::version(int id)
@@ -588,8 +562,7 @@ void QtVersionManager::setNewQtVersions(const QtVersions &newVersions)
 {
     // We want to preserve the same order as in the settings dialog
     // so we sort a copy
-    QtVersions sortedNewVersions = newVersions;
-    Utils::sort(sortedNewVersions, &QtVersion::uniqueId);
+    const QtVersions sortedNewVersions = Utils::sorted(newVersions, &QtVersion::uniqueId);
 
     QtVersions addedVersions;
     QtVersions removedVersions;

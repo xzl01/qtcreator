@@ -1,35 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "devicedetector.h"
 
-#include "../qdbutils.h"
 #include "../qdbconstants.h"
 #include "../qdbdevice.h"
+#include "../qdbtr.h"
+#include "../qdbutils.h"
 
 #include <projectexplorer/devicesupport/devicemanager.h>
+
 #include <utils/qtcassert.h>
 
 #include <QHash>
@@ -37,8 +17,7 @@
 
 using namespace ProjectExplorer;
 
-namespace Qdb {
-namespace Internal {
+namespace Qdb::Internal {
 
 static bool isAutodetectedQdbDevice(const IDevice::ConstPtr &device)
 {
@@ -96,11 +75,11 @@ void DeviceDetector::handleDeviceEvent(QdbDeviceTracker::DeviceEventType eventTy
     }
 
     const Utils::Id deviceId = Constants::QdbHardwareDevicePrefix.withSuffix(':' + serial);
-    const auto messagePrefix = tr("Device \"%1\" %2").arg(serial);
+    const auto messagePrefix = Tr::tr("Device \"%1\" %2").arg(serial);
     DeviceManager * const dm = DeviceManager::instance();
 
     if (eventType == QdbDeviceTracker::NewDevice) {
-        const QString name = tr("Qt Debug Bridge device %1").arg(serial);
+        const QString name = Tr::tr("Qt Debug Bridge device %1").arg(serial);
         QdbDevice::Ptr device = QdbDevice::create();
         device->setupId(IDevice::AutoDetected, deviceId);
         device->setDisplayName(name);
@@ -131,7 +110,7 @@ void DeviceDetector::handleDeviceEvent(QdbDeviceTracker::DeviceEventType eventTy
 
 void DeviceDetector::handleTrackerError(const QString &errorMessage)
 {
-    showMessage(tr("Device detection error: %1").arg(errorMessage), true);
+    showMessage(Tr::tr("Device detection error: %1").arg(errorMessage), true);
     stop();
 }
 
@@ -145,5 +124,4 @@ void DeviceDetector::resetDevices()
     }
 }
 
-} // namespace Internal
-} // namespace Qdb
+} // Qdb::Internal

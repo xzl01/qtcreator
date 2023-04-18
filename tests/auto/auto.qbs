@@ -6,6 +6,7 @@ Project {
     references: [
         "aggregation/aggregation.qbs",
         "algorithm/algorithm.qbs",
+        "android/android.qbs",
         "changeset/changeset.qbs",
         "cplusplus/cplusplus.qbs",
         "debugger/debugger.qbs",
@@ -20,7 +21,6 @@ Project {
         "qml/qml.qbs",
         "runextensions/runextensions.qbs",
         "sdktool/sdktool.qbs",
-        "ssh/ssh.qbs",
         "toolchaincache/toolchaincache.qbs",
         "tracing/tracing.qbs",
         "treeviewfind/treeviewfind.qbs",

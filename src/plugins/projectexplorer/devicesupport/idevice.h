@@ -1,35 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "../projectexplorer_export.h"
+#include "idevicefwd.h"
 
 #include <utils/id.h>
+#include <utils/expected.h>
 #include <utils/filepath.h>
 #include <utils/hostosinfo.h>
+#include <utils/tasktree.h>
 
 #include <QAbstractSocket>
 #include <QCoreApplication>
@@ -46,22 +27,25 @@ QT_BEGIN_NAMESPACE
 class QWidget;
 QT_END_NAMESPACE
 
-namespace QSsh { class SshConnectionParameters; }
-
 namespace Utils {
 class CommandLine;
+class DeviceFileAccess;
 class Environment;
 class Icon;
 class PortList;
 class Port;
+class ProcessInterface;
 class QtcProcess;
 } // Utils
 
 namespace ProjectExplorer {
 
-class DeviceProcess;
 class DeviceProcessList;
+class FileTransferInterface;
+class FileTransferSetupData;
 class Kit;
+class SshParameters;
+class Target;
 class Task;
 
 namespace Internal { class IDevicePrivate; }
@@ -93,29 +77,11 @@ protected:
     QString m_errorMessage;
 };
 
-class PROJECTEXPLORER_EXPORT DeviceEnvironmentFetcher : public QObject
-{
-    Q_OBJECT
-public:
-    using Ptr = QSharedPointer<DeviceEnvironmentFetcher>;
-
-    virtual void start() = 0;
-
-signals:
-    void finished(const Utils::Environment &env, bool success);
-
-protected:
-    explicit DeviceEnvironmentFetcher();
-};
-
-class PROJECTEXPLORER_EXPORT PortsGatheringMethod
+class PROJECTEXPLORER_EXPORT PortsGatheringMethod final
 {
 public:
-    using Ptr = QSharedPointer<const PortsGatheringMethod>;
-
-    virtual ~PortsGatheringMethod() = default;
-    virtual Utils::CommandLine commandLine(QAbstractSocket::NetworkLayerProtocol protocol) const = 0;
-    virtual QList<Utils::Port> usedPorts(const QByteArray &commandOutput) const = 0;
+    std::function<Utils::CommandLine(QAbstractSocket::NetworkLayerProtocol protocol)> commandLine;
+    std::function<QList<Utils::Port>(const QByteArray &commandOutput)> parsePorts;
 };
 
 // See cpp file for documentation.
@@ -123,8 +89,8 @@ class PROJECTEXPLORER_EXPORT IDevice : public QEnableSharedFromThis<IDevice>
 {
     friend class Internal::IDevicePrivate;
 public:
-    using Ptr = QSharedPointer<IDevice>;
-    using ConstPtr = QSharedPointer<const IDevice>;
+    using Ptr = IDevicePtr;
+    using ConstPtr = IDeviceConstPtr;
     template <class ...Args> using Continuation = std::function<void(Args...)>;
 
     enum Origin { ManuallyAdded, AutoDetected };
@@ -159,6 +125,8 @@ public:
     virtual bool isCompatibleWith(const Kit *k) const;
     virtual QList<Task> validate() const;
 
+    virtual bool usableAsBuildDevice() const { return false; }
+
     QString displayType() const;
     Utils::OsType osType() const;
 
@@ -174,16 +142,13 @@ public:
     // Devices that can auto detect ports need not return a ports gathering method. Such devices can
     // obtain a free port on demand. eg: Desktop device.
     virtual bool canAutoDetectPorts() const { return false; }
-    virtual PortsGatheringMethod::Ptr portsGatheringMethod() const;
+    virtual PortsGatheringMethod portsGatheringMethod() const { return {}; }
     virtual bool canCreateProcessModel() const { return false; }
     virtual DeviceProcessList *createProcessListModel(QObject *parent = nullptr) const;
     virtual bool hasDeviceTester() const { return false; }
     virtual DeviceTester *createDeviceTester() const;
 
-    virtual bool canCreateProcess() const { return false; }
-    virtual DeviceProcess *createProcess(QObject *parent) const;
-    virtual DeviceProcessSignalOperation::Ptr signalOperation() const = 0;
-    virtual DeviceEnvironmentFetcher::Ptr environmentFetcher() const;
+    virtual DeviceProcessSignalOperation::Ptr signalOperation() const;
 
     enum DeviceState { DeviceReadyToUse, DeviceConnected, DeviceDisconnected, DeviceStateUnknown };
     DeviceState deviceState() const;
@@ -196,8 +161,8 @@ public:
     static QString defaultPrivateKeyFilePath();
     static QString defaultPublicKeyFilePath();
 
-    QSsh::SshConnectionParameters sshParameters() const;
-    void setSshParameters(const QSsh::SshConnectionParameters &sshParameters);
+    SshParameters sshParameters() const;
+    void setSshParameters(const SshParameters &sshParameters);
 
     enum ControlChannelHint { QmlControlChannel };
     virtual QUrl toolControlChannel(const ControlChannelHint &) const;
@@ -207,6 +172,9 @@ public:
 
     MachineType machineType() const;
     void setMachineType(MachineType machineType);
+
+    virtual Utils::FilePath rootPath() const;
+    virtual Utils::FilePath filePath(const QString &pathOnDevice) const;
 
     Utils::FilePath debugServerPath() const;
     void setDebugServerPath(const Utils::FilePath &path);
@@ -233,52 +201,25 @@ public:
     bool isMacDevice() const { return osType() == Utils::OsTypeMac; }
     bool isAnyUnixDevice() const;
 
-    virtual Utils::FilePath mapToGlobalPath(const Utils::FilePath &pathOnDevice) const;
-    virtual QString mapToDevicePath(const Utils::FilePath &globalPath) const;
-
+    Utils::DeviceFileAccess *fileAccess() const;
     virtual bool handlesFile(const Utils::FilePath &filePath) const;
-    virtual bool isExecutableFile(const Utils::FilePath &filePath) const;
-    virtual bool isReadableFile(const Utils::FilePath &filePath) const;
-    virtual bool isWritableFile(const Utils::FilePath &filePath) const;
-    virtual bool isReadableDirectory(const Utils::FilePath &filePath) const;
-    virtual bool isWritableDirectory(const Utils::FilePath &filePath) const;
-    virtual bool isFile(const Utils::FilePath &filePath) const;
-    virtual bool isDirectory(const Utils::FilePath &filePath) const;
-    virtual bool ensureWritableDirectory(const Utils::FilePath &filePath) const;
-    virtual bool ensureExistingFile(const Utils::FilePath &filePath) const;
-    virtual bool createDirectory(const Utils::FilePath &filePath) const;
-    virtual bool exists(const Utils::FilePath &filePath) const;
-    virtual bool removeFile(const Utils::FilePath &filePath) const;
-    virtual bool removeRecursively(const Utils::FilePath &filePath) const;
-    virtual bool copyFile(const Utils::FilePath &filePath, const Utils::FilePath &target) const;
-    virtual bool renameFile(const Utils::FilePath &filePath, const Utils::FilePath &target) const;
+
     virtual Utils::FilePath searchExecutableInPath(const QString &fileName) const;
     virtual Utils::FilePath searchExecutable(const QString &fileName,
                                              const Utils::FilePaths &dirs) const;
-    virtual Utils::FilePath symLinkTarget(const Utils::FilePath &filePath) const;
-    virtual void iterateDirectory(const Utils::FilePath &filePath,
-                                  const std::function<bool(const Utils::FilePath &)> &callBack,
-                                  const Utils::FileFilter &filter) const;
-    virtual QByteArray fileContents(const Utils::FilePath &filePath,
-                                    qint64 limit,
-                                    qint64 offset) const;
-    virtual bool writeFileContents(const Utils::FilePath &filePath, const QByteArray &data) const;
-    virtual QDateTime lastModified(const Utils::FilePath &filePath) const;
-    virtual QFile::Permissions permissions(const Utils::FilePath &filePath) const;
-    virtual bool setPermissions(const Utils::FilePath &filePath, QFile::Permissions) const;
-    virtual void runProcess(Utils::QtcProcess &process) const;
+
+    virtual Utils::ProcessInterface *createProcessInterface() const;
+    virtual FileTransferInterface *createFileTransferInterface(
+            const FileTransferSetupData &setup) const;
     virtual Utils::Environment systemEnvironment() const;
-    virtual qint64 fileSize(const Utils::FilePath &filePath) const;
-    virtual qint64 bytesAvailable(const Utils::FilePath &filePath) const;
 
     virtual void aboutToBeRemoved() const {}
 
-    virtual void asyncFileContents(const Continuation<QByteArray> &cont,
-                                   const Utils::FilePath &filePath,
-                                   qint64 limit, qint64 offset) const;
-    virtual void asyncWriteFileContents(const Continuation<bool> &cont,
-                                        const Utils::FilePath &filePath,
-                                        const QByteArray &data) const;
+    virtual bool ensureReachable(const Utils::FilePath &other) const;
+    virtual Utils::expected_str<Utils::FilePath> localSource(const Utils::FilePath &other) const;
+
+    virtual bool prepareForBuild(const Target *target);
+    virtual std::optional<Utils::FilePath> clangdExecutable() const;
 
 protected:
     IDevice();
@@ -290,6 +231,7 @@ protected:
     void setOpenTerminal(const OpenTerminal &openTerminal);
     void setDisplayType(const QString &type);
     void setOsType(Utils::OsType osType);
+    void setFileAccess(Utils::DeviceFileAccess *fileAccess);
 
 private:
     IDevice(const IDevice &) = delete;
@@ -300,7 +242,6 @@ private:
     const std::unique_ptr<Internal::IDevicePrivate> d;
     friend class DeviceManager;
 };
-
 
 class PROJECTEXPLORER_EXPORT DeviceTester : public QObject
 {
@@ -321,4 +262,31 @@ protected:
     explicit DeviceTester(QObject *parent = nullptr);
 };
 
+class PROJECTEXPLORER_EXPORT DeviceProcessKiller : public QObject
+{
+    Q_OBJECT
+
+public:
+    void setProcessPath(const Utils::FilePath &path) { m_processPath = path; }
+    void start();
+    QString errorString() const { return m_errorString; }
+
+signals:
+    void done(bool success);
+
+private:
+    Utils::FilePath m_processPath;
+    DeviceProcessSignalOperation::Ptr m_signalOperation;
+    QString m_errorString;
+};
+
+class PROJECTEXPLORER_EXPORT KillerAdapter : public Utils::Tasking::TaskAdapter<DeviceProcessKiller>
+{
+public:
+    KillerAdapter();
+    void start() final;
+};
+
 } // namespace ProjectExplorer
+
+QTC_DECLARE_CUSTOM_TASK(Killer, ProjectExplorer::KillerAdapter);

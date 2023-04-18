@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -31,14 +9,14 @@
 
 /*!
     \page creator-connecting-mobile.html
-    \previouspage creator-deployment-qnx.html
+    \previouspage creator-deployment-embedded-linux.html
     \nextpage creator-developing-android.html
 
     \title Connecting Devices
 
     You can connect \l{glossary-device}{devices} to the development PC to run, debug,
     and analyze applications built for them from \QC. When you install Qt for a
-    target platform, such as Android, QNX, or Universal Windows Platform (UWP),
+    target platform, such as Android or QNX,
     the build and run settings for the development targets might be set up
     automatically in \QC.
 
@@ -62,25 +40,21 @@
             Qt version targeting Android and the Android SDK and NDK to develop
             for Android devices.
 
-        \if defined(qtcreator)
         \li \l{Connecting Bare Metal Devices}
 
             You can connect bare metal devices to the development PC and use \QC
             to debug applications on them with GDB or a hardware debugger.
-        \endif
 
         \li \l{Connecting Boot2Qt Devices}
 
             You can connect \l{Boot2Qt} devices to the development PC to run,
             debug, and analyze applications built for them from \QC.
 
-        \li \l{Connecting Generic Remote Linux Devices}
+        \li \l {Adding Docker Devices}
 
-            If you have a tool chain for building applications for embedded
-            Linux devices installed on the development
-            PC, you can add it and the device to \QC.
+            You can add Docker images as \e devices to run, debug, and analyze
+            applications built for Docker containers from \QC.
 
-        \if defined(qtcreator)
         \li \l{Connecting iOS Devices}
 
             You use the tools delivered with Xcode to connect devices to \QC.
@@ -98,11 +72,15 @@
             debug applications on them from within \QC. This is currently only
             supported for QNX Neutrino devices, and requires the QNX SDK to be
             installed on the development PC.
-        \endif
+
+        \li \l{Connecting Remote Linux Devices}
+
+            If you have a tool chain for building applications for embedded
+            Linux devices installed on the development
+            PC, you can add it and the device to \QC.
 
     \endlist
 
-    \if defined(qtcreator)
     \section1 Related Topics
 
     \list
@@ -121,5 +99,4 @@
             local Linux PC, remote generic SSH Linux targets, or
             \l{Boot2Qt}{Boot2Qt devices}.
     \endlist
-    \endif
 */

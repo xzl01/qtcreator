@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "internalnodeproperty.h"
 #include "internalnode_p.h"
@@ -46,7 +24,7 @@ InternalNodeProperty::Pointer InternalNodeProperty::create(const PropertyName &n
 
 bool InternalNodeProperty::isEmpty() const
 {
-    return m_node.isNull();
+    return !m_node;
 }
 
 int InternalNodeProperty::count() const
@@ -59,7 +37,7 @@ int InternalNodeProperty::count() const
 
 int InternalNodeProperty::indexOf(const InternalNode::Pointer &node) const
 {
-    if (!node.isNull() && node == m_node)
+    if (node && node == m_node)
         return 0;
 
     return -1;
@@ -80,12 +58,10 @@ InternalNode::Pointer InternalNodeProperty::node() const
     return m_node;
 }
 
-void InternalNodeProperty::remove(const InternalNode::Pointer &node)
+void InternalNodeProperty::remove([[maybe_unused]] const InternalNode::Pointer &node)
 {
-    Q_UNUSED(node)
     Q_ASSERT(m_node == node);
-    m_node.clear();
-
+    m_node.reset();
 }
 
 void InternalNodeProperty::add(const InternalNode::Pointer &node)

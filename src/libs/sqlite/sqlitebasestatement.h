@@ -1,53 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
+#include "sqlite3_fwd.h"
 #include "sqliteglobal.h"
 
 #include "sqliteblob.h"
 #include "sqliteexception.h"
+#include "sqliteids.h"
 #include "sqlitetransaction.h"
 #include "sqlitevalue.h"
 
 #include <utils/smallstringvector.h>
 
-#include <utils/optional.h>
 #include <utils/span.h>
 
 #include <cstdint>
 #include <exception>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <type_traits>
 
 using std::int64_t;
-
-struct sqlite3_stmt;
-struct sqlite3;
 
 namespace Sqlite {
 
@@ -55,6 +32,13 @@ class Database;
 class DatabaseBackend;
 
 enum class Type : char { Invalid, Integer, Float, Text, Blob, Null };
+
+template<typename Enumeration>
+constexpr static std::underlying_type_t<Enumeration> to_underlying(Enumeration enumeration) noexcept
+{
+    static_assert(std::is_enum_v<Enumeration>, "to_underlying expect an enumeration");
+    return static_cast<std::underlying_type_t<Enumeration>>(enumeration);
+}
 
 class SQLITE_EXPORT BaseStatement
 {
@@ -83,6 +67,7 @@ public:
     template<typename Type>
     Type fetchValue(int column) const;
 
+    void bindNull(int index);
     void bind(int index, NullValue);
     void bind(int index, int value);
     void bind(int index, long long value);
@@ -96,6 +81,21 @@ public:
     void bind(int index, const Value &value);
     void bind(int index, ValueView value);
     void bind(int index, BlobView blobView);
+
+    template<typename Type, typename = std::enable_if_t<Type::IsBasicId::value>>
+    void bind(int index, Type id)
+    {
+        if (id)
+            bind(index, id.internalId());
+        else
+            bindNull(index);
+    }
+
+    template<typename Enumeration, std::enable_if_t<std::is_enum_v<Enumeration>, bool> = true>
+    void bind(int index, Enumeration enumeration)
+    {
+        bind(index, to_underlying(enumeration));
+    }
 
     void bind(int index, uint value) { bind(index, static_cast<long long>(value)); }
 
@@ -225,12 +225,12 @@ public:
     auto optionalValue(const QueryTypes &...queryValues)
     {
         Resetter resetter{this};
-        Utils::optional<ResultType> resultValue;
+        std::optional<ResultType> resultValue;
 
         bindValues(queryValues...);
 
         if (BaseStatement::next())
-            resultValue = createOptionalValue<Utils::optional<ResultType>>();
+            resultValue = createOptionalValue<std::optional<ResultType>>();
 
         return resultValue;
     }
@@ -447,13 +447,34 @@ private:
             , column(column)
         {}
 
-        operator int() { return statement.fetchIntValue(column); }
-        operator long() { return statement.fetchLongValue(column); }
-        operator long long() { return statement.fetchLongLongValue(column); }
-        operator double() { return statement.fetchDoubleValue(column); }
+        explicit operator bool() const { return statement.fetchIntValue(column); }
+        operator int() const { return statement.fetchIntValue(column); }
+        operator long() const { return statement.fetchLongValue(column); }
+        operator long long() const { return statement.fetchLongLongValue(column); }
+        operator double() const { return statement.fetchDoubleValue(column); }
         operator Utils::SmallStringView() { return statement.fetchSmallStringViewValue(column); }
         operator BlobView() { return statement.fetchBlobValue(column); }
         operator ValueView() { return statement.fetchValueView(column); }
+
+        template<typename ConversionType,
+                 typename = std::enable_if_t<ConversionType::IsBasicId::value>>
+        constexpr operator ConversionType()
+        {
+            if (statement.fetchType(column) == Type::Integer) {
+                if constexpr (std::is_same_v<typename ConversionType::DatabaseType, int>)
+                    return ConversionType::create(statement.fetchIntValue(column));
+                else
+                    return ConversionType::create(statement.fetchLongLongValue(column));
+            }
+
+            return ConversionType{};
+        }
+
+        template<typename Enumeration, std::enable_if_t<std::is_enum_v<Enumeration>, bool> = true>
+        constexpr operator Enumeration()
+        {
+            return static_cast<Enumeration>(statement.fetchLongLongValue(column));
+        }
 
         StatementImplementation &statement;
         int column;
@@ -474,7 +495,7 @@ private:
     template<typename ResultOptionalType, int... ColumnIndices>
     ResultOptionalType createOptionalValue(std::integer_sequence<int, ColumnIndices...>)
     {
-        return ResultOptionalType(Utils::in_place, ValueGetter(*this, ColumnIndices)...);
+        return ResultOptionalType(std::in_place, ValueGetter(*this, ColumnIndices)...);
     }
 
     template<typename ResultOptionalType>
@@ -486,7 +507,7 @@ private:
     template<typename ResultType, int... ColumnIndices>
     ResultType createValue(std::integer_sequence<int, ColumnIndices...>)
     {
-        return ResultType{ValueGetter(*this, ColumnIndices)...};
+        return ResultType(ValueGetter(*this, ColumnIndices)...);
     }
 
     template<typename ResultType>

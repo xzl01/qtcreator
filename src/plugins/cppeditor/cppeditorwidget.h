@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -32,13 +10,14 @@
 
 #include <QScopedPointer>
 
+#include <functional>
+
 namespace TextEditor {
 class IAssistProposal;
 class IAssistProvider;
 }
 
 namespace CppEditor {
-class FollowSymbolInterface;
 class SemanticInfo;
 class ProjectPart;
 
@@ -58,7 +37,6 @@ public:
     ~CppEditorWidget() override;
 
     Internal::CppEditorDocument *cppEditorDocument() const;
-    Internal::CppEditorOutline *outline() const;
 
     bool isSemanticInfoValidExceptLocalUses() const;
     bool isSemanticInfoValid() const;
@@ -67,7 +45,7 @@ public:
     QSharedPointer<Internal::FunctionDeclDefLink> declDefLink() const;
     void applyDeclDefLinkChanges(bool jumpToMatch);
 
-    TextEditor::AssistInterface *createAssistInterface(
+    std::unique_ptr<TextEditor::AssistInterface> createAssistInterface(
             TextEditor::AssistKind kind,
             TextEditor::AssistReason reason) const override;
 
@@ -78,12 +56,17 @@ public:
     void selectAll() override;
 
     void switchDeclarationDefinition(bool inNextSplit);
+    void followSymbolToType(bool inNextSplit);
     void showPreProcessorWidget();
 
     void findUsages() override;
     void findUsages(QTextCursor cursor);
     void renameUsages(const QString &replacement = QString(),
                       QTextCursor cursor = QTextCursor());
+    void renameUsages(const Utils::FilePath &filePath,
+                      const QString &replacement = QString(),
+                      QTextCursor cursor = QTextCursor(),
+                      const std::function<void()> &callback = {});
     void renameSymbolUnderCursor() override;
 
     bool selectBlockUp() override;
@@ -117,7 +100,7 @@ protected:
     bool handleStringSplitting(QKeyEvent *e) const;
 
     void findLinkAt(const QTextCursor &cursor,
-                    Utils::ProcessLinkCallback &&processLinkCallback,
+                    const Utils::LinkHandler &processLinkCallback,
                     bool resolveTarget = true,
                     bool inNextSplit = false) override;
 
@@ -129,15 +112,11 @@ private:
     void abortDeclDefLink();
     void onFunctionDeclDefLinkFound(QSharedPointer<Internal::FunctionDeclDefLink> link);
 
-    void onCppDocumentUpdated();
-
     void onCodeWarningsUpdated(unsigned revision,
                                const QList<QTextEdit::ExtraSelection> selections,
                                const TextEditor::RefactorMarkers &refactorMarkers);
     void onIfdefedOutBlocksUpdated(unsigned revision,
                                    const QList<TextEditor::BlockRange> ifdefedOutBlocks);
-
-    void onShowInfoBarAction(const Utils::Id &id, bool show);
 
     void updateSemanticInfo(const SemanticInfo &semanticInfo,
                             bool updateUseSelectionSynchronously = false);
@@ -149,12 +128,15 @@ private:
     void finalizeInitializationAfterDuplication(TextEditorWidget *other) override;
 
     unsigned documentRevision() const;
+    bool isOldStyleSignalOrSlot() const;
+    bool followUrl(const QTextCursor &cursor, const Utils::LinkHandler &processLinkCallback);
 
     QMenu *createRefactorMenu(QWidget *parent) const;
 
-    FollowSymbolInterface &followSymbolInterface() const;
-
     const ProjectPart *projectPart() const;
+
+    void handleOutlineChanged(const QWidget* newOutline);
+    void showRenameWarningIfFileIsGenerated(const Utils::FilePath &filePath);
 
 private:
     QScopedPointer<Internal::CppEditorWidgetPrivate> d;

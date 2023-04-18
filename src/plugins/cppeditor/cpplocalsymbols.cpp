@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cpplocalsymbols.h"
 
@@ -76,8 +54,8 @@ protected:
             if (Symbol *member = scope->memberAt(i)) {
                 if (member->isTypedef())
                     continue;
-                if (!member->isGenerated() && (member->isDeclaration() || member->isArgument())) {
-                    if (member->name() && member->name()->isNameId()) {
+                if (!member->isGenerated() && (member->asDeclaration() || member->asArgument())) {
+                    if (member->name() && member->name()->asNameId()) {
                         const Token token = tokenAt(member->sourceLocation());
                         int line, column;
                         getPosition(token.utf16charsBegin(), &line, &column);
@@ -99,10 +77,10 @@ protected:
             const Identifier *id = identifier(simpleName->identifier_token);
             for (int i = _scopeStack.size() - 1; i != -1; --i) {
                 if (Symbol *member = _scopeStack.at(i)->find(id)) {
-                    if (member->isTypedef() || !(member->isDeclaration() || member->isArgument()))
+                    if (member->isTypedef() || !(member->asDeclaration() || member->asArgument()))
                         continue;
                     if (!member->isGenerated() && (member->sourceLocation() < firstToken
-                                                   || member->enclosingScope()->isFunction())) {
+                                                   || member->enclosingScope()->asFunction())) {
                         int line, column;
                         getTokenStartPosition(simpleName->identifier_token, &line, &column);
                         localUses[member].append(

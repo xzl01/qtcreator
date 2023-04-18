@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtquick-placeholder-data.html
@@ -42,7 +20,7 @@
 
     \section1 Using Dummy Models
 
-    If you open a file in \l {Form Editor} that references a C++ model, you see
+    If you open a file in the \l {2D} view that references a C++ model, you see
     nothing in it. If the data in the model is fetched from the
     internet, you have no control over it. To get reliable data, \e {dummy data}
     was introduced.
@@ -97,8 +75,8 @@
         }
     \endqml
 
-    This works nicely for applications but \uicontrol {Form Editor} displays a
-    zero-sized component. A parent for the opened file does not exist, because
+    This works nicely for applications but the \uicontrol {2D} view displays a
+    zero-sized component. A parent for the opened file does not exist because
     the context is missing. To get around the missing context, the idea of a
     \e {dummy context} is introduced. If you place a file with the same name as
     the application (here, example.qml) in the \c {dummydata/context} directory,

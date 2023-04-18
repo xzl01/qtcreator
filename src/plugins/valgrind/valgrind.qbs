@@ -6,7 +6,6 @@ QtcPlugin {
 
     Depends { name: "Qt"; submodules: ["widgets", "network"] }
     Depends { name: "CPlusPlus"}
-    Depends { name: "QtcSsh" }
     Depends { name: "Utils" }
 
     Depends { name: "Core" }
@@ -33,9 +32,10 @@ QtcPlugin {
             "valgrind.qrc",
             "valgrindconfigwidget.cpp", "valgrindconfigwidget.h",
             "valgrindengine.cpp", "valgrindengine.h",
-            "valgrindplugin.cpp", "valgrindplugin.h",
+            "valgrindplugin.cpp",
             "valgrindrunner.cpp", "valgrindrunner.h",
             "valgrindsettings.cpp", "valgrindsettings.h",
+            "valgrindtr.h",
         ]
     }
 
@@ -45,7 +45,6 @@ QtcPlugin {
         files: [
             "callgrindabstractmodel.h",
             "callgrindcallmodel.cpp", "callgrindcallmodel.h",
-            "callgrindcontroller.cpp", "callgrindcontroller.h",
             "callgrindcostitem.cpp", "callgrindcostitem.h",
             "callgrindcycledetection.cpp", "callgrindcycledetection.h",
             "callgrinddatamodel.cpp", "callgrinddatamodel.h",

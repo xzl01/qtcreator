@@ -1,37 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "navigationwidget.h"
-#include "navigationsubwidget.h"
-#include "icontext.h"
-#include "icore.h"
-#include "inavigationwidgetfactory.h"
-#include "modemanager.h"
 #include "actionmanager/actionmanager.h"
 #include "actionmanager/command.h"
+#include "coreplugintr.h"
+#include "icontext.h"
+#include "icore.h"
 #include "imode.h"
+#include "inavigationwidgetfactory.h"
+#include "modemanager.h"
+#include "navigationsubwidget.h"
 
 #include <utils/qtcassert.h>
 #include <utils/utilsicons.h>
@@ -244,14 +223,14 @@ QWidget *NavigationWidget::activateSubWidget(Id factoryId, Side fallbackSide)
 void NavigationWidget::setFactories(const QList<INavigationWidgetFactory *> &factories)
 {
     Context navicontext(Constants::C_NAVIGATION_PANE);
-    foreach (INavigationWidgetFactory *factory, factories) {
+    for (INavigationWidgetFactory *factory : std::as_const(factories)) {
         const Id id = factory->id();
         const Id actionId = id.withPrefix("QtCreator.Sidebar.");
 
         if (!ActionManager::command(actionId)) {
-            QAction *action = new QAction(tr("Activate %1 View").arg(factory->displayName()), this);
+            QAction *action = new QAction(Tr::tr("Activate %1 View").arg(factory->displayName()), this);
             d->m_actionMap.insert(action, id);
-            connect(action, &QAction::triggered, this, [this, action]() {
+            connect(action, &QAction::triggered, this, [this, action] {
                 NavigationWidget::activateSubWidget(d->m_actionMap[action], Side::Left);
             });
             Command *cmd = ActionManager::registerAction(action, actionId, navicontext);
@@ -297,7 +276,7 @@ void NavigationWidget::updateToggleText()
                                 ? (isShown() ? Constants::TR_HIDE_LEFT_SIDEBAR : Constants::TR_SHOW_LEFT_SIDEBAR)
                                 : (isShown() ? Constants::TR_HIDE_RIGHT_SIDEBAR : Constants::TR_SHOW_RIGHT_SIDEBAR);
 
-    d->m_toggleSideBarAction->setToolTip(QCoreApplication::translate("Core", trToolTip));
+    d->m_toggleSideBarAction->setToolTip(Tr::tr(trToolTip));
 }
 
 void NavigationWidget::placeHolderChanged(NavigationWidgetPlaceHolder *holder)
@@ -334,10 +313,16 @@ Internal::NavigationSubWidget *NavigationWidget::insertSubItem(int position, int
         d->m_subWidgets.at(0)->setCloseIcon(Utils::Icons::CLOSE_SPLIT_BOTTOM.icon());
 
     auto nsw = new Internal::NavigationSubWidget(this, position, factoryIndex);
-    connect(nsw, &Internal::NavigationSubWidget::splitMe,  this, &NavigationWidget::splitSubWidget);
-    connect(nsw, &Internal::NavigationSubWidget::closeMe, this, &NavigationWidget::closeSubWidget);
-    connect(nsw, &Internal::NavigationSubWidget::factoryIndexChanged,
-            this, &NavigationWidget::onSubWidgetFactoryIndexChanged);
+    connect(nsw, &Internal::NavigationSubWidget::splitMe, this, [this, nsw](int factoryIndex) {
+        insertSubItem(indexOf(nsw) + 1, factoryIndex);
+    });
+    connect(nsw, &Internal::NavigationSubWidget::closeMe, this, [this, nsw] {
+        closeSubWidget(nsw);
+    });
+    connect(nsw, &Internal::NavigationSubWidget::factoryIndexChanged, this, [this, nsw] {
+        const Id factoryId = nsw->factory()->id();
+        NavigationWidgetPrivate::updateActivationsMap(factoryId, {d->m_side, nsw->position()});
+    });
     insertWidget(position, nsw);
 
     d->m_subWidgets.insert(position, nsw);
@@ -349,7 +334,7 @@ Internal::NavigationSubWidget *NavigationWidget::insertSubItem(int position, int
 QWidget *NavigationWidget::activateSubWidget(Id factoryId, int preferredPosition)
 {
     setShown(true);
-    foreach (Internal::NavigationSubWidget *subWidget, d->m_subWidgets) {
+    for (Internal::NavigationSubWidget *subWidget : std::as_const(d->m_subWidgets)) {
         if (subWidget->factory()->id() == factoryId) {
             subWidget->setFocusWidget();
             ICore::raiseWindow(this);
@@ -370,17 +355,9 @@ QWidget *NavigationWidget::activateSubWidget(Id factoryId, int preferredPosition
     return nullptr;
 }
 
-void NavigationWidget::splitSubWidget(int factoryIndex)
-{
-    auto original = qobject_cast<Internal::NavigationSubWidget *>(sender());
-    int pos = indexOf(original) + 1;
-    insertSubItem(pos, factoryIndex);
-}
-
-void NavigationWidget::closeSubWidget()
+void NavigationWidget::closeSubWidget(Internal::NavigationSubWidget *subWidget)
 {
     if (d->m_subWidgets.count() != 1) {
-        auto subWidget = qobject_cast<Internal::NavigationSubWidget *>(sender());
         subWidget->saveSettings();
 
         int position = d->m_subWidgets.indexOf(subWidget);
@@ -457,7 +434,7 @@ void NavigationWidget::restoreSettings(QSettings *settings)
     }
 
     int position = 0;
-    foreach (const QString &id, viewIds) {
+    for (const QString &id : std::as_const(viewIds)) {
         int index = factoryIndex(Id::fromString(id));
         if (index >= 0) {
             // Only add if the id was actually found!
@@ -509,7 +486,7 @@ void NavigationWidget::restoreSettings(QSettings *settings)
 
 void NavigationWidget::closeSubWidgets()
 {
-    foreach (Internal::NavigationSubWidget *subWidget, d->m_subWidgets) {
+    for (Internal::NavigationSubWidget *subWidget : std::as_const(d->m_subWidgets)) {
         subWidget->saveSettings();
         delete subWidget;
     }
@@ -550,15 +527,6 @@ int NavigationWidget::factoryIndex(Id id)
 QString NavigationWidget::settingsKey(const QString &key) const
 {
     return QStringLiteral("%1/%2").arg(settingsGroup(), key);
-}
-
-void NavigationWidget::onSubWidgetFactoryIndexChanged(int factoryIndex)
-{
-    Q_UNUSED(factoryIndex)
-    auto subWidget = qobject_cast<Internal::NavigationSubWidget *>(sender());
-    QTC_ASSERT(subWidget, return);
-    Id factoryId = subWidget->factory()->id();
-    NavigationWidgetPrivate::updateActivationsMap(factoryId, {d->m_side, subWidget->position()});
 }
 
 QHash<Id, Command *> NavigationWidget::commandMap() const

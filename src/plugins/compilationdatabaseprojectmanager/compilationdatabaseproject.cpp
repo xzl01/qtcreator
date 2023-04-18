@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "compilationdatabaseproject.h"
 
 #include "compilationdatabaseconstants.h"
 #include "compilationdbparser.h"
 
+#include <coreplugin/coreplugintr.h>
 #include <coreplugin/icontext.h>
 #include <cppeditor/cppprojectupdater.h>
 #include <cppeditor/projectinfo.h>
@@ -49,7 +28,6 @@
 #include <utils/algorithm.h>
 #include <utils/filesystemwatcher.h>
 #include <utils/qtcassert.h>
-#include <utils/runextensions.h>
 
 #include <QFileDialog>
 
@@ -131,7 +109,7 @@ ToolChain *toolchainFromFlags(const Kit *kit, const QStringList &flags, const Ut
         return ToolChainKitAspect::toolChain(kit, language);
 
     // Try exact compiler match.
-    const Utils::FilePath compiler = Utils::FilePath::fromString(compilerPath(flags.front()));
+    const Utils::FilePath compiler = Utils::FilePath::fromUserInput(compilerPath(flags.front()));
     ToolChain *toolchain = ToolChainManager::toolChain([&compiler, &language](const ToolChain *tc) {
         return tc->isValid() && tc->language() == language && tc->compilerCommand() == compiler;
     });
@@ -483,8 +461,7 @@ void CompilationDatabaseBuildSystem::updateDeploymentData()
     const Utils::FilePath deploymentFilePath = projectDirectory()
             .pathAppended("QtCreatorDeployment.txt");
     DeploymentData deploymentData;
-    deploymentData.addFilesFromDeploymentFile(deploymentFilePath.toString(),
-                                              projectDirectory().toString());
+    deploymentData.addFilesFromDeploymentFile(deploymentFilePath, projectDirectory());
     setDeploymentData(deploymentData);
     if (m_deployFileWatcher->files() != QStringList(deploymentFilePath.toString())) {
         m_deployFileWatcher->clear();
@@ -506,7 +483,7 @@ static TextEditor::TextDocument *createCompilationDatabaseDocument()
 CompilationDatabaseEditorFactory::CompilationDatabaseEditorFactory()
 {
     setId(Constants::COMPILATIONDATABASEPROJECT_ID);
-    setDisplayName(QCoreApplication::translate("OpenWith::Editors", "Compilation Database"));
+    setDisplayName(::Core::Tr::tr("Compilation Database"));
     addMimeType(Constants::COMPILATIONDATABASEMIMETYPE);
 
     setEditorCreator([]() { return new TextEditor::BaseTextEditor; });
@@ -536,7 +513,7 @@ CompilationDatabaseBuildConfigurationFactory::CompilationDatabaseBuildConfigurat
     setSupportedProjectMimeTypeName(Constants::COMPILATIONDATABASEMIMETYPE);
 
     setBuildGenerator([](const Kit *, const FilePath &projectPath, bool) {
-        const QString name = BuildConfiguration::tr("Release");
+        const QString name = QCoreApplication::translate("QtC::ProjectExplorer", "Release");
         ProjectExplorer::BuildInfo info;
         info.typeName = name;
         info.displayName = name;

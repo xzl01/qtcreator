@@ -1,33 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Sergey Morozov
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 Sergey Morozov
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "cppcheckoptions.h"
 
 #include "cppcheckconstants.h"
-#include "cppcheckoptions.h"
 #include "cppchecktool.h"
+#include "cppchecktr.h"
 #include "cppchecktrigger.h"
 
+#include <utils/environment.h>
 #include <utils/flowlayout.h>
 #include <utils/hostosinfo.h>
 #include <utils/pathchooser.h>
@@ -37,32 +18,32 @@
 #include <coreplugin/icore.h>
 
 #include <debugger/analyzer/analyzericons.h>
+#include <debugger/debuggertr.h>
 
 #include <QCheckBox>
 #include <QFormLayout>
 
 using namespace Utils;
 
-namespace Cppcheck {
-namespace Internal {
+namespace Cppcheck::Internal {
 
 OptionsWidget::OptionsWidget(QWidget *parent)
     : QWidget(parent),
     m_binary(new Utils::PathChooser(this)),
     m_customArguments(new QLineEdit(this)),
     m_ignorePatterns(new QLineEdit(this)),
-    m_warning(new QCheckBox(tr("Warnings"), this)),
-    m_style(new QCheckBox(tr("Style"), this)),
-    m_performance(new QCheckBox(tr("Performance"), this)),
-    m_portability(new QCheckBox(tr("Portability"), this)),
-    m_information(new QCheckBox(tr("Information"), this)),
-    m_unusedFunction(new QCheckBox(tr("Unused functions"), this)),
-    m_missingInclude(new QCheckBox(tr("Missing includes"), this)),
-    m_inconclusive(new QCheckBox(tr("Inconclusive errors"), this)),
-    m_forceDefines(new QCheckBox(tr("Check all define combinations"), this)),
-    m_showOutput(new QCheckBox(tr("Show raw output"), this)),
-    m_addIncludePaths(new QCheckBox(tr("Add include paths"), this)),
-    m_guessArguments(new QCheckBox(tr("Calculate additional arguments"), this))
+    m_warning(new QCheckBox(Tr::tr("Warnings"), this)),
+    m_style(new QCheckBox(Tr::tr("Style"), this)),
+    m_performance(new QCheckBox(Tr::tr("Performance"), this)),
+    m_portability(new QCheckBox(Tr::tr("Portability"), this)),
+    m_information(new QCheckBox(Tr::tr("Information"), this)),
+    m_unusedFunction(new QCheckBox(Tr::tr("Unused functions"), this)),
+    m_missingInclude(new QCheckBox(Tr::tr("Missing includes"), this)),
+    m_inconclusive(new QCheckBox(Tr::tr("Inconclusive errors"), this)),
+    m_forceDefines(new QCheckBox(Tr::tr("Check all define combinations"), this)),
+    m_showOutput(new QCheckBox(Tr::tr("Show raw output"), this)),
+    m_addIncludePaths(new QCheckBox(Tr::tr("Add include paths"), this)),
+    m_guessArguments(new QCheckBox(Tr::tr("Calculate additional arguments"), this))
 {
     m_binary->setExpectedKind(Utils::PathChooser::ExistingCommand);
     m_binary->setCommandVersionArguments({"--version"});
@@ -70,18 +51,18 @@ OptionsWidget::OptionsWidget(QWidget *parent)
     auto variableChooser = new Utils::VariableChooser(this);
     variableChooser->addSupportedWidget (m_customArguments);
 
-    m_unusedFunction->setToolTip(tr("Disables multithreaded check."));
-    m_ignorePatterns->setToolTip(tr("Comma-separated wildcards of full file paths. "
-                                    "Files still can be checked if others include them."));
-    m_addIncludePaths->setToolTip(tr("Can find missing includes but makes "
-                                     "checking slower. Use only when needed."));
-    m_guessArguments->setToolTip(tr("Like C++ standard and language."));
+    m_unusedFunction->setToolTip(Tr::tr("Disables multithreaded check."));
+    m_ignorePatterns->setToolTip(Tr::tr("Comma-separated wildcards of full file paths. "
+                                        "Files still can be checked if others include them."));
+    m_addIncludePaths->setToolTip(Tr::tr("Can find missing includes but makes "
+                                         "checking slower. Use only when needed."));
+    m_guessArguments->setToolTip(Tr::tr("Like C++ standard and language."));
 
     auto layout = new QFormLayout(this);
-    layout->addRow(tr("Binary:"), m_binary);
+    layout->addRow(Tr::tr("Binary:"), m_binary);
 
     auto checks = new Utils::FlowLayout;
-    layout->addRow(tr("Checks:"), checks);
+    layout->addRow(Tr::tr("Checks:"), checks);
     checks->addWidget(m_warning);
     checks->addWidget(m_style);
     checks->addWidget(m_performance);
@@ -90,8 +71,8 @@ OptionsWidget::OptionsWidget(QWidget *parent)
     checks->addWidget(m_unusedFunction);
     checks->addWidget(m_missingInclude);
 
-    layout->addRow(tr("Custom arguments:"), m_customArguments);
-    layout->addRow(tr("Ignored file patterns:"), m_ignorePatterns);
+    layout->addRow(Tr::tr("Custom arguments:"), m_customArguments);
+    layout->addRow(Tr::tr("Ignored file patterns:"), m_ignorePatterns);
     auto flags = new Utils::FlowLayout;
     layout->addRow(flags);
     flags->addWidget(m_inconclusive);
@@ -144,16 +125,16 @@ CppcheckOptionsPage::CppcheckOptionsPage(CppcheckTool &tool, CppcheckTrigger &tr
     m_trigger(trigger)
 {
     setId(Constants::OPTIONS_PAGE_ID);
-    setDisplayName(tr("Cppcheck"));
+    setDisplayName(Tr::tr("Cppcheck"));
     setCategory("T.Analyzer");
-    setDisplayCategory(QCoreApplication::translate("Analyzer", "Analyzer"));
+    setDisplayCategory(::Debugger::Tr::tr("Analyzer"));
     setCategoryIconPath(Analyzer::Icons::SETTINGSCATEGORY_ANALYZER);
 
     CppcheckOptions options;
     if (HostOsInfo::isAnyUnixHost()) {
         options.binary = "cppcheck";
     } else {
-        FilePath programFiles = FilePath::fromUserInput(qEnvironmentVariable("PROGRAMFILES"));
+        FilePath programFiles = FilePath::fromUserInput(qtcEnvironmentVariable("PROGRAMFILES"));
         if (programFiles.isEmpty())
             programFiles = "C:/Program Files";
         options.binary = programFiles / "Cppcheck/cppcheck.exe";
@@ -246,5 +227,4 @@ void CppcheckOptionsPage::load(CppcheckOptions &options) const
     s->endGroup();
 }
 
-} // namespace Internal
-} // namespace Cppcheck
+} // Cppcheck::Internal

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Bridge documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \previouspage qtbridge-sketch-setup.html
@@ -121,7 +99,7 @@
     Place different parts of the UI, such as menus and pop-ups, on separate
     artboards to be able to export them as components or children and to
     import them as component files and images that you can drag and drop to the
-    \uicontrol {Form Editor} in \QDS Design mode while creating a UI.
+    the \uicontrol {2D} view in \QDS Design mode while creating a UI.
 
     If you want to use the assets on an artboard in \QDS as they are in Sketch,
     you can import the artboard without generating code for it.
@@ -245,15 +223,15 @@
             component. See \l {Annotating Designs}.
         \li Select the \uicontrol Settings tab to specify the export path and
             asset format.
-        \li Select \uicontrol Export to copy your assets to the export path you
-            specified.
+        \li Select \uicontrol Export to export the document into a .qtbridge archive.
         \li When the exporting is done, select \uicontrol OK.
     \endlist
 
-    All the assets and metadata are copied to the directory you specified. This
-    might take a little while depending on the complexity of your project.
+    All the assets and metadata are exported into a .qtbridge archive in the directory
+    you specified. This might take a little while depending on the complexity of
+    your project.
 
-    You can now create a project in \QDS and import the assets to it, as
+    You can now create a project in \QDS and import the .qtbridge archive to it, as
     described in \l {Creating Projects} and \l{Importing Designs}.
 
     \section1 Specifying Export Path and Asset Format
@@ -263,9 +241,9 @@
 
     \image qt-sketch-bridge-settings.png
 
-    By default, \QBSK exports assets to a directory named after your
-    Sketch file located inside the parent directory of the Sketch file
-    being exported. You can change the export path in the
+    \QBSK exports assets to a .qtbridge archive named after your
+    Sketch file. By default, the directory is  located inside the parent directory
+    of the Sketch file being exported. You can change the export path in the
     \uicontrol {Export Path} field.
 
     You can select the default asset format and DPI to use for each
@@ -279,6 +257,12 @@
     from PNG files, export assets as progressive JPG or compact SVG,
     and include SVG namespaces in SVG files.
 
+    \section1 Scaling
+
+    You can scale the generated assets and UI artefacts by setting a scaling factor between
+    0.1 and 10.0 in \uicontrol Factor.
+    \note The factor is independent of the asset scale settings, that is, 2x assets shall
+    have a size of 5x when a scale factor of 2.5 is selected.
 
     \section1 Exporting Library Symbols
 

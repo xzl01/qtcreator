@@ -1,54 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "model.h"
 #include "internalnode_p.h"
-#include "invalidargumentexception.h"
-#include "invalidpropertyexception.h"
 #include "model_p.h"
 #include <modelnode.h>
 
-#include <QFileInfo>
-#include <QHashIterator>
-#include <QPointer>
-
-#include <utils/algorithm.h>
-
 #include "abstractview.h"
+#include "auxiliarydataproperties.h"
 #include "internalnodeabstractproperty.h"
 #include "internalnodelistproperty.h"
 #include "internalproperty.h"
 #include "internalsignalhandlerproperty.h"
-#include "invalidmodelnodeexception.h"
 #include "metainfo.h"
 #include "nodeinstanceview.h"
 #include "nodemetainfo.h"
 
 #include "abstractproperty.h"
 #include "bindingproperty.h"
-#include "invalididexception.h"
 #include "nodeabstractproperty.h"
 #include "nodelistproperty.h"
 #include "rewriterview.h"
@@ -57,16 +26,16 @@
 #include "textmodifier.h"
 #include "variantproperty.h"
 
-#ifndef QMLDESIGNER_TEST
-#include <qmldesignerplugin.h>
-#include <viewmanager.h>
-#include <designdocument.h>
-#endif
+#include <projectstorage/projectstorage.h>
 
 #include <qmljs/qmljsmodelmanagerinterface.h>
 
 #include <utils/algorithm.h>
 
+#include <QDrag>
+#include <QFileInfo>
+#include <QHashIterator>
+#include <QPointer>
 #include <QRegularExpression>
 
 /*!
@@ -79,7 +48,6 @@
  All write access is running through this interface
 
 The Model is the central place to access a qml files data (see e.g. rootNode() ) and meta data (see metaInfo() ).
-
 Components that want to be informed about changes in the model can register a subclass of AbstractView via attachView().
 
 \see QmlDesigner::ModelNode, QmlDesigner::AbstractProperty, QmlDesigner::AbstractView
@@ -88,25 +56,38 @@ Components that want to be informed about changes in the model can register a su
 namespace QmlDesigner {
 namespace Internal {
 
-ModelPrivate::ModelPrivate(Model *model)
-    : m_model(model)
+ModelPrivate::ModelPrivate(Model *model,
+                           ProjectStorage<Sqlite::Database> &projectStorage,
+                           const TypeName &typeName,
+                           int major,
+                           int minor,
+                           Model *metaInfoProxyModel)
+    : projectStorage{&projectStorage}
+    , m_model{model}
 {
-    m_rootInternalNode = createNode("QtQuick.Item",
-                                    1,
-                                    0,
-                                    PropertyListType(),
-                                    PropertyListType(),
-                                    QString(),
-                                    ModelNode::NodeWithoutSource,
-                                    true);
+    m_metaInfoProxyModel = metaInfoProxyModel;
+
+    m_rootInternalNode = createNode(
+        typeName, major, minor, {}, {}, {}, ModelNode::NodeWithoutSource, {}, true);
+
     m_currentStateNode = m_rootInternalNode;
     m_currentTimelineNode = m_rootInternalNode;
 }
 
-ModelPrivate::~ModelPrivate()
+ModelPrivate::ModelPrivate(
+    Model *model, const TypeName &typeName, int major, int minor, Model *metaInfoProxyModel)
+    : m_model(model)
 {
-    detachAllViews();
+    m_metaInfoProxyModel = metaInfoProxyModel;
+
+    m_rootInternalNode = createNode(
+        typeName, major, minor, {}, {}, {}, ModelNode::NodeWithoutSource, {}, true);
+
+    m_currentStateNode = m_rootInternalNode;
+    m_currentTimelineNode = m_rootInternalNode;
 }
+
+ModelPrivate::~ModelPrivate() = default;
 
 void ModelPrivate::detachAllViews()
 {
@@ -125,18 +106,6 @@ void ModelPrivate::detachAllViews()
         m_rewriterView->modelAboutToBeDetached(m_model);
         m_rewriterView.clear();
     }
-}
-
-Model *ModelPrivate::create(const TypeName &type, int major, int minor, Model *metaInfoPropxyModel)
-{
-    auto model = new Model;
-
-    model->d->m_metaInfoProxyModel = metaInfoPropxyModel;
-    model->d->rootNode()->setType(type);
-    model->d->rootNode()->setMajorVersion(major);
-    model->d->rootNode()->setMinorVersion(minor);
-
-    return model;
 }
 
 void ModelPrivate::changeImports(const QList<Import> &toBeAddedImportList,
@@ -231,14 +200,13 @@ void ModelPrivate::setFileUrl(const QUrl &fileUrl)
 void ModelPrivate::changeNodeType(const InternalNodePointer &node, const TypeName &typeName,
                                   int majorVersion, int minorVersion)
 {
-    node->setType(typeName);
-    node->setMajorVersion(majorVersion);
-    node->setMinorVersion(minorVersion);
+    node->typeName = typeName;
+    node->majorVersion = majorVersion;
+    node->minorVersion = minorVersion;
 
     try {
         notifyNodeTypeChanged(node, typeName, majorVersion, minorVersion);
-    } catch (const RewritingException &e) {
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, e.description().toUtf8());
+    } catch (const RewritingException &) {
     }
 }
 
@@ -246,21 +214,24 @@ InternalNodePointer ModelPrivate::createNode(const TypeName &typeName,
                                              int majorVersion,
                                              int minorVersion,
                                              const QList<QPair<PropertyName, QVariant>> &propertyList,
-                                             const QList<QPair<PropertyName, QVariant>> &auxPropertyList,
+                                             const AuxiliaryDatas &auxiliaryDatas,
                                              const QString &nodeSource,
                                              ModelNode::NodeSourceType nodeSourceType,
+                                             const QString &behaviorPropertyName,
                                              bool isRootNode)
 {
     if (typeName.isEmpty())
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, tr("invalid type").toUtf8());
+        return {};
 
     qint32 internalId = 0;
 
     if (!isRootNode)
         internalId = m_internalIdCounter++;
 
-    InternalNodePointer newNode = InternalNode::create(typeName, majorVersion, minorVersion, internalId);
-    newNode->setNodeSourceType(nodeSourceType);
+    auto newNode = std::make_shared<InternalNode>(typeName, majorVersion, minorVersion, internalId);
+    newNode->nodeSourceType = nodeSourceType;
+
+    newNode->behaviorPropertyName = behaviorPropertyName;
 
     using PropertyPair = QPair<PropertyName, QVariant>;
 
@@ -269,14 +240,14 @@ InternalNodePointer ModelPrivate::createNode(const TypeName &typeName,
         newNode->variantProperty(propertyPair.first)->setValue(propertyPair.second);
     }
 
-    for (const PropertyPair &propertyPair : auxPropertyList)
-        newNode->setAuxiliaryData(propertyPair.first, propertyPair.second);
+    for (const auto &auxiliaryData : auxiliaryDatas)
+        newNode->setAuxiliaryData(AuxiliaryDataKeyView{auxiliaryData.first}, auxiliaryData.second);
 
     m_nodeSet.insert(newNode);
-    m_internalIdNodeHash.insert(newNode->internalId(), newNode);
+    m_internalIdNodeHash.insert(newNode->internalId, newNode);
 
     if (!nodeSource.isNull())
-        newNode->setNodeSource(nodeSource);
+        newNode->nodeSource = nodeSource;
 
     notifyNodeCreated(newNode);
 
@@ -288,16 +259,16 @@ InternalNodePointer ModelPrivate::createNode(const TypeName &typeName,
 
 void ModelPrivate::removeNodeFromModel(const InternalNodePointer &node)
 {
-    Q_ASSERT(!node.isNull());
+    Q_ASSERT(node);
 
     node->resetParentProperty();
 
     m_selectedInternalNodeList.removeAll(node);
-    if (!node->id().isEmpty())
-        m_idNodeHash.remove(node->id());
-    node->setValid(false);
+    if (!node->id.isEmpty())
+        m_idNodeHash.remove(node->id);
+    node->isValid = false;
     m_nodeSet.remove(node);
-    m_internalIdNodeHash.remove(node->internalId());
+    m_internalIdNodeHash.remove(node->internalId);
 }
 
 const QList<QPointer<AbstractView>> ModelPrivate::enabledViews() const
@@ -313,7 +284,7 @@ void ModelPrivate::removeAllSubNodes(const InternalNodePointer &node)
 
 void ModelPrivate::removeNode(const InternalNodePointer &node)
 {
-    Q_ASSERT(!node.isNull());
+    Q_ASSERT(node);
 
     AbstractView::PropertyChangeFlags propertyChangeFlags = AbstractView::NoAdditionalChanges;
 
@@ -357,9 +328,9 @@ void ModelPrivate::setMetaInfo(const MetaInfo &metaInfo)
 
 void ModelPrivate::changeNodeId(const InternalNodePointer &node, const QString &id)
 {
-    const QString oldId = node->id();
+    const QString oldId = node->id;
 
-    node->setId(id);
+    node->id = id;
     if (!oldId.isEmpty())
         m_idNodeHash.remove(oldId);
     if (!id.isEmpty())
@@ -367,22 +338,19 @@ void ModelPrivate::changeNodeId(const InternalNodePointer &node, const QString &
 
     try {
         notifyNodeIdChanged(node, id, oldId);
-    } catch (const RewritingException &e) {
-        throw InvalidIdException(__LINE__, __FUNCTION__, __FILE__, id.toUtf8(), e.description().toUtf8());
+    } catch (const RewritingException &) {
     }
 }
 
-void ModelPrivate::checkPropertyName(const PropertyName &propertyName)
+bool ModelPrivate::propertyNameIsValid(const PropertyName &propertyName) const
 {
-    if (propertyName.isEmpty()) {
-        Q_ASSERT_X(propertyName.isEmpty(), Q_FUNC_INFO, "empty property name");
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "<empty property name>");
-    }
+    if (propertyName.isEmpty())
+        return false;
 
-    if (propertyName == "id") {
-        Q_ASSERT_X(propertyName != "id", Q_FUNC_INFO, "cannot add property id");
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, propertyName);
-    }
+    if (propertyName == "id")
+        return false;
+
+    return true;
 }
 
 template<typename Callable>
@@ -399,9 +367,13 @@ void ModelPrivate::notifyNodeInstanceViewLast(Callable call)
         resetModel = true;
     }
 
-    for (QPointer<AbstractView> view : enabledViews()) {
-        if (!view->isBlockingNotifications())
-            call(view.data());
+    for (const QPointer<AbstractView> &view : enabledViews()) {
+         try {
+             if (!view->isBlockingNotifications())
+                 call(view.data());
+         } catch (const Exception &e) {
+             e.showException(tr("Exception thrown by view %1.").arg(view->widgetInfo().tabName));
+         }
     }
 
     if (nodeInstanceView() && !nodeInstanceView()->isBlockingNotifications())
@@ -428,7 +400,7 @@ void ModelPrivate::notifyNormalViewsLast(Callable call)
     if (nodeInstanceView() && !nodeInstanceView()->isBlockingNotifications())
         call(nodeInstanceView());
 
-    for (QPointer<AbstractView> view : enabledViews()) {
+    for (const QPointer<AbstractView> &view : enabledViews()) {
         if (!view->isBlockingNotifications())
             call(view.data());
     }
@@ -440,19 +412,19 @@ void ModelPrivate::notifyNormalViewsLast(Callable call)
 template<typename Callable>
 void ModelPrivate::notifyInstanceChanges(Callable call)
 {
-    for (QPointer<AbstractView> view : enabledViews()) {
+    for (const QPointer<AbstractView> &view : enabledViews()) {
         if (!view->isBlockingNotifications())
             call(view.data());
     }
 }
 
 void ModelPrivate::notifyAuxiliaryDataChanged(const InternalNodePointer &node,
-                                              const PropertyName &name,
+                                              AuxiliaryDataKeyView key,
                                               const QVariant &data)
 {
     notifyNodeInstanceViewLast([&](AbstractView *view) {
         ModelNode modelNode(node, m_model, view);
-        view->auxiliaryDataChanged(modelNode, name, data);
+        view->auxiliaryDataChanged(modelNode, key, data);
     });
 }
 
@@ -588,6 +560,31 @@ void ModelPrivate::notifyImport3DSupportChanged(const QVariantMap &supportMap)
     notifyInstanceChanges([&](AbstractView *view) { view->updateImport3DSupport(supportMap); });
 }
 
+void ModelPrivate::notifyNodeAtPosResult(const ModelNode &modelNode, const QVector3D &pos3d)
+{
+    notifyInstanceChanges([&](AbstractView *view) { view->nodeAtPosReady(modelNode, pos3d); });
+}
+
+void ModelPrivate::notifyView3DAction(View3DActionType type, const QVariant &value)
+{
+    notifyNormalViewsLast([&](AbstractView *view) { view->view3DAction(type, value); });
+}
+
+void ModelPrivate::notifyActive3DSceneIdChanged(qint32 sceneId)
+{
+    notifyInstanceChanges([&](AbstractView *view) { view->active3DSceneChanged(sceneId); });
+}
+
+void ModelPrivate::notifyDragStarted(QMimeData *mimeData)
+{
+    notifyInstanceChanges([&](AbstractView *view) { view->dragStarted(mimeData); });
+}
+
+void ModelPrivate::notifyDragEnded()
+{
+    notifyInstanceChanges([&](AbstractView *view) { view->dragEnded(); });
+}
+
 void ModelPrivate::notifyRewriterBeginTransaction()
 {
     notifyNodeInstanceViewLast([&](AbstractView *view) { view->rewriterBeginTransaction(); });
@@ -685,26 +682,31 @@ void ModelPrivate::notifyPropertiesAboutToBeRemoved(
 }
 
 void ModelPrivate::setAuxiliaryData(const InternalNodePointer &node,
-                                    const PropertyName &name,
+                                    const AuxiliaryDataKeyView &key,
                                     const QVariant &data)
 {
-    if (node->auxiliaryData(name) == data)
-        return;
+    bool changed = false;
 
     if (data.isValid())
-        node->setAuxiliaryData(name, data);
+        changed = node->setAuxiliaryData(key, data);
     else
-        node->removeAuxiliaryData(name);
+        changed = node->removeAuxiliaryData(key);
 
-    notifyAuxiliaryDataChanged(node, name, data);
+    if (changed)
+        notifyAuxiliaryDataChanged(node, key, data);
 }
 
 void ModelPrivate::resetModelByRewriter(const QString &description)
 {
-    if (rewriterView())
+    if (rewriterView()) {
         rewriterView()->resetToLastCorrectQml();
 
-    throw RewritingException(__LINE__, __FUNCTION__, __FILE__, description.toUtf8(), rewriterView()->textModifierContent());
+        throw RewritingException(__LINE__,
+                                 __FUNCTION__,
+                                 __FILE__,
+                                 description.toUtf8(),
+                                 rewriterView()->textModifierContent());
+    }
 }
 
 void ModelPrivate::attachView(AbstractView *view)
@@ -822,6 +824,22 @@ void ModelPrivate::notifySignalHandlerPropertiesChanged(
     });
 }
 
+void ModelPrivate::notifySignalDeclarationPropertiesChanged(
+    const QVector<InternalSignalDeclarationPropertyPointer> &internalPropertyList,
+    AbstractView::PropertyChangeFlags propertyChange)
+{
+    notifyNodeInstanceViewLast([&](AbstractView *view) {
+        QVector<SignalDeclarationProperty> propertyList;
+        for (const InternalSignalDeclarationPropertyPointer &signalHandlerProperty : internalPropertyList) {
+            propertyList.append(SignalDeclarationProperty(signalHandlerProperty->name(),
+                                                      signalHandlerProperty->propertyOwner(),
+                                                      m_model,
+                                                      view));
+        }
+        view->signalDeclarationPropertiesChanged(propertyList, propertyChange);
+    });
+}
+
 void ModelPrivate::notifyScriptFunctionsChanged(const InternalNodePointer &node,
                                                 const QStringList &scriptFunctionList)
 {
@@ -855,7 +873,7 @@ void ModelPrivate::notifyNodeAboutToBeReparent(const InternalNodePointer &node,
         NodeAbstractProperty newProperty;
         NodeAbstractProperty oldProperty;
 
-        if (!oldPropertyName.isEmpty() && oldParent->isValid())
+        if (!oldPropertyName.isEmpty() && oldParent->isValid)
             oldProperty = NodeAbstractProperty(oldPropertyName, oldParent, m_model, view);
 
         if (!newPropertyParent.isNull())
@@ -876,7 +894,7 @@ void ModelPrivate::notifyNodeReparent(const InternalNodePointer &node,
         NodeAbstractProperty newProperty;
         NodeAbstractProperty oldProperty;
 
-        if (!oldPropertyName.isEmpty() && oldParent->isValid())
+        if (!oldPropertyName.isEmpty() && oldParent->isValid)
             oldProperty = NodeAbstractProperty(oldPropertyName, oldParent, m_model, view);
 
         if (!newPropertyParent.isNull())
@@ -907,11 +925,13 @@ void ModelPrivate::notifyNodeOrderChanged(const InternalNodeListPropertyPointer 
 
 void ModelPrivate::setSelectedNodes(const QList<InternalNodePointer> &selectedNodeList)
 {
-    QList<InternalNodePointer> sortedSelectedList = Utils::filtered(selectedNodeList,
-                                                                    &InternalNode::isValid);
+    auto sortedSelectedList = Utils::filtered(selectedNodeList, [](const auto &node) {
+        return node && node->isValid;
+    });
 
-    sortedSelectedList = Utils::toList(Utils::toSet(sortedSelectedList));
     Utils::sort(sortedSelectedList);
+    sortedSelectedList.erase(std::unique(sortedSelectedList.begin(), sortedSelectedList.end()),
+                             sortedSelectedList.end());
 
     if (sortedSelectedList == m_selectedInternalNodeList)
         return;
@@ -929,11 +949,12 @@ void ModelPrivate::clearSelectedNodes()
     changeSelectedNodes(m_selectedInternalNodeList, lastSelectedNodeList);
 }
 
-void ModelPrivate::removeAuxiliaryData(const InternalNodePointer &node, const PropertyName &name)
+void ModelPrivate::removeAuxiliaryData(const InternalNodePointer &node, const AuxiliaryDataKeyView &key)
 {
-    node->removeAuxiliaryData(name);
+    bool removed = node->removeAuxiliaryData(key);
 
-    notifyAuxiliaryDataChanged(node, name, QVariant());
+    if (removed)
+        notifyAuxiliaryDataChanged(node, key, QVariant());
 }
 
 QList<ModelNode> ModelPrivate::toModelNodeList(const QList<InternalNodePointer> &nodeList, AbstractView *view) const
@@ -993,8 +1014,8 @@ void ModelPrivate::changeSelectedNodes(const QList<InternalNodePointer> &newSele
 QList<InternalNodePointer> ModelPrivate::selectedNodes() const
 {
     for (const InternalNodePointer &node : std::as_const(m_selectedInternalNodeList)) {
-        if (!node->isValid())
-            throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        if (!node->isValid)
+            return {};
     }
 
     return m_selectedInternalNodeList;
@@ -1077,6 +1098,19 @@ void ModelPrivate::setSignalHandlerProperty(const InternalNodePointer &node, con
     InternalSignalHandlerPropertyPointer signalHandlerProperty = node->signalHandlerProperty(name);
     signalHandlerProperty->setSource(source);
     notifySignalHandlerPropertiesChanged({signalHandlerProperty}, propertyChange);
+}
+
+void ModelPrivate::setSignalDeclarationProperty(const InternalNodePointer &node, const PropertyName &name, const QString &signature)
+{
+    AbstractView::PropertyChangeFlags propertyChange = AbstractView::NoAdditionalChanges;
+    if (!node->hasProperty(name)) {
+        node->addSignalDeclarationProperty(name);
+        propertyChange = AbstractView::PropertiesAdded;
+    }
+
+    InternalSignalDeclarationPropertyPointer signalDeclarationProperty = node->signalDeclarationProperty(name);
+    signalDeclarationProperty->setSignature(signature);
+    notifySignalDeclarationPropertiesChanged({signalDeclarationProperty}, propertyChange);
 }
 
 void ModelPrivate::setVariantProperty(const InternalNodePointer &node, const PropertyName &name, const QVariant &value)
@@ -1180,23 +1214,23 @@ void ModelPrivate::clearParent(const InternalNodePointer &node)
 
 void ModelPrivate::changeRootNodeType(const TypeName &type, int majorVersion, int minorVersion)
 {
-    Q_ASSERT(!rootNode().isNull());
-    rootNode()->setType(type);
-    rootNode()->setMajorVersion(majorVersion);
-    rootNode()->setMinorVersion(minorVersion);
+    Q_ASSERT(rootNode());
+    rootNode()->typeName = type;
+    rootNode()->majorVersion = majorVersion;
+    rootNode()->minorVersion = minorVersion;
     notifyRootNodeTypeChanged(QString::fromUtf8(type), majorVersion, minorVersion);
 }
 
 void ModelPrivate::setScriptFunctions(const InternalNodePointer &node, const QStringList &scriptFunctionList)
 {
-    node->setScriptFunctions(scriptFunctionList);
+    node->scriptFunctions = scriptFunctionList;
 
     notifyScriptFunctionsChanged(node, scriptFunctionList);
 }
 
 void ModelPrivate::setNodeSource(const InternalNodePointer &node, const QString &nodeSource)
 {
-    node->setNodeSource(nodeSource);
+    node->nodeSource = nodeSource;
     notifyNodeSourceChanged(node, nodeSource);
 }
 
@@ -1284,7 +1318,7 @@ bool ModelPrivate::hasNodeForInternalId(qint32 internalId) const
 
 QList<InternalNodePointer> ModelPrivate::allNodes() const
 {
-    if (m_rootInternalNode.isNull() || !m_rootInternalNode->isValid())
+    if (!m_rootInternalNode || !m_rootInternalNode->isValid)
         return {};
 
     // the nodes must be ordered.
@@ -1320,9 +1354,9 @@ WriteLocker::WriteLocker(ModelPrivate *model)
 }
 
 WriteLocker::WriteLocker(Model *model)
-    : m_model(model->d)
+    : m_model(model->d.get())
 {
-    Q_ASSERT(model->d);
+    Q_ASSERT(model->d.get());
     if (m_model->m_writeLock)
         qWarning() << "QmlDesigner: Misbehaving view calls back to model!!!";
     // FIXME: Enable it again
@@ -1333,28 +1367,38 @@ WriteLocker::WriteLocker(Model *model)
 WriteLocker::~WriteLocker()
 {
     if (!m_model->m_writeLock)
-        qWarning() << "QmlDesigner: Misbehaving view calls back to model!!!";
+        qWarning() << "QmlDesigner: WriterLocker out of sync!!!";
     // FIXME: Enable it again
     Q_ASSERT(m_model->m_writeLock);
     m_model->m_writeLock = false;
 }
 
+void WriteLocker::unlock(Model *model)
+{
+    model->d->m_writeLock = false;
+}
+
+void WriteLocker::lock(Model *model)
+{
+    model->d->m_writeLock = true;
+}
+
 } // namespace Internal
 
-Model::Model()
-    : QObject()
-    , d(new Internal::ModelPrivate(this))
+Model::Model(ProjectStorage<Sqlite::Database> &projectStorage,
+             const TypeName &typeName,
+             int major,
+             int minor,
+             Model *metaInfoProxyModel)
+    : d(std::make_unique<Internal::ModelPrivate>(
+        this, projectStorage, typeName, major, minor, metaInfoProxyModel))
 {}
 
-Model::~Model()
-{
-    delete d;
-}
+Model::Model(const TypeName &typeName, int major, int minor, Model *metaInfoProxyModel)
+    : d(std::make_unique<Internal::ModelPrivate>(this, typeName, major, minor, metaInfoProxyModel))
+{}
 
-Model *Model::create(TypeName type, int major, int minor, Model *metaInfoPropxyModel)
-{
-    return Internal::ModelPrivate::create(type, major, minor, metaInfoPropxyModel);
-}
+Model::~Model() = default;
 
 const QList<Import> &Model::imports() const
 {
@@ -1379,14 +1423,18 @@ void Model::changeImports(const QList<Import> &importsToBeAdded,
 
 void Model::setPossibleImports(const QList<Import> &possibleImports)
 {
-    d->m_possibleImportList = possibleImports;
-    d->notifyPossibleImportsChanged(possibleImports);
+    if (d->m_possibleImportList != possibleImports) {
+        d->m_possibleImportList = possibleImports;
+        d->notifyPossibleImportsChanged(possibleImports);
+    }
 }
 
 void Model::setUsedImports(const QList<Import> &usedImports)
 {
-    d->m_usedImportList = usedImports;
-    d->notifyUsedImportsChanged(usedImports);
+    if (d->m_usedImportList != usedImports) {
+        d->m_usedImportList = usedImports;
+        d->notifyUsedImportsChanged(usedImports);
+    }
 }
 
 static bool compareVersions(const QString &version1, const QString &version2, bool allowHigherVersion)
@@ -1451,6 +1499,13 @@ bool Model::hasId(const QString &id) const
     return d->hasId(id);
 }
 
+bool Model::hasImport(const QString &importUrl) const
+{
+    return Utils::anyOf(imports(), [&](const Import &import) {
+        return import.url() == importUrl;
+    });
+}
+
 static QString firstCharToLower(const QString &string)
 {
     QString resultString = string;
@@ -1492,9 +1547,95 @@ QString Model::generateNewId(const QString &prefixName, const QString &fallbackP
     return newId;
 }
 
-QString Model::generateNewId(const QString &prefixName) const
+// Generate a unique camelCase id from a name
+// note: this methods does the same as generateNewId(). The 2 methods should be merged into one
+QString Model::generateIdFromName(const QString &name, const QString &fallbackId) const
 {
-    return generateNewId(prefixName, QStringLiteral("element"));
+    QString newId;
+    if (name.isEmpty()) {
+        newId = fallbackId;
+    } else {
+        // convert to camel case
+        QStringList nameWords = name.split(" ");
+        nameWords[0] = nameWords[0].at(0).toLower() + nameWords[0].mid(1);
+        for (int i = 1; i < nameWords.size(); ++i)
+            nameWords[i] = nameWords[i].at(0).toUpper() + nameWords[i].mid(1);
+        newId = nameWords.join("");
+
+        // if id starts with a number prepend an underscore
+        if (newId.at(0).isDigit())
+            newId.prepend('_');
+    }
+
+    // If the new id is not valid (e.g. qml keyword match), try fixing it by prepending underscore
+    if (!ModelNode::isValidId(newId))
+        newId.prepend("_");
+
+    QRegularExpression rgx("\\d+$"); // matches a number at the end of a string
+    while (hasId(newId)) { // id exists
+        QRegularExpressionMatch match = rgx.match(newId);
+        if (match.hasMatch()) { // ends with a number, increment it
+            QString numStr = match.captured();
+            int num = numStr.toInt() + 1;
+            newId = newId.mid(0, match.capturedStart()) + QString::number(num);
+        } else {
+            newId.append('1');
+        }
+    }
+
+    return newId;
+}
+
+void Model::setActive3DSceneId(qint32 sceneId)
+{
+    auto activeSceneAux = d->rootNode()->auxiliaryData(active3dSceneProperty);
+    if (activeSceneAux && activeSceneAux->toInt() == sceneId)
+        return;
+
+    d->rootNode()->setAuxiliaryData(active3dSceneProperty, sceneId);
+    d->notifyActive3DSceneIdChanged(sceneId);
+}
+
+qint32 Model::active3DSceneId() const
+{
+    auto sceneId = d->rootNode()->auxiliaryData(active3dSceneProperty);
+    if (sceneId)
+        return sceneId->toInt();
+    return -1;
+}
+
+void Model::startDrag(QMimeData *mimeData, const QPixmap &icon)
+{
+    d->notifyDragStarted(mimeData);
+
+    auto drag = new QDrag(this);
+    drag->setPixmap(icon);
+    drag->setMimeData(mimeData);
+    if (drag->exec() == Qt::IgnoreAction)
+        endDrag();
+
+    drag->deleteLater();
+}
+
+void Model::endDrag()
+{
+    d->notifyDragEnded();
+}
+
+NotNullPointer<const ProjectStorage<Sqlite::Database>> Model::projectStorage() const
+{
+    return d->projectStorage;
+}
+
+void ModelDeleter::operator()(class Model *model)
+{
+    model->detachAllViews();
+    delete model;
+}
+
+void Model::detachAllViews()
+{
+    d->detachAllViews();
 }
 
 bool Model::isImportPossible(const Import &import, bool ignoreAlias, bool allowHigherVersion) const
@@ -1566,7 +1707,7 @@ void Model::setRewriterView(RewriterView *rewriterView)
     d->setRewriterView(rewriterView);
 }
 
-NodeInstanceView *Model::nodeInstanceView() const
+const NodeInstanceView *Model::nodeInstanceView() const
 {
     return d->nodeInstanceView();
 }
@@ -1580,12 +1721,12 @@ void Model::setNodeInstanceView(NodeInstanceView *nodeInstanceView)
  \brief Returns the model that is used for metainfo
  \return Returns itself if other metaInfoProxyModel does not exist
 */
-Model *Model::metaInfoProxyModel()
+Model *Model::metaInfoProxyModel() const
 {
     if (d->m_metaInfoProxyModel)
         return d->m_metaInfoProxyModel->metaInfoProxyModel();
 
-    return this;
+    return const_cast<Model *>(this);
 }
 
 TextModifier *Model::textModifier() const
@@ -1626,23 +1767,14 @@ QUrl Model::fileUrl() const
     return d->fileUrl();
 }
 
-QUrl Model::projectUrl() const
-{
-#ifndef QMLDESIGNER_TEST
-    DesignDocument *document = QmlDesignerPlugin::instance()->viewManager().currentDesignDocument();
-    if (document)
-        return QUrl::fromLocalFile(document->projectFolder().toString());
-#endif
-    return {};
-}
-
 /*!
   \brief Sets the URL against which relative URLs within the model should be resolved.
   \param url the base URL, i.e. the qml file path.
   */
 void Model::setFileUrl(const QUrl &url)
 {
-    Internal::WriteLocker locker(d);
+    Q_ASSERT(url.isValid() && url.isLocalFile());
+    Internal::WriteLocker locker(d.get());
     d->setFileUrl(url);
 }
 
@@ -1654,7 +1786,7 @@ const MetaInfo Model::metaInfo() const
     return d->metaInfo();
 }
 
-bool Model::hasNodeMetaInfo(const TypeName &typeName, int majorVersion, int minorVersion)
+bool Model::hasNodeMetaInfo(const TypeName &typeName, int majorVersion, int minorVersion) const
 {
     return metaInfo(typeName, majorVersion, minorVersion).isValid();
 }
@@ -1664,9 +1796,271 @@ void Model::setMetaInfo(const MetaInfo &metaInfo)
     d->setMetaInfo(metaInfo);
 }
 
-NodeMetaInfo Model::metaInfo(const TypeName &typeName, int majorVersion, int minorVersion)
+template<const auto &moduleName, const auto &typeName>
+NodeMetaInfo Model::createNodeMetaInfo() const
 {
-    return NodeMetaInfo(metaInfoProxyModel(), typeName, majorVersion, minorVersion);
+    auto typeId = d->projectStorage->commonTypeCache.typeId<moduleName, typeName>();
+
+    return {typeId, d->projectStorage};
+}
+
+NodeMetaInfo Model::fontMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, font>();
+    } else {
+        return metaInfo("QtQuick.font");
+    }
+}
+
+NodeMetaInfo Model::qtQuickItemMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, Item>();
+    } else {
+        return metaInfo("QtQuick.Item");
+    }
+}
+
+NodeMetaInfo Model::qtQuickRectangleMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, Rectangle>();
+    } else {
+        return metaInfo("QtQuick.Rectangle");
+    }
+}
+
+NodeMetaInfo Model::qtQuickImageMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, Image>();
+    } else {
+        return metaInfo("QtQuick.Image");
+    }
+}
+
+NodeMetaInfo Model::qtQuickTextMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, Text>();
+    } else {
+        return metaInfo("QtQuick.Text");
+    }
+}
+
+NodeMetaInfo Model::qtQuickPropertyAnimationMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, PropertyAnimation>();
+    } else {
+        return metaInfo("QtQuick.PropertyAnimation");
+    }
+}
+
+NodeMetaInfo Model::flowViewFlowDecisionMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<FlowView, FlowDecision>();
+    } else {
+        return metaInfo("FlowView.FlowDecision");
+    }
+}
+
+NodeMetaInfo Model::flowViewFlowWildcardMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<FlowView, FlowWildcard>();
+    } else {
+        return metaInfo("FlowView.FlowWildcard");
+    }
+}
+
+NodeMetaInfo Model::flowViewFlowTransitionMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<FlowView, FlowTransition>();
+    } else {
+        return metaInfo("FlowView.FlowTransition");
+    }
+}
+
+NodeMetaInfo Model::qtQuickTextEditMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, TextEdit>();
+    } else {
+        return metaInfo("QtQuick.TextEdit");
+    }
+}
+
+NodeMetaInfo Model::qtQuickControlsTextAreaMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick_Controls, TextArea>();
+    } else {
+        return metaInfo("QtQuick.Controls.TextArea");
+    }
+}
+
+NodeMetaInfo Model::qtQuick3DNodeMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick3D, Node>();
+    } else {
+        return metaInfo("QtQuick3D.Node");
+    }
+}
+
+NodeMetaInfo Model::qtQuick3DTextureMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick3D, Texture>();
+    } else {
+        return metaInfo("QtQuick3D.Texture");
+    }
+}
+
+NodeMetaInfo Model::qtQuick3DMaterialMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick3D, Material>();
+    } else {
+        return metaInfo("QtQuick3D.Material");
+    }
+}
+
+NodeMetaInfo Model::qtQuick3DDefaultMaterialMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick3D, DefaultMaterial>();
+    } else {
+        return metaInfo("QtQuick3D.DefaultMaterial");
+    }
+}
+
+NodeMetaInfo Model::qtQuickTimelineTimelineMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick_Timeline, Timeline>();
+    } else {
+        return metaInfo("QtQuick.Timeline.Timeline");
+    }
+}
+
+NodeMetaInfo Model::qtQuickConnectionsMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, Connections>();
+    } else {
+        return metaInfo("QtQuick.Connections");
+    }
+}
+
+NodeMetaInfo Model::qtQuickStateGroupMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, StateGroup>();
+    } else {
+        return metaInfo("QtQuick.StateGroup");
+    }
+}
+
+NodeMetaInfo Model::vector2dMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, vector2d>();
+    } else {
+        return metaInfo("QtQuick.vector2d");
+    }
+}
+
+NodeMetaInfo Model::vector3dMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, vector3d>();
+    } else {
+        return metaInfo("QtQuick.vector3d");
+    }
+}
+
+NodeMetaInfo Model::vector4dMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick, vector4d>();
+    } else {
+        return metaInfo("QtQuick.vector4d");
+    }
+}
+
+NodeMetaInfo Model::qtQuickTimelineKeyframeGroupMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick_Timeline, KeyframeGroup>();
+    } else {
+        return metaInfo("QtQuick.Timeline.KeyframeGroup");
+    }
+}
+
+NodeMetaInfo Model::qtQuick3DModelMetaInfo() const
+{
+    if constexpr (useProjectStorage()) {
+        using namespace Storage::Info;
+        return createNodeMetaInfo<QtQuick3D, Storage::Info::Model>();
+    } else {
+        return metaInfo("QtQuick3D.Model");
+    }
+}
+
+namespace {
+[[maybe_unused]] std::pair<Utils::SmallStringView, Utils::SmallStringView> moduleTypeName(
+    const TypeName &typeName)
+{
+    auto foundDot = std::find(typeName.begin(), typeName.end(), '.');
+
+    if (foundDot == typeName.end())
+        return {"", typeName};
+
+    return {{typeName.begin(), foundDot}, {std::next(foundDot), typeName.end()}};
+}
+} // namespace
+
+NodeMetaInfo Model::metaInfo(const TypeName &typeName, int majorVersion, int minorVersion) const
+{
+    if constexpr (useProjectStorage()) {
+        auto [module, componentName] = moduleTypeName(typeName);
+
+        ModuleId moduleId = d->projectStorage->moduleId(module);
+        TypeId typeId = d->projectStorage->typeId(moduleId,
+                                                  componentName,
+                                                  Storage::Synchronization::Version{majorVersion,
+                                                                                    minorVersion});
+        return NodeMetaInfo(typeId, d->projectStorage);
+    } else {
+        return NodeMetaInfo(metaInfoProxyModel(), typeName, majorVersion, minorVersion);
+    }
 }
 
 /*!

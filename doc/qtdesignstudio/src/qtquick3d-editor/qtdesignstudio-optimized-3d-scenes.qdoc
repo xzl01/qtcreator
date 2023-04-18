@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Studio documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page studio-optimized-3d-scenes.html
@@ -34,7 +12,7 @@
 
     \title Creating Optimized 3D Scenes
 
-    In \QC, you can use various means to create a 3D scene. Your choice of
+    In \QDS, you can use various means to create a 3D scene. Your choice of
     strategy should always depend on the target platform of your scene.
     The way the content of your scene is authored can have dramatic effects on
     the runtime performance of your UI. The Optimal 3D Scene described
@@ -110,9 +88,9 @@
     The scene graph is the hierarchy of nodes that describe the scene to be
     rendered.
 
-    In \QC, the scene graph is represented by the tree-like view in
+    In \QDS, the scene graph is represented by the tree-like view in
     \uicontrol Navigator. You can also view the hierarchy of nodes in the
-    \l {Text Editor} view. By minimizing the size of the scene graph,
+    \l {Code} view. By minimizing the size of the scene graph,
     you can minimize the effort needed when running the scene. In terms of
     optimization, you should avoid unnecessary groups and complex hierarchy when
     possible. Deep hierarchies with complex parenting increase the performance

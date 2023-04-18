@@ -1,41 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "sessiondialog.h"
+
+#include "projectexplorertr.h"
 #include "session.h"
+#include "sessionview.h"
 
 #include <utils/algorithm.h>
+#include <utils/layoutbuilder.h>
 
+#include <QCheckBox>
+#include <QDialogButtonBox>
 #include <QInputDialog>
+#include <QLabel>
+#include <QPushButton>
 #include <QValidator>
 
-using namespace ProjectExplorer;
-using namespace ProjectExplorer::Internal;
-
-namespace ProjectExplorer {
-namespace Internal {
+namespace ProjectExplorer::Internal {
 
 class SessionValidator : public QValidator
 {
@@ -83,23 +65,34 @@ void SessionValidator::fixup(QString &input) const
 SessionNameInputDialog::SessionNameInputDialog(QWidget *parent)
     : QDialog(parent)
 {
-    auto hlayout = new QVBoxLayout(this);
-    auto label = new QLabel(tr("Enter the name of the session:"), this);
-    hlayout->addWidget(label);
     m_newSessionLineEdit = new QLineEdit(this);
     m_newSessionLineEdit->setValidator(new SessionValidator(this, SessionManager::sessions()));
-    hlayout->addWidget(m_newSessionLineEdit);
+
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, this);
     m_okButton = buttons->button(QDialogButtonBox::Ok);
     m_switchToButton = new QPushButton;
+    m_switchToButton->setDefault(true);
     buttons->addButton(m_switchToButton, QDialogButtonBox::AcceptRole);
-    connect(m_switchToButton, &QPushButton::clicked, [this]() {
+    connect(m_switchToButton, &QPushButton::clicked, this, [this] {
         m_usedSwitchTo = true;
     });
+
+    using namespace Utils::Layouting;
+    Column {
+        Tr::tr("Enter the name of the session:"),
+        m_newSessionLineEdit,
+        buttons,
+    }.attachTo(this);
+
+    connect(m_newSessionLineEdit, &QLineEdit::textChanged, [this](const QString &text) {
+        m_okButton->setEnabled(!text.isEmpty());
+        m_switchToButton->setEnabled(!text.isEmpty());
+    });
+    m_okButton->setEnabled(false);
+    m_switchToButton->setEnabled(false);
+
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    hlayout->addWidget(buttons);
-    setLayout(hlayout);
 }
 
 void SessionNameInputDialog::setActionText(const QString &actionText, const QString &openActionText)
@@ -125,58 +118,106 @@ bool SessionNameInputDialog::isSwitchToRequested() const
 
 SessionDialog::SessionDialog(QWidget *parent) : QDialog(parent)
 {
-    m_ui.setupUi(this);
-    m_ui.sessionView->setActivationMode(Utils::DoubleClickActivation);
+    setObjectName("ProjectExplorer.SessionDialog");
+    resize(550, 400);
+    setWindowTitle(Tr::tr("Session Manager"));
 
-    connect(m_ui.btCreateNew, &QAbstractButton::clicked,
-        m_ui.sessionView, &SessionView::createNewSession);
-    connect(m_ui.btClone, &QAbstractButton::clicked,
-        m_ui.sessionView, &SessionView::cloneCurrentSession);
-    connect(m_ui.btDelete, &QAbstractButton::clicked,
-        m_ui.sessionView, &SessionView::deleteSelectedSessions);
-    connect(m_ui.btSwitch, &QAbstractButton::clicked,
-        m_ui.sessionView, &SessionView::switchToCurrentSession);
-    connect(m_ui.btRename, &QAbstractButton::clicked,
-        m_ui.sessionView, &SessionView::renameCurrentSession);
-    connect(m_ui.sessionView, &SessionView::sessionActivated,
-        m_ui.sessionView, &SessionView::switchToCurrentSession);
 
-    connect(m_ui.sessionView, &SessionView::sessionsSelected,
-        this, &SessionDialog::updateActions);
-    connect(m_ui.sessionView, &SessionView::sessionSwitched,
-        this, &QDialog::reject);
+    auto sessionView = new SessionView(this);
+    sessionView->setObjectName("sessionView");
+    sessionView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    sessionView->setActivationMode(Utils::DoubleClickActivation);
 
-    m_ui.whatsASessionLabel->setOpenExternalLinks(true);
+    auto createNewButton = new QPushButton(Tr::tr("&New"));
+    createNewButton->setObjectName("btCreateNew");
+
+    m_openButton = new QPushButton(Tr::tr("&Open"));
+    m_openButton->setObjectName("btOpen");
+    m_renameButton = new QPushButton(Tr::tr("&Rename"));
+    m_cloneButton = new QPushButton(Tr::tr("C&lone"));
+    m_deleteButton = new QPushButton(Tr::tr("&Delete"));
+
+    m_autoLoadCheckBox = new QCheckBox(Tr::tr("Restore last session on startup"));
+
+    auto buttonBox = new QDialogButtonBox(this);
+    buttonBox->setStandardButtons(QDialogButtonBox::Close);
+
+    m_openButton->setDefault(true);
+
+    // FIXME: Simplify translator's work.
+    auto whatsASessionLabel = new QLabel(
+        Tr::tr("<a href=\"qthelp://org.qt-project.qtcreator/doc/creator-project-managing-sessions.html\">"
+           "What is a Session?</a>"));
+    whatsASessionLabel->setOpenExternalLinks(true);
+
+    using namespace Utils::Layouting;
+
+    Column {
+        Row {
+            sessionView,
+            Column {
+                createNewButton,
+                m_openButton,
+                m_renameButton,
+                m_cloneButton,
+                m_deleteButton,
+                st
+            }
+        },
+        m_autoLoadCheckBox,
+        hr,
+        Row { whatsASessionLabel, buttonBox },
+    }.attachTo(this);
+
+    connect(createNewButton, &QAbstractButton::clicked,
+            sessionView, &SessionView::createNewSession);
+    connect(m_openButton, &QAbstractButton::clicked,
+            sessionView, &SessionView::switchToCurrentSession);
+    connect(m_renameButton, &QAbstractButton::clicked,
+            sessionView, &SessionView::renameCurrentSession);
+    connect(m_cloneButton, &QAbstractButton::clicked,
+            sessionView, &SessionView::cloneCurrentSession);
+    connect(m_deleteButton, &QAbstractButton::clicked,
+            sessionView, &SessionView::deleteSelectedSessions);
+    connect(sessionView, &SessionView::sessionActivated,
+            sessionView, &SessionView::switchToCurrentSession);
+
+    connect(sessionView, &SessionView::sessionsSelected,
+            this, &SessionDialog::updateActions);
+    connect(sessionView, &SessionView::sessionSwitched,
+            this, &QDialog::reject);
+
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
 }
 
 void SessionDialog::setAutoLoadSession(bool check)
 {
-    m_ui.autoLoadCheckBox->setChecked(check);
+    m_autoLoadCheckBox->setChecked(check);
 }
 
 bool SessionDialog::autoLoadSession() const
 {
-    return m_ui.autoLoadCheckBox->checkState() == Qt::Checked;
+    return m_autoLoadCheckBox->checkState() == Qt::Checked;
 }
 
 void SessionDialog::updateActions(const QStringList &sessions)
 {
     if (sessions.isEmpty()) {
-        m_ui.btDelete->setEnabled(false);
-        m_ui.btRename->setEnabled(false);
-        m_ui.btClone->setEnabled(false);
-        m_ui.btSwitch->setEnabled(false);
+        m_openButton->setEnabled(false);
+        m_renameButton->setEnabled(false);
+        m_cloneButton->setEnabled(false);
+        m_deleteButton->setEnabled(false);
         return;
     }
     const bool defaultIsSelected = sessions.contains("default");
     const bool activeIsSelected = Utils::anyOf(sessions, [](const QString &session) {
         return session == SessionManager::activeSession();
     });
-    m_ui.btDelete->setEnabled(!defaultIsSelected && !activeIsSelected);
-    m_ui.btRename->setEnabled(sessions.size() == 1 && !defaultIsSelected);
-    m_ui.btClone->setEnabled(sessions.size() == 1);
-    m_ui.btSwitch->setEnabled(sessions.size() == 1);
+    m_openButton->setEnabled(sessions.size() == 1);
+    m_renameButton->setEnabled(sessions.size() == 1 && !defaultIsSelected);
+    m_cloneButton->setEnabled(sessions.size() == 1);
+    m_deleteButton->setEnabled(!defaultIsSelected && !activeIsSelected);
 }
 
-} // namespace Internal
-} // namespace ProjectExplorer
+} // ProjectExplorer::Internal

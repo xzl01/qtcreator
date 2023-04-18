@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -30,7 +8,8 @@
 namespace QmlProfiler {
 
 enum Message {
-    Event,
+    UndefinedMessage = 0xff,
+    Event = 0,
     RangeStart,
     RangeData,
     RangeLocation,
@@ -46,7 +25,8 @@ enum Message {
 };
 
 enum EventType {
-    FramePaint, // unused
+    UndefinedEventType = 0xff,
+    FramePaint = 0, // unused
     Mouse,
     Key,
     AnimationFrame, // new Qt5 paint events
@@ -57,7 +37,8 @@ enum EventType {
 };
 
 enum Quick3DEventType {
-    Quick3DRenderFrame,
+    UndefinedQuick3DEventType = 0xff,
+    Quick3DRenderFrame = 0,
     Quick3DSynchronizeFrame,
     Quick3DPrepareFrame,
     Quick3DMeshLoad,
@@ -66,13 +47,15 @@ enum Quick3DEventType {
     Quick3DParticleUpdate,
     Quick3DGenerateShader,
     Quick3DLoadShader,
+    Quick3DRenderCall,
+    Quick3DRenderPass,
+    Quick3DEventData,
     MaximumQuick3DFrameType,
-    NumQuick3DRenderThreadFrameTypes = Quick3DParticleUpdate,
-    NumQuick3DGUIThreadFrameTypes = MaximumQuick3DFrameType - NumQuick3DRenderThreadFrameTypes,
 };
 
 enum RangeType {
-    Painting, // old Qt4 paint events
+    UndefinedRangeType = 0xff,
+    Painting = 0, // old Qt4 paint events
     Compiling,
     Creating,
     Binding,
@@ -83,7 +66,8 @@ enum RangeType {
 };
 
 enum BindingType {
-    QmlBinding,
+    UndefinedBindingType = 0xff,
+    QmlBinding = 0,
     V8Binding,
     OptimizedBinding,
     QPainterEvent,
@@ -92,7 +76,8 @@ enum BindingType {
 };
 
 enum PixmapEventType {
-    PixmapSizeKnown,
+    UndefinedPixmapEventType = 0xff,
+    PixmapSizeKnown = 0,
     PixmapReferenceCountChanged,
     PixmapCacheCountChanged,
     PixmapLoadingStarted,
@@ -103,7 +88,8 @@ enum PixmapEventType {
 };
 
 enum InputEventType {
-    InputKeyPress,
+    UndefinedInputEventType = 0xff,
+    InputKeyPress = 0,
     InputKeyRelease,
     InputKeyUnknown,
 
@@ -118,7 +104,8 @@ enum InputEventType {
 };
 
 enum SceneGraphFrameType {
-    SceneGraphRendererFrame,        // Render Thread
+    UndefinedSceheGraphFrameType = 0xff,
+    SceneGraphRendererFrame = 0,    // Render Thread
     SceneGraphAdaptationLayerFrame, // Render Thread
     SceneGraphContextFrame,         // Render Thread
     SceneGraphRenderLoopFrame,      // Render Thread
@@ -133,7 +120,8 @@ enum SceneGraphFrameType {
 };
 
 enum MemoryType {
-    HeapPage,
+    UndefinedMemoryType = 0xff,
+    HeapPage = 0,
     LargeItem,
     SmallItem,
 
@@ -141,14 +129,16 @@ enum MemoryType {
 };
 
 enum AnimationThread {
-    GuiThread,
+    UndefinedAnimationThread = 0xff,
+    GuiThread = 0,
     RenderThread,
 
     MaximumAnimationThread
 };
 
 enum ProfileFeature {
-    ProfileJavaScript,
+    UndefinedProfileFeature = 0xff,
+    ProfileJavaScript = 0,
     ProfileMemory,
     ProfilePixmapCache,
     ProfileSceneGraph,
@@ -181,7 +171,7 @@ inline ProfileFeature featureFromRangeType(RangeType range)
         case Javascript:
             return ProfileJavaScript;
         default:
-            return MaximumProfileFeature;
+            return UndefinedProfileFeature;
     }
 }
 

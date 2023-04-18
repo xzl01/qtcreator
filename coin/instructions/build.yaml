@@ -1,5 +1,8 @@
 type: Group
 instructions:
+  - type: MakeDirectory
+    directory: "{{.AgentWorkingDir}}/build/qt_temp"
+
   - type: Group
     instructions:
       - type: ExecuteCommand
@@ -27,6 +30,13 @@ instructions:
         maxTimeInSeconds: 36000
         maxTimeBetweenOutput: 3600
         userMessageOnFailure: "Failed to run build.py, check logs."
+      - type: ChangeDirectory
+        directory: "{{.AgentWorkingDir}}/build/qtsdk/packaging-tools"
+      - type: ExecuteCommand
+        command: "python3 -m pipenv run python -u bld_sdktool.py --qt-url {{.Env.QTC_SDKTOOL_QT_BASE_URL}}{{.Env.QTC_SDKTOOL_QT_EXT}} --qt-build {{.AgentWorkingDir}}/build/sdktool/qt --src {{.AgentWorkingDir}}/qt-creator/qt-creator/src/tools/sdktool --build {{.AgentWorkingDir}}/build/sdktool/build --install {{.AgentWorkingDir}}/build/sdktool/install --make-command make"
+        maxTimeInSeconds: 36000
+        maxTimeBetweenOutput: 3600
+        userMessageOnFailure: "Failed to build sdktool, check logs."
     enable_if:
       condition: and
       conditions:
@@ -54,6 +64,13 @@ instructions:
         maxTimeInSeconds: 36000
         maxTimeBetweenOutput: 3600
         userMessageOnFailure: "Failed to run build.py, check logs."
+      - type: ChangeDirectory
+        directory: "{{.AgentWorkingDir}}/build/qtsdk/packaging-tools"
+      - type: ExecuteCommand
+        command: "python3 -m pipenv run python -u bld_sdktool.py --qt-url {{.Env.QTC_SDKTOOL_QT_BASE_URL}}{{.Env.QTC_SDKTOOL_QT_EXT}} --qt-build {{.AgentWorkingDir}}/build/sdktool/qt --src {{.AgentWorkingDir}}/qt-creator/qt-creator/src/tools/sdktool --build {{.AgentWorkingDir}}/build/sdktool/build --install {{.AgentWorkingDir}}/build/sdktool/install --make-command make"
+        maxTimeInSeconds: 36000
+        maxTimeBetweenOutput: 3600
+        userMessageOnFailure: "Failed to build sdktool, check logs."
     enable_if:
       condition: property
       property: host.os
@@ -96,6 +113,13 @@ instructions:
         maxTimeInSeconds: 36000
         maxTimeBetweenOutput: 3600
         userMessageOnFailure: "Failed to run build.py, check logs."
+      - type: ChangeDirectory
+        directory: "{{.AgentWorkingDir}}\\build\\qtsdk\\packaging-tools"
+      - type: ExecuteCommand
+        command: "python -m pipenv run python -u bld_sdktool.py --qt-url {{.Env.QTC_SDKTOOL_QT_BASE_URL}}{{.Env.QTC_SDKTOOL_QT_EXT}} --qt-build {{.AgentWorkingDir}}\\build\\sdktool\\qt --src {{.AgentWorkingDir}}\\qt-creator\\qt-creator\\src\\tools\\sdktool --build {{.AgentWorkingDir}}\\build\\sdktool\\build --install {{.AgentWorkingDir}}\\build\\sdktool\\install --make-command nmake"
+        maxTimeInSeconds: 36000
+        maxTimeBetweenOutput: 3600
+        userMessageOnFailure: "Failed to build sdktool, check logs."
     enable_if:
       condition: and
       conditions:
@@ -138,18 +162,13 @@ instructions:
           property: target.arch
           equals_value: X86
 
-  - type: SignPackage
-    directory: "{{.AgentWorkingDir}}/qt-creator/qt-creator_build/install/"
-    maxTimeInSeconds: 1200
-    maxTimeBetweenOutput: 1200
-    enable_if:
-      condition: property
-      property: host.os
-      equals_value: Windows
-
   - type: UploadArtifact
-    archiveDirectory: "{{.AgentWorkingDir}}/qt-creator/qt-creator_build/install/"
+    archiveDirectory: "{{.AgentWorkingDir}}/qt-creator/qt-creator_build/build"
     transferType: UploadModuleBuildArtifact
     maxTimeInSeconds: 1800
     maxTimeBetweenOutput: 1800
 
+enable_if:
+  condition: property
+  property: features
+  not_contains_value: "Qt5"

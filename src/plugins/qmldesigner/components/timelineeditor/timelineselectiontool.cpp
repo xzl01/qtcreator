@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelineselectiontool.h"
 #include "timelineconstants.h"
@@ -67,21 +45,16 @@ SelectionMode TimelineSelectionTool::selectionMode(QGraphicsSceneMouseEvent *eve
     return SelectionMode::New;
 }
 
-void TimelineSelectionTool::mousePressEvent(TimelineMovableAbstractItem *item,
-                                            QGraphicsSceneMouseEvent *event)
+void TimelineSelectionTool::mousePressEvent([[maybe_unused]] TimelineMovableAbstractItem *item,
+                                            [[maybe_unused]] QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item)
-    Q_UNUSED(event)
-
     if (event->buttons() == Qt::LeftButton && selectionMode(event) == SelectionMode::New)
         deselect();
 }
 
-void TimelineSelectionTool::mouseMoveEvent(TimelineMovableAbstractItem *item,
+void TimelineSelectionTool::mouseMoveEvent([[maybe_unused]] TimelineMovableAbstractItem *item,
                                            QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item)
-
     if (event->buttons() == Qt::LeftButton) {
         auto endPoint = event->scenePos();
 
@@ -103,36 +76,26 @@ void TimelineSelectionTool::mouseMoveEvent(TimelineMovableAbstractItem *item,
     }
 }
 
-void TimelineSelectionTool::mouseReleaseEvent(TimelineMovableAbstractItem *item,
+void TimelineSelectionTool::mouseReleaseEvent([[maybe_unused]] TimelineMovableAbstractItem *item,
                                               QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item)
-
     commitSelection(selectionMode(event));
 
     reset();
 }
 
 void TimelineSelectionTool::mouseDoubleClickEvent(TimelineMovableAbstractItem *item,
-                                                  QGraphicsSceneMouseEvent *event)
+                                                  [[maybe_unused]] QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(event)
-
     if (item)
         item->itemDoubleClicked();
 
     reset();
 }
 
-void TimelineSelectionTool::keyPressEvent(QKeyEvent *keyEvent)
-{
-    Q_UNUSED(keyEvent)
-}
+void TimelineSelectionTool::keyPressEvent([[maybe_unused]] QKeyEvent *keyEvent) {}
 
-void TimelineSelectionTool::keyReleaseEvent(QKeyEvent *keyEvent)
-{
-    Q_UNUSED(keyEvent)
-}
+void TimelineSelectionTool::keyReleaseEvent([[maybe_unused]] QKeyEvent *keyEvent) {}
 
 void TimelineSelectionTool::deselect()
 {
@@ -150,7 +113,7 @@ void TimelineSelectionTool::reset()
 
 void TimelineSelectionTool::resetHighlights()
 {
-    for (auto *keyframe : qAsConst(m_aboutToSelectBuffer))
+    for (auto *keyframe : std::as_const(m_aboutToSelectBuffer))
         if (scene()->isKeyframeSelected(keyframe))
             keyframe->setHighlighted(true);
         else

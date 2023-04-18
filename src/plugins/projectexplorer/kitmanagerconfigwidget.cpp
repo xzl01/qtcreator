@@ -1,36 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "kitmanagerconfigwidget.h"
-#include "projectconfiguration.h"
 
 #include "devicesupport/idevicefactory.h"
 #include "kit.h"
 #include "kitinformation.h"
 #include "kitmanager.h"
-#include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "task.h"
 
 #include <utils/algorithm.h>
@@ -68,11 +45,11 @@ KitManagerConfigWidget::KitManagerConfigWidget(Kit *k) :
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
-    QLabel *label = new QLabel(tr("Name:"));
-    label->setToolTip(tr("Kit name and icon."));
+    auto label = new QLabel(Tr::tr("Name:"));
+    label->setToolTip(Tr::tr("Kit name and icon."));
 
     QString toolTip =
-        tr("<html><head/><body><p>The name of the kit suitable for generating "
+        Tr::tr("<html><head/><body><p>The name of the kit suitable for generating "
            "directory names. This value is used for the variable <i>%1</i>, "
            "which for example determines the name of the shadow build directory."
            "</p></body></html>").arg(QLatin1String("Kit:FileSystemName"));
@@ -81,21 +58,21 @@ KitManagerConfigWidget::KitManagerConfigWidget(Kit *k) :
     Q_ASSERT(fileSystemFriendlyNameRegexp.isValid());
     m_fileSystemFriendlyNameLineEdit->setValidator(new QRegularExpressionValidator(fileSystemFriendlyNameRegexp, m_fileSystemFriendlyNameLineEdit));
 
-    label = new QLabel(tr("File system name:"));
-    label->setToolTip(toolTip);
+    auto fsLabel = new QLabel(Tr::tr("File system name:"));
+    fsLabel->setToolTip(toolTip);
     connect(m_fileSystemFriendlyNameLineEdit, &QLineEdit::textChanged,
             this, &KitManagerConfigWidget::setFileSystemFriendlyName);
 
     using namespace Layouting;
     Grid {
-        AlignAsFormLabel(label), m_nameEdit, m_iconButton, Break(),
-        AlignAsFormLabel(label), m_fileSystemFriendlyNameLineEdit
-    }.attachTo(this);
+        label, m_nameEdit, m_iconButton, br,
+        fsLabel, m_fileSystemFriendlyNameLineEdit
+    }.attachTo(this, WithFormAlignment);
 
-    m_iconButton->setToolTip(tr("Kit icon."));
-    auto setIconAction = new QAction(tr("Select Icon..."), this);
+    m_iconButton->setToolTip(Tr::tr("Kit icon."));
+    auto setIconAction = new QAction(Tr::tr("Select Icon..."), this);
     m_iconButton->addAction(setIconAction);
-    auto resetIconAction = new QAction(tr("Reset to Device Default Icon"), this);
+    auto resetIconAction = new QAction(Tr::tr("Reset to Device Default Icon"), this);
     m_iconButton->addAction(resetIconAction);
 
     discard();
@@ -117,7 +94,7 @@ KitManagerConfigWidget::KitManagerConfigWidget(Kit *k) :
 
     auto chooser = new VariableChooser(this);
     chooser->addSupportedWidget(m_nameEdit);
-    chooser->addMacroExpanderProvider([this]() { return m_modifiedKit->macroExpander(); });
+    chooser->addMacroExpanderProvider([this] { return m_modifiedKit->macroExpander(); });
 
     for (KitAspect *aspect : KitManager::kitAspects())
         addAspectToWorkingCopy(aspect);
@@ -205,7 +182,7 @@ QString KitManagerConfigWidget::validityMessage() const
 {
     Tasks tmp;
     if (!m_hasUniqueName)
-        tmp.append(CompileTask(Task::Warning, tr("Display name is not unique.")));
+        tmp.append(CompileTask(Task::Warning, Tr::tr("Display name is not unique.")));
 
     return m_modifiedKit->toHtml(tmp);
 }
@@ -243,7 +220,7 @@ void KitManagerConfigWidget::setHasUniqueName(bool unique)
 
 void KitManagerConfigWidget::makeStickySubWidgetsReadOnly()
 {
-    foreach (KitAspectWidget *w, m_widgets) {
+    for (KitAspectWidget *w : std::as_const(m_widgets)) {
         if (w->kit()->isSticky(w->kitInformation()->id()))
             w->makeReadOnly();
     }
@@ -294,11 +271,11 @@ void KitManagerConfigWidget::setIcon()
         Utils::sort(allDeviceFactories, less);
     }
     QMenu iconMenu;
-    for (const IDeviceFactory * const factory : qAsConst(allDeviceFactories)) {
+    for (const IDeviceFactory * const factory : std::as_const(allDeviceFactories)) {
         if (factory->icon().isNull())
             continue;
         QAction *action = iconMenu.addAction(factory->icon(),
-                                             tr("Default for %1").arg(factory->displayName()),
+                                             Tr::tr("Default for %1").arg(factory->displayName()),
                                              [this, factory] {
                                                  m_iconButton->setIcon(factory->icon());
                                                  m_modifiedKit->setDeviceTypeForIcon(
@@ -309,9 +286,9 @@ void KitManagerConfigWidget::setIcon()
     }
     iconMenu.addSeparator();
     iconMenu.addAction(PathChooser::browseButtonLabel(), [this] {
-        const FilePath path = FileUtils::getOpenFilePath(this, tr("Select Icon"),
+        const FilePath path = FileUtils::getOpenFilePath(this, Tr::tr("Select Icon"),
                                                          m_modifiedKit->iconPath(),
-                                                         tr("Images (*.png *.xpm *.jpg)"));
+                                                         Tr::tr("Images (*.png *.xpm *.jpg)"));
         if (path.isEmpty())
             return;
         const QIcon icon(path.toString());
@@ -354,7 +331,7 @@ void KitManagerConfigWidget::workingCopyWasUpdated(Kit *k)
     k->fix();
     m_fixingKit = false;
 
-    foreach (KitAspectWidget *w, m_widgets)
+    for (KitAspectWidget *w : std::as_const(m_widgets))
         w->refresh();
 
     m_cachedDisplayName.clear();
@@ -382,7 +359,7 @@ void KitManagerConfigWidget::kitWasUpdated(Kit *k)
 void KitManagerConfigWidget::showEvent(QShowEvent *event)
 {
     Q_UNUSED(event)
-    foreach (KitAspectWidget *widget, m_widgets)
+    for (KitAspectWidget *widget : std::as_const(m_widgets))
         widget->refresh();
 }
 

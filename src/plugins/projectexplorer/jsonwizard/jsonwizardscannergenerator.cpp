@@ -1,44 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "jsonwizardscannergenerator.h"
 
-#include "../projectexplorer.h"
 #include "../projectmanager.h"
-#include "jsonwizard.h"
-#include "jsonwizardfactory.h"
+#include "../projectexplorertr.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 
 #include <utils/algorithm.h>
-#include <utils/fileutils.h>
-#include <utils/qtcassert.h>
+#include <utils/filepath.h>
 #include <utils/macroexpander.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/mimeutils.h>
+#include <utils/qtcassert.h>
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QVariant>
 
@@ -53,20 +28,18 @@ bool JsonWizardScannerGenerator::setup(const QVariant &data, QString *errorMessa
         return true;
 
     if (data.type() != QVariant::Map) {
-        *errorMessage = QCoreApplication::translate("ProjectExplorer::Internal::JsonWizard",
-                                                    "Key is not an object.");
+        *errorMessage = Tr::tr("Key is not an object.");
         return false;
     }
 
     QVariantMap gen = data.toMap();
 
     m_binaryPattern = gen.value(QLatin1String("binaryPattern")).toString();
-    QStringList patterns = gen.value(QLatin1String("subdirectoryPatterns")).toStringList();
-    foreach (const QString pattern, patterns) {
+    const QStringList patterns = gen.value(QLatin1String("subdirectoryPatterns")).toStringList();
+    for (const QString &pattern : patterns) {
         QRegularExpression regexp(pattern);
         if (!regexp.isValid()) {
-            *errorMessage = QCoreApplication::translate("ProjectExplorer::Internal::JsonWizard",
-                                                        "Pattern \"%1\" is no valid regular expression.");
+            *errorMessage = Tr::tr("Pattern \"%1\" is no valid regular expression.");
             return false;
         }
         m_subDirectoryExpressions << regexp;
@@ -76,38 +49,37 @@ bool JsonWizardScannerGenerator::setup(const QVariant &data, QString *errorMessa
 }
 
 Core::GeneratedFiles JsonWizardScannerGenerator::fileList(Utils::MacroExpander *expander,
-                                                          const QString &wizardDir,
-                                                          const QString &projectDir,
+                                                          const Utils::FilePath &wizardDir,
+                                                          const Utils::FilePath &projectDir,
                                                           QString *errorMessage)
 {
     Q_UNUSED(wizardDir)
     errorMessage->clear();
 
-    QDir project(projectDir);
     Core::GeneratedFiles result;
 
     QRegularExpression binaryPattern;
     if (!m_binaryPattern.isEmpty()) {
         binaryPattern = QRegularExpression(expander->expand(m_binaryPattern));
         if (!binaryPattern.isValid()) {
-            qWarning() << QCoreApplication::translate("ProjectExplorer::Internal::JsonWizard",
-                                                      "ScannerGenerator: Binary pattern \"%1\" not valid.")
+            qWarning() << Tr::tr("ScannerGenerator: Binary pattern \"%1\" not valid.")
                           .arg(m_binaryPattern);
             return result;
         }
     }
 
-    result = scan(project.absolutePath(), project);
+    result = scan(projectDir, projectDir);
 
-    static const auto getDepth = [](const QString &filePath) { return int(filePath.count('/')); };
+    static const auto getDepth =
+            [](const Utils::FilePath &filePath) { return int(filePath.path().count('/')); };
     int minDepth = std::numeric_limits<int>::max();
     for (auto it = result.begin(); it != result.end(); ++it) {
-        const QString relPath = project.relativeFilePath(it->path());
-        it->setBinary(binaryPattern.match(relPath).hasMatch());
+        const Utils::FilePath relPath = it->filePath().relativePathFrom(projectDir);
+        it->setBinary(binaryPattern.match(relPath.toString()).hasMatch());
         bool found = ProjectManager::canOpenProjectForMimeType(Utils::mimeTypeForFile(relPath));
         if (found) {
             it->setAttributes(it->attributes() | Core::GeneratedFile::OpenProjectAttribute);
-            minDepth = std::min(minDepth, getDepth(it->path()));
+            minDepth = std::min(minDepth, getDepth(it->filePath()));
         }
     }
 
@@ -115,7 +87,7 @@ Core::GeneratedFiles JsonWizardScannerGenerator::fileList(Utils::MacroExpander *
     // other project files are not candidates for opening.
     for (Core::GeneratedFile &f : result) {
         if (f.attributes().testFlag(Core::GeneratedFile::OpenProjectAttribute)
-                && getDepth(f.path()) > minDepth) {
+                && getDepth(f.filePath()) > minDepth) {
             f.setAttributes(f.attributes().setFlag(Core::GeneratedFile::OpenProjectAttribute,
                                                    false));
         }
@@ -124,31 +96,31 @@ Core::GeneratedFiles JsonWizardScannerGenerator::fileList(Utils::MacroExpander *
     return result;
 }
 
-bool JsonWizardScannerGenerator::matchesSubdirectoryPattern(const QString &path)
+bool JsonWizardScannerGenerator::matchesSubdirectoryPattern(const Utils::FilePath &path)
 {
-    foreach (const QRegularExpression &regexp, m_subDirectoryExpressions) {
-        if (regexp.match(path).hasMatch())
+    for (const QRegularExpression &regexp : std::as_const(m_subDirectoryExpressions)) {
+        if (regexp.match(path.path()).hasMatch())
             return true;
     }
     return false;
 }
 
-Core::GeneratedFiles JsonWizardScannerGenerator::scan(const QString &dir, const QDir &base)
+Core::GeneratedFiles JsonWizardScannerGenerator::scan(const Utils::FilePath &dir,
+                                                      const Utils::FilePath &base)
 {
     Core::GeneratedFiles result;
-    QDir directory(dir);
 
-    if (!directory.exists())
+    if (!dir.exists())
         return result;
 
-    QFileInfoList entries = directory.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot,
-                                                       QDir::DirsLast | QDir::Name);
-    foreach (const QFileInfo &fi, entries) {
-        const QString relativePath = base.relativeFilePath(fi.absoluteFilePath());
+    const Utils::FilePaths entries = dir.dirEntries({{}, QDir::AllEntries | QDir::NoDotAndDotDot},
+                                                    QDir::DirsLast | QDir::Name);
+    for (const Utils::FilePath &fi : entries) {
+        const Utils::FilePath relativePath = fi.relativePathFrom(base);
         if (fi.isDir() && matchesSubdirectoryPattern(relativePath)) {
-            result += scan(fi.absoluteFilePath(), base);
+            result += scan(fi, base);
         } else {
-            Core::GeneratedFile f(fi.absoluteFilePath());
+            Core::GeneratedFile f(fi);
             f.setAttributes(f.attributes() | Core::GeneratedFile::KeepExistingFileAttribute);
 
             result.append(f);

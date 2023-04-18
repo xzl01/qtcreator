@@ -1,38 +1,67 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "remotelinuxenvironmentaspect.h"
 
-#include "remotelinuxenvironmentaspectwidget.h"
+#include "linuxdevice.h"
+#include "remotelinuxtr.h"
+
+#include <coreplugin/icore.h>
+
+#include <projectexplorer/environmentaspectwidget.h>
+#include <projectexplorer/environmentwidget.h>
+#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/target.h>
+
 #include <utils/algorithm.h>
+#include <utils/devicefileaccess.h>
+#include <utils/qtcassert.h>
+
+#include <QMessageBox>
+#include <QPushButton>
+
+using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace RemoteLinux {
 
 const char DISPLAY_KEY[] = "DISPLAY";
 const char VERSION_KEY[] = "RemoteLinux.EnvironmentAspect.Version";
 const int ENVIRONMENTASPECT_VERSION = 1; // Version was introduced in 4.3 with the value 1
+
+class RemoteLinuxEnvironmentAspectWidget : public EnvironmentAspectWidget
+{
+public:
+    RemoteLinuxEnvironmentAspectWidget(RemoteLinuxEnvironmentAspect *aspect, Target *target)
+        : EnvironmentAspectWidget(aspect)
+    {
+        auto fetchButton = new QPushButton(Tr::tr("Fetch Device Environment"));
+        addWidget(fetchButton);
+
+        connect(target, &Target::kitChanged, [aspect] { aspect->setRemoteEnvironment({}); });
+
+        connect(fetchButton, &QPushButton::clicked, this, [this, aspect, target] {
+            if (IDevice::ConstPtr device = DeviceKitAspect::device(target->kit())) {
+                DeviceFileAccess *access = device->fileAccess();
+                QTC_ASSERT(access, return);
+                aspect->setRemoteEnvironment(access->deviceEnvironment());
+            }
+        });
+
+        envWidget()->setOpenTerminalFunc([target](const Environment &env) {
+            IDevice::ConstPtr device = DeviceKitAspect::device(target->kit());
+            if (!device) {
+                QMessageBox::critical(Core::ICore::dialogParent(),
+                                      Tr::tr("Cannot Open Terminal"),
+                                      Tr::tr("Cannot open remote terminal: Current kit has no device."));
+                return;
+            }
+            const auto linuxDevice = device.dynamicCast<const LinuxDevice>();
+            QTC_ASSERT(linuxDevice, return);
+            linuxDevice->openTerminal(env, FilePath());
+        });
+    }
+};
 
 static bool displayAlreadySet(const Utils::EnvironmentItems &changes)
 {
@@ -41,10 +70,10 @@ static bool displayAlreadySet(const Utils::EnvironmentItems &changes)
     });
 }
 
-RemoteLinuxEnvironmentAspect::RemoteLinuxEnvironmentAspect(ProjectExplorer::Target *target)
+RemoteLinuxEnvironmentAspect::RemoteLinuxEnvironmentAspect(Target *target)
 {
-    addSupportedBaseEnvironment(tr("Clean Environment"), {});
-    addPreferredBaseEnvironment(tr("System Environment"), [this] { return m_remoteEnvironment; });
+    addSupportedBaseEnvironment(Tr::tr("Clean Environment"), {});
+    addPreferredBaseEnvironment(Tr::tr("System Environment"), [this] { return m_remoteEnvironment; });
 
     setConfigWidgetCreator([this, target] {
         return new RemoteLinuxEnvironmentAspectWidget(this, target);
@@ -63,7 +92,8 @@ QString RemoteLinuxEnvironmentAspect::userEnvironmentChangesAsString() const
 {
     QString env;
     QString placeHolder = QLatin1String("%1=%2 ");
-    foreach (const Utils::EnvironmentItem &item, userEnvironmentChanges())
+    const Utils::EnvironmentItems items = userEnvironmentChanges();
+    for (const Utils::EnvironmentItem &item : items)
         env.append(placeHolder.arg(item.name, item.value));
     return env.mid(0, env.size() - 1);
 }

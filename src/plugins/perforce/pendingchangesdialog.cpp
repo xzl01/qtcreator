@@ -1,65 +1,71 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "pendingchangesdialog.h"
 
+#include "perforcetr.h"
+
+#include <utils/layoutbuilder.h>
+
+#include <QDialogButtonBox>
+#include <QIntValidator>
+#include <QListWidget>
+#include <QPushButton>
 #include <QRegularExpression>
 
+namespace Perforce::Internal {
 
-using namespace Perforce::Internal;
-
-PendingChangesDialog::PendingChangesDialog(const QString &data, QWidget *parent) : QDialog(parent)
+PendingChangesDialog::PendingChangesDialog(const QString &data, QWidget *parent)
+    : QDialog(parent)
+    , m_listWidget(new QListWidget(this))
 {
-    m_ui.setupUi(this);
+    setWindowTitle(Tr::tr("P4 Pending Changes"));
+
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(this);
+    buttonBox->setOrientation(Qt::Horizontal);
+    buttonBox->setStandardButtons(QDialogButtonBox::Cancel);
+    QPushButton *submitButton = buttonBox->addButton(Tr::tr("Submit"), QDialogButtonBox::AcceptRole);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
     if (!data.isEmpty()) {
         const QRegularExpression r(QLatin1String("Change\\s(\\d+?).*?\\s\\*?pending\\*?\\s(.+?)\n"));
         QListWidgetItem *item;
         QRegularExpressionMatchIterator it = r.globalMatch(data);
         while (it.hasNext()) {
             const QRegularExpressionMatch match = it.next();
-            item = new QListWidgetItem(tr("Change %1: %2").arg(match.captured(1),
-                                                               match.captured(2).trimmed()),
-                                       m_ui.listWidget);
-            item->setData(234, match.captured(1).trimmed());
+            item = new QListWidgetItem(Tr::tr("Change %1: %2").arg(match.captured(1),
+                                                                   match.captured(2).trimmed()),
+                                       m_listWidget);
+            item->setData(Qt::UserRole, match.captured(1).trimmed());
         }
     }
-    m_ui.listWidget->setSelectionMode(QListWidget::SingleSelection);
-    if (m_ui.listWidget->count()) {
-        m_ui.listWidget->setCurrentRow(0);
-        m_ui.submitButton->setEnabled(true);
+    m_listWidget->setSelectionMode(QListWidget::SingleSelection);
+    if (m_listWidget->count()) {
+        m_listWidget->setCurrentRow(0);
+        submitButton->setEnabled(true);
     } else {
-        m_ui.submitButton->setEnabled(false);
+        submitButton->setEnabled(false);
     }
+
+    using namespace Utils::Layouting;
+
+    Column {
+        m_listWidget,
+        buttonBox
+    }.attachTo(this);
+
+    resize(320, 250);
 }
 
 int PendingChangesDialog::changeNumber() const
 {
-    QListWidgetItem *item = m_ui.listWidget->item(m_ui.listWidget->currentRow());
+    QListWidgetItem *item = m_listWidget->item(m_listWidget->currentRow());
     if (!item)
         return -1;
     bool ok = true;
-    int i = item->data(234).toInt(&ok);
-    return ok ? i : -1;
+    const int number = item->data(Qt::UserRole).toInt(&ok);
+    return ok ? number : -1;
 }
+
+} // Perforce::Internal

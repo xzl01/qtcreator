@@ -1,50 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "findplugin.h"
 
 #include "currentdocumentfind.h"
 #include "findtoolbar.h"
 #include "findtoolwindow.h"
-#include "searchresultwindow.h"
 #include "ifindfilter.h"
-
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/actionmanager/actioncontainer.h>
-#include <coreplugin/actionmanager/command.h>
-
-#include <coreplugin/coreconstants.h>
-#include <coreplugin/icontext.h>
-#include <coreplugin/icore.h>
-#include <coreplugin/coreplugin.h>
+#include "searchresultwindow.h"
+#include "../actionmanager/actioncontainer.h"
+#include "../actionmanager/actionmanager.h"
+#include "../actionmanager/command.h"
+#include "../coreconstants.h"
+#include "../coreplugintr.h"
+#include "../icontext.h"
+#include "../icore.h"
 
 #include <extensionsystem/pluginmanager.h>
 
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
+#include <QApplication>
 #include <QMenu>
 #include <QStringListModel>
 #include <QVector>
@@ -176,8 +153,6 @@ void CompletionModel::updateCompletion(const QString &text, FindFlags f)
 
 class FindPrivate : public QObject
 {
-    Q_DECLARE_TR_FUNCTIONS(Core::Find)
-
 public:
     bool isAnyFilterEnabled() const;
     void writeSettings();
@@ -261,12 +236,21 @@ bool FindPrivate::isAnyFilterEnabled() const
     return Utils::anyOf(m_findDialog->findFilters(), &IFindFilter::isEnabled);
 }
 
-void Find::openFindDialog(IFindFilter *filter)
+void Find::openFindDialog(IFindFilter *filter, const QString &findString)
 {
     d->m_currentDocumentFind->acceptCandidate();
-    const QString currentFindString =
-        d->m_currentDocumentFind->isEnabled() ?
-        d->m_currentDocumentFind->currentFindString() : QString();
+    const QString currentFindString = [findString] {
+        if (!findString.isEmpty())
+            return findString;
+        if (d->m_findToolBar->isVisible()
+            && QApplication::focusWidget() == d->m_findToolBar->focusWidget()
+            && !d->m_findToolBar->getFindText().isEmpty()) {
+            return d->m_findToolBar->getFindText();
+        }
+        if (d->m_currentDocumentFind->isEnabled())
+            return d->m_currentDocumentFind->currentFindString();
+        return QString();
+    }();
     if (!currentFindString.isEmpty())
         d->m_findDialog->setFindText(currentFindString);
     d->m_findDialog->setCurrentFilter(filter);
@@ -278,7 +262,7 @@ void FindPrivate::setupMenu()
     ActionContainer *medit = ActionManager::actionContainer(Constants::M_EDIT);
     ActionContainer *mfind = ActionManager::createMenu(Constants::M_FIND);
     medit->addMenu(mfind, Constants::G_EDIT_FIND);
-    mfind->menu()->setTitle(tr("&Find/Replace"));
+    mfind->menu()->setTitle(Tr::tr("&Find/Replace"));
     mfind->appendGroup(Constants::G_FIND_CURRENTDOCUMENT);
     mfind->appendGroup(Constants::G_FIND_FILTERS);
     mfind->appendGroup(Constants::G_FIND_FLAGS);
@@ -288,12 +272,12 @@ void FindPrivate::setupMenu()
     mfind->addSeparator(Constants::G_FIND_ACTIONS);
 
     ActionContainer *mfindadvanced = ActionManager::createMenu(Constants::M_FIND_ADVANCED);
-    mfindadvanced->menu()->setTitle(tr("Advanced Find"));
+    mfindadvanced->menu()->setTitle(Tr::tr("Advanced Find"));
     mfind->addMenu(mfindadvanced, Constants::G_FIND_FILTERS);
-    m_openFindDialog = new QAction(tr("Open Advanced Find..."), this);
-    m_openFindDialog->setIconText(tr("Advanced..."));
+    m_openFindDialog = new QAction(Tr::tr("Open Advanced Find..."), this);
+    m_openFindDialog->setIconText(Tr::tr("Advanced..."));
     cmd = ActionManager::registerAction(m_openFindDialog, Constants::ADVANCED_FIND);
-    cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+Shift+F")));
+    cmd->setDefaultKeySequence(QKeySequence(Tr::tr("Ctrl+Shift+F")));
     mfindadvanced->addAction(cmd);
     connect(m_openFindDialog, &QAction::triggered,
             this, [] { Find::openFindDialog(nullptr); });
@@ -311,9 +295,9 @@ void FindPrivate::setupFilterMenuItems()
     ActionContainer *mfindadvanced = ActionManager::actionContainer(Constants::M_FIND_ADVANCED);
     bool haveEnabledFilters = false;
     const Id base("FindFilter.");
-    QList<IFindFilter *> sortedFilters = IFindFilter::allFindFilters();
-    Utils::sort(sortedFilters, &IFindFilter::displayName);
-    foreach (IFindFilter *filter, sortedFilters) {
+    const QList<IFindFilter *> sortedFilters = Utils::sorted(IFindFilter::allFindFilters(),
+                                                             &IFindFilter::displayName);
+    for (IFindFilter *filter : sortedFilters) {
         QAction *action = new QAction(filterActionName(filter), this);
         bool isEnabled = filter->isEnabled();
         if (isEnabled)

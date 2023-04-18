@@ -1,43 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "stylehelper.h"
 
 #include "theme/theme.h"
 #include "hostosinfo.h"
+#include "qtcassert.h"
 
-#include <utils/qtcassert.h>
-
-#include <QPixmapCache>
-#include <QPainter>
 #include <QApplication>
-#include <QFileInfo>
 #include <QCommonStyle>
+#include <QFileInfo>
+#include <QFontDatabase>
+#include <QPainter>
+#include <QPixmapCache>
 #include <QStyleOption>
 #include <QWindow>
-#include <QFontDatabase>
+
 #include <qmath.h>
 
 // Clamps float color values within (0, 255)
@@ -328,7 +306,14 @@ void StyleHelper::drawArrow(QStyle::PrimitiveElement element, QPainter *painter,
             static const QCommonStyle* const style = qobject_cast<QCommonStyle*>(QApplication::style());
             if (!style)
                 return;
-            tweakedOption.palette.setColor(QPalette::ButtonText, color.rgb());
+
+            // Workaround for QTCREATORBUG-28470
+            QPalette pal = tweakedOption.palette;
+            pal.setBrush(QPalette::Base, pal.text()); // Base and Text differ, causing a detachment.
+                                                      // Inspired by tst_QPalette::cacheKey()
+            pal.setColor(QPalette::ButtonText, color.rgb());
+
+            tweakedOption.palette = pal;
             tweakedOption.rect = rect;
             painter.setOpacity(color.alphaF());
             style->QCommonStyle::drawPrimitive(element, &tweakedOption, &painter);
@@ -739,6 +724,31 @@ bool StyleHelper::isReadableOn(const QColor &background, const QColor &foregroun
     // following the W3C Recommendation on contrast for large Text
     // https://www.w3.org/TR/2008/REC-WCAG20-20081211/#contrast-ratiodef
     return contrastRatio(background, foreground) > 3;
+}
+
+QColor StyleHelper::ensureReadableOn(const QColor &background, const QColor &desiredForeground)
+{
+    if (isReadableOn(background, desiredForeground))
+        return desiredForeground;
+
+    int h, s, v;
+    QColor foreground = desiredForeground;
+    foreground.getHsv(&h, &s, &v);
+    // adjust the color value to ensure better readability
+    if (luminance(background) < .5)
+        v = v + 64;
+    else if (v >= 64)
+        v = v - 64;
+    v %= 256;
+
+    foreground.setHsv(h, s, v);
+    if (!isReadableOn(background, foreground)) {
+        s = (s + 128) % 256;    // adjust the saturation to ensure better readability
+        foreground.setHsv(h, s, v);
+        if (!isReadableOn(background, foreground)) // we failed to create some better foreground
+            return desiredForeground;
+    }
+    return foreground;
 }
 
 } // namespace Utils

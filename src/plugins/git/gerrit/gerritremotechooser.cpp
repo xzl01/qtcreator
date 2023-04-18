@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Orgad Shaneh <orgads@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 Orgad Shaneh <orgads@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gerritremotechooser.h"
 #include "gerritparameters.h"
 #include "gerritserver.h"
 #include "../gitclient.h"
+#include "../gittr.h"
 
 #include <utils/filepath.h>
 #include <utils/qtcassert.h>
@@ -56,7 +35,7 @@ GerritRemoteChooser::GerritRemoteChooser(QWidget *parent) :
     horizontalLayout->setContentsMargins(0, 0, 0, 0);
 
     m_resetRemoteButton = new QToolButton(this);
-    m_resetRemoteButton->setToolTip(tr("Refresh Remote Servers"));
+    m_resetRemoteButton->setToolTip(Git::Tr::tr("Refresh Remote Servers"));
 
     horizontalLayout->addWidget(m_resetRemoteButton);
 
@@ -114,7 +93,7 @@ bool GerritRemoteChooser::updateRemotes(bool forceReload)
         addRemote(server, mapIt.key());
     }
     if (m_enableFallback)
-        addRemote(m_parameters->server, tr("Fallback"));
+        addRemote(m_parameters->server, Git::Tr::tr("Fallback"));
     m_remoteComboBox->setEnabled(m_remoteComboBox->count() > 1);
     m_updatingRemotes = false;
     handleRemoteChanged();
@@ -124,7 +103,7 @@ bool GerritRemoteChooser::updateRemotes(bool forceReload)
 void GerritRemoteChooser::addRemote(const GerritServer &server, const QString &name)
 {
     if (!m_allowDups) {
-        for (const auto &remote : qAsConst(m_remotes)) {
+        for (const auto &remote : std::as_const(m_remotes)) {
             if (remote.second == server)
                 return;
         }

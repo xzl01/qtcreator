@@ -1,56 +1,37 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "customwidgetwidgetswizardpage.h"
-#include "ui_customwidgetwidgetswizardpage.h"
 #include "classdefinition.h"
+#include "classlist.h"
+#include "../qmakeprojectmanagertr.h"
 
+#include <utils/layoutbuilder.h>
 #include <utils/utilsicons.h>
 #include <utils/wizard.h>
 
-#include <QTimer>
-
-#include <QStackedLayout>
 #include <QIcon>
+#include <QLabel>
+#include <QStackedLayout>
+#include <QTimer>
+#include <QToolButton>
 
 namespace QmakeProjectManager {
 namespace Internal {
 
 CustomWidgetWidgetsWizardPage::CustomWidgetWidgetsWizardPage(QWidget *parent) :
     QWizardPage(parent),
-    m_ui(new Ui::CustomWidgetWidgetsWizardPage),
     m_tabStackLayout(new QStackedLayout),
     m_complete(false)
 {
-    m_ui->setupUi(this);
-    m_ui->tabStackWidget->setLayout(m_tabStackLayout);
-    m_ui->addButton->setIcon(Utils::Icons::PLUS_TOOLBAR.icon());
-    connect(m_ui->addButton, &QAbstractButton::clicked, m_ui->classList, &ClassList::startEditingNewClassItem);
-    m_ui->deleteButton->setIcon(Utils::Icons::MINUS.icon());
-    connect(m_ui->deleteButton, &QAbstractButton::clicked, m_ui->classList, &ClassList::removeCurrentClass);
-    m_ui->deleteButton->setEnabled(false);
+    auto classListLabel = new QLabel(Tr::tr("Widget &Classes:"));
+    auto addButton = new QToolButton;
+    addButton->setIcon(Utils::Icons::PLUS.icon());
+    m_deleteButton = new QToolButton;
+    m_deleteButton->setIcon(Utils::Icons::MINUS.icon());
+    m_deleteButton->setEnabled(false);
+    m_classList = new ClassList;
+    classListLabel->setBuddy(m_classList);
 
     // Disabled dummy for <new class> column>.
     auto *dummy = new ClassDefinition;
@@ -58,21 +39,31 @@ CustomWidgetWidgetsWizardPage::CustomWidgetWidgetsWizardPage(QWidget *parent) :
     dummy->setEnabled(false);
     m_tabStackLayout->addWidget(dummy);
 
-    connect(m_ui->classList, &ClassList::currentRowChanged,
+    using namespace Utils::Layouting;
+    Column {
+        Tr::tr("Specify the list of custom widgets and their properties."),
+        Space(10),
+        Row {
+            Column {
+                Row { classListLabel, addButton, m_deleteButton },
+                m_classList,
+            },
+            m_tabStackLayout,
+        }
+    }.attachTo(this);
+
+    connect(m_deleteButton, &QAbstractButton::clicked, m_classList, &ClassList::removeCurrentClass);
+    connect(addButton, &QAbstractButton::clicked, m_classList, &ClassList::startEditingNewClassItem);
+    connect(m_classList, &ClassList::currentRowChanged,
             this, &CustomWidgetWidgetsWizardPage::slotCurrentRowChanged);
-    connect(m_ui->classList, &ClassList::classAdded,
+    connect(m_classList, &ClassList::classAdded,
             this, &CustomWidgetWidgetsWizardPage::slotClassAdded);
-    connect(m_ui->classList, &ClassList::classDeleted,
+    connect(m_classList, &ClassList::classDeleted,
             this, &CustomWidgetWidgetsWizardPage::slotClassDeleted);
-    connect(m_ui->classList, &ClassList::classRenamed,
+    connect(m_classList, &ClassList::classRenamed,
             this, &CustomWidgetWidgetsWizardPage::slotClassRenamed);
 
-    setProperty(Utils::SHORT_TITLE_PROPERTY, tr("Custom Widgets"));
-}
-
-CustomWidgetWidgetsWizardPage::~CustomWidgetWidgetsWizardPage()
-{
-    delete m_ui;
+    setProperty(Utils::SHORT_TITLE_PROPERTY, Tr::tr("Custom Widgets"));
 }
 
 bool CustomWidgetWidgetsWizardPage::isComplete() const
@@ -83,13 +74,13 @@ bool CustomWidgetWidgetsWizardPage::isComplete() const
 void CustomWidgetWidgetsWizardPage::initializePage()
 {
     // Takes effect only if visible.
-    QTimer::singleShot(0, m_ui->classList, &ClassList::startEditingNewClassItem);
+    QTimer::singleShot(0, m_classList, &ClassList::startEditingNewClassItem);
 }
 
 void CustomWidgetWidgetsWizardPage::slotCurrentRowChanged(int row)
 {
     const bool onDummyItem = row == m_tabStackLayout->count() - 1;
-    m_ui->deleteButton->setEnabled(!onDummyItem);
+    m_deleteButton->setEnabled(!onDummyItem);
     m_tabStackLayout->setCurrentIndex(row);
 }
 
@@ -122,7 +113,7 @@ void CustomWidgetWidgetsWizardPage::slotClassRenamed(int index, const QString &n
 
 QString CustomWidgetWidgetsWizardPage::classNameAt(int i) const
 {
-    return m_ui->classList->className(i);
+    return m_classList->className(i);
 }
 
 QList<PluginOptions::WidgetOptions> CustomWidgetWidgetsWizardPage::widgetOptions() const

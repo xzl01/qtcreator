@@ -1,30 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlpreviewplugin.h"
+
 #include "qmlpreviewruncontrol.h"
+#include "qmlpreviewtr.h"
 
 #ifdef WITH_TESTS
 #include "tests/qmlpreviewclient_test.h"
@@ -44,6 +24,7 @@
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/projecttree.h>
 #include <projectexplorer/runconfiguration.h>
@@ -63,6 +44,7 @@
 #include <android/androidconstants.h>
 
 #include <QAction>
+#include <QTimer>
 
 using namespace ProjectExplorer;
 
@@ -111,20 +93,16 @@ static std::unique_ptr<QmlDebugTranslationClient> defaultCreateDebugTranslationC
 {
     auto client = std::make_unique<QmlPreview::QmlDebugTranslationClient>(connection);
     return client;
-};
-
+}
 
 class QmlPreviewPluginPrivate : public QObject
 {
 public:
     explicit QmlPreviewPluginPrivate(QmlPreviewPlugin *parent);
 
-    void previewCurrentFile();
     void onEditorChanged(Core::IEditor *editor);
     void onEditorAboutToClose(Core::IEditor *editor);
     void setDirty();
-    void addPreview(ProjectExplorer::RunControl *preview);
-    void removePreview(ProjectExplorer::RunControl *preview);
     void attachToEditor();
     void checkEditor();
     void checkFile(const QString &fileName);
@@ -135,7 +113,7 @@ public:
     QmlPreviewRunControlList runningPreviews() const;
 
     QmlPreviewFileClassifier fileClassifier() const;
-    void setFileClassifier(QmlPreviewFileClassifier fileClassifer);
+    void setFileClassifier(QmlPreviewFileClassifier fileClassifier);
 
     float zoomFactor() const;
     void setZoomFactor(float zoomFactor);
@@ -149,70 +127,29 @@ public:
     QmlPreviewPlugin *q = nullptr;
     QThread m_parseThread;
     QString m_previewedFile;
-    QmlPreviewFileLoader m_fileLoader = nullptr;
     Core::IEditor *m_lastEditor = nullptr;
     QmlPreviewRunControlList m_runningPreviews;
     bool m_dirty = false;
-    QmlPreview::QmlPreviewFileClassifier m_fileClassifer = nullptr;
-    float m_zoomFactor = -1.0;
-    QmlPreview::QmlPreviewFpsHandler m_fpsHandler = nullptr;
     QString m_localeIsoCode;
-    QmlDebugTranslationClientCreator m_createDebugTranslationClientMethod;
 
-    RunWorkerFactory localRunWorkerFactory{
-        RunWorkerFactory::make<LocalQmlPreviewSupport>(),
-        {Constants::QML_PREVIEW_RUN_MODE},
-        {}, // All runconfig.
-        {Constants::DESKTOP_DEVICE_TYPE}
-    };
+    LocalQmlPreviewSupportFactory localRunWorkerFactory;
 
-    RunWorkerFactory runWorkerFactory{
-        [this](RunControl *runControl) {
-            QmlPreviewRunner *runner = new QmlPreviewRunner(QmlPreviewRunnerSetting{
-                runControl,
-                m_fileLoader,
-                m_fileClassifer,
-                m_fpsHandler,
-                m_zoomFactor,
-                m_localeIsoCode,
-                m_createDebugTranslationClientMethod
-            });
-            connect(q, &QmlPreviewPlugin::updatePreviews,
-                    runner, &QmlPreviewRunner::loadFile);
-            connect(q, &QmlPreviewPlugin::rerunPreviews,
-                    runner, &QmlPreviewRunner::rerun);
-            connect(runner, &QmlPreviewRunner::ready,
-                    this, &QmlPreviewPluginPrivate::previewCurrentFile);
-            connect(q, &QmlPreviewPlugin::zoomFactorChanged,
-                    runner, &QmlPreviewRunner::zoom);
-            connect(q, &QmlPreviewPlugin::localeIsoCodeChanged,
-                    runner, &QmlPreviewRunner::language);
-
-            connect(runner, &RunWorker::started, this, [this, runControl] {
-                addPreview(runControl);
-            });
-            connect(runner, &RunWorker::stopped, this, [this, runControl] {
-                removePreview(runControl);
-            });
-
-            return runner;
-        },
-        {Constants::QML_PREVIEW_RUNNER}
-    };
+    QmlPreviewRunnerSetting m_settings;
+    QmlPreviewRunWorkerFactory runWorkerFactory;
 };
 
 QmlPreviewPluginPrivate::QmlPreviewPluginPrivate(QmlPreviewPlugin *parent)
-    : q(parent)
+    : q(parent), runWorkerFactory(parent, &m_settings)
 {
-    m_fileLoader = &defaultFileLoader;
-    m_fileClassifer = &defaultFileClassifier;
-    m_fpsHandler = &defaultFpsHandler;
-    m_createDebugTranslationClientMethod = &defaultCreateDebugTranslationClientMethod;
+    m_settings.fileLoader = &defaultFileLoader;
+    m_settings.fileClassifier = &defaultFileClassifier;
+    m_settings.fpsHandler = &defaultFpsHandler;
+    m_settings.createDebugTranslationClientMethod = &defaultCreateDebugTranslationClientMethod;
 
     Core::ActionContainer *menu = Core::ActionManager::actionContainer(
                 Constants::M_BUILDPROJECT);
-    QAction *action = new QAction(QmlPreviewPlugin::tr("QML Preview"), this);
-    action->setToolTip(QLatin1String("Preview changes to QML code live in your application."));
+    QAction *action = new QAction(Tr::tr("QML Preview"), this);
+    action->setToolTip(Tr::tr("Preview changes to QML code live in your application."));
     action->setEnabled(SessionManager::startupProject() != nullptr);
     connect(SessionManager::instance(), &SessionManager::startupProjectChanged, action,
             &QAction::setEnabled);
@@ -231,13 +168,13 @@ QmlPreviewPluginPrivate::QmlPreviewPluginPrivate(QmlPreviewPlugin *parent)
         Constants::G_BUILD_RUN);
 
     menu = Core::ActionManager::actionContainer(Constants::M_FILECONTEXT);
-    action = new QAction(QmlPreviewPlugin::tr("Preview File"), this);
+    action = new QAction(Tr::tr("Preview File"), this);
     action->setEnabled(false);
     connect(q, &QmlPreviewPlugin::runningPreviewsChanged,
             action, [action](const QmlPreviewRunControlList &previews) {
         action->setEnabled(!previews.isEmpty());
     });
-    connect(action, &QAction::triggered, this, &QmlPreviewPluginPrivate::previewCurrentFile);
+    connect(action, &QAction::triggered, q, &QmlPreviewPlugin::previewCurrentFile);
     menu->addAction(
         Core::ActionManager::registerAction(action, "QmlPreview.PreviewFile",  Core::Context(Constants::C_PROJECT_TREE)),
         Constants::G_FILE_OTHER);
@@ -263,14 +200,14 @@ QmlPreviewPlugin::~QmlPreviewPlugin()
     delete d;
 }
 
-bool QmlPreviewPlugin::initialize(const QStringList &arguments, QString *errorString)
+void QmlPreviewPlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorString)
-
     d = new QmlPreviewPluginPrivate(this);
 
-    return true;
+#ifdef WITH_TESTS
+    addTest<QmlPreviewClientTest>();
+    addTest<QmlPreviewPluginTest>();
+#endif
 }
 
 ExtensionSystem::IPlugin::ShutdownFlag QmlPreviewPlugin::aboutToShutdown()
@@ -278,16 +215,6 @@ ExtensionSystem::IPlugin::ShutdownFlag QmlPreviewPlugin::aboutToShutdown()
     d->m_parseThread.quit();
     d->m_parseThread.wait();
     return SynchronousShutdown;
-}
-
-QVector<QObject *> QmlPreviewPlugin::createTestObjects() const
-{
-    QVector<QObject *> tests;
-#ifdef WITH_TESTS
-    tests.append(new QmlPreviewClientTest);
-    tests.append(new QmlPreviewPluginTest);
-#endif
-    return tests;
 }
 
 QString QmlPreviewPlugin::previewedFile() const
@@ -311,49 +238,49 @@ QmlPreviewRunControlList QmlPreviewPlugin::runningPreviews() const
 
 QmlPreviewFileLoader QmlPreviewPlugin::fileLoader() const
 {
-    return d->m_fileLoader;
+    return d->m_settings.fileLoader;
 }
 
 QmlPreviewFileClassifier QmlPreviewPlugin::fileClassifier() const
 {
-    return d->m_fileClassifer;
+    return d->m_settings.fileClassifier;
 }
 
-void QmlPreviewPlugin::setFileClassifier(QmlPreviewFileClassifier fileClassifer)
+void QmlPreviewPlugin::setFileClassifier(QmlPreviewFileClassifier fileClassifier)
 {
-    if (d->m_fileClassifer == fileClassifer)
+    if (d->m_settings.fileClassifier == fileClassifier)
         return;
 
-    d->m_fileClassifer = fileClassifer;
-    emit fileClassifierChanged(d->m_fileClassifer);
+    d->m_settings.fileClassifier = fileClassifier;
+    emit fileClassifierChanged(d->m_settings.fileClassifier);
 }
 
 float QmlPreviewPlugin::zoomFactor() const
 {
-    return d->m_zoomFactor;
+    return d->m_settings.zoomFactor;
 }
 
 void QmlPreviewPlugin::setZoomFactor(float zoomFactor)
 {
-    if (d->m_zoomFactor == zoomFactor)
+    if (d->m_settings.zoomFactor == zoomFactor)
         return;
 
-    d->m_zoomFactor = zoomFactor;
-    emit zoomFactorChanged(d->m_zoomFactor);
+    d->m_settings.zoomFactor = zoomFactor;
+    emit zoomFactorChanged(d->m_settings.zoomFactor);
 }
 
 QmlPreviewFpsHandler QmlPreviewPlugin::fpsHandler() const
 {
-    return d->m_fpsHandler;
+    return d->m_settings.fpsHandler;
 }
 
 void QmlPreviewPlugin::setFpsHandler(QmlPreviewFpsHandler fpsHandler)
 {
-    if (d->m_fpsHandler == fpsHandler)
+    if (d->m_settings.fpsHandler == fpsHandler)
         return;
 
-    d->m_fpsHandler = fpsHandler;
-    emit fpsHandlerChanged(d->m_fpsHandler);
+    d->m_settings.fpsHandler = fpsHandler;
+    emit fpsHandlerChanged(d->m_settings.fpsHandler);
 }
 
 QString QmlPreviewPlugin::localeIsoCode() const
@@ -374,19 +301,19 @@ void QmlPreviewPlugin::setLocaleIsoCode(const QString &localeIsoCode)
 
 void QmlPreviewPlugin::setQmlDebugTranslationClientCreator(QmlDebugTranslationClientCreator creator)
 {
-    d->m_createDebugTranslationClientMethod = creator;
+    d->m_settings.createDebugTranslationClientMethod = creator;
 }
 
 void QmlPreviewPlugin::setFileLoader(QmlPreviewFileLoader fileLoader)
 {
-    if (d->m_fileLoader == fileLoader)
+    if (d->m_settings.fileLoader == fileLoader)
         return;
 
-    d->m_fileLoader = fileLoader;
-    emit fileLoaderChanged(d->m_fileLoader);
+    d->m_settings.fileLoader = fileLoader;
+    emit fileLoaderChanged(d->m_settings.fileLoader);
 }
 
-void QmlPreviewPluginPrivate::previewCurrentFile()
+void QmlPreviewPlugin::previewCurrentFile()
 {
     const Node *currentNode = ProjectTree::currentNode();
     if (!currentNode || !currentNode->asFileNode()
@@ -394,10 +321,10 @@ void QmlPreviewPluginPrivate::previewCurrentFile()
         return;
 
     const QString file = currentNode->filePath().toString();
-    if (file != m_previewedFile)
-        q->setPreviewedFile(file);
+    if (file != d->m_previewedFile)
+        setPreviewedFile(file);
     else
-        checkFile(file);
+        d->checkFile(file);
 }
 
 void QmlPreviewPluginPrivate::onEditorChanged(Core::IEditor *editor)
@@ -446,20 +373,16 @@ void QmlPreviewPluginPrivate::setDirty()
     });
 }
 
-void QmlPreviewPluginPrivate::addPreview(ProjectExplorer::RunControl *preview)
+void QmlPreviewPlugin::addPreview(RunControl *preview)
 {
-    m_runningPreviews.append(preview);
-    if (auto multiLanguageAspect = preview->aspect<QmlProjectManager::QmlMultiLanguageAspect>()) {
-        connect(multiLanguageAspect, &QmlProjectManager::QmlMultiLanguageAspect::changed,
-                preview, &ProjectExplorer::RunControl::initiateStop);
-    }
-    emit q->runningPreviewsChanged(m_runningPreviews);
+    d->m_runningPreviews.append(preview);
+    emit runningPreviewsChanged(d->m_runningPreviews);
 }
 
-void QmlPreviewPluginPrivate::removePreview(ProjectExplorer::RunControl *preview)
+void QmlPreviewPlugin::removePreview(RunControl *preview)
 {
-    m_runningPreviews.removeOne(preview);
-    emit q->runningPreviewsChanged(m_runningPreviews);
+    d->m_runningPreviews.removeOne(preview);
+    emit runningPreviewsChanged(d->m_runningPreviews);
 }
 
 void QmlPreviewPluginPrivate::attachToEditor()
@@ -502,22 +425,25 @@ void QmlPreviewPluginPrivate::checkEditor()
 
 void QmlPreviewPluginPrivate::checkFile(const QString &fileName)
 {
-    if (!m_fileLoader)
+    if (!m_settings.fileLoader)
         return;
 
     bool success = false;
-    const QByteArray contents = m_fileLoader(fileName, &success);
+    const QByteArray contents = m_settings.fileLoader(fileName, &success);
 
     if (success) {
-        emit q->checkDocument(fileName, contents,
-                              QmlJS::ModelManagerInterface::guessLanguageOfFile(fileName).dialect());
+        emit q->checkDocument(fileName,
+                              contents,
+                              QmlJS::ModelManagerInterface::guessLanguageOfFile(
+                                  Utils::FilePath::fromUserInput(fileName))
+                                  .dialect());
     }
 }
 
 void QmlPreviewPluginPrivate::triggerPreview(const QString &changedFile, const QByteArray &contents)
 {
     if (m_previewedFile.isEmpty())
-        previewCurrentFile();
+        q->previewCurrentFile();
     else
         emit q->updatePreviews(m_previewedFile, changedFile, contents);
 }
@@ -536,7 +462,8 @@ void QmlPreviewParser::parse(const QString &name, const QByteArray &contents,
         return;
     }
 
-    QmlJS::Document::MutablePtr qmljsDoc = QmlJS::Document::create(name, dialect);
+    QmlJS::Document::MutablePtr qmljsDoc = QmlJS::Document::create(Utils::FilePath::fromString(name),
+                                                                   dialect);
     qmljsDoc->setSource(QString::fromUtf8(contents));
     if (qmljsDoc->parse())
         emit success(name, contents);

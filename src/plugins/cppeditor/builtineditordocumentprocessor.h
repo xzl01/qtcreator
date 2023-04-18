@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,6 +9,8 @@
 #include "cppsemanticinfoupdater.h"
 #include "semantichighlighter.h"
 
+#include <functional>
+
 namespace CppEditor {
 
 class CPPEDITOR_EXPORT BuiltinEditorDocumentProcessor : public BaseEditorDocumentProcessor
@@ -38,8 +18,7 @@ class CPPEDITOR_EXPORT BuiltinEditorDocumentProcessor : public BaseEditorDocumen
     Q_OBJECT
 
 public:
-    BuiltinEditorDocumentProcessor(TextEditor::TextDocument *document,
-                                   bool enableSemanticHighlighter = true);
+    BuiltinEditorDocumentProcessor(TextEditor::TextDocument *document);
     ~BuiltinEditorDocumentProcessor() override;
 
     // BaseEditorDocumentProcessor interface
@@ -52,8 +31,9 @@ public:
     bool isParserRunning() const override;
 
     QFuture<CursorInfo> cursorInfo(const CursorInfoParams &params) override;
-    QFuture<CursorInfo> requestLocalReferences(const QTextCursor &) override;
-    QFuture<SymbolInfo> requestFollowSymbol(int, int) override;
+
+    using SemanticHighlightingChecker = std::function<bool()>;
+    void setSemanticHighlightingChecker(const SemanticHighlightingChecker &checker);
 
 private:
     void onParserFinished(CPlusPlus::Document::Ptr document, CPlusPlus::Snapshot snapshot);
@@ -73,6 +53,7 @@ private:
 
     SemanticInfoUpdater m_semanticInfoUpdater;
     QScopedPointer<SemanticHighlighter> m_semanticHighlighter;
+    SemanticHighlightingChecker m_semanticHighlightingChecker;
 };
 
 } // namespace CppEditor

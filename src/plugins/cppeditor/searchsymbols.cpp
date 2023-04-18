@@ -1,44 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "searchsymbols.h"
-#include "stringtable.h"
 
 #include <cplusplus/Icons.h>
 #include <cplusplus/LookupContext.h>
+
 #include <utils/qtcassert.h>
 #include <utils/scopedswap.h>
+#include <utils/stringtable.h>
 
 #include <QDebug>
 
 using namespace CPlusPlus;
+using namespace Utils;
 
 namespace CppEditor {
 
-using ScopedIndexItemPtr = Utils::ScopedSwap<IndexItem::Ptr>;
-using ScopedScope = Utils::ScopedSwap<QString>;
+using ScopedIndexItemPtr = ScopedSwap<IndexItem::Ptr>;
+using ScopedScope = ScopedSwap<QString>;
 
 SearchSymbols::SymbolTypes SearchSymbols::AllTypes =
         SymbolSearcher::Classes
@@ -59,7 +39,7 @@ void SearchSymbols::setSymbolsToSearchFor(const SymbolTypes &types)
 
 IndexItem::Ptr SearchSymbols::operator()(Document::Ptr doc, const QString &scope)
 {
-    IndexItem::Ptr root = IndexItem::create(Internal::StringTable::insert(doc->fileName()), 100);
+    IndexItem::Ptr root = IndexItem::create(StringTable::insert(doc->filePath().toString()), 100);
 
     { // RAII scope
         ScopedIndexItemPtr parentRaii(_parent, root);
@@ -68,13 +48,13 @@ IndexItem::Ptr SearchSymbols::operator()(Document::Ptr doc, const QString &scope
 
         QTC_ASSERT(_parent, return IndexItem::Ptr());
         QTC_ASSERT(root, return IndexItem::Ptr());
-        QTC_ASSERT(_parent->fileName() == Internal::StringTable::insert(doc->fileName()),
+        QTC_ASSERT(_parent->filePath().toString() == StringTable::insert(doc->filePath().toString()),
                    return IndexItem::Ptr());
 
         for (int i = 0, ei = doc->globalSymbolCount(); i != ei; ++i)
             accept(doc->globalSymbolAt(i));
 
-        Internal::StringTable::scheduleGC();
+        StringTable::scheduleGC();
         m_paths.clear();
     }
 
@@ -267,9 +247,9 @@ QString SearchSymbols::scopeName(const QString &name, const Symbol *symbol) cons
     if (!name.isEmpty())
         return name;
 
-    if (symbol->isNamespace()) {
+    if (symbol->asNamespace()) {
         return QLatin1String("<anonymous namespace>");
-    } else if (symbol->isEnum()) {
+    } else if (symbol->asEnum()) {
         return QLatin1String("<anonymous enum>");
     } else if (const Class *c = symbol->asClass())  {
         if (c->isUnion())
@@ -296,13 +276,13 @@ IndexItem::Ptr SearchSymbols::addChildItem(const QString &symbolName, const QStr
         m_paths.insert(symbol->fileId(), path);
     }
 
-    const QIcon icon = Icons::iconForSymbol(symbol);
+    const QIcon icon = CPlusPlus::Icons::iconForSymbol(symbol);
 
-    IndexItem::Ptr newItem = IndexItem::create(Internal::StringTable::insert(symbolName),
-                                               Internal::StringTable::insert(symbolType),
-                                               Internal::StringTable::insert(symbolScope),
+    IndexItem::Ptr newItem = IndexItem::create(StringTable::insert(symbolName),
+                                               StringTable::insert(symbolType),
+                                               StringTable::insert(symbolScope),
                                                itemType,
-                                               Internal::StringTable::insert(path),
+                                               StringTable::insert(path),
                                                symbol->line(),
                                                symbol->column() - 1, // 1-based vs 0-based column
                                                icon);

@@ -1,40 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <previewtooltip/previewtooltipbackend.h>
-#include "assetslibrarymodel.h"
 
-#include <QFrame>
-#include <QToolButton>
+#include "assetslibrarymodel.h"
+#include "createtexture.h"
+
 #include <QFileIconProvider>
-#include <QQuickWidget>
-#include <QQmlPropertyMap>
-#include <QTimer>
+#include <QFrame>
 #include <QPointF>
+#include <QQmlPropertyMap>
+#include <QQuickWidget>
+#include <QTimer>
+#include <QToolButton>
 
 #include <memory>
 
@@ -42,7 +22,9 @@ QT_BEGIN_NAMESPACE
 class QShortcut;
 QT_END_NAMESPACE
 
-namespace Utils { class FileSystemWatcher; }
+namespace Utils {
+    class QtcProcess;
+}
 
 namespace QmlDesigner {
 
@@ -62,7 +44,7 @@ class AssetsLibraryWidget : public QFrame
 public:
     AssetsLibraryWidget(AsynchronousImageCache &asynchronousFontImageCache,
                         SynchronousImageCache &synchronousFontImageCache);
-    ~AssetsLibraryWidget();
+    ~AssetsLibraryWidget() = default;
 
     QList<QToolButton *> createToolBarWidgets();
 
@@ -78,14 +60,34 @@ public:
 
     Q_INVOKABLE void startDragAsset(const QStringList &assetPaths, const QPointF &mousePos);
     Q_INVOKABLE void handleAddAsset();
-    Q_INVOKABLE void handleSearchfilterChanged(const QString &filterText);
-    Q_INVOKABLE void handleExtFilesDrop(const QStringList &simpleFilesPaths,
-                                        const QStringList &complexFilesPaths,
-                                        const QString &targetDirPath = {});
+    Q_INVOKABLE void handleSearchFilterChanged(const QString &filterText);
+
+    Q_INVOKABLE void handleExtFilesDrop(const QList<QUrl> &simpleFilePaths,
+                                        const QList<QUrl> &complexFilePaths,
+                                        const QString &targetDirPath);
+
+    Q_INVOKABLE void emitExtFilesDrop(const QList<QUrl> &simpleFilePaths,
+                                      const QList<QUrl> &complexFilePaths,
+                                      const QString &targetDirPath = {});
+
     Q_INVOKABLE QSet<QString> supportedAssetSuffixes(bool complex);
+    Q_INVOKABLE void openEffectMaker(const QString &filePath);
+    Q_INVOKABLE bool qtVersionIsAtLeast6_4() const;
+    Q_INVOKABLE void invalidateThumbnail(const QString &id);
+    Q_INVOKABLE QSize imageSize(const QString &id);
+    Q_INVOKABLE QString assetFileSize(const QString &id);
+    Q_INVOKABLE bool assetIsImage(const QString &id);
+
+    Q_INVOKABLE void addTextures(const QStringList &filePaths);
+    Q_INVOKABLE void addLightProbe(const QString &filePaths);
 
 signals:
     void itemActivated(const QString &itemName);
+    void extFilesDrop(const QList<QUrl> &simpleFilePaths,
+                      const QList<QUrl> &complexFilePaths,
+                      const QString &targetDirPath);
+    void directoryCreated(const QString &path);
+    void addTexturesRequested(const QStringList &filePaths, QmlDesigner::AddTextureMode mode);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -96,14 +98,12 @@ private:
     void addResources(const QStringList &files);
     void updateSearch();
 
-    QTimer m_assetCompressionTimer;
     QSize m_itemIconSize;
 
     SynchronousImageCache &m_fontImageCache;
 
     AssetsLibraryIconProvider *m_assetsIconProvider = nullptr;
-    Utils::FileSystemWatcher *m_fileSystemWatcher = nullptr;
-    QPointer<AssetsLibraryModel> m_assetsModel;
+    AssetsLibraryModel *m_assetsModel = nullptr;
 
     QScopedPointer<QQuickWidget> m_assetsWidget;
     std::unique_ptr<PreviewTooltipBackend> m_fontPreviewTooltipBackend;

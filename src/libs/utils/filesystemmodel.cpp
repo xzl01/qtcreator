@@ -1,50 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "filesystemmodel.h"
 
-#include "filepath.h"
+#include "environment.h"
 #include "hostosinfo.h"
 #include "qtcassert.h"
+#include "utilstr.h"
 
 #include <QDateTime>
-#include <QDebug>
+#include <QCollator>
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
@@ -58,7 +23,6 @@
 #include <QMutex>
 #include <QPair>
 #include <QStack>
-#include <QCollator>
 #include <QRegularExpression>
 #include <QThread>
 #include <QTimer>
@@ -453,9 +417,9 @@ void FileInfoGatherer::run()
             condition.wait(&mutex);
         if (abort.loadRelaxed())
             return;
-        const QString thisPath = qAsConst(path).front();
+        const QString thisPath = std::as_const(path).front();
         path.pop_front();
-        const QStringList thisList = qAsConst(files).front();
+        const QStringList thisList = std::as_const(files).front();
         files.pop_front();
         locker.unlock();
 
@@ -470,7 +434,8 @@ ExtendedInformation FileInfoGatherer::getInfo(const QFileInfo &fileInfo) const
     info.displayType = m_iconProvider->type(fileInfo);
     if (useFileSystemWatcher()) {
         // ### Not ready to listen all modifications by default
-        static const bool watchFiles = qEnvironmentVariableIsSet("QT_FILESYSTEMMODEL_WATCH_FILES");
+        static const bool watchFiles = qtcEnvironmentVariableIsSet(
+            "QT_FILESYSTEMMODEL_WATCH_FILES");
         if (watchFiles) {
             if (!fileInfo.exists() && !fileInfo.isSymLink()) {
                 const_cast<FileInfoGatherer *>(this)->
@@ -695,7 +660,7 @@ public:
     void updateIcon(QFileIconProvider *iconProvider, const QString &path) {
         if (info)
             info->icon = iconProvider->icon(QFileInfo(path));
-        for (FileSystemNode *child : qAsConst(children)) {
+        for (FileSystemNode *child : std::as_const(children)) {
             //On windows the root (My computer) has no path so we don't want to add a / for nothing (e.g. /C:/)
             if (!path.isEmpty()) {
                 if (path.endsWith(QLatin1Char('/')))
@@ -710,7 +675,7 @@ public:
     void retranslateStrings(QFileIconProvider *iconProvider, const QString &path) {
         if (info)
             info->displayType = iconProvider->type(QFileInfo(path));
-        for (FileSystemNode *child : qAsConst(children)) {
+        for (FileSystemNode *child : std::as_const(children)) {
             //On windows the root (My computer) has no path so we don't want to add a / for nothing (e.g. /C:/)
             if (!path.isEmpty()) {
                 if (path.endsWith(QLatin1Char('/')))
@@ -782,8 +747,8 @@ public:
         // Vista == "Computer",
         // OS X == "Computer" (sometime user generated) "Benjamin's PowerBook G4"
         if (HostOsInfo::isWindowsHost())
-            return FileSystemModel::tr("My Computer");
-        return FileSystemModel::tr("Computer");
+            return Tr::tr("My Computer");
+        return Tr::tr("Computer");
     }
 
     inline void delayedSort() {
@@ -898,7 +863,7 @@ bool FileSystemModel::remove(const QModelIndex &aindex)
     if (useFileSystemWatcher() && HostOsInfo::isWindowsHost())  {
         // QTBUG-65683: Remove file system watchers prior to deletion to prevent
         // failure due to locked files on Windows.
-        const QStringList watchedPaths = d->unwatchPathsAt(aindex);
+        d->unwatchPathsAt(aindex);
     }
     const bool success = (fileInfo.isFile() || fileInfo.isSymLink())
             ? QFile::remove(path) : QDir(path).removeRecursively();
@@ -1180,8 +1145,6 @@ void FileSystemModel::timerEvent(QTimerEvent *event)
                 if (!node->hasInformation()) {
                     d->fileInfoGatherer.fetchExtendedInformation(d->toFetch.at(i).dir,
                                                                  QStringList(d->toFetch.at(i).file));
-                } else {
-                    // qDebug("yah!, you saved a little gerbil soul");
                 }
             }
         }
@@ -1543,19 +1506,19 @@ QVariant FileSystemModel::headerData(int section, Qt::Orientation orientation, i
 
     QString returnValue;
     switch (section) {
-    case 0: returnValue = tr("Name");
+    case 0: returnValue = Tr::tr("Name");
             break;
-    case 1: returnValue = tr("Size");
+    case 1: returnValue = Tr::tr("Size");
             break;
     case 2: returnValue = HostOsInfo::isMacHost()
-                    ? tr("Kind", "Match OS X Finder")
-                    :tr("Type", "All other platforms");
+                    ? Tr::tr("Kind", "Match OS X Finder")
+                    : Tr::tr("Type", "All other platforms");
            break;
     // Windows   - Type
     // OS X      - Kind
     // Konqueror - File Type
     // Nautilus  - Type
-    case 3: returnValue = tr("Date Modified");
+    case 3: returnValue = Tr::tr("Date Modified");
             break;
     default: return QVariant();
     }
@@ -2230,6 +2193,7 @@ void FileSystemModel::setNameFilters(const QStringList &filters)
         // update the bypass filter to only bypass the stuff that must be kept around
         d->bypassFilters.clear();
         // We guarantee that rootPath will stick around
+        // TODO: root looks unused - does it really guarantee anything?
         QPersistentModelIndex root(index(rootPath()));
         const QModelIndexList persistentList = persistentIndexList();
         for (const auto &persistentIndex : persistentList) {
@@ -2492,7 +2456,7 @@ void FileSystemModelPrivate::_q_fileSystemChanged(const QString &path,
     std::sort(rowsToUpdate.begin(), rowsToUpdate.end());
     PathKey min;
     PathKey max;
-    for (const PathKey &value : qAsConst(rowsToUpdate)) {
+    for (const PathKey &value : std::as_const(rowsToUpdate)) {
         //##TODO is there a way to bundle signals with QString as the content of the list?
         /*if (min.isEmpty()) {
             min = value;

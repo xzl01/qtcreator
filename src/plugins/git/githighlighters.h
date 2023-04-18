@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,8 +7,7 @@
 
 #include <QRegularExpression>
 
-namespace Git {
-namespace Internal {
+namespace Git::Internal {
 
 enum Format {
     Format_Comment,
@@ -56,13 +33,16 @@ enum Format {
 class GitSubmitHighlighter : public TextEditor::SyntaxHighlighter
 {
 public:
-    explicit GitSubmitHighlighter(QTextEdit *parent = nullptr);
+    explicit GitSubmitHighlighter(QChar commentChar = QChar(), QTextEdit *parent = nullptr);
+
     void highlightBlock(const QString &text) override;
+    QChar commentChar() const;
+    void setCommentChar(QChar commentChar);
 
 private:
     enum State { None = -1, Header, Other };
     const QRegularExpression m_keywordPattern;
-    QChar m_hashChar;
+    QChar m_commentChar;
 };
 
 // Highlighter for interactive rebase todo. Indicates comments as such
@@ -70,7 +50,7 @@ private:
 class GitRebaseHighlighter : public TextEditor::SyntaxHighlighter
 {
 public:
-    explicit GitRebaseHighlighter(QTextDocument *parent = nullptr);
+    explicit GitRebaseHighlighter(QChar commentChar, QTextDocument *parent = nullptr);
     void highlightBlock(const QString &text) override;
 
 private:
@@ -81,10 +61,9 @@ private:
         Format formatCategory;
         RebaseAction(const QString &regexp, const Format formatCategory);
     };
-    const QChar m_hashChar;
+    const QChar m_commentChar;
     const QRegularExpression m_changeNumberPattern;
     QList<RebaseAction> m_actions;
 };
 
-} // namespace Internal
-} // namespace Git
+} // Git::Internal

@@ -30,7 +30,7 @@ QtcPlugin {
             "qmleventlocation.cpp", "qmleventlocation.h",
             "qmleventtype.cpp", "qmleventtype.h",
             "qmlnote.cpp", "qmlnote.h",
-            "qmlprofiler_global.h",
+            "qmlprofiler_global.h", "qmlprofilertr.h",
             "qmlprofileractions.h", "qmlprofileractions.cpp",
             "qmlprofileranimationsmodel.h", "qmlprofileranimationsmodel.cpp",
             "qmlprofilerattachdialog.cpp", "qmlprofilerattachdialog.h",
@@ -60,14 +60,17 @@ QtcPlugin {
             "qmlprofilerviewmanager.cpp", "qmlprofilerviewmanager.h",
             "qmltypedevent.cpp", "qmltypedevent.h",
             "quick3dmodel.cpp", "quick3dmodel.h",
+            "quick3dframeview.cpp", "quick3dframeview.h",
+            "quick3dframemodel.cpp", "quick3dframemodel.h",
             "scenegraphtimelinemodel.cpp", "scenegraphtimelinemodel.h",
         ]
     }
 
     Group {
-        name: "QML"
-        prefix: "qml/"
-        files: ["qmlprofiler.qrc"]
+        name: "Qml Files"
+        Qt.core.resourcePrefix: "qt/qml/QtCreator/QmlProfiler/"
+        fileTags: "qt.core.resource_data"
+        files: "qml/**"
     }
 
     Group {

@@ -1,37 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "externaltool.h"
-#include "externaltoolmanager.h"
 
+#include "coreplugintr.h"
+#include "externaltoolmanager.h"
 #include "icore.h"
 #include "idocument.h"
 #include "messagemanager.h"
 #include "documentmanager.h"
 #include "editormanager/editormanager.h"
-#include "editormanager/ieditor.h"
 
 #include <app/app_version.h>
 
@@ -51,7 +29,6 @@ using namespace Utils;
 using namespace Core::Internal;
 
 namespace Core {
-namespace Internal {
 
 const char kExternalTool[] = "externaltool";
 const char kId[] = "id";
@@ -182,7 +159,7 @@ Id ExternalTool::baseEnvironmentProviderId() const
 Environment ExternalTool::baseEnvironment() const
 {
     if (m_baseEnvironmentProviderId.isValid()) {
-        const optional<EnvironmentProvider> provider = EnvironmentProvider::provider(
+        const std::optional<EnvironmentProvider> provider = EnvironmentProvider::provider(
             m_baseEnvironmentProviderId.name());
         if (provider && provider->environment)
             return provider->environment();
@@ -210,9 +187,9 @@ bool ExternalTool::modifiesCurrentDocument() const
     return m_modifiesCurrentDocument;
 }
 
-void ExternalTool::setFileName(const Utils::FilePath &fileName)
+void ExternalTool::setFilePath(const FilePath &filePath)
 {
-    m_filePath = fileName;
+    m_filePath = filePath;
 }
 
 void ExternalTool::setPreset(QSharedPointer<ExternalTool> preset)
@@ -220,7 +197,7 @@ void ExternalTool::setPreset(QSharedPointer<ExternalTool> preset)
     m_presetTool = preset;
 }
 
-Utils::FilePath ExternalTool::fileName() const
+FilePath ExternalTool::filePath() const
 {
     return m_filePath;
 }
@@ -331,9 +308,7 @@ static void localizedText(const QStringList &locales, QXmlStreamReader *reader, 
         }
     } else {
         if (*currentLocale < 0 && currentText->isEmpty()) {
-            *currentText = QCoreApplication::translate("Core::Internal::ExternalTool",
-                                                       reader->readElementText().toUtf8().constData(),
-                                                       "");
+            *currentText = Tr::tr(reader->readElementText().toUtf8().constData(), "");
         } else {
             reader->skipCurrentElement();
         }
@@ -463,9 +438,10 @@ ExternalTool * ExternalTool::createFromXml(const QByteArray &xml, QString *error
     return tool;
 }
 
-ExternalTool * ExternalTool::createFromFile(const Utils::FilePath &fileName, QString *errorMessage, const QString &locale)
+ExternalTool * ExternalTool::createFromFile(const FilePath &fileName, QString *errorMessage,
+                                            const QString &locale)
 {
-    Utils::FilePath absFileName = fileName.absoluteFilePath();
+    FilePath absFileName = fileName.absoluteFilePath();
     FileReader reader;
     if (!reader.fetch(absFileName, errorMessage))
         return nullptr;
@@ -613,7 +589,7 @@ bool ExternalToolRunner::resolve()
         if (m_resolvedExecutable.isEmpty()) {
             m_hasError = true;
             for (int i = 0; i < expandedExecutables.size(); ++i) {
-                m_errorString += tr("Could not find executable for \"%1\" (expanded \"%2\")")
+                m_errorString += Tr::tr("Could not find executable for \"%1\" (expanded \"%2\")")
                         .arg(m_tool->executables().at(i).toUserOutput(),
                              expandedExecutables.at(i).toUserOutput());
                 m_errorString += QLatin1Char('\n');
@@ -648,8 +624,7 @@ void ExternalToolRunner::run()
         }
     }
     m_process = new QtcProcess(this);
-    connect(m_process, &QtcProcess::finished, this, &ExternalToolRunner::finished);
-    connect(m_process, &QtcProcess::errorOccurred, this, &ExternalToolRunner::error);
+    connect(m_process, &QtcProcess::done, this, &ExternalToolRunner::done);
     connect(m_process, &QtcProcess::readyReadStandardOutput,
             this, &ExternalToolRunner::readStandardOutput);
     connect(m_process, &QtcProcess::readyReadStandardError,
@@ -658,38 +633,37 @@ void ExternalToolRunner::run()
         m_process->setWorkingDirectory(m_resolvedWorkingDirectory);
     const CommandLine cmd{m_resolvedExecutable, m_resolvedArguments, CommandLine::Raw};
     m_process->setCommand(cmd);
-    m_process->setEnvironment(m_resolvedEnvironment);
+    Environment env = m_resolvedEnvironment;
+    // force Qt to log to std streams, if it's not explicitly been set differently
+    if (!env.hasKey("QT_LOGGING_TO_CONSOLE"))
+        env.set("QT_LOGGING_TO_CONSOLE", "1");
+    m_process->setEnvironment(env);
     const auto write = m_tool->outputHandling() == ExternalTool::ShowInPane
                            ? QOverload<const QString &>::of(MessageManager::writeDisrupting)
                            : QOverload<const QString &>::of(MessageManager::writeSilently);
-    write(tr("Starting external tool \"%1\"").arg(cmd.toUserOutput()));
+    write(Tr::tr("Starting external tool \"%1\"").arg(cmd.toUserOutput()));
     if (!m_resolvedInput.isEmpty())
         m_process->setWriteData(m_resolvedInput.toLocal8Bit());
     m_process->start();
 }
 
-void ExternalToolRunner::finished()
+void ExternalToolRunner::done()
 {
-    if (m_process->result() == QtcProcess::FinishedWithSuccess
-            &&  (m_tool->outputHandling() == ExternalTool::ReplaceSelection
-                 || m_tool->errorHandling() == ExternalTool::ReplaceSelection)) {
+    if (m_process->result() == ProcessResult::FinishedWithSuccess
+            && (m_tool->outputHandling() == ExternalTool::ReplaceSelection
+                || m_tool->errorHandling() == ExternalTool::ReplaceSelection)) {
         ExternalToolManager::emitReplaceSelectionRequested(m_processOutput);
     }
+    const QString message = (m_process->result() == ProcessResult::FinishedWithSuccess)
+            ? Tr::tr("\"%1\" finished").arg(m_resolvedExecutable.toUserOutput())
+            : Tr::tr("\"%1\" finished with error").arg(m_resolvedExecutable.toUserOutput());
+
     if (m_tool->modifiesCurrentDocument())
         DocumentManager::unexpectFileChange(m_expectedFilePath);
     const auto write = m_tool->outputHandling() == ExternalTool::ShowInPane
                            ? QOverload<const QString &>::of(MessageManager::writeFlashing)
                            : QOverload<const QString &>::of(MessageManager::writeSilently);
-    write(tr("\"%1\" finished").arg(m_resolvedExecutable.toUserOutput()));
-    deleteLater();
-}
-
-void ExternalToolRunner::error(QProcess::ProcessError error)
-{
-    if (m_tool->modifiesCurrentDocument())
-        DocumentManager::unexpectFileChange(m_expectedFilePath);
-    // TODO inform about errors
-    Q_UNUSED(error)
+    write(message);
     deleteLater();
 }
 
@@ -697,7 +671,7 @@ void ExternalToolRunner::readStandardOutput()
 {
     if (m_tool->outputHandling() == ExternalTool::Ignore)
         return;
-    const QByteArray data = m_process->readAllStandardOutput();
+    const QByteArray data = m_process->readAllRawStandardOutput();
     const QString output = m_outputCodec->toUnicode(data.constData(),
                                                     data.length(),
                                                     &m_outputCodecState);
@@ -711,7 +685,7 @@ void ExternalToolRunner::readStandardError()
 {
     if (m_tool->errorHandling() == ExternalTool::Ignore)
         return;
-    const QByteArray data = m_process->readAllStandardError();
+    const QByteArray data = m_process->readAllRawStandardError();
     const QString output = m_outputCodec->toUnicode(data.constData(),
                                                     data.length(),
                                                     &m_errorCodecState);
@@ -720,7 +694,5 @@ void ExternalToolRunner::readStandardError()
     else if (m_tool->errorHandling() == ExternalTool::ReplaceSelection)
         m_processOutput.append(output);
 }
-
-} // namespace Internal
 
 } // namespace Core

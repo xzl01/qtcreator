@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "deploymentdataview.h"
 
 #include "buildsystem.h"
 #include "deployconfiguration.h"
 #include "deploymentdata.h"
+#include "projectexplorertr.h"
 #include "target.h"
 
 #include <utils/qtcassert.h>
@@ -74,7 +53,7 @@ public:
         if (role != Qt::EditRole)
             return false;
         if (column == 0)
-            file = DeployableFile(FilePath::fromVariant(data), file.remoteDirectory());
+            file = DeployableFile(FilePath::fromSettings(data), file.remoteDirectory());
         else if (column == 1)
             file = DeployableFile(file.localFilePath(), data.toString());
         return true;
@@ -84,11 +63,10 @@ public:
     bool isEditable = false;
 };
 
-
 DeploymentDataView::DeploymentDataView(DeployConfiguration *dc)
 {
     auto model = new TreeModel<DeploymentDataItem>(this);
-    model->setHeader({tr("Local File Path"), tr("Remote Directory")});
+    model->setHeader({Tr::tr("Source File Path"), Tr::tr("Target Directory")});
 
     auto view = new QTreeView(this);
     view->setMinimumSize(QSize(100, 100));
@@ -98,8 +76,8 @@ DeploymentDataView::DeploymentDataView(DeployConfiguration *dc)
     view->setModel(model);
 
     const auto buttonsLayout = new QVBoxLayout;
-    const auto addButton = new QPushButton(tr("Add"));
-    const auto removeButton = new QPushButton(tr("Remove"));
+    const auto addButton = new QPushButton(Tr::tr("Add"));
+    const auto removeButton = new QPushButton(Tr::tr("Remove"));
     buttonsLayout->addWidget(addButton);
     buttonsLayout->addWidget(removeButton);
     buttonsLayout->addStretch(1);
@@ -108,8 +86,8 @@ DeploymentDataView::DeploymentDataView(DeployConfiguration *dc)
     viewLayout->addWidget(view);
     viewLayout->addLayout(buttonsLayout);
 
-    auto label = new QLabel(tr("Files to deploy:"), this);
-    const auto sourceCheckBox = new QCheckBox(tr("Override deployment data from build system"));
+    auto label = new QLabel(Tr::tr("Files to deploy:"), this);
+    const auto sourceCheckBox = new QCheckBox(Tr::tr("Override deployment data from build system"));
     sourceCheckBox->setChecked(dc->usesCustomDeploymentData());
 
     auto layout = new QVBoxLayout(this);

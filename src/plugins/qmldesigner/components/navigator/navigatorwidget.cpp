@@ -1,43 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "navigatorsearchwidget.h"
 #include "navigatorwidget.h"
 #include "navigatorview.h"
 
+#include <designeractionmanager.h>
 #include <designersettings.h>
+#include <theme.h>
 #include <qmldesignerconstants.h>
 #include <qmldesignericons.h>
 #include <qmldesignerplugin.h>
-#include <theme.h>
 
 #include <QAbstractItemModel>
 #include <QBoxLayout>
 #include <QHeaderView>
 #include <QMenu>
 #include <QStackedWidget>
+#include <QToolBar>
 #include <QToolButton>
 
 #include <utils/fileutils.h>
@@ -78,11 +58,11 @@ NavigatorWidget::NavigatorWidget(NavigatorView *view)
 
     setWindowTitle(tr("Navigator", "Title of navigator view"));
 
-#ifndef QMLDESIGNER_TEST
     QByteArray sheet = Utils::FileReader::fetchQrc(":/qmldesigner/stylesheet.css");
     sheet += Utils::FileReader::fetchQrc(":/qmldesigner/scrollbar.css");
     setStyleSheet(Theme::replaceCssColors(QString::fromUtf8(sheet)));
-#endif
+
+    QmlDesignerPlugin::trackWidgetFocusTime(this, Constants::EVENT_NAVIGATORVIEW_TIME);
 }
 
 void NavigatorWidget::setTreeModel(QAbstractItemModel *model)
@@ -136,7 +116,7 @@ QList<QToolButton *> NavigatorWidget::createToolBarWidgets()
     auto filterAction = new QAction(tr("Show Only Visible Components"), nullptr);
     filterAction->setCheckable(true);
 
-    bool filterFlag = DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_SHOW_ONLY_VISIBLE_ITEMS).toBool();
+    bool filterFlag = QmlDesignerPlugin::settings().value(DesignerSettingsKey::NAVIGATOR_SHOW_ONLY_VISIBLE_ITEMS).toBool();
     filterAction->setChecked(filterFlag);
 
     connect(filterAction, &QAction::toggled, this, &NavigatorWidget::filterToggled);
@@ -145,7 +125,7 @@ QList<QToolButton *> NavigatorWidget::createToolBarWidgets()
     auto reverseAction = new QAction(tr("Reverse Component Order"), nullptr);
     reverseAction->setCheckable(true);
 
-    bool reverseFlag = DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool();
+    bool reverseFlag = QmlDesignerPlugin::settings().value(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool();
     reverseAction->setChecked(reverseFlag);
 
     connect(reverseAction, &QAction::toggled, this, &NavigatorWidget::reverseOrderToggled);
@@ -170,8 +150,8 @@ QToolBar *NavigatorWidget::createToolBar()
 
 void NavigatorWidget::contextHelp(const Core::IContext::HelpCallback &callback) const
 {
-    if (navigatorView())
-        navigatorView()->contextHelp(callback);
+    if (auto view = navigatorView())
+        QmlDesignerPlugin::contextHelp(callback, view->contextHelpId());
     else
         callback({});
 }

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Tooling
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "animationcurve.h"
 #include "curvesegment.h"
@@ -36,14 +14,16 @@
 namespace QmlDesigner {
 
 AnimationCurve::AnimationCurve()
-    : m_fromData(false)
+    : m_type(AnimationCurve::ValueType::Undefined)
+    , m_fromData(false)
     , m_minY(std::numeric_limits<double>::max())
     , m_maxY(std::numeric_limits<double>::lowest())
     , m_frames()
 {}
 
-AnimationCurve::AnimationCurve(const std::vector<Keyframe> &frames)
-    : m_fromData(false)
+AnimationCurve::AnimationCurve(AnimationCurve::ValueType type, const std::vector<Keyframe> &frames)
+    : m_type(type)
+    , m_fromData(false)
     , m_minY(std::numeric_limits<double>::max())
     , m_maxY(std::numeric_limits<double>::lowest())
     , m_frames(frames)
@@ -51,8 +31,13 @@ AnimationCurve::AnimationCurve(const std::vector<Keyframe> &frames)
     analyze();
 }
 
-AnimationCurve::AnimationCurve(const QEasingCurve &easing, const QPointF &start, const QPointF &end)
-    : m_fromData(true)
+AnimationCurve::AnimationCurve(
+    AnimationCurve::ValueType type,
+    const QEasingCurve &easing,
+    const QPointF &start,
+    const QPointF &end)
+    : m_type(type)
+    , m_fromData(true)
     , m_minY(std::numeric_limits<double>::max())
     , m_maxY(std::numeric_limits<double>::lowest())
     , m_frames()
@@ -115,6 +100,11 @@ bool AnimationCurve::hasUnified() const
             return true;
     }
     return false;
+}
+
+AnimationCurve::ValueType AnimationCurve::valueType() const
+{
+    return m_type;
 }
 
 double AnimationCurve::minimumTime() const
@@ -373,7 +363,7 @@ void AnimationCurve::analyze()
             m_maxY = e.y();
     }
 
-    for (auto &frame : qAsConst(m_frames)) {
+    for (auto &frame : std::as_const(m_frames)) {
         if (frame.position().y() < m_minY)
             m_minY = frame.position().y();
 

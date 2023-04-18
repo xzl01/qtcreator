@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "connectionviewwidget.h"
 #include "connectionview.h"
@@ -35,6 +13,7 @@
 #include "theme.h"
 #include "signalhandlerproperty.h"
 
+#include <designeractionmanager.h>
 #include <designersettings.h>
 #include <qmldesignerplugin.h>
 
@@ -70,7 +49,7 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
     editorForDynamic();
 
 
-    setWindowTitle(tr("Connections", "Title of connection view"));
+    setWindowTitle(tr("Connections", "Title of connections window"));
     ui->setupUi(this);
 
     QStyle *style = QStyleFactory::create("fusion");
@@ -81,9 +60,9 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
     ui->tabBar->setUsesScrollButtons(true);
     ui->tabBar->setElideMode(Qt::ElideRight);
 
-    ui->tabBar->addTab(tr("Connections", "Title of connection view"));
-    ui->tabBar->addTab(tr("Bindings", "Title of connection view"));
-    ui->tabBar->addTab(tr("Properties", "Title of dynamic properties view"));
+    ui->tabBar->addTab(tr("Connections", "Title of connection tab"));
+    ui->tabBar->addTab(tr("Bindings", "Title of connection tab"));
+    ui->tabBar->addTab(tr("Properties", "Title of dynamic properties tab"));
 
     const Qt::Alignment headerAlignment = Qt::AlignLeft | Qt::AlignVCenter;
     ui->connectionView->horizontalHeader()->setDefaultAlignment(headerAlignment);
@@ -95,8 +74,6 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
 
     for (auto toolButton : buttons)
         ui->toolBar->addWidget(toolButton);
-
-    auto settings = QmlDesignerPlugin::instance()->settings();
 
     if (!QmlProjectManager::QmlProject::isQtDesignStudio())
         ui->tabBar->addTab(tr("Backends", "Title of dynamic properties view"));
@@ -217,7 +194,10 @@ void ConnectionViewWidget::contextMenuEvent(QContextMenuEvent *event)
 
                 const ModelNode node = property.parentModelNode();
                 const TypeName typeName = property.isDynamic() ? property.dynamicTypeName()
-                                                               : node.metaInfo().propertyTypeName(property.name());
+                                                               : node.metaInfo()
+                                                                     .property(property.name())
+                                                                     .propertyType()
+                                                                     .typeName();
 
                 const QString targetName = node.displayName() + "." + property.name();
 
@@ -319,7 +299,7 @@ QList<QToolButton *> ConnectionViewWidget::createToolBarWidgets()
     connect(this, &ConnectionViewWidget::setEnabledAddButton, buttons.constLast(), &QWidget::setEnabled);
 
     buttons << new QToolButton();
-    buttons.constLast()->setIcon(Utils::Icons::MINUS.icon());
+    buttons.constLast()->setIcon(Utils::Icons::MINUS_TOOLBAR.icon());
     buttons.constLast()->setToolTip(tr("Remove selected binding or connection."));
     connect(buttons.constLast(), &QAbstractButton::clicked, this, &ConnectionViewWidget::removeButtonClicked);
     connect(this, &ConnectionViewWidget::setEnabledRemoveButton, buttons.constLast(), &QWidget::setEnabled);
@@ -374,8 +354,8 @@ void ConnectionViewWidget::invalidateButtonStatus()
     } else if (currentTab() == DynamicPropertiesTab) {
         emit setEnabledRemoveButton(ui->dynamicPropertiesView->selectionModel()->hasSelection());
         auto dynamicPropertiesModel = qobject_cast<DynamicPropertiesModel*>(ui->dynamicPropertiesView->model());
-        emit setEnabledAddButton(dynamicPropertiesModel->connectionView()->model() &&
-                       dynamicPropertiesModel->connectionView()->selectedModelNodes().count() == 1);
+        emit setEnabledAddButton(dynamicPropertiesModel->view()->model() &&
+                       dynamicPropertiesModel->selectedNodes().count() == 1);
     } else if (currentTab() == BackendTab) {
         emit setEnabledAddButton(true);
         emit setEnabledRemoveButton(ui->backendView->selectionModel()->hasSelection());
@@ -545,9 +525,9 @@ void ConnectionViewWidget::editorForDynamic()
         QString newValue = m_dynamicEditor->bindingValue().trimmed();
 
         if (m_dynamicIndex.isValid()) {
-            if (propertiesModel->connectionView()->isWidgetEnabled()
+            if (qobject_cast<ConnectionView *>(propertiesModel->view())->isWidgetEnabled()
                 && (propertiesModel->rowCount() > m_dynamicIndex.row())) {
-                propertiesModel->connectionView()->executeInTransaction(
+                propertiesModel->view()->executeInTransaction(
                     "ConnectionView::setBinding", [this, propertiesModel, newValue]() {
                         AbstractProperty abProp = propertiesModel->abstractPropertyForRow(
                             m_dynamicIndex.row());

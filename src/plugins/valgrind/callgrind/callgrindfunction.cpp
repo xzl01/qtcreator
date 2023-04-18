@@ -1,34 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "callgrindfunction.h"
 #include "callgrindfunction_p.h"
 
-#include "callgrindfunctioncall.h"
 #include "callgrindcostitem.h"
+#include "callgrindfunctioncall.h"
 #include "callgrindparsedata.h"
+#include "../valgrindtr.h"
 
 #include <utils/qtcassert.h>
 
@@ -67,7 +46,7 @@ void Function::Private::accumulateCost(QVector<quint64> &base, const QVector<qui
     } else {
         ///TODO: see whether .data() is noticably faster (less detaching)
         int i = 0;
-        foreach (quint64 cost, add)
+        for (quint64 cost : add)
             base[i++] += cost;
     }
 }
@@ -175,7 +154,7 @@ void Function::setObject(qint64 id)
 QString Function::location() const
 {
     QString pos;
-    foreach (const CostItem *costItem, d->m_costItems) {
+    for (const CostItem *costItem : std::as_const(d->m_costItems)) {
         if (costItem->differingFileId() != -1) {
             QTextStream stream(&pos);
             stream << '(';
@@ -203,9 +182,9 @@ QString Function::location() const
     if (f.isEmpty() || f == "???")
         return o;
     if (pos.isEmpty())
-        return QCoreApplication::translate("Valgrind::Callgrind::Function", "%1 in %2").arg(f, o);
+        return Tr::tr("%1 in %2").arg(f, o);
 
-    return QCoreApplication::translate("Valgrind::Callgrind::Function", "%1:%2 in %3").arg(f, pos, o);
+    return Tr::tr("%1:%2 in %3").arg(f, pos, o);
 }
 
 int Function::lineNumber() const
@@ -214,7 +193,7 @@ int Function::lineNumber() const
     if (lineIdx == -1)
         return -1;
 
-    foreach (const CostItem *costItem, d->m_costItems) {
+    for (const CostItem *costItem : std::as_const(d->m_costItems)) {
         if (costItem->differingFileId() == -1)
             return costItem->position(lineIdx);
     }
@@ -287,7 +266,7 @@ void Function::addCostItem(const CostItem *item)
 void Function::finalize()
 {
     bool recursive = false;
-    foreach (const FunctionCall *call, d->m_incomingCalls) {
+    for (const FunctionCall *call : std::as_const(d->m_incomingCalls)) {
         if (call->caller() == this) {
             recursive = true;
             break;
@@ -300,9 +279,10 @@ void Function::finalize()
         // e.g.: A -> B -> B ..., C -> B -> B ...
         // cost of B = cost of call to B in A + cost of call to B in C + ...
         d->m_inclusiveCost.fill(0);
-        foreach (const FunctionCall *call, d->m_incomingCalls) {
+        for (const FunctionCall *call : std::as_const(d->m_incomingCalls)) {
             if (call->caller() != this) {
-                foreach (const CostItem *costItem, call->caller()->costItems()) {
+                const QVector<const CostItem *> costItems = call->caller()->costItems();
+                for (const CostItem *costItem : costItems) {
                     if (costItem->call() && costItem->call()->callee() == this)
                         d->accumulateCost(d->m_inclusiveCost, costItem->costs());
                 }

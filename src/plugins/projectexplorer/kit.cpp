@@ -1,43 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "kit.h"
 
+#include "devicesupport/idevice.h"
 #include "devicesupport/idevicefactory.h"
 #include "kitinformation.h"
 #include "kitmanager.h"
 #include "ioutputparser.h"
 #include "osparser.h"
 #include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 
 #include <utils/algorithm.h>
 #include <utils/displayname.h>
 #include <utils/filepath.h>
 #include <utils/icon.h>
 #include <utils/macroexpander.h>
-#include <utils/optional.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
 #include <utils/utilsicons.h>
@@ -47,6 +26,7 @@
 #include <QUuid>
 
 #include <numeric>
+#include <optional>
 
 using namespace Core;
 using namespace Utils;
@@ -74,8 +54,6 @@ namespace Internal {
 
 class KitPrivate
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Kit)
-
 public:
     KitPrivate(Id id, Kit *kit) :
         m_id(id)
@@ -83,41 +61,27 @@ public:
         if (!id.isValid())
             m_id = Id::fromString(QUuid::createUuid().toString());
 
-        m_unexpandedDisplayName.setDefaultValue(QCoreApplication::translate("ProjectExplorer::Kit",
-                                                                            "Unnamed"));
+        m_unexpandedDisplayName.setDefaultValue(Tr::tr("Unnamed"));
 
-        m_macroExpander.setDisplayName(tr("Kit"));
+        m_macroExpander.setDisplayName(Tr::tr("Kit"));
         m_macroExpander.setAccumulating(true);
-        m_macroExpander.registerVariable("Kit:Id", tr("Kit ID"),
+        m_macroExpander.registerVariable("Kit:Id", Tr::tr("Kit ID"),
             [kit] { return kit->id().toString(); });
-        m_macroExpander.registerVariable("Kit:FileSystemName", tr("Kit filesystem-friendly name"),
+        m_macroExpander.registerVariable("Kit:FileSystemName", Tr::tr("Kit filesystem-friendly name"),
             [kit] { return kit->fileSystemFriendlyName(); });
         for (KitAspect *aspect : KitManager::kitAspects())
             aspect->addToMacroExpander(kit, &m_macroExpander);
 
-        // TODO: Remove the "Current" variants in ~4.16
-        m_macroExpander.registerVariable("CurrentKit:Name",
-            tr("The name of the currently active kit."),
-            [kit] { return kit->displayName(); },
-            false);
         m_macroExpander.registerVariable("Kit:Name",
-            tr("The name of the kit."),
+            Tr::tr("The name of the kit."),
             [kit] { return kit->displayName(); });
 
-        m_macroExpander.registerVariable("CurrentKit:FileSystemName",
-            tr("The name of the currently active kit in a filesystem-friendly version."),
-            [kit] { return kit->fileSystemFriendlyName(); },
-            false);
         m_macroExpander.registerVariable("Kit:FileSystemName",
-            tr("The name of the kit in a filesystem-friendly version."),
+            Tr::tr("The name of the kit in a filesystem-friendly version."),
             [kit] { return kit->fileSystemFriendlyName(); });
 
-        m_macroExpander.registerVariable("CurrentKit:Id",
-            tr("The ID of the currently active kit."),
-            [kit] { return kit->id().toString(); },
-            false);
         m_macroExpander.registerVariable("Kit:Id",
-            tr("The ID of the kit."),
+            Tr::tr("The ID of the kit."),
             [kit] { return kit->id().toString(); });
     }
 
@@ -139,7 +103,7 @@ public:
     QHash<Id, QVariant> m_data;
     QSet<Id> m_sticky;
     QSet<Id> m_mutable;
-    optional<QSet<Id>> m_irrelevantAspects;
+    std::optional<QSet<Id>> m_irrelevantAspects;
     MacroExpander m_macroExpander;
 };
 
@@ -189,12 +153,12 @@ Kit::Kit(const QVariantMap &data) :
     for (QVariantMap::ConstIterator it = extra.constBegin(); it != cend; ++it)
         d->m_data.insert(Id::fromString(it.key()), it.value());
 
-    QStringList mutableInfoList = data.value(QLatin1String(MUTABLE_INFO_KEY)).toStringList();
-    foreach (const QString &mutableInfo, mutableInfoList)
+    const QStringList mutableInfoList = data.value(QLatin1String(MUTABLE_INFO_KEY)).toStringList();
+    for (const QString &mutableInfo : mutableInfoList)
         d->m_mutable.insert(Id::fromString(mutableInfo));
 
-    QStringList stickyInfoList = data.value(QLatin1String(STICKY_INFO_KEY)).toStringList();
-    foreach (const QString &stickyInfo, stickyInfoList)
+    const QStringList stickyInfoList = data.value(QLatin1String(STICKY_INFO_KEY)).toStringList();
+    for (const QString &stickyInfo : stickyInfoList)
         d->m_sticky.insert(Id::fromString(stickyInfo));
 }
 
@@ -277,9 +241,8 @@ Tasks Kit::validate() const
     d->m_hasError = containsType(result, Task::TaskType::Error);
     d->m_hasWarning = containsType(result, Task::TaskType::Warning);
 
-    Utils::sort(result);
     d->m_hasValidityInfo = true;
-    return result;
+    return Utils::sorted(std::move(result));
 }
 
 void Kit::fix()
@@ -337,7 +300,8 @@ QString Kit::fileSystemFriendlyName() const
     QString name = customFileSystemFriendlyName();
     if (name.isEmpty())
         name = FileUtils::qmakeFriendlyName(displayName());
-    foreach (Kit *i, KitManager::kits()) {
+    const QList<Kit *> kits = KitManager::kits();
+    for (Kit *i : kits) {
         if (i == this)
             continue;
         if (name == FileUtils::qmakeFriendlyName(i->displayName())) {
@@ -536,12 +500,12 @@ QVariantMap Kit::toMap() const
     data.insert(DEVICE_TYPE_FOR_ICON_KEY, d->m_deviceTypeForIcon.toSetting());
 
     QStringList mutableInfo;
-    foreach (Id id, d->m_mutable)
+    for (const Id id : std::as_const(d->m_mutable))
         mutableInfo << id.toString();
     data.insert(QLatin1String(MUTABLE_INFO_KEY), mutableInfo);
 
     QStringList stickyInfo;
-    foreach (Id id, d->m_sticky)
+    for (const Id id : std::as_const(d->m_sticky))
         stickyInfo << id.toString();
     data.insert(QLatin1String(STICKY_INFO_KEY), stickyInfo);
 
@@ -574,14 +538,16 @@ void Kit::addToRunEnvironment(Environment &env) const
 
 Environment Kit::buildEnvironment() const
 {
-    Environment env = Environment::systemEnvironment(); // FIXME: Use build device
+    IDevice::ConstPtr device = BuildDeviceKitAspect::device(this);
+    Environment env = device ? device->systemEnvironment() : Environment::systemEnvironment();
     addToBuildEnvironment(env);
     return env;
 }
 
 Environment Kit::runEnvironment() const
 {
-    Environment env = Environment::systemEnvironment(); // FIXME: Use run device
+    IDevice::ConstPtr device = DeviceKitAspect::device(this);
+    Environment env = device ? device->systemEnvironment() : Environment::systemEnvironment();
     addToRunEnvironment(env);
     return env;
 }
@@ -607,7 +573,7 @@ QString Kit::toHtml(const Tasks &additional, const QString &extraText) const
     if (!isValid() || hasWarning() || !additional.isEmpty())
         str << "<p>" << ProjectExplorer::toHtml(additional + validate()) << "</p>";
 
-    str << "<table>";
+    str << "<dl style=\"white-space:pre\">";
     for (KitAspect *aspect : KitManager::kitAspects()) {
         const KitAspect::ItemList list = aspect->toUserOutput(this);
         for (const KitAspect::Item &j : list) {
@@ -619,10 +585,11 @@ QString Kit::toHtml(const Tasks &additional, const QString &extraText) const
                 contents = contents.mid(0, pos);
                 contents += "&lt;...&gt;";
             }
-            str << "<tr><td><b>" << j.first << ":</b></td><td>" << contents << "</td></tr>";
+            str << "<dt style=\"font-weight:bold\">" << j.first
+                << ":</dt><dd>" << contents << "</dd>";
         }
     }
-    str << "</table></body></html>";
+    str << "</dl></body></html>";
     return result;
 }
 
@@ -746,8 +713,8 @@ QString Kit::newKitName(const QList<Kit *> &allKits) const
 QString Kit::newKitName(const QString &name, const QList<Kit *> &allKits)
 {
     const QString baseName = name.isEmpty()
-            ? QCoreApplication::translate("ProjectExplorer::Kit", "Unnamed")
-            : QCoreApplication::translate("ProjectExplorer::Kit", "Clone of %1").arg(name);
+            ? Tr::tr("Unnamed")
+            : Tr::tr("Clone of %1").arg(name);
     return Utils::makeUniquelyNumbered(baseName, transform(allKits, &Kit::unexpandedDisplayName));
 }
 

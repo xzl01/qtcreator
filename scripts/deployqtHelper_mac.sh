@@ -1,29 +1,7 @@
 #!/bin/bash
 
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 [ $# -lt 5 ] && echo "Usage: $(basename $0) <app folder> <qt bin folder> <qt translations folder> <qt plugin folder> <qt quick 2 imports folder>" && exit 2
 [ $(uname -s) != "Darwin" ] && echo "Run this script on Mac OS X" && exit 2;
@@ -96,12 +74,6 @@ if [ ! -f "$libexec_path/ios/qt.conf" ]; then
     cp -f "$(dirname "${BASH_SOURCE[0]}")/../dist/installer/mac/ios_qt.conf" "$libexec_path/ios/qt.conf" || exit 1
 fi
 
-# copy qml2puppet's qt.conf
-if [ ! -f "$libexec_path/qmldesigner/qt.conf" ]; then
-    echo "- Copying libexec/qmldesigner/qt.conf"
-    cp -f "$(dirname "${BASH_SOURCE[0]}")/../dist/installer/mac/qmldesigner_qt.conf" "$libexec_path/qmldesigner/qt.conf" || exit 1
-fi
-
 # copy Qt translations
 # check for known existing translation to avoid copying multiple times
 if [ ! -f "$resource_path/translations/qt_de.qm" ]; then
@@ -109,44 +81,34 @@ if [ ! -f "$resource_path/translations/qt_de.qm" ]; then
     cp "$translation_src"/*.qm "$resource_path/translations/" || exit 1
 fi
 
-# copy libclang if needed
+# copy clang if needed
 if [ $LLVM_INSTALL_DIR ]; then
-    if [ "$LLVM_INSTALL_DIR"/lib/libclang.dylib -nt "$app_path/Contents/PlugIns"/libclang.dylib ]; then
-        echo "- Copying libclang"
+    if [ "$LLVM_INSTALL_DIR"/bin/clangd -nt "$libexec_path"/clang/bin/clangd ]; then
+        echo "- Copying clang"
         mkdir -p "$app_path/Contents/Frameworks" || exit 1
         # use recursive copy to make it copy symlinks as symlinks
         mkdir -p "$libexec_path/clang/bin"
         mkdir -p "$libexec_path/clang/lib"
-        cp -Rf "$LLVM_INSTALL_DIR"/lib/libclang.*dylib "$app_path/Contents/Frameworks/" || exit 1
         cp -Rf "$LLVM_INSTALL_DIR"/lib/clang "$libexec_path/clang/lib/" || exit 1
-        cp -Rf "$LLVM_INSTALL_DIR"/lib/libclang-cpp.dylib "$libexec_path/clang/lib/" || exit 1
         cp -Rf "$LLVM_INSTALL_DIR"/lib/ClazyPlugin.dylib "$libexec_path/clang/lib/" || exit 1
-        clangsource="$LLVM_INSTALL_DIR"/bin/clang
-        clanglinktarget="$(readlink "$clangsource")"
-        cp -Rf "$clangsource" "$libexec_path/clang/bin/" || exit 1
-        if [ $clanglinktarget ]; then
-            cp -Rf "$(dirname "$clangsource")/$clanglinktarget" "$libexec_path/clang/bin/$clanglinktarget" || exit 1
-        fi
         clangdsource="$LLVM_INSTALL_DIR"/bin/clangd
         cp -Rf "$clangdsource" "$libexec_path/clang/bin/" || exit 1
         clangtidysource="$LLVM_INSTALL_DIR"/bin/clang-tidy
         cp -Rf "$clangtidysource" "$libexec_path/clang/bin/" || exit 1
+        clangformatsource="$LLVM_INSTALL_DIR"/bin/clang-format
+        cp -Rf "$clangformatsource" "$libexec_path/clang/bin/" || exit 1
         clazysource="$LLVM_INSTALL_DIR"/bin/clazy-standalone
         cp -Rf "$clazysource" "$libexec_path/clang/bin/" || exit 1
         install_name_tool -add_rpath "@executable_path/../lib" "$libexec_path/clang/bin/clazy-standalone" 2> /dev/null
         install_name_tool -delete_rpath "/Users/qt/work/build/libclang/lib" "$libexec_path/clang/bin/clazy-standalone" 2> /dev/null
     fi
-    clangbackendArgument="-executable=$libexec_path/clangbackend"
 fi
 
 #### macdeployqt
 
 if [ ! -d "$app_path/Contents/Frameworks/QtCore.framework" ]; then
 
-    qml2puppetapp="$libexec_path/qmldesigner/qml2puppet"
-    if [ -f "$qml2puppetapp" ]; then
-        qml2puppetArgument="-executable=$qml2puppetapp"
-    fi
+    echo "- Running macdeployqt ($bin_src/macdeployqt)"
 
     qbsapp="$app_path/Contents/MacOS/qbs"
     if [ -f "$qbsapp" ]; then
@@ -160,20 +122,29 @@ if [ ! -d "$app_path/Contents/Frameworks/QtCore.framework" ]; then
         "-executable=$libexec_path/qbs_processlauncher")
     fi
 
-    echo "- Running macdeployqt ($bin_src/macdeployqt)"
+    qml2puppetapp="$libexec_path/qml2puppet"
+    if [ -f "$qml2puppetapp" ]; then
+        qml2puppetArgument="-executable=$qml2puppetapp"
+    fi
+    sdktoolapp="$libexec_path/sdktool"
+    if [ -f "$sdktoolapp" ]; then
+        sdktoolArgument="-executable=$sdktoolapp"
+    fi
 
     "$bin_src/macdeployqt" "$app_path" \
         "-executable=$app_path/Contents/MacOS/qtdiag" \
         "-executable=$libexec_path/qtpromaker" \
-        "-executable=$libexec_path/sdktool" \
+        "$sdktoolArgument" \
         "-executable=$libexec_path/ios/iostool" \
         "-executable=$libexec_path/buildoutputparser" \
         "-executable=$libexec_path/cpaster" \
         "${qbsArguments[@]}" \
-        "$qml2puppetArgument" \
-        "$clangbackendArgument" || exit 1
+        "$qml2puppetArgument" || exit 1
 
 fi
+
+# clean up unneeded object files that are part of Qt for some static libraries
+find "$app_path" -ipath "*/objects-*" -delete
 
 # clean up after macdeployqt
 # it deploys some plugins (and libs for these) that interfere with what we want

@@ -1,34 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "terminal.h"
+
+#include "debuggertr.h"
 
 #include <coreplugin/icore.h>
 
 #include <projectexplorer/runconfiguration.h>
 
+#include <utils/environment.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
@@ -55,8 +36,7 @@ using namespace Core;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 static QString currentError()
 {
@@ -72,18 +52,18 @@ Terminal::Terminal(QObject *parent)
 void Terminal::setup()
 {
 #ifdef DEBUGGER_USE_TERMINAL
-    if (!qEnvironmentVariableIsSet("QTC_USE_PTY"))
+    if (!qtcEnvironmentVariableIsSet("QTC_USE_PTY"))
         return;
 
     m_masterFd = ::open("/dev/ptmx", O_RDWR);
     if (m_masterFd < 0) {
-        error(tr("Terminal: Cannot open /dev/ptmx: %1").arg(currentError()));
+        error(Tr::tr("Terminal: Cannot open /dev/ptmx: %1").arg(currentError()));
         return;
     }
 
     const char *sName = ptsname(m_masterFd);
     if (!sName) {
-        error(tr("Terminal: ptsname failed: %1").arg(currentError()));
+        error(Tr::tr("Terminal: ptsname failed: %1").arg(currentError()));
         return;
     }
     m_slaveName = sName;
@@ -91,11 +71,11 @@ void Terminal::setup()
     struct stat s;
     int r = ::stat(m_slaveName.constData(), &s);
     if (r != 0) {
-        error(tr("Terminal: Error: %1").arg(currentError()));
+        error(Tr::tr("Terminal: Error: %1").arg(currentError()));
         return;
     }
     if (!S_ISCHR(s.st_mode)) {
-        error(tr("Terminal: Slave is no character device."));
+        error(Tr::tr("Terminal: Slave is no character device."));
         return;
     }
 
@@ -105,13 +85,13 @@ void Terminal::setup()
 
     r = grantpt(m_masterFd);
     if (r != 0) {
-        error(tr("Terminal: grantpt failed: %1").arg(currentError()));
+        error(Tr::tr("Terminal: grantpt failed: %1").arg(currentError()));
         return;
     }
 
     r = unlockpt(m_masterFd);
     if (r != 0) {
-        error(tr("Terminal: unlock failed: %1").arg(currentError()));
+        error(Tr::tr("Terminal: unlock failed: %1").arg(currentError()));
         return;
     }
 
@@ -158,7 +138,7 @@ void Terminal::onSlaveReaderActivated(int fd)
     ssize_t got = ::read(fd, buffer.data(), available);
     int err = errno;
     if (got < 0) {
-        error(tr("Terminal: Read failed: %1").arg(QString::fromLatin1(strerror(err))));
+        error(Tr::tr("Terminal: Read failed: %1").arg(QString::fromLatin1(strerror(err))));
         return;
     }
     buffer.resize(got);
@@ -182,10 +162,10 @@ void TerminalRunner::kickoffProcess()
         m_stubProc->kickoffProcess();
 }
 
-void TerminalRunner::interruptProcess()
+void TerminalRunner::interrupt()
 {
     if (m_stubProc)
-        m_stubProc->interruptProcess();
+        m_stubProc->interrupt();
 }
 
 void TerminalRunner::start()
@@ -194,15 +174,14 @@ void TerminalRunner::start()
     QTC_ASSERT(!m_stubProc, reportFailure({}); return);
     Runnable stub = m_stubRunnable();
 
-    const QtcProcess::TerminalMode terminalMode = HostOsInfo::isWindowsHost()
-            ? QtcProcess::TerminalSuspend : QtcProcess::TerminalDebug;
-    m_stubProc = new QtcProcess(terminalMode, this);
-    connect(m_stubProc, &QtcProcess::errorOccurred,
-            this, &TerminalRunner::stubError);
+    m_stubProc = new QtcProcess(this);
+    m_stubProc->setTerminalMode(HostOsInfo::isWindowsHost()
+            ? TerminalMode::Suspend : TerminalMode::Debug);
+
     connect(m_stubProc, &QtcProcess::started,
             this, &TerminalRunner::stubStarted);
-    connect(m_stubProc, &QtcProcess::finished,
-            this, &TerminalRunner::reportDone);
+    connect(m_stubProc, &QtcProcess::done,
+            this, &TerminalRunner::stubDone);
 
     m_stubProc->setEnvironment(stub.environment);
     m_stubProc->setWorkingDirectory(stub.workingDirectory);
@@ -214,23 +193,24 @@ void TerminalRunner::start()
 
 void TerminalRunner::stop()
 {
-    if (m_stubProc)
-        m_stubProc->stopProcess();
-    reportStopped();
+    if (m_stubProc && m_stubProc->isRunning())
+        m_stubProc->stop();
 }
 
 void TerminalRunner::stubStarted()
 {
     m_applicationPid = m_stubProc->processId();
-    m_applicationMainThreadId = m_stubProc->applicationMainThreadID();
+    m_applicationMainThreadId = m_stubProc->applicationMainThreadId();
     reportStarted();
 }
 
-void TerminalRunner::stubError()
+void TerminalRunner::stubDone()
 {
-    reportFailure(m_stubProc->errorString());
+    if (m_stubProc->error() != QProcess::UnknownError)
+        reportFailure(m_stubProc->errorString());
+    if (m_stubProc->error() != QProcess::FailedToStart)
+        reportDone();
 }
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal
 

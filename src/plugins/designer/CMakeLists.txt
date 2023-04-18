@@ -1,7 +1,8 @@
 add_qtc_plugin(Designer
-  CONDITION TARGET Qt5::DesignerComponents AND TARGET Qt5::Designer
+  PLUGIN_CLASS FormEditorPlugin
+  CONDITION TARGET Qt::DesignerComponentsPrivate AND TARGET Qt::Designer
   DEPENDS designerintegrationv2
-    Qt5::Designer Qt5::PrintSupport Qt5::DesignerComponents
+    Qt::Designer Qt::PrintSupport Qt::DesignerComponentsPrivate
   DEFINES CPP_ENABLED
   PLUGIN_DEPENDS Core CppEditor ProjectExplorer QtSupport ResourceEditor TextEditor
   PLUGIN_TEST_DEPENDS CppEditor
@@ -9,9 +10,9 @@ add_qtc_plugin(Designer
     codemodelhelpers.cpp codemodelhelpers.h
     cpp/formclasswizard.cpp cpp/formclasswizard.h
     cpp/formclasswizarddialog.cpp cpp/formclasswizarddialog.h
-    cpp/formclasswizardpage.cpp cpp/formclasswizardpage.h cpp/formclasswizardpage.ui
+    cpp/formclasswizardpage.cpp cpp/formclasswizardpage.h
     cpp/formclasswizardparameters.cpp cpp/formclasswizardparameters.h
-    cpp/newclasswidget.cpp cpp/newclasswidget.h cpp/newclasswidget.ui
+    cpp/newclasswidget.cpp cpp/newclasswidget.h
     designer_export.h
     designerconstants.h
     designercontext.cpp designercontext.h
@@ -32,6 +33,15 @@ add_qtc_plugin(Designer
 )
 
 extend_qtc_plugin(Designer
-  CONDITION WITH_TESTS AND TARGET Qt5::DesignerComponents AND TARGET Qt5::Designer
+  CONDITION WITH_TESTS
   SOURCES gotoslot_test.cpp
 )
+
+if (QTC_STATIC_BUILD AND TARGET Designer)
+  # version-less target Qt::Designer is an interface library that links to QtX::Designer
+  get_target_property(_designer Qt::Designer INTERFACE_LINK_LIBRARIES)
+  get_target_property(_designerType ${_designer} TYPE)
+  if (${_designerType} STREQUAL "STATIC_LIBRARY")
+    extend_qtc_target(Designer PUBLIC_DEFINES QT_DESIGNER_STATIC)
+  endif()
+endif()

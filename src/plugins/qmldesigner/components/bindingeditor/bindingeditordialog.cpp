@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bindingeditordialog.h"
 
@@ -32,13 +10,12 @@
 #include <qmljseditor/qmljseditordocument.h>
 #include <texteditor/textdocument.h>
 
-#include <QDialogButtonBox>
-#include <QPushButton>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QComboBox>
 #include <QCheckBox>
+#include <QComboBox>
+#include <QDialogButtonBox>
+#include <QHBoxLayout>
 #include <QPlainTextEdit>
+#include <QPushButton>
 
 namespace QmlDesigner {
 
@@ -47,11 +24,11 @@ BindingEditorDialog::BindingEditorDialog(QWidget *parent)
 {
     setupUIComponents();
 
-    QObject::connect(m_comboBoxItem, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    QObject::connect(m_comboBoxItem, &QComboBox::currentIndexChanged,
                      this, &BindingEditorDialog::itemIDChanged);
-    QObject::connect(m_comboBoxProperty, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    QObject::connect(m_comboBoxProperty, &QComboBox::currentIndexChanged,
                      this, &BindingEditorDialog::propertyIDChanged);
-    QObject::connect(m_checkBoxNot, QOverload<int>::of(&QCheckBox::stateChanged),
+    QObject::connect(m_checkBoxNot, &QCheckBox::stateChanged,
                      this, &BindingEditorDialog::checkBoxChanged);
 }
 
@@ -135,7 +112,7 @@ void BindingEditorDialog::setupComboBoxes()
     m_comboBoxItem->clear();
     m_comboBoxProperty->clear();
 
-    for (const auto &bind : qAsConst(m_bindings))
+    for (const auto &bind : std::as_const(m_bindings))
         m_comboBoxItem->addItem(bind.item);
 }
 

@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlprofileranimationsmodel_test.h"
+#include "../qmlprofilertr.h"
 #include <tracing/timelineformattime.h>
 #include <QtTest>
 
@@ -46,7 +25,7 @@ void QmlProfilerAnimationsModelTest::initTestCase()
 
     QmlEvent event;
     event.setTypeIndex(manager.appendEventType(
-                           QmlEventType(Event, MaximumRangeType, AnimationFrame)));
+                           QmlEventType(Event, UndefinedRangeType, AnimationFrame)));
 
     for (int i = 0; i < 10; ++i) {
         event.setTimestamp(i);
@@ -103,13 +82,13 @@ void QmlProfilerAnimationsModelTest::testLabels()
     QCOMPARE(labels.length(), 2);
 
     QVariantMap label0 = labels[0].toMap();
-    QCOMPARE(label0["displayName"].toString(), QmlProfilerAnimationsModel::tr("Animations"));
-    QCOMPARE(label0["description"].toString(), QmlProfilerAnimationsModel::tr("GUI Thread"));
+    QCOMPARE(label0["displayName"].toString(), Tr::tr("Animations"));
+    QCOMPARE(label0["description"].toString(), Tr::tr("GUI Thread"));
     QCOMPARE(label0["id"].toInt(), static_cast<int>(GuiThread));
 
     QVariantMap label1 = labels[1].toMap();
-    QCOMPARE(label1["displayName"].toString(), QmlProfilerAnimationsModel::tr("Animations"));
-    QCOMPARE(label1["description"].toString(), QmlProfilerAnimationsModel::tr("Render Thread"));
+    QCOMPARE(label1["displayName"].toString(), Tr::tr("Animations"));
+    QCOMPARE(label1["description"].toString(), Tr::tr("Render Thread"));
     QCOMPARE(label1["id"].toInt(), static_cast<int>(RenderThread));
 }
 
@@ -118,15 +97,15 @@ void QmlProfilerAnimationsModelTest::testDetails()
     for (int i = 0; i < 10; ++i) {
         QVariantMap details = model.details(i);
         QCOMPARE(details["displayName"].toString(), model.displayName());
-        QCOMPARE(details[QmlProfilerAnimationsModel::tr("Duration")].toString(),
+        QCOMPARE(details[Tr::tr("Duration")].toString(),
                 Timeline::formatTime(1));
-        QCOMPARE(details[QmlProfilerAnimationsModel::tr("Framerate")].toString(),
+        QCOMPARE(details[Tr::tr("Framerate")].toString(),
                 QString::fromLatin1("%1 FPS").arg(frameRate(i)));
-        QCOMPARE(details[QmlProfilerAnimationsModel::tr("Animations")].toString(),
+        QCOMPARE(details[Tr::tr("Animations")].toString(),
                 QString::number(9 - i));
-        QCOMPARE(details[QmlProfilerAnimationsModel::tr("Context")].toString(), i % 2 ?
-                    QmlProfilerAnimationsModel::tr("Render Thread") :
-                    QmlProfilerAnimationsModel::tr("GUI Thread"));
+        QCOMPARE(details[Tr::tr("Context")].toString(), i % 2 ?
+                    Tr::tr("Render Thread") :
+                    Tr::tr("GUI Thread"));
     }
 }
 

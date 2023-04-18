@@ -1,72 +1,101 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 AudioCodes Ltd.
-** Author: Orgad Shaneh <orgad.shaneh@audiocodes.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 AudioCodes Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "versionselector.h"
-#include "ui_versionselector.h"
 
+#include "clearcasetr.h"
+
+#include <utils/layoutbuilder.h>
+
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QPlainTextEdit>
+#include <QRadioButton>
 #include <QRegularExpression>
+#include <QTextEdit>
 #include <QTextStream>
 
-namespace ClearCase {
-namespace Internal {
+namespace ClearCase::Internal {
 
 VersionSelector::VersionSelector(const QString &fileName, const QString &message, QWidget *parent) :
-    QDialog(parent),
-    ui(new Ui::VersionSelector)
+    QDialog(parent)
 {
-    ui->setupUi(this);
-    ui->headerLabel->setText(ui->headerLabel->text().arg(fileName));
-    ui->loadedText->setHtml("<html><head/><body><p><b>"
-                            + tr("Note: You will not be able to check in this file without merging "
+    resize(413, 435);
+    setWindowTitle(Tr::tr("Confirm Version to Check Out"));
+
+    auto headerLabel = new QLabel(Tr::tr("Multiple versions of \"%1\" can be checked out. "
+                                     "Select the version to check out:").arg(fileName));
+    headerLabel->setWordWrap(true);
+    headerLabel->setTextInteractionFlags(Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse);
+
+    auto loadedRadioButton = new QRadioButton(Tr::tr("&Loaded version"));
+    loadedRadioButton->setChecked(true);
+
+    auto loadedLabel = new QLabel;
+    auto loadedCreatedByLabel = new QLabel;
+    auto loadedCreatedOnLabel = new QLabel;
+    auto updatedLabel = new QLabel;
+    auto updatedCreatedByLabel = new QLabel;
+    auto updatedCreatedOnLabel = new QLabel;
+
+    auto updatedText = new QPlainTextEdit;
+    updatedText->setReadOnly(true);
+
+    m_updatedRadioButton = new QRadioButton(Tr::tr("Version after &update"));
+
+    auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+
+    auto loadedText = new QTextEdit;
+    loadedText->setHtml("<html><head/><body><p><b>"
+                            + Tr::tr("Note: You will not be able to check in this file without merging "
                                  "the changes (not supported by the plugin)")
                             + "</b></p></body></html>");
+
+    using namespace Utils::Layouting;
+
+    Column {
+        headerLabel,
+        Form {
+            loadedRadioButton, loadedLabel, br,
+            Tr::tr("Created by:"), loadedCreatedByLabel, br,
+            Tr::tr("Created on:"),  loadedCreatedOnLabel, br,
+            Span(2, loadedText),
+        },
+        Form {
+            m_updatedRadioButton, updatedLabel, br,
+            Tr::tr("Created by:"), updatedCreatedByLabel, br,
+            Tr::tr("Created on:"),  updatedCreatedOnLabel, br,
+            Span(2, updatedText)
+        },
+        buttonBox,
+    }.attachTo(this);
+
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
     m_stream = new QTextStream(message.toLocal8Bit(), QIODevice::ReadOnly | QIODevice::Text);
     QString line;
     while (!m_stream->atEnd() && !line.contains(QLatin1String("1) Loaded version")))
         line = m_stream->readLine();
     if (!readValues())
         return;
-    ui->loadedLabel->setText(m_versionID);
-    ui->loadedCreatedByLabel->setText(m_createdBy);
-    ui->loadedCreatedOnLabel->setText(m_createdOn);
-    ui->loadedText->insertPlainText(m_message + QLatin1Char(' '));
+    loadedLabel->setText(m_versionID);
+    loadedCreatedByLabel->setText(m_createdBy);
+    loadedCreatedOnLabel->setText(m_createdOn);
+    loadedText->insertPlainText(m_message + QLatin1Char(' '));
 
     line = m_stream->readLine(); // 2) Version after update
     if (!readValues())
         return;
-    ui->updatedLabel->setText(m_versionID);
-    ui->updatedCreatedByLabel->setText(m_createdBy);
-    ui->updatedCreatedOnLabel->setText(m_createdOn);
-    ui->updatedText->setPlainText(m_message);
+    updatedLabel->setText(m_versionID);
+    updatedCreatedByLabel->setText(m_createdBy);
+    updatedCreatedOnLabel->setText(m_createdOn);
+    updatedText->setPlainText(m_message);
 }
 
 VersionSelector::~VersionSelector()
 {
     delete m_stream;
-    delete ui;
 }
 
 bool VersionSelector::readValues()
@@ -107,8 +136,7 @@ bool VersionSelector::readValues()
 
 bool VersionSelector::isUpdate() const
 {
-    return (ui->updatedRadioButton->isChecked());
+    return m_updatedRadioButton->isChecked();
 }
 
-} // namespace Internal
-} // namespace ClearCase
+} // ClearCase::Internal

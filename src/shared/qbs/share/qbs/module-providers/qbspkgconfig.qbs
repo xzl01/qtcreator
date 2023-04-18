@@ -40,7 +40,6 @@
 import qbs.Environment
 import qbs.File
 import qbs.FileInfo
-import qbs.Host
 import qbs.ModUtils
 import qbs.PkgConfig
 import qbs.Process
@@ -53,16 +52,12 @@ ModuleProvider {
     property stringList extraPaths
     property stringList libDirs
     property bool staticMode: false
-    property path sysroot: {
-        if (qbs.targetOS.contains("macos"))
-            return "";
-        return qbs.sysroot;
-    }
+    property path sysroot: qbs.sysroot
     property bool mergeDependencies: true
 
     relativeSearchPaths: {
 
-        function exeSuffix(qbs) { return Host.os().contains("windows") ? ".exe" : ""; }
+        function exeSuffix(qbs) { return FileInfo.executableSuffix(); }
 
         // we need Probes in Providers...
         function getPkgConfigExecutable(qbs) {
@@ -125,7 +120,7 @@ ModuleProvider {
             return result;
         }
 
-        function getModuleName(packageName) { return packageName.replace('.', '-'); }
+        function getModuleName(packageName) { return packageName.replace(/\./g, '-'); }
 
         function getModuleDependencies(pkg, staticMode) {
             var mapper = function(p) {
@@ -149,6 +144,8 @@ ModuleProvider {
         var options = {};
         options.libDirs = libDirs;
         options.sysroot = sysroot;
+        if (options.sysroot)
+            options.allowSystemLibraryPaths = true;
         options.staticMode = staticMode;
         options.mergeDependencies = mergeDependencies;
         options.extraPaths = extraPaths;
@@ -177,22 +174,22 @@ ModuleProvider {
             if (packageName === "QtCore"
                     || packageName === "Qt5Core"
                     || packageName === "Qt6Core") {
-                var hostBins = pkg.variables["host_bins"];
-                if (!hostBins) {
+                var binDir = pkg.variables["bindir"] || pkg.variables["host_bins"];
+                if (!binDir) {
                     if (packageName === "QtCore") { // Qt4 does not have host_bins
                         var mocLocation = pkg.variables["moc_location"];
                         if (!mocLocation) {
                             console.warn("No moc_location variable in " + packageName);
                             return;
                         }
-                        hostBins = FileInfo.path(mocLocation);
+                        binDir = FileInfo.path(mocLocation);
                     } else {
-                        console.warn("No host_bins variable in " + packageName);
+                        console.warn("No 'bindir' or 'host_bins' variable in " + packageName);
                         return;
                     }
                 }
                 var suffix = exeSuffix(qbs);
-                var qmakePaths = [FileInfo.joinPaths(hostBins, "qmake" + suffix)];
+                var qmakePaths = [FileInfo.joinPaths(binDir, "qmake" + suffix)];
                 var qtProviderDir = FileInfo.joinPaths(path, "Qt");
                 SetupQt.doSetup(qmakePaths, outputBaseDir, qtProviderDir, qbs);
             }
@@ -217,9 +214,9 @@ ModuleProvider {
                 setupQt(pkg);
                 continue;
             }
-            var moduleName = moduleMapping[packageName]
+            var moduleName = getModuleName(moduleMapping[packageName]
                     ? moduleMapping[packageName]
-                    : getModuleName(packageName);
+                    : packageName);
             var moduleInfo = getModuleInfo(pkg, staticMode);
             var deps = getModuleDependencies(pkg, staticMode);
 
@@ -231,7 +228,9 @@ ModuleProvider {
             module.writeLine("    version: " + ModUtils.toJSLiteral(moduleInfo.version));
             module.writeLine("    Depends { name: 'cpp' }");
             deps.forEach(function(dep) {
-                module.write("    Depends { name: '" + dep.name + "'");
+                var depName = getModuleName(
+                        moduleMapping[dep.name] ? moduleMapping[dep.name] : dep.name);
+                module.write("    Depends { name: '" + depName + "'");
                 for (var k in dep) {
                     if (k === "name")
                         continue;

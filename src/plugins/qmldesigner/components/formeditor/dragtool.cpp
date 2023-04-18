@@ -1,36 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "dragtool.h"
 
 #include "formeditorscene.h"
 #include "formeditorview.h"
 #include "assetslibrarywidget.h"
+#include "assetslibrarymodel.h"
 #include <metainfo.h>
+#include <modelnodeoperations.h>
 #include <nodehints.h>
 #include <rewritingexception.h>
+#include "qmldesignerconstants.h"
+
+#include <utils/qtcassert.h>
 
 #include <QDebug>
 #include <QGraphicsSceneMouseEvent>
@@ -38,6 +21,7 @@
 #include <QMimeData>
 #include <QTimer>
 #include <QWidget>
+#include <QMessageBox>
 
 static Q_LOGGING_CATEGORY(dragToolInfo, "qtc.qmldesigner.formeditor", QtWarningMsg);
 
@@ -219,9 +203,7 @@ void DragTool::abort()
 
 static ItemLibraryEntry itemLibraryEntryFromMimeData(const QMimeData *mimeData)
 {
-    QByteArray data = mimeData->data(QStringLiteral("application/vnd.bauhaus.itemlibraryinfo"));
-
-    QDataStream stream(data);
+    QDataStream stream(mimeData->data(Constants::MIME_TYPE_ITEM_LIBRARY_INFO));
 
     ItemLibraryEntry itemLibraryEntry;
     stream >> itemLibraryEntry;
@@ -236,41 +218,70 @@ static bool canBeDropped(const QMimeData *mimeData)
 
 static bool hasItemLibraryInfo(const QMimeData *mimeData)
 {
-    return mimeData->hasFormat(QStringLiteral("application/vnd.bauhaus.itemlibraryinfo"));
+    return mimeData->hasFormat(Constants::MIME_TYPE_ITEM_LIBRARY_INFO);
 }
 
-void DragTool::dropEvent(const QList<QGraphicsItem *> &/*itemList*/, QGraphicsSceneDragDropEvent *event)
+void DragTool::dropEvent(const QList<QGraphicsItem *> &itemList, QGraphicsSceneDragDropEvent *event)
 {
     if (canBeDropped(event->mimeData())) {
         event->accept();
         end(generateUseSnapping(event->modifiers()));
 
+        QString effectPath;
+        const QStringList assetPaths = QString::fromUtf8(event->mimeData()
+                                                         ->data(Constants::MIME_TYPE_ASSETS)).split(',');
+        for (const QString &path : assetPaths) {
+            const QString assetType = AssetsLibraryWidget::getAssetTypeAndData(path).first;
+            if (assetType == Constants::MIME_TYPE_ASSET_EFFECT) {
+                effectPath = path;
+                break;
+            }
+        }
+
         bool resetPuppet = false;
-        for (auto &node : m_dragNodes) {
-            if (node.isValid()) {
-                if ((node.instanceParentItem().isValid()
-                     && node.instanceParent().modelNode().metaInfo().isLayoutable())
-                    || node.isFlowItem()) {
-                    node.removeProperty("x");
-                    node.removeProperty("y");
-                    resetPuppet = true;
+
+        if (!effectPath.isEmpty()) {
+            FormEditorItem *targetContainerFormEditorItem = targetContainerOrRootItem(itemList);
+            if (targetContainerFormEditorItem) {
+                if (!ModelNodeOperations::validateEffect(effectPath)) {
+                    event->ignore();
+                    return;
+                }
+
+                bool layerEffect = ModelNodeOperations::useLayerEffect();
+                QmlItemNode parentQmlItemNode = targetContainerFormEditorItem->qmlItemNode();
+                QmlItemNode::createQmlItemNodeForEffect(view(), parentQmlItemNode, effectPath, layerEffect);
+                view()->setSelectedModelNodes({parentQmlItemNode});
+
+                commitTransaction();
+            }
+        } else {
+            for (QmlItemNode &node : m_dragNodes) {
+                if (node.isValid()) {
+                    if ((node.instanceParentItem().isValid()
+                         && node.instanceParent().modelNode().metaInfo().isLayoutable())
+                            || node.isFlowItem()) {
+                        node.removeProperty("x");
+                        node.removeProperty("y");
+                        resetPuppet = true;
+                    }
                 }
             }
-        }
-        if (resetPuppet)
-            view()->resetPuppet(); // Otherwise the layout might not reposition the items
+            if (resetPuppet)
+                view()->resetPuppet(); // Otherwise the layout might not reposition the items
 
-        commitTransaction();
+            commitTransaction();
 
-        if (!m_dragNodes.isEmpty()) {
-            QList<ModelNode> nodeList;
-            for (auto &node : std::as_const(m_dragNodes)) {
-                if (node.isValid())
-                    nodeList.append(node);
+            if (!m_dragNodes.isEmpty()) {
+                QList<ModelNode> nodeList;
+                for (auto &node : std::as_const(m_dragNodes)) {
+                    if (node.isValid())
+                        nodeList.append(node);
+                }
+                view()->setSelectedModelNodes(nodeList);
             }
-            view()->setSelectedModelNodes(nodeList);
+            m_dragNodes.clear();
         }
-        m_dragNodes.clear();
 
         view()->changeToSelectionTool();
     }
@@ -287,7 +298,6 @@ void DragTool::dragEnterEvent(const QList<QGraphicsItem *> &/*itemList*/, QGraph
         }
 
         if (!m_rewriterTransaction.isValid()) {
-            view()->clearSelectedModelNodes();
             m_rewriterTransaction = view()->beginRewriterTransaction(QByteArrayLiteral("DragTool::dragEnterEvent"));
         }
     }
@@ -326,12 +336,12 @@ void DragTool::createDragNodes(const QMimeData *mimeData, const QPointF &scenePo
                                   scenePosition);
             } else {
                 const QStringList assetPaths = QString::fromUtf8(mimeData
-                                    ->data("application/vnd.bauhaus.libraryresource")).split(",");
+                                    ->data(Constants::MIME_TYPE_ASSETS)).split(',');
                 for (const QString &assetPath : assetPaths) {
                     QString assetType = AssetsLibraryWidget::getAssetTypeAndData(assetPath).first;
-                    if (assetType == "application/vnd.bauhaus.libraryresource.image")
+                    if (assetType == Constants::MIME_TYPE_ASSET_IMAGE)
                         createQmlItemNodeFromImage(assetPath, targetContainerQmlItemNode, scenePosition);
-                    else if (assetType == "application/vnd.bauhaus.libraryresource.font")
+                    else if (assetType == Constants::MIME_TYPE_ASSET_FONT)
                         createQmlItemNodeFromFont(assetPath, targetContainerQmlItemNode, scenePosition);
                 }
 
@@ -347,10 +357,17 @@ void DragTool::createDragNodes(const QMimeData *mimeData, const QPointF &scenePo
 
 void DragTool::dragMoveEvent(const QList<QGraphicsItem *> &itemList, QGraphicsSceneDragDropEvent *event)
 {
-    if (!m_blockMove && !m_isAborted && canBeDropped(event->mimeData())) {
+    FormEditorItem *targetContainerItem = targetContainerOrRootItem(itemList);
+    const QStringList assetPaths = QString::fromUtf8(event->mimeData()
+                                                     ->data(Constants::MIME_TYPE_ASSETS)).split(',');
+    QString assetType = AssetsLibraryWidget::getAssetTypeAndData(assetPaths[0]).first;
+
+    if (!m_blockMove
+            && !m_isAborted
+            && canBeDropped(event->mimeData())
+            && assetType != Constants::MIME_TYPE_ASSET_EFFECT) {
         event->accept();
         if (!m_dragNodes.isEmpty()) {
-            FormEditorItem *targetContainerItem = targetContainerOrRootItem(itemList);
             if (targetContainerItem) {
                 move(event->scenePos(), itemList);
             } else {
@@ -364,7 +381,7 @@ void DragTool::dragMoveEvent(const QList<QGraphicsItem *> &itemList, QGraphicsSc
         } else {
             createDragNodes(event->mimeData(), event->scenePos(), itemList);
         }
-    } else {
+    } else if (assetType != Constants::MIME_TYPE_ASSET_EFFECT) {
         event->ignore();
     }
 }
@@ -407,9 +424,24 @@ void DragTool::move(const QPointF &scenePosition, const QList<QGraphicsItem *> &
 void DragTool::commitTransaction()
 {
     try {
+        handleView3dDrop();
         m_rewriterTransaction.commit();
     } catch (const RewritingException &e) {
         e.showException();
+    }
+}
+
+void DragTool::handleView3dDrop()
+{
+    // If a View3D is dropped, we need to assign material to the included model
+    for (const QmlItemNode &dragNode : std::as_const(m_dragNodes)) {
+        if (dragNode.modelNode().metaInfo().isQtQuick3DView3D()) {
+            auto model = dragNode.model();
+            const QList<ModelNode> models = dragNode.modelNode().subModelNodesOfType(
+                model->qtQuick3DModelMetaInfo());
+            QTC_ASSERT(models.size() == 1, return);
+            view()->assignMaterialTo3dModel(models.at(0));
+        }
     }
 }
 

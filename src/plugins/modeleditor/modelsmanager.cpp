@@ -1,35 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jochen Becher
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Jochen Becher
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "modelsmanager.h"
 
 #include "diagramsviewmanager.h"
 #include "extdocumentcontroller.h"
 #include "modeldocument.h"
-#include "modeleditor_constants.h"
 #include "modeleditor.h"
+#include "modeleditor_constants.h"
+#include "modeleditortr.h"
 #include "modelindexer.h"
 #include "pxnodecontroller.h"
 
@@ -119,7 +98,7 @@ ModelsManager::ModelsManager(QObject *parent)
                 ProjectExplorer::Constants::M_FOLDERCONTEXT);
     folderContainer->insertGroup(ProjectExplorer::Constants::G_FOLDER_FILES,
                                  Constants::EXPLORER_GROUP_MODELING);
-    d->openDiagramContextMenuItem = new QAction(tr("Open Diagram"), this);
+    d->openDiagramContextMenuItem = new QAction(Tr::tr("Open Diagram"), this);
     Core::Command *cmd = Core::ActionManager::registerAction(
                 d->openDiagramContextMenuItem, Constants::ACTION_EXPLORER_OPEN_DIAGRAM,
                 projectTreeContext);
@@ -167,7 +146,7 @@ void ModelsManager::releaseModel(ExtDocumentController *documentController)
 
 void ModelsManager::openDiagram(const qmt::Uid &modelUid, const qmt::Uid &diagramUid)
 {
-    foreach (const ManagedModel &managedModel, d->managedModels) {
+    for (const ManagedModel &managedModel : std::as_const(d->managedModels)) {
         if (managedModel.m_documentController->projectController()->project()->uid() == modelUid) {
             qmt::MDiagram *diagram = managedModel.m_documentController->modelController()->findObject<qmt::MDiagram>(diagramUid);
             QMT_ASSERT(diagram, continue);
@@ -230,7 +209,7 @@ void ModelsManager::onAboutToShowContextMenu(ProjectExplorer::Node *node)
 {
     bool canOpenDiagram = false;
 
-    foreach (const ManagedModel &managedModel, d->managedModels) {
+    for (const ManagedModel &managedModel : std::as_const(d->managedModels)) {
         if (managedModel.m_documentController->pxNodeController()->hasDiagramForExplorerNode(node)) {
             canOpenDiagram = true;
             break;
@@ -248,7 +227,7 @@ void ModelsManager::onOpenDiagramFromProjectExplorer()
 {
     if (ProjectExplorer::ProjectTree::currentNode() == d->contextMenuOwnerNode) {
         qmt::MDiagram *diagram = nullptr;
-        foreach (const ManagedModel &managedModel, d->managedModels) {
+        for (const ManagedModel &managedModel : std::as_const(d->managedModels)) {
             if ((diagram = managedModel.m_documentController->pxNodeController()->findDiagramForExplorerNode(d->contextMenuOwnerNode))) {
                 openDiagram(managedModel.m_documentController, diagram);
                 break;
@@ -267,7 +246,7 @@ void ModelsManager::onOpenDefaultModel(const qmt::Uid &modelUid)
 void ModelsManager::openDiagram(ExtDocumentController *documentController,
                                  qmt::MDiagram *diagram)
 {
-    foreach (const ManagedModel &managedModel, d->managedModels) {
+    for (const ManagedModel &managedModel : std::as_const(d->managedModels)) {
         if (managedModel.m_documentController == documentController) {
             Core::IEditor *editor = Core::EditorManager::activateEditorForDocument(managedModel.m_modelDocument);
             if (auto modelEditor = qobject_cast<ModelEditor *>(editor)) {

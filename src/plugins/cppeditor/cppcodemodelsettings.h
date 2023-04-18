@@ -1,33 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "clangdiagnosticconfigsmodel.h"
+#include "clangdiagnosticconfig.h"
+#include "cppeditor_global.h"
 
+#include <utils/clangutils.h>
 #include <utils/fileutils.h>
+#include <utils/id.h>
 
 #include <QObject>
 #include <QStringList>
@@ -56,14 +37,6 @@ public:
     void toSettings(QSettings *s);
 
 public:
-    Utils::Id clangDiagnosticConfigId() const;
-    void setClangDiagnosticConfigId(const Utils::Id &configId);
-    static Utils::Id defaultClangDiagnosticConfigId() ;
-    const ClangDiagnosticConfig clangDiagnosticConfig() const;
-
-    ClangDiagnosticConfigs clangCustomDiagnosticConfigs() const;
-    void setClangCustomDiagnosticConfigs(const ClangDiagnosticConfigs &configs);
-
     bool enableLowerClazyLevels() const;
     void setEnableLowerClazyLevels(bool yesno);
 
@@ -76,11 +49,19 @@ public:
     bool skipIndexingBigFiles() const;
     void setSkipIndexingBigFiles(bool yesno);
 
+    bool useBuiltinPreprocessor() const { return m_useBuiltinPreprocessor; }
+    void setUseBuiltinPreprocessor(bool useBuiltin) { m_useBuiltinPreprocessor = useBuiltin; }
+
     int indexerFileSizeLimitInMb() const;
     void setIndexerFileSizeLimitInMb(int sizeInMB);
 
     void setCategorizeFindReferences(bool categorize) { m_categorizeFindReferences = categorize; }
     bool categorizeFindReferences() const { return m_categorizeFindReferences; }
+
+    bool ignoreFiles() const;
+    void setIgnoreFiles(bool ignoreFiles);
+    QString ignorePattern() const;
+    void setIgnorePattern(const QString& ignorePattern);
 
 signals:
     void clangDiagnosticConfigsInvalidated(const QVector<Utils::Id> &configId);
@@ -90,17 +71,23 @@ private:
     PCHUsage m_pchUsage = PchUse_BuildSystem;
     bool m_interpretAmbigiousHeadersAsCHeaders = false;
     bool m_skipIndexingBigFiles = true;
+    bool m_useBuiltinPreprocessor = true;
     int m_indexerFileSizeLimitInMB = 5;
-    ClangDiagnosticConfigs m_clangCustomDiagnosticConfigs;
-    Utils::Id m_clangDiagnosticConfigId;
     bool m_enableLowerClazyLevels = true; // For UI behavior only
     bool m_categorizeFindReferences = false; // Ephemeral!
+    bool m_ignoreFiles = false;
+    QString m_ignorePattern;
 };
 
 class CPPEDITOR_EXPORT ClangdSettings : public QObject
 {
     Q_OBJECT
 public:
+    enum class IndexingPriority { Off, Background, Normal, Low, };
+
+    static QString priorityToString(const IndexingPriority &priority);
+    static QString priorityToDisplayString(const IndexingPriority &priority);
+
     class CPPEDITOR_EXPORT Data
     {
     public:
@@ -112,33 +99,60 @@ public:
             return s1.useClangd == s2.useClangd
                     && s1.executableFilePath == s2.executableFilePath
                     && s1.sessionsWithOneClangd == s2.sessionsWithOneClangd
+                    && s1.customDiagnosticConfigs == s2.customDiagnosticConfigs
+                    && s1.diagnosticConfigId == s2.diagnosticConfigId
                     && s1.workerThreadLimit == s2.workerThreadLimit
-                    && s1.enableIndexing == s2.enableIndexing
+                    && s1.indexingPriority == s2.indexingPriority
                     && s1.autoIncludeHeaders == s2.autoIncludeHeaders
-                    && s1.documentUpdateThreshold == s2.documentUpdateThreshold;
+                    && s1.documentUpdateThreshold == s2.documentUpdateThreshold
+                    && s1.sizeThresholdEnabled == s2.sizeThresholdEnabled
+                    && s1.sizeThresholdInKb == s2.sizeThresholdInKb
+                    && s1.haveCheckedHardwareReqirements == s2.haveCheckedHardwareReqirements
+                    && s1.completionResults == s2.completionResults;
         }
         friend bool operator!=(const Data &s1, const Data &s2) { return !(s1 == s2); }
 
+        static int defaultCompletionResults();
+
         Utils::FilePath executableFilePath;
         QStringList sessionsWithOneClangd;
+        ClangDiagnosticConfigs customDiagnosticConfigs;
+        Utils::Id diagnosticConfigId;
         int workerThreadLimit = 0;
-        bool useClangd = true;
-        bool enableIndexing = true;
-        bool autoIncludeHeaders = false;
         int documentUpdateThreshold = 500;
+        qint64 sizeThresholdInKb = 1024;
+        bool useClangd = true;
+        IndexingPriority indexingPriority = IndexingPriority::Low;
+        bool autoIncludeHeaders = false;
+        bool sizeThresholdEnabled = false;
+        bool haveCheckedHardwareReqirements = false;
+        int completionResults = defaultCompletionResults();
     };
 
     ClangdSettings(const Data &data) : m_data(data) {}
 
     static ClangdSettings &instance();
     bool useClangd() const;
+    static void setUseClangd(bool use);
+    static void setUseClangdAndSave(bool use);
+
+    static bool hardwareFulfillsRequirements();
+    static bool haveCheckedHardwareRequirements();
 
     static void setDefaultClangdPath(const Utils::FilePath &filePath);
+    static void setCustomDiagnosticConfigs(const ClangDiagnosticConfigs &configs);
     Utils::FilePath clangdFilePath() const;
-    bool indexingEnabled() const { return m_data.enableIndexing; }
+    IndexingPriority indexingPriority() const { return m_data.indexingPriority; }
     bool autoIncludeHeaders() const { return m_data.autoIncludeHeaders; }
     int workerThreadLimit() const { return m_data.workerThreadLimit; }
     int documentUpdateThreshold() const { return m_data.documentUpdateThreshold; }
+    qint64 sizeThresholdInKb() const { return m_data.sizeThresholdInKb; }
+    bool sizeThresholdEnabled() const { return m_data.sizeThresholdEnabled; }
+    int completionResults() const { return m_data.completionResults; }
+    bool sizeIsOkay(const Utils::FilePath &fp) const;
+    ClangDiagnosticConfigs customDiagnosticConfigs() const;
+    Utils::Id diagnosticConfigId() const;
+    ClangDiagnosticConfig diagnosticConfig() const;
 
     enum class Granularity { Project, Session };
     Granularity granularity() const;
@@ -146,11 +160,11 @@ public:
     void setData(const Data &data);
     Data data() const { return m_data; }
 
-    static QVersionNumber clangdVersion(const Utils::FilePath &clangdFilePath);
-    QVersionNumber clangdVersion() const { return clangdVersion(clangdFilePath()); }
+    QVersionNumber clangdVersion() const { return Utils::clangdVersion(clangdFilePath()); }
+    Utils::FilePath clangdIncludePath() const;
+    static Utils::FilePath clangdUserConfigFilePath();
 
 #ifdef WITH_TESTS
-    static void setUseClangd(bool use);
     static void setClangdFilePath(const Utils::FilePath &filePath);
 #endif
 
@@ -175,6 +189,9 @@ public:
     void setSettings(const ClangdSettings::Data &data);
     bool useGlobalSettings() const { return m_useGlobalSettings; }
     void setUseGlobalSettings(bool useGlobal);
+    void setDiagnosticConfigId(Utils::Id configId);
+    void blockIndexing();
+    void unblockIndexing();
 
 private:
     void loadSettings();
@@ -183,6 +200,7 @@ private:
     ProjectExplorer::Project * const m_project;
     ClangdSettings::Data m_customSettings;
     bool m_useGlobalSettings = true;
+    bool m_blockIndexing = false;
 };
 
 } // namespace CppEditor

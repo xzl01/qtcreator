@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -83,6 +61,7 @@ enum ElfEndian
 
 enum ElfClass
 {
+    Elf_ELFCLASSNONE = 0,
     Elf_ELFCLASS32 = 1,
     Elf_ELFCLASS64 = 2
 };
@@ -98,6 +77,7 @@ enum ElfType
 
 enum ElfMachine
 {
+    Elf_EM_NONE   =  0,
     Elf_EM_386    =  3,
     Elf_EM_ARM    = 40,
     Elf_EM_X86_64 = 62
@@ -142,10 +122,10 @@ public:
     int indexOf(const QByteArray &name) const;
 
 public:
-    ElfEndian  endian;
-    ElfType    elftype;
-    ElfMachine elfmachine;
-    ElfClass   elfclass;
+    ElfEndian  endian = Elf_ELFDATANONE;
+    ElfType    elftype = Elf_ET_NONE;
+    ElfMachine elfmachine = Elf_EM_NONE;
+    ElfClass   elfclass = Elf_ELFCLASSNONE;
     quint64    entryPoint = 0;
     QByteArray debugLink;
     QByteArray buildId;
@@ -156,8 +136,6 @@ public:
 
 class QTCREATOR_UTILS_EXPORT ElfReader
 {
-    Q_DECLARE_TR_FUNCTIONS(Utils::ElfReader)
-
 public:
     explicit ElfReader(const FilePath &binary);
     enum Result { Ok, NotElf, Corrupt };

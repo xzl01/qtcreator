@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "qmljshoverhandler.h"
+#include "qmlexpressionundercursor.h"
 #include "qmljseditor.h"
 #include "qmljseditorconstants.h"
 #include "qmljseditordocument.h"
-#include "qmlexpressionundercursor.h"
+#include "qmljseditortr.h"
+#include "qmljshoverhandler.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/ieditor.h>
@@ -124,11 +103,11 @@ static inline QString getModuleName(const ScopeChain &scopeChain, const Document
             return moduleName + QString::number(majorVersion) + QLatin1Char('.')
                     + QString::number(minorVersion) ;
         } else if (importInfo.isValid() && importInfo.type() == ImportType::Directory) {
-            const QString path = importInfo.path();
-            const QDir dir(qmlDocument->path());
+            const Utils::FilePath path = Utils::FilePath::fromString(importInfo.path());
+            const Utils::FilePath dir = qmlDocument->path();
             // should probably try to make it relatve to some import path, not to the document path
-            QString relativeDir = dir.relativeFilePath(path);
-            const QString name = relativeDir.replace(QLatin1Char('/'), QLatin1Char('.'));
+            const Utils::FilePath relativePath = path.relativeChildPath(dir);
+            const QString name = relativePath.path().replace(QLatin1Char('/'), QLatin1Char('.'));
             return name;
         } else if (importInfo.isValid() && importInfo.type() == ImportType::QrcDirectory) {
             QString path = Utils::QrcParser::normalizedQrcDirectoryPath(importInfo.path());
@@ -164,7 +143,10 @@ bool QmlJSHoverHandler::setQmlTypeHelp(const ScopeChain &scopeChain, const Docum
     helpIdPieces.removeAt(1);
     helpIdCandidates += helpIdPieces.join('.');
 
-    const HelpItem helpItem(helpIdCandidates, qName.join('.'), HelpItem::QmlComponent);
+    const HelpItem helpItem(helpIdCandidates,
+                            qmlDocument->fileName(),
+                            qName.join('.'),
+                            HelpItem::QmlComponent);
     const HelpItem::Links links = helpItem.links();
 
     // Check if the module name contains a major version.
@@ -268,15 +250,17 @@ void QmlJSHoverHandler::identifyMatch(TextEditorWidget *editorWidget, int pos, R
 
 bool QmlJSHoverHandler::matchDiagnosticMessage(QmlJSEditorWidget *qmlEditor, int pos)
 {
-    foreach (const QTextEdit::ExtraSelection &sel,
-             qmlEditor->extraSelections(TextEditorWidget::CodeWarningsSelection)) {
+    const QList<QTextEdit::ExtraSelection> selections =
+        qmlEditor->extraSelections(TextEditorWidget::CodeWarningsSelection);
+    for (const QTextEdit::ExtraSelection &sel : selections) {
         if (pos >= sel.cursor.selectionStart() && pos <= sel.cursor.selectionEnd()) {
             setToolTip(sel.format.toolTip());
             return true;
         }
     }
-    foreach (const QTextLayout::FormatRange &range,
-             qmlEditor->qmlJsEditorDocument()->diagnosticRanges()) {
+    const QVector<QTextLayout::FormatRange> ranges =
+        qmlEditor->qmlJsEditorDocument()->diagnosticRanges();
+    for (const QTextLayout::FormatRange &range : ranges) {
         if (pos >= range.start && pos < range.start+range.length) {
             setToolTip(range.format.toolTip());
             return true;
@@ -357,18 +341,19 @@ void QmlJSHoverHandler::handleImport(const ScopeChain &scopeChain, AST::UiImport
     if (!imports)
         return;
 
-    foreach (const Import &import, imports->all()) {
+    const QList<Import> importList = imports->all();
+    for (const Import &import : importList) {
         if (import.info.ast() == node) {
             if (import.info.type() == ImportType::Library
                     && !import.libraryPath.isEmpty()) {
-                QString msg = tr("Library at %1").arg(import.libraryPath);
+                QString msg = Tr::tr("Library at %1").arg(import.libraryPath.toString());
                 const LibraryInfo &libraryInfo = scopeChain.context()->snapshot().libraryInfo(import.libraryPath);
                 if (libraryInfo.pluginTypeInfoStatus() == LibraryInfo::DumpDone) {
                     msg += QLatin1Char('\n');
-                    msg += tr("Dumped plugins successfully.");
+                    msg += Tr::tr("Dumped plugins successfully.");
                 } else if (libraryInfo.pluginTypeInfoStatus() == LibraryInfo::TypeInfoFileDone) {
                     msg += QLatin1Char('\n');
-                    msg += tr("Read typeinfo files successfully.");
+                    msg += Tr::tr("Read typeinfo files successfully.");
                 }
                 setToolTip(msg);
             } else {
@@ -492,7 +477,10 @@ bool QmlJSHoverHandler::setQmlHelpItem(const ScopeChain &scopeChain,
                                                           + "::" + name,
                                                       "QML." + className + "::" + name,
                                                       className + "::" + name};
-                const HelpItem helpItem(helpIdCandidates, name, HelpItem::QmlProperty);
+                const HelpItem helpItem(helpIdCandidates,
+                                        qmlDocument->fileName(),
+                                        name,
+                                        HelpItem::QmlProperty);
                 if (helpItem.isValid()) {
                     setLastHelpItemIdentified(helpItem);
                     return true;

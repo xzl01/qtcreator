@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "googletest.h"
 
@@ -112,16 +90,16 @@ protected:
     Utils::PathString filePath5{"/file/pathFife"};
     Utils::PathStringVector filePaths{filePath1, filePath2, filePath3, filePath4, filePath5};
     Utils::PathStringVector reverseFilePaths{filePath1, filePath2, filePath3, filePath4, filePath5};
-    SourceContextId id1{0};
-    SourceContextId id2{1};
-    SourceContextId id3{2};
-    SourceContextId id4{3};
-    SourceContextId id5{4};
-    SourceContextId id41{41};
-    SourceContextId id42{42};
-    SourceContextId id43{43};
-    SourceContextId id44{44};
-    SourceContextId id45{45};
+    SourceContextId id1{SourceContextId::create(0)};
+    SourceContextId id2{SourceContextId::create(1)};
+    SourceContextId id3{SourceContextId::create(2)};
+    SourceContextId id4{SourceContextId::create(3)};
+    SourceContextId id5{SourceContextId::create(4)};
+    SourceContextId id41{SourceContextId::create(41)};
+    SourceContextId id42{SourceContextId::create(42)};
+    SourceContextId id43{SourceContextId::create(43)};
+    SourceContextId id44{SourceContextId::create(44)};
+    SourceContextId id45{SourceContextId::create(45)};
 };
 
 using CacheTypes = ::testing::Types<CacheWithMockLocking, CacheWithoutLocking>;
@@ -240,7 +218,7 @@ TYPED_TEST(StorageCache, IsNotEmptyAfterPopulateWithSomeEntries)
     typename TypeParam::CacheEntries entries{{this->filePath1.clone(), this->id1},
                                              {this->filePath2.clone(), this->id4},
                                              {this->filePath3.clone(), this->id3},
-                                             {this->filePath4.clone(), SourceContextId{5}}};
+                                             {this->filePath4.clone(), SourceContextId::create(5)}};
     ON_CALL(this->mockStorage, fetchAllSourceContexts()).WillByDefault(Return(entries));
 
     this->cache.uncheckedPopulate();
@@ -252,12 +230,12 @@ TYPED_TEST(StorageCache, GetEntryAfterPopulateWithSomeEntries)
 {
     typename TypeParam::CacheEntries entries{{this->filePath1.clone(), this->id1},
                                              {this->filePath2.clone(), this->id2},
-                                             {this->filePath3.clone(), SourceContextId{7}},
+                                             {this->filePath3.clone(), SourceContextId::create(7)},
                                              {this->filePath4.clone(), this->id4}};
     ON_CALL(this->mockStorage, fetchAllSourceContexts()).WillByDefault(Return(entries));
     this->cache.uncheckedPopulate();
 
-    auto value = this->cache.value(SourceContextId{7});
+    auto value = this->cache.value(SourceContextId::create(7));
 
     ASSERT_THAT(value, this->filePath3);
 }
@@ -442,7 +420,7 @@ TYPED_TEST(StorageCache, GetEntryByIndexAfterInsertingByCustomIndex)
 TYPED_TEST(StorageCache, CallFetchSourceContextPathForLowerIndex)
 {
     auto index = this->cache.id("foo");
-    SourceContextId lowerIndex{&index - 1};
+    SourceContextId lowerIndex{SourceContextId::create(index.internalId() - 1)};
 
     EXPECT_CALL(this->mockStorage, fetchSourceContextPath(Eq(lowerIndex)));
 

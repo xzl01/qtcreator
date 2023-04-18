@@ -1,39 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 //! [running on embedded linux]
 
-    \section1 Running on Generic Remote Linux Devices
+    \section1 Running on Remote Linux Devices
 
     To build the application and run it on a device:
 
         \list 1
 
             \li Specify a connection to the device. For more information, see
-                \l{Connecting Generic Remote Linux Devices}.
+                \l{Connecting Remote Linux Devices}.
 
             \li Click the \uicontrol Run button.
 
@@ -47,12 +25,10 @@
     displayed on the device. Command-line output is visible in the \QC
     \uicontrol {Application Output} view.
 
-    Choose \uicontrol {Projects > Embedded Linux > Run} to view the settings for deploying
-    the application to the connected device.
-    \if defined(qtcreator)
-    For more information, see
+    In the \uicontrol {Projects} mode, select the remote Linux kit and then
+    select \uicontrol {Run} to view the settings for deploying the application
+    to the connected device. For more information, see
     \l{Specifying Run Settings for Linux-Based Devices}.
-    \endif
 
     Debugging works transparently if GDB server is installed on the device and
     it is compatible with the GDB on the host.

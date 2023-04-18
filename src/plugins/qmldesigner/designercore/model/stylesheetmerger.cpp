@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "stylesheetmerger.h"
 
 #include <abstractview.h>
@@ -34,8 +12,14 @@
 #include <nodelistproperty.h>
 #include <nodemetainfo.h>
 #include <nodeproperty.h>
+#include <plaintexteditmodifier.h>
+#include <rewriterview.h>
 #include <variantproperty.h>
 
+#include <utils/fileutils.h>
+#include <utils/qtcassert.h>
+
+#include <QPlainTextEdit>
 #include <QQueue>
 #include <QRegularExpression>
 
@@ -131,9 +115,8 @@ void StylesheetMerger::syncVariantProperties(ModelNode &outputNode, const ModelN
 
 void StylesheetMerger::syncAuxiliaryProperties(ModelNode &outputNode, const ModelNode &inputNode)
 {
-    auto tmp = inputNode.auxiliaryData();
-    for (auto iter = tmp.begin(); iter != tmp.end(); ++iter)
-        outputNode.setAuxiliaryData(iter.key(), iter.value());
+    for (const auto &[key, value] : inputNode.auxiliaryData())
+        outputNode.setAuxiliaryData(AuxiliaryDataKeyView{key}, value);
 }
 
 void StylesheetMerger::syncBindingProperties(ModelNode &outputNode, const ModelNode &inputNode)
@@ -177,7 +160,6 @@ void StylesheetMerger::setupIdRenamingHash()
 ModelNode StylesheetMerger::createReplacementNode(const ModelNode& styleNode, ModelNode &modelNode)
 {
     QList<QPair<PropertyName, QVariant> > propertyList;
-    QList<QPair<PropertyName, QVariant> > auxPropertyList;
     NodeMetaInfo nodeMetaInfo = m_templateView->model()->metaInfo(styleNode.type());
 
     for (const VariantProperty &variantProperty : modelNode.variantProperties()) {
@@ -187,8 +169,13 @@ ModelNode StylesheetMerger::createReplacementNode(const ModelNode& styleNode, Mo
             continue;
         propertyList.append(QPair<PropertyName, QVariant>(variantProperty.name(), variantProperty.value()));
     }
-    ModelNode newNode(m_templateView->createModelNode(styleNode.type(), nodeMetaInfo.majorVersion(), nodeMetaInfo.minorVersion(),
-                                                      propertyList, auxPropertyList, styleNode.nodeSource(), styleNode.nodeSourceType()));
+    ModelNode newNode(m_templateView->createModelNode(styleNode.type(),
+                                                      nodeMetaInfo.majorVersion(),
+                                                      nodeMetaInfo.minorVersion(),
+                                                      propertyList,
+                                                      {},
+                                                      styleNode.nodeSource(),
+                                                      styleNode.nodeSourceType()));
 
     syncAuxiliaryProperties(newNode, modelNode);
     syncBindingProperties(newNode, modelNode);
@@ -527,4 +514,80 @@ void StylesheetMerger::merge()
         }
     }
 }
+
+void StylesheetMerger::styleMerge(const Utils::FilePath &templateFile,
+                                  Model *model,
+                                  ExternalDependenciesInterface &externalDependencies)
+{
+    Utils::FileReader reader;
+
+    QTC_ASSERT(reader.fetch(templateFile), return );
+    const QString qmlTemplateString = QString::fromUtf8(reader.data());
+    StylesheetMerger::styleMerge(qmlTemplateString, model, externalDependencies);
 }
+
+void StylesheetMerger::styleMerge(const QString &qmlTemplateString,
+                                  Model *model,
+                                  ExternalDependenciesInterface &externalDependencies)
+{
+    Model *parentModel = model;
+
+    QTC_ASSERT(parentModel, return );
+
+    auto templateModel(Model::create("QtQuick.Item", 2, 1, parentModel));
+    Q_ASSERT(templateModel.get());
+
+    templateModel->setFileUrl(parentModel->fileUrl());
+
+    QPlainTextEdit textEditTemplate;
+    QString imports;
+
+    for (const Import &import : parentModel->imports()) {
+        imports += QStringLiteral("import ") + import.toString(true) + QLatin1Char(';')
+                   + QLatin1Char('\n');
+    }
+
+    textEditTemplate.setPlainText(imports + qmlTemplateString);
+    NotIndentingTextEditModifier textModifierTemplate(&textEditTemplate);
+
+    QScopedPointer<RewriterView> templateRewriterView(
+        new RewriterView(externalDependencies, RewriterView::Amend));
+    templateRewriterView->setTextModifier(&textModifierTemplate);
+    templateModel->attachView(templateRewriterView.data());
+    templateRewriterView->setCheckSemanticErrors(false);
+
+    ModelNode templateRootNode = templateRewriterView->rootModelNode();
+    QTC_ASSERT(templateRootNode.isValid(), return );
+
+    auto styleModel(Model::create("QtQuick.Item", 2, 1, parentModel));
+    Q_ASSERT(styleModel.get());
+
+    styleModel->setFileUrl(parentModel->fileUrl());
+
+    QPlainTextEdit textEditStyle;
+    RewriterView *parentRewriterView = parentModel->rewriterView();
+    QTC_ASSERT(parentRewriterView, return );
+    textEditStyle.setPlainText(parentRewriterView->textModifierContent());
+    NotIndentingTextEditModifier textModifierStyle(&textEditStyle);
+
+    QScopedPointer<RewriterView> styleRewriterView(
+        new RewriterView(externalDependencies, RewriterView::Amend));
+    styleRewriterView->setTextModifier(&textModifierStyle);
+    styleModel->attachView(styleRewriterView.data());
+
+    StylesheetMerger merger(templateRewriterView.data(), styleRewriterView.data());
+
+    try {
+        merger.merge();
+    } catch (Exception &e) {
+        e.showException();
+    }
+
+    try {
+        parentRewriterView->textModifier()->textDocument()->setPlainText(
+            templateRewriterView->textModifierContent());
+    } catch (Exception &e) {
+        e.showException();
+    }
+}
+} // namespace QmlDesigner

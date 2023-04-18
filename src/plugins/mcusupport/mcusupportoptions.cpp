@@ -1,38 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mcusupportoptions.h"
 
-#include "mcupackage.h"
-#include "mcutarget.h"
+#include "mcuhelpers.h"
 #include "mcukitmanager.h"
-#include "mcukitinformation.h"
-#include "mcusupportcmakemapper.h"
+#include "mcupackage.h"
 #include "mcusupportconstants.h"
 #include "mcusupportsdk.h"
-#include "mcusupportplugin.h"
+#include "mcusupporttr.h"
+#include "mcutarget.h"
+#include "settingshandler.h"
 
 #include <cmakeprojectmanager/cmakekitinformation.h>
 #include <cmakeprojectmanager/cmaketoolmanager.h>
@@ -40,43 +18,138 @@
 #include <coreplugin/icore.h>
 #include <debugger/debuggerkitinformation.h>
 #include <utils/algorithm.h>
+#include <utils/filepath.h>
 #include <qtsupport/qtkitinformation.h>
 #include <qtsupport/qtversionmanager.h>
 
 #include <QMessageBox>
 #include <QPushButton>
 
-using CMakeProjectManager::CMakeConfigItem;
-using CMakeProjectManager::CMakeConfigurationKitAspect;
-using namespace ProjectExplorer;
+#include <utility>
+
 using namespace Utils;
 
-namespace McuSupport {
-namespace Internal {
+namespace McuSupport::Internal {
 
-void McuSdkRepository::deletePackagesAndTargets()
+// Utils::FileFilter do not support globbing with "*" placed in the middle of the path,
+// since it is required for paths such as "Microsoft Visual Studio/2019/*/VC/Tools/MSVC/*/bin/Hostx64/x64"
+// The filter is applied for each time a wildcard character is found in a path component.
+// Returns a pair of the longest path if multiple ones exists and the number of components that were not found.
+static const std::pair<Utils::FilePath, int> expandWildcards(
+    const FilePath path, const QList<QStringView> patternComponents)
 {
-    qDeleteAll(packages);
-    packages.clear();
-    qDeleteAll(mcuTargets);
-    mcuTargets.clear();
+    // Only absolute paths are currently supported
+    // Call FilePath::cleanPath on the path before calling this function
+    if (!path.exists() || path.isRelativePath())
+        return {path, patternComponents.size()};
+
+    // All components are found
+    if (patternComponents.empty())
+        return {path, patternComponents.size()};
+
+    const QString currentComponent = patternComponents.front().toString();
+    FilePath currentPath = path / currentComponent;
+
+    if (!currentComponent.contains("*") && !currentComponent.contains("?") && currentPath.exists())
+        return expandWildcards(path / currentComponent,
+                               {patternComponents.constBegin() + 1, patternComponents.constEnd()});
+
+    auto entries = path.dirEntries(
+        Utils::FileFilter({currentComponent}, QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot));
+
+    std::pair<FilePath, int> retPair = {path, patternComponents.size()};
+
+    sort(entries, [](const FilePath &a, const FilePath &b) { return a.fileName() < b.fileName(); });
+    for (const auto &entry : entries) {
+        auto [entry_path, remaining_components] = expandWildcards(entry,
+                                                                  {patternComponents.constBegin()
+                                                                       + 1,
+                                                                   patternComponents.constEnd()});
+        if (remaining_components <= retPair.second)
+            retPair = {entry_path, remaining_components};
+    }
+
+    return retPair;
 }
 
-McuSupportOptions::McuSupportOptions(QObject *parent)
-    : QObject(parent)
-    , qtForMCUsSdkPackage(Sdk::createQtForMCUsPackage())
+Macros *McuSdkRepository::globalMacros()
 {
-    connect(qtForMCUsSdkPackage,
+    static Macros macros;
+    return &macros;
+}
+
+void McuSdkRepository::updateQtDirMacro(const FilePath &qulDir)
+{
+    // register the Qt installation directory containing Qul dir
+    auto qtPath = (qulDir / "../..").cleanPath();
+    if (qtPath.exists()) {
+        globalMacros()->insert("QtDir", [qtPathString = qtPath.path()] { return qtPathString; });
+    }
+}
+
+void McuSdkRepository::expandVariablesAndWildcards()
+{
+    for (const auto &target : std::as_const(mcuTargets)) {
+        auto macroExpander = getMacroExpander(*target);
+        for (const auto &package : target->packages()) {
+            // Expand variables
+            const auto path = macroExpander->expand(package->path());
+
+            //expand wildcards
+            // Ignore expanding if no wildcards are found
+            if (!path.path().contains("*") && !path.path().contains("?")) {
+                package->setPath(path);
+                continue;
+            }
+
+            QStringList pathComponents = path.cleanPath().path().split("/");
+
+            // Path components example on linux: {"", "home", "username"}
+            // Path components example on windows: {"C:", "Users", "username"}
+            // 2 for empty_split_entry(linux)|root(windows) + at least one component
+            if (pathComponents.size() < 2) {
+                package->setPath(path);
+                continue;
+            }
+            // drop empty_split_entry(linux)|root(windows)
+            QString root = pathComponents.takeFirst();
+            root.append('/'); // ensure we have a path (UNIX just a '/', Windows 'C:/' or similar)
+
+            package->setPath(
+                expandWildcards(FilePath::fromString(root),
+                                {pathComponents.constBegin(), pathComponents.constEnd()})
+                    .first);
+        }
+    }
+}
+
+MacroExpanderPtr McuSdkRepository::getMacroExpander(const McuTarget &target)
+{
+    auto macroExpander = std::make_shared<Utils::MacroExpander>();
+
+    //register the macros
+    for (const auto &package : target.packages()) {
+        macroExpander->registerVariable(package->cmakeVariableName().toLocal8Bit(),
+                                        package->label(),
+                                        [package] { return package->path().toString(); });
+    }
+
+    for (auto [key, macro] : asKeyValueRange(*globalMacros()))
+        macroExpander->registerVariable(key.toLocal8Bit(), "QtMCUs Macro", macro);
+
+    return macroExpander;
+}
+
+McuSupportOptions::McuSupportOptions(const SettingsHandler::Ptr &settingsHandler, QObject *parent)
+    : QObject(parent)
+    , qtForMCUsSdkPackage(createQtForMCUsPackage(settingsHandler))
+    , settingsHandler(settingsHandler)
+    , m_automaticKitCreation(settingsHandler->isAutomaticKitCreationEnabled())
+{
+    connect(qtForMCUsSdkPackage.get(),
             &McuAbstractPackage::changed,
             this,
             &McuSupportOptions::populatePackagesAndTargets);
-    m_automaticKitCreation = automaticKitCreationFromSettings();
-}
-
-McuSupportOptions::~McuSupportOptions()
-{
-    deletePackagesAndTargets();
-    delete qtForMCUsSdkPackage;
 }
 
 void McuSupportOptions::populatePackagesAndTargets()
@@ -84,16 +157,16 @@ void McuSupportOptions::populatePackagesAndTargets()
     setQulDir(qtForMCUsSdkPackage->path());
 }
 
-static FilePath qulDocsDir()
+FilePath McuSupportOptions::qulDocsDir() const
 {
-    const FilePath qulDir = McuSupportOptions::qulDirFromSettings();
+    const FilePath qulDir = qulDirFromSettings();
     if (qulDir.isEmpty() || !qulDir.exists())
         return {};
-    const FilePath docsDir = qulDir.pathAppended("docs");
+    const FilePath docsDir = qulDir / "docs";
     return docsDir.exists() ? docsDir : FilePath();
 }
 
-void McuSupportOptions::registerQchFiles()
+void McuSupportOptions::registerQchFiles() const
 {
     const QString docsDir = qulDocsDir().toString();
     if (docsDir.isEmpty())
@@ -105,16 +178,16 @@ void McuSupportOptions::registerQchFiles()
                                       [](const QFileInfo &fi) { return fi.absoluteFilePath(); }));
 }
 
-void McuSupportOptions::registerExamples()
+void McuSupportOptions::registerExamples() const
 {
     const FilePath docsDir = qulDocsDir();
     if (docsDir.isEmpty())
         return;
 
-    auto examples = {std::make_pair(QStringLiteral("demos"), tr("Qt for MCUs Demos")),
-                     std::make_pair(QStringLiteral("examples"), tr("Qt for MCUs Examples"))};
+    auto examples = {std::make_pair(QStringLiteral("demos"), Tr::tr("Qt for MCUs Demos")),
+                     std::make_pair(QStringLiteral("examples"), Tr::tr("Qt for MCUs Examples"))};
     for (const auto &dir : examples) {
-        const FilePath examplesDir = McuSupportOptions::qulDirFromSettings().pathAppended(dir.first);
+        const FilePath examplesDir = qulDirFromSettings() / dir.first;
         if (!examplesDir.exists())
             continue;
 
@@ -126,118 +199,47 @@ void McuSupportOptions::registerExamples()
 
 const QVersionNumber &McuSupportOptions::minimalQulVersion()
 {
-    static const QVersionNumber v({2, 0});
-    return v;
+    return minimalVersion;
 }
 
-void McuSupportOptions::setQulDir(const FilePath &dir)
+bool McuSupportOptions::isLegacyVersion(const QVersionNumber &version)
 {
-    deletePackagesAndTargets();
+    return version < newVersion;
+}
+
+void McuSupportOptions::setQulDir(const FilePath &path)
+{
+    McuSdkRepository::updateQtDirMacro(path);
     qtForMCUsSdkPackage->updateStatus();
     if (qtForMCUsSdkPackage->isValidStatus())
-        Sdk::targetsAndPackages(dir, &sdkRepository);
-    for (const auto &package : qAsConst(sdkRepository.packages))
-        connect(package, &McuAbstractPackage::changed, this, &McuSupportOptions::packagesChanged);
+        sdkRepository = targetsAndPackages(qtForMCUsSdkPackage, settingsHandler);
+    else
+        sdkRepository = McuSdkRepository{};
+    for (const auto &package : std::as_const(sdkRepository.packages))
+        connect(package.get(),
+                &McuAbstractPackage::changed,
+                this,
+                &McuSupportOptions::packagesChanged);
 
     emit packagesChanged();
 }
 
-FilePath McuSupportOptions::qulDirFromSettings()
+FilePath McuSupportOptions::qulDirFromSettings() const
 {
-    return Sdk::packagePathFromSettings(Constants::SETTINGS_KEY_PACKAGE_QT_FOR_MCUS_SDK,
-                                        QSettings::UserScope, {});
-}
-
-void McuSupportOptions::remapQul2xCmakeVars(Kit *kit, const EnvironmentItems &envItems)
-{
-    const auto cmakeVars = mapEnvVarsToQul2xCmakeVars(envItems);
-    const auto cmakeVarNames = Utils::transform(cmakeVars, &CMakeConfigItem::key);
-
-    // First filter out all Qul2.x CMake vars
-    auto config = Utils::filtered(CMakeConfigurationKitAspect::configuration(kit),
-                                  [&](const auto &configItem) {
-                                      return !cmakeVarNames.contains(configItem.key);
-                                  });
-    // Then append them with new values
-    config.append(cmakeVars);
-    CMakeConfigurationKitAspect::setConfiguration(kit, config);
-}
-
-static bool expectsCmakeVars(const McuTarget *mcuTarget)
-{
-    return mcuTarget->qulVersion() >= QVersionNumber{2, 0};
-}
-
-void McuSupportOptions::setKitEnvironment(Kit *k,
-                                          const McuTarget *mcuTarget,
-                                          const McuAbstractPackage *qtForMCUsSdkPackage)
-{
-    EnvironmentItems changes;
-    QStringList pathAdditions;
-
-    // The Desktop version depends on the Qt shared libs in Qul_DIR/bin.
-    // If CMake's fileApi is avaialble, we can rely on the "Add library search path to PATH"
-    // feature of the run configuration. Otherwise, we just prepend the path, here.
-    if (mcuTarget->toolChainPackage()->isDesktopToolchain()
-        && !CMakeProjectManager::CMakeToolManager::defaultCMakeTool()->hasFileApi())
-        pathAdditions.append(qtForMCUsSdkPackage->path().pathAppended("bin").toUserOutput());
-
-    auto processPackage = [&pathAdditions, &changes](const McuAbstractPackage *package) {
-        if (package->isAddToSystemPath())
-            pathAdditions.append(package->path().toUserOutput());
-        if (!package->environmentVariableName().isEmpty())
-            changes.append({package->environmentVariableName(), package->path().toUserOutput()});
-    };
-    for (auto package : mcuTarget->packages())
-        processPackage(package);
-    processPackage(qtForMCUsSdkPackage);
-
-    if (McuSupportOptions::kitsNeedQtVersion())
-        changes.append({QLatin1String("LD_LIBRARY_PATH"), "%{Qt:QT_INSTALL_LIBS}"});
-
-    // Hack, this problem should be solved in lower layer
-    if (expectsCmakeVars(mcuTarget)) {
-        McuSupportOptions::remapQul2xCmakeVars(k, changes);
-    }
-
-    EnvironmentKitAspect::setEnvironmentChanges(k, changes);
-}
-
-void McuSupportOptions::updateKitEnvironment(Kit *k, const McuTarget *mcuTarget)
-{
-    EnvironmentItems changes = EnvironmentKitAspect::environmentChanges(k);
-    for (auto package : mcuTarget->packages()) {
-        const QString varName = package->environmentVariableName();
-        if (!varName.isEmpty() && package->isValidStatus()) {
-            const int index = Utils::indexOf(changes, [varName](const EnvironmentItem &item) {
-                return item.name == varName;
-            });
-            const EnvironmentItem item = {package->environmentVariableName(),
-                                          package->path().toUserOutput()};
-            if (index != -1)
-                changes.replace(index, item);
-            else
-                changes.append(item);
-        }
-    }
-
-    // Hack, this problem should be solved in lower layer
-    if (expectsCmakeVars(mcuTarget)) {
-        remapQul2xCmakeVars(k, changes);
-    }
-
-    EnvironmentKitAspect::setEnvironmentChanges(k, changes);
+    return settingsHandler->getPath(Constants::SETTINGS_KEY_PACKAGE_QT_FOR_MCUS_SDK,
+                                    QSettings::UserScope,
+                                    {});
 }
 
 McuKitManager::UpgradeOption McuSupportOptions::askForKitUpgrades()
 {
     QMessageBox upgradePopup(Core::ICore::dialogParent());
     upgradePopup.setStandardButtons(QMessageBox::Cancel);
-    QPushButton *replaceButton = upgradePopup.addButton(tr("Replace Existing Kits"),
+    QPushButton *replaceButton = upgradePopup.addButton(Tr::tr("Replace Existing Kits"),
                                                         QMessageBox::NoRole);
-    QPushButton *keepButton = upgradePopup.addButton(tr("Create New Kits"), QMessageBox::NoRole);
-    upgradePopup.setWindowTitle(tr("Qt for MCUs"));
-    upgradePopup.setText(tr("New version of Qt for MCUs detected. Upgrade existing kits?"));
+    QPushButton *keepButton = upgradePopup.addButton(Tr::tr("Create New Kits"), QMessageBox::NoRole);
+    upgradePopup.setWindowTitle(Tr::tr("Qt for MCUs"));
+    upgradePopup.setText(Tr::tr("New version of Qt for MCUs detected. Upgrade existing kits?"));
 
     upgradePopup.exec();
 
@@ -250,23 +252,16 @@ McuKitManager::UpgradeOption McuSupportOptions::askForKitUpgrades()
     return McuKitManager::UpgradeOption::Ignore;
 }
 
-
-void McuSupportOptions::deletePackagesAndTargets()
-{
-    sdkRepository.deletePackagesAndTargets();
-}
-
-
 void McuSupportOptions::checkUpgradeableKits()
 {
-    if (!qtForMCUsSdkPackage->isValidStatus() || sdkRepository.mcuTargets.length() == 0)
+    if (!qtForMCUsSdkPackage->isValidStatus() || sdkRepository.mcuTargets.isEmpty())
         return;
 
-    if (Utils::anyOf(sdkRepository.mcuTargets, [this](const McuTarget *target) {
-            return !McuKitManager::upgradeableKits(target, this->qtForMCUsSdkPackage).empty()
-                   && McuKitManager::matchingKits(target, this->qtForMCUsSdkPackage).empty();
+    if (Utils::anyOf(sdkRepository.mcuTargets, [this](const McuTargetPtr &target) {
+            return !McuKitManager::upgradeableKits(target.get(), this->qtForMCUsSdkPackage).empty()
+                   && McuKitManager::matchingKits(target.get(), this->qtForMCUsSdkPackage).empty();
         }))
-        McuKitManager::upgradeKitsByCreatingNewPackage(askForKitUpgrades());
+        McuKitManager::upgradeKitsByCreatingNewPackage(settingsHandler, askForKitUpgrades());
 }
 
 bool McuSupportOptions::kitsNeedQtVersion()
@@ -275,7 +270,6 @@ bool McuSupportOptions::kitsNeedQtVersion()
     // are missing the Qt runtime libraries on non-Windows.
     return !HostOsInfo::isWindowsHost();
 }
-
 
 bool McuSupportOptions::automaticKitCreationEnabled() const
 {
@@ -287,22 +281,4 @@ void McuSupportOptions::setAutomaticKitCreationEnabled(const bool enabled)
     m_automaticKitCreation = enabled;
 }
 
-void McuSupportOptions::writeGeneralSettings() const
-{
-    const QString key = QLatin1String(Constants::SETTINGS_GROUP) + '/'
-                        + QLatin1String(Constants::SETTINGS_KEY_AUTOMATIC_KIT_CREATION);
-    QSettings *settings = Core::ICore::settings(QSettings::UserScope);
-    settings->setValue(key, m_automaticKitCreation);
-}
-
-bool McuSupportOptions::automaticKitCreationFromSettings()
-{
-    QSettings *settings = Core::ICore::settings(QSettings::UserScope);
-    const QString key = QLatin1String(Constants::SETTINGS_GROUP) + '/'
-                        + QLatin1String(Constants::SETTINGS_KEY_AUTOMATIC_KIT_CREATION);
-    const bool automaticKitCreation = settings->value(key, true).toBool();
-    return automaticKitCreation;
-}
-
-} // namespace Internal
-} // namespace McuSupport
+} // namespace McuSupport::Internal

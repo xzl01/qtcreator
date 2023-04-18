@@ -1,44 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mcupackage.h"
-#include "mcusupportconstants.h"
 #include "mcusupportversiondetection.h"
-#include "mcusupportsdk.h"
+#include "settingshandler.h"
+#include "mcusupporttr.h"
 
 #include <baremetal/baremetalconstants.h>
 #include <coreplugin/icore.h>
-#include <utils/algorithm.h>
-#include <utils/infolabel.h>
-#include <utils/pathchooser.h>
-#include <utils/utilsicons.h>
+#include <debugger/debuggeritem.h>
+#include <debugger/debuggeritemmanager.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/toolchain.h>
 #include <projectexplorer/toolchainmanager.h>
-#include <debugger/debuggeritem.h>
-#include <debugger/debuggeritemmanager.h>
+#include <utils/algorithm.h>
+#include <utils/environment.h>
+#include <utils/infolabel.h>
+#include <utils/pathchooser.h>
+#include <utils/utilsicons.h>
 
 #include <QDesktopServices>
 #include <QGridLayout>
@@ -49,26 +28,35 @@ using namespace Utils;
 
 namespace McuSupport::Internal {
 
-McuPackage::McuPackage(const QString &label,
+McuPackage::McuPackage(const SettingsHandler::Ptr &settingsHandler,
+                       const QString &label,
                        const FilePath &defaultPath,
                        const FilePath &detectionPath,
                        const QString &settingsKey,
+                       const QString &cmakeVarName,
                        const QString &envVarName,
+                       const QStringList &versions,
                        const QString &downloadUrl,
                        const McuPackageVersionDetector *versionDetector,
                        const bool addToSystemPath,
-                       const FilePath &relativePathModifier)
-    : m_label(label)
-    , m_defaultPath(Sdk::packagePathFromSettings(settingsKey, QSettings::SystemScope, defaultPath))
+                       const Utils::PathChooser::Kind &valueType)
+    : settingsHandler(settingsHandler)
+    , m_label(label)
+    , m_defaultPath(settingsHandler->getPath(settingsKey, QSettings::SystemScope, defaultPath))
     , m_detectionPath(detectionPath)
     , m_settingsKey(settingsKey)
     , m_versionDetector(versionDetector)
-    , m_relativePathModifier(relativePathModifier)
+    , m_versions(versions)
+    , m_cmakeVariableName(cmakeVarName)
     , m_environmentVariableName(envVarName)
     , m_downloadUrl(downloadUrl)
     , m_addToSystemPath(addToSystemPath)
+    , m_valueType(valueType)
 {
-    m_path = Sdk::packagePathFromSettings(settingsKey, QSettings::UserScope, m_defaultPath);
+    m_path = this->settingsHandler->getPath(settingsKey, QSettings::UserScope, m_defaultPath);
+    if (m_path.isEmpty()) {
+        m_path = FilePath::fromUserInput(qtcEnvironmentVariable(m_environmentVariableName));
+    }
 }
 
 QString McuPackage::label() const
@@ -76,7 +64,17 @@ QString McuPackage::label() const
     return m_label;
 }
 
-const QString &McuPackage::environmentVariableName() const
+QString McuPackage::settingsKey() const
+{
+    return m_settingsKey;
+}
+
+QString McuPackage::cmakeVariableName() const
+{
+    return m_cmakeVariableName;
+}
+
+QString McuPackage::environmentVariableName() const
 {
     return m_environmentVariableName;
 }
@@ -86,24 +84,29 @@ bool McuPackage::isAddToSystemPath() const
     return m_addToSystemPath;
 }
 
-void McuPackage::setVersions(const QStringList &versions)
+QStringList McuPackage::versions() const
 {
-    m_versions = versions;
+    return m_versions;
+}
+
+const McuPackageVersionDetector *McuPackage::getVersionDetector() const
+{
+    return m_versionDetector.get();
 }
 
 FilePath McuPackage::basePath() const
 {
-    return m_fileChooser != nullptr ? m_fileChooser->filePath() : m_path;
+    return m_path;
 }
 
 FilePath McuPackage::path() const
 {
-    return basePath().pathAppended(m_relativePathModifier.path()).absoluteFilePath();
+    return basePath().cleanPath();
 }
 
 FilePath McuPackage::defaultPath() const
 {
-    return m_defaultPath;
+    return m_defaultPath.cleanPath();
 }
 
 FilePath McuPackage::detectionPath() const
@@ -111,29 +114,40 @@ FilePath McuPackage::detectionPath() const
     return m_detectionPath;
 }
 
-void McuPackage::updatePath()
+void McuPackage::setPath(const FilePath &newPath)
 {
-    m_path = m_fileChooser->rawFilePath();
-    m_fileChooser->lineEdit()->button(FancyLineEdit::Right)->setEnabled(m_path != m_defaultPath);
+    if (m_path == newPath)
+        return;
+
+    m_path = newPath;
     updateStatus();
+    emit changed();
 }
 
 void McuPackage::updateStatus()
 {
     bool validPath = !m_path.isEmpty() && m_path.exists();
-    const FilePath detectionPath = basePath().pathAppended(m_detectionPath.path());
+    const FilePath detectionPath = basePath() / m_detectionPath.path();
     const bool validPackage = m_detectionPath.isEmpty() || detectionPath.exists();
     m_detectedVersion = validPath && validPackage && m_versionDetector
-                            ? m_versionDetector->parseVersion(basePath().toString())
+                            ? m_versionDetector->parseVersion(basePath())
                             : QString();
-    const bool validVersion = m_detectedVersion.isEmpty() || m_versions.isEmpty()
-                              || m_versions.contains(m_detectedVersion);
 
-    m_status = validPath          ? (validPackage ? (validVersion ? Status::ValidPackage
-                                                                  : Status::ValidPackageMismatchedVersion)
-                                                  : Status::ValidPathInvalidPackage)
-               : m_path.isEmpty() ? Status::EmptyPath
-                                  : Status::InvalidPath;
+    const bool validVersion = m_versions.isEmpty() || m_versions.contains(m_detectedVersion);
+
+    if (m_path.isEmpty()) {
+        m_status = Status::EmptyPath;
+    } else if (!validPath) {
+        m_status = Status::InvalidPath;
+    } else if (!validPackage) {
+        m_status = Status::ValidPathInvalidPackage;
+    } else if (m_versionDetector && m_detectedVersion.isEmpty()) {
+        m_status = Status::ValidPackageVersionNotDetected;
+    } else if (m_versionDetector && !validVersion) {
+        m_status = Status::ValidPackageMismatchedVersion;
+    } else {
+        m_status = Status::ValidPackage;
+    }
 
     emit statusChanged();
 }
@@ -145,9 +159,9 @@ McuPackage::Status McuPackage::status() const
 
 bool McuPackage::isValidStatus() const
 {
-    return m_status == Status::ValidPackage || m_status == Status::ValidPackageMismatchedVersion;
+    return m_status == Status::ValidPackage || m_status == Status::ValidPackageMismatchedVersion
+           || m_status == Status::ValidPackageVersionNotDetected;
 }
-
 
 void McuPackage::updateStatusUi()
 {
@@ -156,6 +170,7 @@ void McuPackage::updateStatusUi()
         m_infoLabel->setType(InfoLabel::Ok);
         break;
     case Status::ValidPackageMismatchedVersion:
+    case Status::ValidPackageVersionNotDetected:
         m_infoLabel->setType(InfoLabel::Warning);
         break;
     default:
@@ -168,7 +183,7 @@ void McuPackage::updateStatusUi()
 QString McuPackage::statusText() const
 {
     const QString displayPackagePath = m_path.toUserOutput();
-    const QString displayVersions = m_versions.join(" or ");
+    const QString displayVersions = m_versions.join(Tr::tr(" or "));
     const QString outDetectionPath = m_detectionPath.toUserOutput();
     const QString displayRequiredPath = m_versions.empty() ? outDetectionPath
                                                            : QString("%1 %2").arg(outDetectionPath,
@@ -183,32 +198,36 @@ QString McuPackage::statusText() const
     case Status::ValidPackage:
         response = m_detectionPath.isEmpty()
                        ? (m_detectedVersion.isEmpty()
-                              ? tr("Path %1 exists.").arg(displayPackagePath)
-                              : tr("Path %1 exists. Version %2 was found.")
+                              ? Tr::tr("Path %1 exists.").arg(displayPackagePath)
+                              : Tr::tr("Path %1 exists. Version %2 was found.")
                                     .arg(displayPackagePath, m_detectedVersion))
-                       : tr("Path %1 is valid, %2 was found.")
+                       : Tr::tr("Path %1 is valid, %2 was found.")
                              .arg(displayPackagePath, displayDetectedPath);
         break;
     case Status::ValidPackageMismatchedVersion: {
         const QString versionWarning
             = m_versions.size() == 1
-                  ? tr("but only version %1 is supported").arg(m_versions.first())
-                  : tr("but only versions %1 are supported").arg(displayVersions);
-        response = tr("Path %1 is valid, %2 was found, %3.")
+                  ? Tr::tr("but only version %1 is supported").arg(m_versions.first())
+                  : Tr::tr("but only versions %1 are supported").arg(displayVersions);
+        response = Tr::tr("Path %1 is valid, %2 was found, %3.")
                        .arg(displayPackagePath, displayDetectedPath, versionWarning);
         break;
     }
     case Status::ValidPathInvalidPackage:
-        response = tr("Path %1 exists, but does not contain %2.")
+        response = Tr::tr("Path %1 exists, but does not contain %2.")
                        .arg(displayPackagePath, displayRequiredPath);
         break;
     case Status::InvalidPath:
-        response = tr("Path %1 does not exist.").arg(displayPackagePath);
+        response = Tr::tr("Path %1 does not exist.").arg(displayPackagePath);
         break;
     case Status::EmptyPath:
         response = m_detectionPath.isEmpty()
-                       ? tr("Path is empty.")
-                       : tr("Path is empty, %1 not found.").arg(displayRequiredPath);
+                       ? Tr::tr("Path is empty.")
+                       : Tr::tr("Path is empty, %1 not found.").arg(displayRequiredPath);
+        break;
+    case Status::ValidPackageVersionNotDetected:
+        response = Tr::tr("Path %1 exists, but version %2 could not be detected.")
+                       .arg(displayPackagePath, displayVersions);
         break;
     }
     return response;
@@ -216,37 +235,37 @@ QString McuPackage::statusText() const
 
 bool McuPackage::writeToSettings() const
 {
-    const FilePath savedPath = Sdk::packagePathFromSettings(m_settingsKey,
-                                                            QSettings::UserScope,
-                                                            m_defaultPath);
-    const QString key = QLatin1String(Constants::SETTINGS_GROUP) + '/'
-                        + QLatin1String(Constants::SETTINGS_KEY_PACKAGE_PREFIX) + m_settingsKey;
-    Core::ICore::settings()->setValueWithDefault(key, m_path.toString(), m_defaultPath.toString());
+    if (m_settingsKey.isEmpty()) {
+        // Writing with an empty settings key will result in multiple packages writing their value
+        // in the same key "Package_", with the suffix missing, overwriting each other.
+        return false;
+    }
 
-    return savedPath != m_path;
+    return settingsHandler->write(m_settingsKey, m_path, m_defaultPath);
+}
+
+void McuPackage::readFromSettings()
+{
+    setPath(settingsHandler->getPath(m_settingsKey, QSettings::UserScope, m_defaultPath));
 }
 
 QWidget *McuPackage::widget()
 {
-    if (m_widget)
-        return m_widget;
-
-    m_widget = new QWidget;
-    m_fileChooser = new PathChooser;
+    auto *widget = new QWidget;
+    m_fileChooser = new PathChooser(widget);
+    m_fileChooser->setExpectedKind(m_valueType);
     m_fileChooser->lineEdit()->setButtonIcon(FancyLineEdit::Right, Icons::RESET.icon());
     m_fileChooser->lineEdit()->setButtonVisible(FancyLineEdit::Right, true);
-    connect(m_fileChooser->lineEdit(), &FancyLineEdit::rightButtonClicked, this, [&] {
-        m_fileChooser->setFilePath(m_defaultPath);
-    });
+    connect(m_fileChooser->lineEdit(), &FancyLineEdit::rightButtonClicked, this, &McuPackage::reset);
 
-    auto layout = new QGridLayout(m_widget);
+    auto layout = new QGridLayout(widget);
     layout->setContentsMargins(0, 0, 0, 0);
-    m_infoLabel = new InfoLabel();
+    m_infoLabel = new InfoLabel(widget);
 
     if (!m_downloadUrl.isEmpty()) {
-        auto downLoadButton = new QToolButton;
+        auto downLoadButton = new QToolButton(widget);
         downLoadButton->setIcon(Icons::ONLINE.icon());
-        downLoadButton->setToolTip(tr("Download from \"%1\"").arg(m_downloadUrl));
+        downLoadButton->setToolTip(Tr::tr("Download from \"%1\"").arg(m_downloadUrl));
         QObject::connect(downLoadButton, &QToolButton::pressed, this, [this] {
             QDesktopServices::openUrl(m_downloadUrl);
         });
@@ -258,26 +277,78 @@ QWidget *McuPackage::widget()
 
     m_fileChooser->setFilePath(m_path);
 
-    QObject::connect(this, &McuPackage::statusChanged, this, [this] { updateStatusUi(); });
+    QObject::connect(this, &McuPackage::statusChanged, widget, [this] { updateStatusUi(); });
 
-    QObject::connect(m_fileChooser, &PathChooser::pathChanged, this, [this] {
-        updatePath();
-        emit changed();
+    QObject::connect(m_fileChooser, &PathChooser::textChanged, this, [this] {
+        setPath(m_fileChooser->rawFilePath());
+    });
+
+    connect(this, &McuPackage::changed, m_fileChooser, [this] {
+        m_fileChooser->lineEdit()->button(FancyLineEdit::Right)->setEnabled(m_path != m_defaultPath);
+        m_fileChooser->setFilePath(m_path);
     });
 
     updateStatus();
-    return m_widget;
+    return widget;
 }
 
+const QMap<QString, QString> McuPackage::packageLabelTranslations {
+    //Board SDKs
+    {"Board SDK for MIMXRT1050-EVK",                        Tr::tr("Board SDK for MIMXRT1050-EVK")},
+    {"Board SDK MIMXRT1060-EVK",                            Tr::tr("Board SDK MIMXRT1060-EVK")},
+    {"Board SDK for MIMXRT1060-EVK",                        Tr::tr("Board SDK for MIMXRT1060-EVK")},
+    {"Board SDK for MIMXRT1064-EVK",                        Tr::tr("Board SDK for MIMXRT1064-EVK")},
+    {"Board SDK for MIMXRT1170-EVK",                        Tr::tr("Board SDK for MIMXRT1170-EVK")},
+    {"Board SDK for STM32F469I-Discovery",                  Tr::tr("Board SDK for STM32F469I-Discovery")},
+    {"Board SDK for STM32F769I-Discovery",                  Tr::tr("Board SDK for STM32F769I-Discovery")},
+    {"Board SDK for STM32H750B-Discovery",                  Tr::tr("Board SDK for STM32H750B-Discovery")},
+    {"Board SDK",                                           Tr::tr("Board SDK")},
+    {"Flexible Software Package for Renesas RA MCU Family", Tr::tr("Flexible Software Package for Renesas RA MCU Family")},
+    {"Graphics Driver for Traveo II Cluster Series",        Tr::tr("Graphics Driver for Traveo II Cluster Series")},
+    {"Renesas Graphics Library",                            Tr::tr("Renesas Graphics Library")},
+    //Flashing tools
+    {"Cypress Auto Flash Utility",                          Tr::tr("Cypress Auto Flash Utility")},
+    {"MCUXpresso IDE",                                      Tr::tr("MCUXpresso IDE")},
+    {"Path to SEGGER J-Link",                               Tr::tr("Path to SEGGER J-Link")},
+    {"Path to Renesas Flash Programmer",                    Tr::tr("Path to Renesas Flash Programmer")},
+    {"STM32CubeProgrammer",                                 Tr::tr("STM32CubeProgrammer")},
+    //Compilers/Toolchains
+    {"Green Hills Compiler for ARM",                        Tr::tr("Green Hills Compiler for ARM")},
+    {"IAR ARM Compiler",                                    Tr::tr("IAR ARM Compiler")},
+    {"Green Hills Compiler",                                Tr::tr("Green Hills Compiler")},
+    {"GNU Arm Embedded Toolchain",                          Tr::tr("GNU Arm Embedded Toolchain")},
+    {"GNU Toolchain",                                       Tr::tr("GNU Toolchain")},
+    {"MSVC Toolchain",                                      Tr::tr("MSVC Toolchain")},
+    //FreeRTOS
+    {"FreeRTOS SDK for MIMXRT1050-EVK",                     Tr::tr("FreeRTOS SDK for MIMXRT1050-EVK")},
+    {"FreeRTOS SDK for MIMXRT1064-EVK",                     Tr::tr("FreeRTOS SDK for MIMXRT1064-EVK")},
+    {"FreeRTOS SDK for MIMXRT1170-EVK",                     Tr::tr("FreeRTOS SDK for MIMXRT1170-EVK")},
+    {"FreeRTOS SDK for EK-RA6M3G",                          Tr::tr("FreeRTOS SDK for EK-RA6M3G")},
+    {"FreeRTOS SDK for STM32F769I-Discovery",               Tr::tr("FreeRTOS SDK for STM32F769I-Discovery")},
+    //Other
+    {"Path to project for Renesas e2 Studio",               Tr::tr("Path to project for Renesas e2 Studio")}
+};
 
-McuToolChainPackage::McuToolChainPackage(const QString &label,
+McuToolChainPackage::McuToolChainPackage(const SettingsHandler::Ptr &settingsHandler,
+                                         const QString &label,
                                          const FilePath &defaultPath,
                                          const FilePath &detectionPath,
                                          const QString &settingsKey,
                                          McuToolChainPackage::ToolChainType type,
+                                         const QStringList &versions,
+                                         const QString &cmakeVarName,
                                          const QString &envVarName,
                                          const McuPackageVersionDetector *versionDetector)
-    : McuPackage(label, defaultPath, detectionPath, settingsKey, envVarName, {}, versionDetector)
+    : McuPackage(settingsHandler,
+                 label,
+                 defaultPath,
+                 detectionPath,
+                 settingsKey,
+                 cmakeVarName,
+                 envVarName,
+                 versions,
+                 {}, // url
+                 versionDetector)
     , m_type(type)
 {}
 
@@ -288,29 +359,51 @@ McuToolChainPackage::ToolChainType McuToolChainPackage::toolchainType() const
 
 bool McuToolChainPackage::isDesktopToolchain() const
 {
-    return m_type == ToolChainType::MSVC || m_type == ToolChainType::GCC;
+    return m_type == ToolChainType::MSVC || m_type == ToolChainType::GCC
+           || m_type == ToolChainType::MinGW;
 }
 
-static ToolChain *msvcToolChain(Id language)
+ToolChain *McuToolChainPackage::msvcToolChain(Id language)
 {
     ToolChain *toolChain = ToolChainManager::toolChain([language](const ToolChain *t) {
         const Abi abi = t->targetAbi();
-        // TODO: Should Abi::WindowsMsvc2022Flavor be added too?
-        return (abi.osFlavor() == Abi::WindowsMsvc2017Flavor
-                || abi.osFlavor() == Abi::WindowsMsvc2019Flavor)
+        return abi.osFlavor() == Abi::WindowsMsvc2019Flavor
                && abi.architecture() == Abi::X86Architecture && abi.wordWidth() == 64
+               && t->typeId() == ProjectExplorer::Constants::MSVC_TOOLCHAIN_TYPEID
                && t->language() == language;
     });
     return toolChain;
 }
 
-static ToolChain *gccToolChain(Id language)
+ToolChain *McuToolChainPackage::gccToolChain(Id language)
 {
     ToolChain *toolChain = ToolChainManager::toolChain([language](const ToolChain *t) {
         const Abi abi = t->targetAbi();
         return abi.os() != Abi::WindowsOS && abi.architecture() == Abi::X86Architecture
                && abi.wordWidth() == 64 && t->language() == language;
     });
+    return toolChain;
+}
+
+static ToolChain *mingwToolChain(const FilePath &path, Id language)
+{
+    ToolChain *toolChain = ToolChainManager::toolChain([&path, language](const ToolChain *t) {
+        // find a MinGW toolchain having the same path from registered toolchains
+        const Abi abi = t->targetAbi();
+        return t->typeId() == ProjectExplorer::Constants::MINGW_TOOLCHAIN_TYPEID
+               && abi.architecture() == Abi::X86Architecture && abi.wordWidth() == 64
+               && t->language() == language && t->compilerCommand() == path;
+    });
+    if (!toolChain) {
+        // if there's no MinGW toolchain having the same path,
+        // a proper MinGW would be selected from the registered toolchains.
+        toolChain = ToolChainManager::toolChain([language](const ToolChain *t) {
+            const Abi abi = t->targetAbi();
+            return t->typeId() == ProjectExplorer::Constants::MINGW_TOOLCHAIN_TYPEID
+                   && abi.architecture() == Abi::X86Architecture && abi.wordWidth() == 64
+                   && t->language() == language;
+        });
+    }
     return toolChain;
 }
 
@@ -378,8 +471,14 @@ ToolChain *McuToolChainPackage::toolChain(Id language) const
         return msvcToolChain(language);
     case ToolChainType::GCC:
         return gccToolChain(language);
+    case ToolChainType::MinGW: {
+        const QLatin1String compilerName(
+            language == ProjectExplorer::Constants::C_LANGUAGE_ID ? "gcc" : "g++");
+        const FilePath compilerPath = (path() / "bin" / compilerName).withExecutableSuffix();
+        return mingwToolChain(compilerPath, language);
+    }
     case ToolChainType::IAR: {
-        const FilePath compiler = path().pathAppended("/bin/iccarm").withExecutableSuffix();
+        const FilePath compiler = (path() / "/bin/iccarm").withExecutableSuffix();
         return iarToolChain(compiler, language);
     }
     case ToolChainType::ArmGcc:
@@ -390,9 +489,9 @@ ToolChain *McuToolChainPackage::toolChain(Id language) const
         const QLatin1String compilerName(
             language == ProjectExplorer::Constants::C_LANGUAGE_ID ? "gcc" : "g++");
         const QString comp = QLatin1String(m_type == ToolChainType::ArmGcc ? "/bin/arm-none-eabi-%1"
-                                                                  : "/bar/foo-keil-%1")
+                                                                           : "/bar/foo-keil-%1")
                                  .arg(compilerName);
-        const FilePath compiler = path().pathAppended(comp).withExecutableSuffix();
+        const FilePath compiler = (path() / comp).withExecutableSuffix();
 
         return armGccToolChain(compiler, language);
     }
@@ -404,6 +503,12 @@ ToolChain *McuToolChainPackage::toolChain(Id language) const
 QString McuToolChainPackage::toolChainName() const
 {
     switch (m_type) {
+    case ToolChainType::MSVC:
+        return QLatin1String("msvc");
+    case ToolChainType::GCC:
+        return QLatin1String("gcc");
+    case ToolChainType::MinGW:
+        return QLatin1String("mingw");
     case ToolChainType::ArmGcc:
         return QLatin1String("armgcc");
     case ToolChainType::IAR:
@@ -419,11 +524,6 @@ QString McuToolChainPackage::toolChainName() const
     }
 }
 
-QString McuToolChainPackage::cmakeToolChainFileName() const
-{
-    return toolChainName() + QLatin1String(".cmake");
-}
-
 QVariant McuToolChainPackage::debuggerId() const
 {
     using namespace Debugger;
@@ -434,7 +534,7 @@ QVariant McuToolChainPackage::debuggerId() const
     switch (m_type) {
     case ToolChainType::ArmGcc: {
         sub = QString::fromLatin1("bin/arm-none-eabi-gdb-py");
-        displayName = McuPackage::tr("Arm GDB at %1");
+        displayName = Tr::tr("Arm GDB at %1");
         engineType = Debugger::GdbEngineType;
         break;
     }
@@ -454,7 +554,7 @@ QVariant McuToolChainPackage::debuggerId() const
         return QVariant();
     }
 
-    const FilePath command = path().pathAppended(sub).withExecutableSuffix();
+    const FilePath command = (path() / sub).withExecutableSuffix();
     if (const DebuggerItem *debugger = DebuggerItemManager::findByCommand(command)) {
         return debugger->id();
     }
@@ -465,6 +565,5 @@ QVariant McuToolChainPackage::debuggerId() const
     newDebugger.setEngineType(engineType);
     return DebuggerItemManager::registerDebugger(newDebugger);
 }
-
 
 } // namespace McuSupport::Internal

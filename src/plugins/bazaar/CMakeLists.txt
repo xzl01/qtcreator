@@ -3,7 +3,6 @@ add_qtc_plugin(Bazaar
   SOURCES
     annotationhighlighter.cpp annotationhighlighter.h
     bazaarclient.cpp bazaarclient.h
-    bazaarcommitpanel.ui
     bazaarcommitwidget.cpp bazaarcommitwidget.h
     bazaareditor.cpp bazaareditor.h
     bazaarplugin.cpp bazaarplugin.h
@@ -11,7 +10,5 @@ add_qtc_plugin(Bazaar
     branchinfo.cpp branchinfo.h
     commiteditor.cpp commiteditor.h
     constants.h
-    pullorpushdialog.cpp pullorpushdialog.h pullorpushdialog.ui
-    revertdialog.ui
-    uncommitdialog.ui
+    pullorpushdialog.cpp pullorpushdialog.h
 )

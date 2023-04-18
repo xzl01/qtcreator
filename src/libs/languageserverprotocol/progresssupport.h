@@ -1,39 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "jsonrpcmessages.h"
 
-#include <utils/variant.h>
-
 #include <QJsonValue>
+
+#include <variant>
 
 namespace LanguageServerProtocol {
 
-class LANGUAGESERVERPROTOCOL_EXPORT ProgressToken : public Utils::variant<int, QString>
+class LANGUAGESERVERPROTOCOL_EXPORT ProgressToken : public std::variant<int, QString>
 {
 public:
     using variant::variant;
@@ -53,7 +31,7 @@ public:
      * long running operation.
      * Clients that don't support cancellation can ignore the setting.
      */
-    Utils::optional<bool> cancellable() const { return optionalValue<bool>(cancellableKey); }
+    std::optional<bool> cancellable() const { return optionalValue<bool>(cancellableKey); }
     void setCancellable(bool cancellable) { insert(cancellableKey, cancellable); }
     void clearCancellable() { remove(cancellableKey); }
 
@@ -64,7 +42,7 @@ public:
      * Examples: "3/25 files", "project/src/module2", "node_modules/some_dep".
      * If unset, the previous progress message (if any) is still valid.
      */
-    Utils::optional<QString> message() const { return optionalValue<QString>(messageKey); }
+    std::optional<QString> message() const { return optionalValue<QString>(messageKey); }
     void setMessage(const QString &message) { insert(messageKey, message); }
     void clearMessage() { remove(messageKey); }
 
@@ -80,7 +58,7 @@ public:
     // Allthough percentage is defined as an uint by the protocol some server
     // return a double here. Be less strict and also use a double.
     // CAUTION: the range is still 0 - 100 and not 0 - 1
-    Utils::optional<double> percentage() const { return optionalValue<double>(percentageKey); }
+    std::optional<double> percentage() const { return optionalValue<double>(percentageKey); }
     void setPercentage(double percentage) { insert(percentageKey, percentage); }
     void clearPercentage() { remove(percentageKey); }
 };
@@ -110,7 +88,7 @@ public:
      * Optional, a final message indicating to for example indicate the outcome
      * of the operation.
      */
-    Utils::optional<QString> message() const { return optionalValue<QString>(messageKey); }
+    std::optional<QString> message() const { return optionalValue<QString>(messageKey); }
     void setMessage(const QString &message) { insert(messageKey, message); }
     void clearMessage() { remove(messageKey); }
 };
@@ -124,7 +102,7 @@ public:
     void setToken(const ProgressToken &token) { insert(tokenKey, token); }
 
     using ProgressType
-        = Utils::variant<WorkDoneProgressBegin, WorkDoneProgressReport, WorkDoneProgressEnd>;
+        = std::variant<WorkDoneProgressBegin, WorkDoneProgressReport, WorkDoneProgressEnd>;
     ProgressType value() const;
     void setValue(const ProgressType &value);
 

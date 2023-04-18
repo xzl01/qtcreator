@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "simulatorcontrol.h"
 #include "iosconfigurations.h"
@@ -50,8 +28,7 @@ namespace {
 static Q_LOGGING_CATEGORY(simulatorLog, "qtc.ios.simulator", QtWarningMsg)
 }
 
-namespace Ios {
-namespace Internal {
+namespace Ios::Internal {
 
 const int simulatorStartTimeout = 60000;
 
@@ -85,16 +62,20 @@ static bool runCommand(const CommandLine &command, QString *stdOutput, QString *
     p.setCommand(command);
     p.runBlocking();
     if (stdOutput)
-        *stdOutput = p.stdOut();
+        *stdOutput = p.cleanedStdOut();
     if (allOutput)
         *allOutput = p.allOutput();
-    return p.result() == QtcProcess::FinishedWithSuccess;
+    return p.result() == ProcessResult::FinishedWithSuccess;
 }
 
 static bool runSimCtlCommand(QStringList args, QString *output, QString *allOutput = nullptr)
 {
     args.prepend("simctl");
-    return runCommand({"xcrun", args}, output, allOutput);
+
+    // Cache xcrun's path, as this function will be called often.
+    static FilePath xcrun = FilePath::fromString("xcrun").searchInPath();
+    QTC_ASSERT(!xcrun.isEmpty() && xcrun.isExecutableFile(), xcrun.clear(); return false);
+    return runCommand({xcrun, args}, output, allOutput);
 }
 
 static bool launchSimulator(const QString &simUdid) {
@@ -135,7 +116,7 @@ static QList<DeviceTypeInfo> getAvailableDeviceTypes()
     QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
     if (!doc.isNull()) {
         const QJsonArray runtimesArray = doc.object().value(deviceTypeTag).toArray();
-        foreach (const QJsonValue deviceTypeValue, runtimesArray) {
+        for (const QJsonValue deviceTypeValue : runtimesArray) {
             QJsonObject deviceTypeObject = deviceTypeValue.toObject();
             if (isAvailable(deviceTypeObject)) {
                 DeviceTypeInfo deviceType;
@@ -159,7 +140,7 @@ static QList<RuntimeInfo> getAvailableRuntimes()
     QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
     if (!doc.isNull()) {
         const QJsonArray runtimesArray = doc.object().value(runtimesTag).toArray();
-        foreach (const QJsonValue runtimeValue, runtimesArray) {
+        for (const QJsonValue runtimeValue : runtimesArray) {
             QJsonObject runtimeObject = runtimeValue.toObject();
             if (isAvailable(runtimeObject)) {
                 RuntimeInfo runtime;
@@ -225,9 +206,10 @@ static QList<SimulatorInfo> getAllSimulatorDevices()
     QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
     if (!doc.isNull()) {
         const QJsonObject runtimeObject = doc.object().value(devicesTag).toObject();
-        foreach (const QString &runtime, runtimeObject.keys()) {
+        const QStringList keys = runtimeObject.keys();
+        for (const QString &runtime : keys) {
             const QJsonArray devices = runtimeObject.value(runtime).toArray();
-            foreach (const QJsonValue deviceValue, devices) {
+            for (const QJsonValue deviceValue : devices) {
                 QJsonObject deviceObject = deviceValue.toObject();
                 SimulatorInfo device;
                 device.identifier = deviceObject.value(udidTag).toString();
@@ -503,7 +485,7 @@ void launchApp(QFutureInterface<SimulatorControl::ResponseData> &fi,
         if (waitForDebugger)
             args.insert(1, "-w");
 
-        foreach (const QString extraArgument, extraArgs) {
+        for (const QString &extraArgument : extraArgs) {
             if (!extraArgument.trimmed().isEmpty())
                 args << extraArgument;
         }
@@ -601,5 +583,4 @@ bool SimulatorInfo::operator==(const SimulatorInfo &other) const
             && runtimeName == other.runtimeName;
 }
 
-} // namespace Internal
-} // namespace Ios
+} // Ios::Internal

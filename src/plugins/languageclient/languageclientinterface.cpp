@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "languageclientinterface.h"
 
-#include "languageclientsettings.h"
+#include "languageclienttr.h"
 
 #include <QLoggingCategory>
 
@@ -46,9 +24,11 @@ BaseClientInterface::~BaseClientInterface()
     m_buffer.close();
 }
 
-void BaseClientInterface::sendMessage(const BaseMessage &message)
+void BaseClientInterface::sendMessage(const JsonRpcMessage message)
 {
-    sendData(message.toData());
+    const BaseMessage baseMessage = message.toBaseMessage();
+    sendData(baseMessage.header());
+    sendData(baseMessage.content);
 }
 
 void BaseClientInterface::resetBuffer()
@@ -77,8 +57,7 @@ void BaseClientInterface::parseData(const QByteArray &data)
             emit error(parseError);
         if (!m_currentMessage.isComplete())
             break;
-        emit messageReceived(m_currentMessage);
-        m_currentMessage = BaseMessage();
+        parseCurrentMessage();
     }
     if (m_buffer.atEnd()) {
         m_buffer.close();
@@ -87,71 +66,105 @@ void BaseClientInterface::parseData(const QByteArray &data)
     }
 }
 
-StdIOClientInterface::StdIOClientInterface()
-    : m_process(ProcessMode::Writer)
+void BaseClientInterface::parseCurrentMessage()
 {
-    connect(&m_process, &QtcProcess::readyReadStandardError,
-            this, &StdIOClientInterface::readError);
-    connect(&m_process, &QtcProcess::readyReadStandardOutput,
-            this, &StdIOClientInterface::readOutput);
-    connect(&m_process, &QtcProcess::finished,
-            this, &StdIOClientInterface::onProcessFinished);
+    if (m_currentMessage.mimeType == JsonRpcMessage::jsonRpcMimeType()) {
+        emit messageReceived(JsonRpcMessage(m_currentMessage));
+    } else {
+        emit error(Tr::tr("Cannot handle MIME type of message %1")
+                       .arg(QString::fromUtf8(m_currentMessage.mimeType)));
+    }
+    m_currentMessage = BaseMessage();
+}
+
+StdIOClientInterface::StdIOClientInterface()
+    : m_logFile("lspclient.XXXXXX.log")
+{
+    m_logFile.setAutoRemove(false);
+    m_logFile.open();
 }
 
 StdIOClientInterface::~StdIOClientInterface()
 {
-    m_process.stopProcess();
+    delete m_process;
 }
 
-bool StdIOClientInterface::start()
+void StdIOClientInterface::startImpl()
 {
-    m_process.start();
-    if (!m_process.waitForStarted() || m_process.state() != QProcess::Running) {
-        emit error(m_process.errorString());
-        return false;
+    if (m_process) {
+        QTC_CHECK(!m_process->isRunning());
+        delete m_process;
     }
-    return true;
+    m_process = new QtcProcess;
+    m_process->setProcessMode(ProcessMode::Writer);
+    connect(m_process, &QtcProcess::readyReadStandardError,
+            this, &StdIOClientInterface::readError);
+    connect(m_process, &QtcProcess::readyReadStandardOutput,
+            this, &StdIOClientInterface::readOutput);
+    connect(m_process, &QtcProcess::started, this, &StdIOClientInterface::started);
+    connect(m_process, &QtcProcess::done, this, [this] {
+        m_logFile.flush();
+        if (m_process->result() != ProcessResult::FinishedWithSuccess)
+            emit error(QString("%1 (see logs in \"%2\")")
+                           .arg(m_process->exitMessage())
+                           .arg(m_logFile.fileName()));
+        emit finished();
+    });
+    m_logFile.write(QString("Starting server: %1\nOutput:\n\n").arg(m_cmd.toUserOutput()).toUtf8());
+    m_process->setCommand(m_cmd);
+    m_process->setWorkingDirectory(m_workingDirectory);
+    if (m_env.hasChanges())
+        m_process->setEnvironment(m_env);
+    m_process->start();
 }
 
 void StdIOClientInterface::setCommandLine(const CommandLine &cmd)
 {
-    m_process.setCommand(cmd);
+    m_cmd = cmd;
 }
 
 void StdIOClientInterface::setWorkingDirectory(const FilePath &workingDirectory)
 {
-    m_process.setWorkingDirectory(workingDirectory);
+    m_workingDirectory = workingDirectory;
+}
+
+void StdIOClientInterface::setEnvironment(const Environment &environment)
+{
+    m_env = environment;
+}
+
+FilePath StdIOClientInterface::serverDeviceTemplate() const
+{
+    return m_cmd.executable();
 }
 
 void StdIOClientInterface::sendData(const QByteArray &data)
 {
-    if (m_process.state() != QProcess::Running) {
-        emit error(tr("Cannot send data to unstarted server %1")
-            .arg(m_process.commandLine().toUserOutput()));
+    if (!m_process || m_process->state() != QProcess::Running) {
+        emit error(Tr::tr("Cannot send data to unstarted server %1")
+            .arg(m_cmd.toUserOutput()));
         return;
     }
     qCDebug(LOGLSPCLIENTV) << "StdIOClient send data:";
     qCDebug(LOGLSPCLIENTV).noquote() << data;
-    m_process.write(data);
-}
-
-void StdIOClientInterface::onProcessFinished()
-{
-    if (m_process.exitStatus() == QProcess::CrashExit)
-        emit error(tr("Crashed with exit code %1: %2")
-                       .arg(m_process.exitCode()).arg(m_process.errorString()));
-    emit finished();
+    m_process->writeRaw(data);
 }
 
 void StdIOClientInterface::readError()
 {
+    QTC_ASSERT(m_process, return);
+
+    const QByteArray stdErr = m_process->readAllRawStandardError();
+    m_logFile.write(stdErr);
+
     qCDebug(LOGLSPCLIENTV) << "StdIOClient std err:\n";
-    qCDebug(LOGLSPCLIENTV).noquote() << m_process.readAllStandardError();
+    qCDebug(LOGLSPCLIENTV).noquote() << stdErr;
 }
 
 void StdIOClientInterface::readOutput()
 {
-    const QByteArray &out = m_process.readAllStandardOutput();
+    QTC_ASSERT(m_process, return);
+    const QByteArray &out = m_process->readAllRawStandardOutput();
     qCDebug(LOGLSPCLIENTV) << "StdIOClient std out:\n";
     qCDebug(LOGLSPCLIENTV).noquote() << out;
     parseData(out);

@@ -1,106 +1,139 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Lorenz Haas
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Lorenz Haas
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "uncrustifyoptionspage.h"
-#include "ui_uncrustifyoptionspage.h"
 
 #include "uncrustifyconstants.h"
 #include "uncrustifysettings.h"
-#include "uncrustify.h"
 
 #include "../beautifierconstants.h"
 #include "../beautifierplugin.h"
+#include "../beautifiertr.h"
+#include "../configurationpanel.h"
 
-namespace Beautifier {
-namespace Internal {
+#include <utils/layoutbuilder.h>
+#include <utils/pathchooser.h>
+
+#include <QCheckBox>
+#include <QGroupBox>
+#include <QLabel>
+#include <QLineEdit>
+
+namespace Beautifier::Internal {
 
 class UncrustifyOptionsPageWidget : public Core::IOptionsPageWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Beautifier::Internal::ClangFormat)
-
 public:
     explicit UncrustifyOptionsPageWidget(UncrustifySettings *settings);
 
     void apply() final;
 
 private:
-    Ui::UncrustifyOptionsPage ui;
     UncrustifySettings *m_settings;
+
+    Utils::PathChooser *m_command;
+    QLineEdit *m_mime;
+    QCheckBox *m_useOtherFiles;
+    QCheckBox *m_useSpecificFile;
+    Utils::PathChooser *m_uncrusifyFilePath;
+    QCheckBox *m_useHomeFile;
+    QCheckBox *m_useCustomStyle;
+    ConfigurationPanel *m_configurations;
+    QCheckBox *m_formatEntireFileFallback;
 };
 
 UncrustifyOptionsPageWidget::UncrustifyOptionsPageWidget(UncrustifySettings *settings)
     : m_settings(settings)
 {
-    ui.setupUi(this);
-    ui.useHomeFile->setText(ui.useHomeFile->text().replace(
-                                 "HOME", QDir::toNativeSeparators(QDir::home().absolutePath())));
-    ui.uncrusifyFilePath->setExpectedKind(Utils::PathChooser::File);
-    ui.uncrusifyFilePath->setPromptDialogFilter(tr("Uncrustify file (*.cfg)"));
+    resize(817, 631);
 
-    ui.command->setExpectedKind(Utils::PathChooser::ExistingCommand);
-    ui.command->setCommandVersionArguments({"--version"});
-    ui.command->setPromptDialogTitle(BeautifierPlugin::msgCommandPromptDialogTitle(
-                                          Uncrustify::tr(Constants::UNCRUSTIFY_DISPLAY_NAME)));
-    connect(ui.command, &Utils::PathChooser::validChanged, ui.options, &QWidget::setEnabled);
-    ui.configurations->setSettings(m_settings);
+    m_command = new Utils::PathChooser;
 
-    ui.command->setFilePath(m_settings->command());
-    ui.mime->setText(m_settings->supportedMimeTypesAsString());
-    ui.useOtherFiles->setChecked(m_settings->useOtherFiles());
-    ui.useHomeFile->setChecked(m_settings->useHomeFile());
-    ui.useSpecificFile->setChecked(m_settings->useSpecificConfigFile());
-    ui.uncrusifyFilePath->setFilePath(m_settings->specificConfigFile());
-    ui.useCustomStyle->setChecked(m_settings->useCustomStyle());
-    ui.configurations->setCurrentConfiguration(m_settings->customStyle());
-    ui.formatEntireFileFallback->setChecked(m_settings->formatEntireFileFallback());
+    m_mime = new QLineEdit(m_settings->supportedMimeTypesAsString());
+
+    m_useOtherFiles = new QCheckBox(Tr::tr("Use file uncrustify.cfg defined in project files"));
+    m_useOtherFiles->setChecked(m_settings->useOtherFiles());
+
+    m_useSpecificFile = new QCheckBox(Tr::tr("Use file specific uncrustify.cfg"));
+    m_useSpecificFile->setChecked(m_settings->useSpecificConfigFile());
+
+    m_uncrusifyFilePath = new Utils::PathChooser;
+    m_uncrusifyFilePath->setExpectedKind(Utils::PathChooser::File);
+    m_uncrusifyFilePath->setPromptDialogFilter(Tr::tr("Uncrustify file (*.cfg)"));
+    m_uncrusifyFilePath->setFilePath(m_settings->specificConfigFile());
+
+    m_useHomeFile = new QCheckBox(Tr::tr("Use file uncrustify.cfg in HOME")
+        .replace( "HOME", QDir::toNativeSeparators(QDir::home().absolutePath())));
+    m_useHomeFile->setChecked(m_settings->useHomeFile());
+
+    m_useCustomStyle = new QCheckBox(Tr::tr("Use customized style:"));
+    m_useCustomStyle->setChecked(m_settings->useCustomStyle());
+
+    m_configurations = new ConfigurationPanel;
+    m_configurations->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_configurations->setSettings(m_settings);
+    m_configurations->setCurrentConfiguration(m_settings->customStyle());
+
+    m_formatEntireFileFallback = new QCheckBox(Tr::tr("Format entire file if no text was selected"));
+    m_formatEntireFileFallback->setToolTip(Tr::tr("For action Format Selected Text"));
+    m_formatEntireFileFallback->setChecked(m_settings->formatEntireFileFallback());
+
+    m_command->setExpectedKind(Utils::PathChooser::ExistingCommand);
+    m_command->setCommandVersionArguments({"--version"});
+    m_command->setPromptDialogTitle(BeautifierPlugin::msgCommandPromptDialogTitle(
+                                          Tr::tr(Constants::UNCRUSTIFY_DISPLAY_NAME)));
+    m_command->setFilePath(m_settings->command());
+
+    auto options = new QGroupBox(Tr::tr("Options"));
+
+    using namespace Utils::Layouting;
+
+    Column {
+        m_useOtherFiles,
+        Row { m_useSpecificFile, m_uncrusifyFilePath },
+        m_useHomeFile,
+        Row { m_useCustomStyle, m_configurations },
+        m_formatEntireFileFallback
+    }.attachTo(options);
+
+    Column {
+        Group {
+            title(Tr::tr("Configuration")),
+            Form {
+                Tr::tr("Uncrustify command:"), m_command, br,
+                Tr::tr("Restrict to MIME types:"), m_mime
+            }
+        },
+        options,
+        st
+    }.attachTo(this);
+
+    connect(m_command, &Utils::PathChooser::validChanged, options, &QWidget::setEnabled);
 }
 
 void UncrustifyOptionsPageWidget::apply()
 {
-    m_settings->setCommand(ui.command->filePath().toString());
-    m_settings->setSupportedMimeTypes(ui.mime->text());
-    m_settings->setUseOtherFiles(ui.useOtherFiles->isChecked());
-    m_settings->setUseHomeFile(ui.useHomeFile->isChecked());
-    m_settings->setUseSpecificConfigFile(ui.useSpecificFile->isChecked());
-    m_settings->setSpecificConfigFile(ui.uncrusifyFilePath->filePath());
-    m_settings->setUseCustomStyle(ui.useCustomStyle->isChecked());
-    m_settings->setCustomStyle(ui.configurations->currentConfiguration());
-    m_settings->setFormatEntireFileFallback(ui.formatEntireFileFallback->isChecked());
+    m_settings->setCommand(m_command->filePath());
+    m_settings->setSupportedMimeTypes(m_mime->text());
+    m_settings->setUseOtherFiles(m_useOtherFiles->isChecked());
+    m_settings->setUseHomeFile(m_useHomeFile->isChecked());
+    m_settings->setUseSpecificConfigFile(m_useSpecificFile->isChecked());
+    m_settings->setSpecificConfigFile(m_uncrusifyFilePath->filePath());
+    m_settings->setUseCustomStyle(m_useCustomStyle->isChecked());
+    m_settings->setCustomStyle(m_configurations->currentConfiguration());
+    m_settings->setFormatEntireFileFallback(m_formatEntireFileFallback->isChecked());
     m_settings->save();
 
     // update since not all MIME types are accepted (invalids or duplicates)
-    ui.mime->setText(m_settings->supportedMimeTypesAsString());
+    m_mime->setText(m_settings->supportedMimeTypesAsString());
 }
 
 UncrustifyOptionsPage::UncrustifyOptionsPage(UncrustifySettings *settings)
 {
     setId("Uncrustify");
-    setDisplayName(UncrustifyOptionsPageWidget::tr("Uncrustify"));
+    setDisplayName(Tr::tr("Uncrustify"));
     setCategory(Constants::OPTION_CATEGORY);
     setWidgetCreator([settings] { return new UncrustifyOptionsPageWidget(settings); });
 }
 
-} // namespace Internal
-} // namespace Beautifier
+} // Beautifier::Internal

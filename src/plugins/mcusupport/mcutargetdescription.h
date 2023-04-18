@@ -1,67 +1,73 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
+
+#include <utils/filepath.h>
+#include <utils/pathchooser.h>
 
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <QVersionNumber>
 
-namespace McuSupport::Internal::Sdk {
+namespace McuSupport::Internal {
+
+struct VersionDetection
+{
+    QString regex;
+    QString filePattern;
+    QString executableArgs;
+    QString xmlElement;
+    QString xmlAttribute;
+}; // struct VersionDetection
+
+struct PackageDescription
+{
+    QString label;
+    QString envVar;
+    QString cmakeVar;
+    QString description;
+    QString setting;
+    Utils::FilePath defaultPath;
+    Utils::FilePath detectionPath;
+    QStringList versions;
+    VersionDetection versionDetection;
+    bool shouldAddToSystemPath;
+    Utils::PathChooser::Kind type;
+}; //struct PackageDescription
 
 struct McuTargetDescription
 {
     enum class TargetType { MCU, Desktop };
 
+    Utils::FilePath sourceFile;
     QString qulVersion;
     QString compatVersion;
-    struct
+    struct Platform
     {
         QString id;
         QString name;
         QString vendor;
         QVector<int> colorDepths;
         TargetType type;
+        QList<PackageDescription> entries;
     } platform;
-    struct
+    struct Toolchain
     {
         QString id;
         QStringList versions;
+        PackageDescription compiler;
+        PackageDescription file;
     } toolchain;
-    struct
-    {
-        QString name;
-        QString defaultPath;
-        QString envVar;
-        QStringList versions;
-    } boardSdk;
-    struct
+    PackageDescription boardSdk;
+    struct FreeRTOS
     {
         QString envVar;
-        QString boardSdkSubDir;
+        PackageDescription package;
     } freeRTOS;
 };
 
-} // namespace McuSupport::Internal::Sdk
+} // namespace McuSupport::Internal
+
+Q_DECLARE_METATYPE(McuSupport::Internal::McuTargetDescription)

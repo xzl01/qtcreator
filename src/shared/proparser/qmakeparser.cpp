@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmakeparser.h"
 
@@ -55,12 +33,12 @@ ProFileCache::~ProFileCache()
     QMakeVfs::deref();
 }
 
-void ProFileCache::discardFile(const QString &fileName, QMakeVfs *vfs)
+void ProFileCache::discardFile(const QString &device, const QString &fileName, QMakeVfs *vfs)
 {
-    int eid = vfs->idForFileName(fileName, QMakeVfs::VfsExact | QMakeVfs::VfsAccessedOnly);
+    int eid = vfs->idForFileName(device + fileName, QMakeVfs::VfsExact | QMakeVfs::VfsAccessedOnly);
     if (eid)
         discardFile(eid);
-    int cid = vfs->idForFileName(fileName, QMakeVfs::VfsCumulative | QMakeVfs::VfsAccessedOnly);
+    int cid = vfs->idForFileName(device + fileName, QMakeVfs::VfsCumulative | QMakeVfs::VfsAccessedOnly);
     if (cid && cid != eid)
         discardFile(cid);
 }
@@ -107,17 +85,18 @@ void ProFileCache::discardFile(int id)
     }
 }
 
-void ProFileCache::discardFiles(const QString &prefix, QMakeVfs *vfs)
+void ProFileCache::discardFiles(const QString &device, const QString &prefix, QMakeVfs *vfs)
 {
 #ifdef PROPARSER_THREAD_SAFE
     QMutexLocker lck(&mutex);
 #endif
     auto it = parsed_files.begin();
+    const QString fullPrefix = device + prefix;
     while (it != parsed_files.end()) {
         const int id = it->first;
         // Note: this is empty for virtual files from other VFSes.
         const QString fn = vfs->fileNameForId(id);
-        if (fn.startsWith(prefix)) {
+        if (fn.startsWith(prefix) || fn.startsWith(fullPrefix)) {
             bool continueFromScratch = false;
             Entry &entry = it->second;
 #ifdef PROPARSER_THREAD_SAFE
@@ -222,12 +201,12 @@ QMakeParser::QMakeParser(ProFileCache *cache, QMakeVfs *vfs, QMakeParserHandler 
     initialize();
 }
 
-ProFile *QMakeParser::parsedProFile(const QString &fileName, ParseFlags flags)
+ProFile *QMakeParser::parsedProFile(const QString &device, const QString &fileName, ParseFlags flags)
 {
     ProFile *pro;
     QMakeVfs::VfsFlags vfsFlags = ((flags & ParseCumulative) ? QMakeVfs::VfsCumulative
                                                              : QMakeVfs::VfsExact);
-    int id = m_vfs->idForFileName(fileName, vfsFlags);
+    int id = m_vfs->idForFileName(device + fileName, vfsFlags);
     if ((flags & ParseUseCache) && m_cache) {
         ProFileCache::Entry *ent;
 #ifdef PROPARSER_THREAD_SAFE
@@ -282,7 +261,7 @@ ProFile *QMakeParser::parsedProFile(const QString &fileName, ParseFlags flags)
 #endif
             QString contents;
             if (readFile(id, flags, &contents)) {
-                pro = parsedProBlock(Utils::make_stringview(contents), id, fileName, 1, FullGrammar);
+                pro = parsedProBlock(device, QStringView(contents), id, fileName, 1, FullGrammar);
                 pro->itemsRef()->squeeze();
                 pro->ref();
             } else {
@@ -309,17 +288,17 @@ ProFile *QMakeParser::parsedProFile(const QString &fileName, ParseFlags flags)
     } else {
         QString contents;
         if (readFile(id, flags, &contents))
-            pro = parsedProBlock(Utils::make_stringview(contents), id, fileName, 1, FullGrammar);
+            pro = parsedProBlock(device, QStringView(contents), id, fileName, 1, FullGrammar);
         else
             pro = 0;
     }
     return pro;
 }
 
-ProFile *QMakeParser::parsedProBlock(
-    Utils::StringView contents, int id, const QString &name, int line, SubGrammar grammar)
+ProFile *QMakeParser::parsedProBlock(const QString &device,
+    QStringView contents, int id, const QString &name, int line, SubGrammar grammar)
 {
-    ProFile *pro = new ProFile(id, name);
+    ProFile *pro = new ProFile(device, id, name);
     read(pro, contents, line, grammar);
     return pro;
 }
@@ -381,7 +360,7 @@ void QMakeParser::finalizeHashStr(ushort *buf, uint len)
     buf[-2] = (ushort)(hash >> 16);
 }
 
-void QMakeParser::read(ProFile *pro, Utils::StringView in, int line, SubGrammar grammar)
+void QMakeParser::read(ProFile *pro, QStringView in, int line, SubGrammar grammar)
 {
     m_proFile = pro;
     m_lineNo = line;
@@ -1331,7 +1310,7 @@ void QMakeParser::finalizeCall(ushort *&tokPtr, ushort *uc, ushort *ptr, int arg
 bool QMakeParser::resolveVariable(ushort *xprPtr, int tlen, int needSep, ushort **ptr,
                                   ushort **buf, QString *xprBuff,
                                   ushort **tokPtr, QString *tokBuff,
-                                  const ushort *cur, Utils::StringView in)
+                                  const ushort *cur, QStringView in)
 {
     QString out;
     m_tmp.setRawData((const QChar *)xprPtr, tlen);

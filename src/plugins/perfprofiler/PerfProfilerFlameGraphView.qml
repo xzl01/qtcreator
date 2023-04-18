@@ -1,30 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtCreator.PerfProfiler 1.0
-import "../Tracing" // TODO: Turn into module import when possible
+import QtCreator.PerfProfiler
+import QtCreator.Tracing
 
 FlameGraphView {
     id: root
@@ -46,24 +24,24 @@ FlameGraphView {
     ]
 
     trRoleNames: [
-        PerfProfilerFlameGraphModel.SamplesRole,                      qsTr("Samples"),
-        PerfProfilerFlameGraphModel.FunctionRole,                     qsTr("Function"),
-        PerfProfilerFlameGraphModel.SourceFileRole,                   qsTr("Source"),
-        PerfProfilerFlameGraphModel.ElfFileRole,                      qsTr("Binary"),
-        PerfProfilerFlameGraphModel.ResourceAllocationsRole,          qsTr("Allocations"),
-        PerfProfilerFlameGraphModel.ObservedResourceAllocationsRole,  qsTr(" observed"),
-        PerfProfilerFlameGraphModel.LostResourceRequestsRole,         qsTr(" guessed"),
-        PerfProfilerFlameGraphModel.ResourceReleasesRole,             qsTr("Releases"),
-        PerfProfilerFlameGraphModel.ObservedResourceReleasesRole,     qsTr(" observed"),
-        PerfProfilerFlameGraphModel.GuessedResourceReleasesRole,      qsTr(" guessed"),
-        PerfProfilerFlameGraphModel.ResourcePeakRole,                 qsTr("Peak Usage")
+        PerfProfilerFlameGraphModel.SamplesRole,                      qsTranslate("QtC::PerfProfiler", "Samples"),
+        PerfProfilerFlameGraphModel.FunctionRole,                     qsTranslate("QtC::PerfProfiler", "Function"),
+        PerfProfilerFlameGraphModel.SourceFileRole,                   qsTranslate("QtC::PerfProfiler", "Source"),
+        PerfProfilerFlameGraphModel.ElfFileRole,                      qsTranslate("QtC::PerfProfiler", "Binary"),
+        PerfProfilerFlameGraphModel.ResourceAllocationsRole,          qsTranslate("QtC::PerfProfiler", "Allocations"),
+        PerfProfilerFlameGraphModel.ObservedResourceAllocationsRole,  qsTranslate("QtC::PerfProfiler", " observed"),
+        PerfProfilerFlameGraphModel.LostResourceRequestsRole,         qsTranslate("QtC::PerfProfiler", " guessed"),
+        PerfProfilerFlameGraphModel.ResourceReleasesRole,             qsTranslate("QtC::PerfProfiler", "Releases"),
+        PerfProfilerFlameGraphModel.ObservedResourceReleasesRole,     qsTranslate("QtC::PerfProfiler", " observed"),
+        PerfProfilerFlameGraphModel.GuessedResourceReleasesRole,      qsTranslate("QtC::PerfProfiler", " guessed"),
+        PerfProfilerFlameGraphModel.ResourcePeakRole,                 qsTranslate("QtC::PerfProfiler", "Peak Usage")
     ].reduce(toMap, {})
 
     details: function(flameGraph) {
         var model = [];
         if (!flameGraph.dataValid) {
             model.push(trRoleNames[PerfProfilerFlameGraphModel.FunctionRole]);
-            model.push(qsTr("Various"));
+            model.push(qsTranslate("QtC::PerfProfiler", "Various"));
         } else {
             function addDetail(role, format) { root.addDetail(role, format, model, flameGraph); }
 

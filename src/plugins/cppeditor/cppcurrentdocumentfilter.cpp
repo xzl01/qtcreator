@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppcurrentdocumentfilter.h"
 
 #include "cppeditorconstants.h"
+#include "cppeditortr.h"
 #include "cppmodelmanager.h"
 
 #include <coreplugin/editormanager/editormanager.h>
@@ -42,7 +21,7 @@ CppCurrentDocumentFilter::CppCurrentDocumentFilter(CppModelManager *manager)
     : m_modelManager(manager)
 {
     setId(Constants::CURRENT_DOCUMENT_FILTER_ID);
-    setDisplayName(Constants::CURRENT_DOCUMENT_FILTER_DISPLAY_NAME);
+    setDisplayName(Tr::tr(Constants::CURRENT_DOCUMENT_FILTER_DISPLAY_NAME));
     setDefaultShortcutString(".");
     setPriority(High);
     setDefaultIncludedByDefault(false);
@@ -58,6 +37,15 @@ CppCurrentDocumentFilter::CppCurrentDocumentFilter(CppModelManager *manager)
             this, &CppCurrentDocumentFilter::onCurrentEditorChanged);
     connect(Core::EditorManager::instance(), &Core::EditorManager::editorAboutToClose,
             this, &CppCurrentDocumentFilter::onEditorAboutToClose);
+}
+
+void CppCurrentDocumentFilter::makeAuxiliary()
+{
+    setId({});
+    setDisplayName({});
+    setDefaultShortcutString({});
+    setEnabled(false);
+    setHidden(true);
 }
 
 QList<Core::LocatorFilterEntry> CppCurrentDocumentFilter::matchesFor(
@@ -125,14 +113,13 @@ void CppCurrentDocumentFilter::accept(const Core::LocatorFilterEntry &selection,
     Q_UNUSED(selectionStart)
     Q_UNUSED(selectionLength)
     IndexItem::Ptr info = qvariant_cast<IndexItem::Ptr>(selection.internalData);
-    Core::EditorManager::openEditorAt(
-        {Utils::FilePath::fromString(info->fileName()), info->line(), info->column()});
+    Core::EditorManager::openEditorAt({info->filePath(), info->line(), info->column()});
 }
 
 void CppCurrentDocumentFilter::onDocumentUpdated(Document::Ptr doc)
 {
     QMutexLocker locker(&m_mutex);
-    if (m_currentFileName == doc->fileName())
+    if (m_currentFileName == doc->filePath())
         m_itemsOfCurrentDoc.clear();
 }
 
@@ -140,7 +127,7 @@ void CppCurrentDocumentFilter::onCurrentEditorChanged(Core::IEditor *currentEdit
 {
     QMutexLocker locker(&m_mutex);
     if (currentEditor)
-        m_currentFileName = currentEditor->document()->filePath().toString();
+        m_currentFileName = currentEditor->document()->filePath();
     else
         m_currentFileName.clear();
     m_itemsOfCurrentDoc.clear();
@@ -152,7 +139,7 @@ void CppCurrentDocumentFilter::onEditorAboutToClose(Core::IEditor *editorAboutTo
         return;
 
     QMutexLocker locker(&m_mutex);
-    if (m_currentFileName == editorAboutToClose->document()->filePath().toString()) {
+    if (m_currentFileName == editorAboutToClose->document()->filePath()) {
         m_currentFileName.clear();
         m_itemsOfCurrentDoc.clear();
     }

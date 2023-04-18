@@ -82,7 +82,6 @@ private slots:
     void combinedSources();
     void commandFile();
     void compilerDefinesByLanguage();
-    void concurrentExecutor();
     void conditionalExport();
     void conditionalFileTagger();
     void configure();
@@ -95,9 +94,11 @@ private slots:
     void dependenciesProperty();
     void dependencyScanningLoop();
     void deprecatedProperty();
+    void deprecatedProperty_data();
     void disappearedProfile();
     void discardUnusedData();
     void discardUnusedData_data();
+    void dotDotPcFile();
     void driverLinkerFlags();
     void driverLinkerFlags_data();
     void dynamicLibraryInModule();
@@ -262,6 +263,7 @@ private slots:
     void qbsConfig();
     void qbsConfigAddProfile();
     void qbsConfigAddProfile_data();
+    void qbsModulePropertiesInProviders();
     void qbsModuleProviders();
     void qbsModuleProviders_data();
     void qbsModuleProvidersCliOverride();
@@ -282,7 +284,6 @@ private slots:
     void reproducibleBuild();
     void reproducibleBuild_data();
     void require();
-    void requireDeprecated();
     void rescueTransformerData();
     void responseFiles();
     void retaggedOutputArtifact();

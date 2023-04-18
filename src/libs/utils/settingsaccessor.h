@@ -1,41 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "utils_global.h"
 
-#include "fileutils.h"
-#include "optional.h"
-#include "persistentsettings.h"
+#include "filepath.h"
 
 #include <QHash>
 #include <QMessageBox>
 #include <QVariantMap>
 
 #include <memory>
+#include <optional>
 
 namespace Utils {
 
@@ -63,7 +40,8 @@ QTCREATOR_UTILS_EXPORT void setVersionInMap(QVariantMap &data, int version);
 QTCREATOR_UTILS_EXPORT void setOriginalVersionInMap(QVariantMap &data, int version);
 QTCREATOR_UTILS_EXPORT void setSettingsIdInMap(QVariantMap &data, const QByteArray &id);
 
-using SettingsMergeResult = optional<QPair<QString, QVariant>>;
+class PersistentSettingsWriter;
+using SettingsMergeResult = std::optional<QPair<QString, QVariant>>;
 
 // --------------------------------------------------------------------
 // SettingsAccessor:
@@ -75,7 +53,7 @@ class QTCREATOR_UTILS_EXPORT SettingsAccessor
 public:
     SettingsAccessor(const QString &docType, const QString &displayName,
                      const QString &applicationDisplayName);
-    virtual ~SettingsAccessor() = default;
+    virtual ~SettingsAccessor();
 
     enum ProceedInfo { Continue, DiscardAndContinue };
     using ButtonMap = QHash<QMessageBox::StandardButton, ProceedInfo>;
@@ -111,7 +89,7 @@ public:
 
         FilePath path;
         QVariantMap data;
-        optional<Issue> issue;
+        std::optional<Issue> issue;
     };
 
     QVariantMap restoreSettings(QWidget *parent) const;
@@ -126,7 +104,9 @@ public:
     FilePath baseFilePath() const { return m_baseFilePath; }
 
     virtual RestoreData readData(const FilePath &path, QWidget *parent) const;
-    virtual optional<Issue> writeData(const FilePath &path, const QVariantMap &data, QWidget *parent) const;
+    virtual std::optional<Issue> writeData(const FilePath &path,
+                                           const QVariantMap &data,
+                                           QWidget *parent) const;
 
 protected:
     // Report errors:
@@ -137,7 +117,7 @@ protected:
     virtual QVariantMap prepareToWriteSettings(const QVariantMap &data) const;
 
     virtual RestoreData readFile(const FilePath &path) const;
-    virtual optional<Issue> writeFile(const FilePath &path, const QVariantMap &data) const;
+    virtual std::optional<Issue> writeFile(const FilePath &path, const QVariantMap &data) const;
 
 private:
     FilePath m_baseFilePath;
@@ -160,8 +140,9 @@ public:
     virtual int compare(const SettingsAccessor::RestoreData &data1,
                         const SettingsAccessor::RestoreData &data2) const;
 
-    virtual optional<FilePath>
-    backupName(const QVariantMap &oldData, const FilePath &path, const QVariantMap &data) const;
+    virtual std::optional<FilePath> backupName(const QVariantMap &oldData,
+                                               const FilePath &path,
+                                               const QVariantMap &data) const;
 };
 
 class QTCREATOR_UTILS_EXPORT BackingUpSettingsAccessor : public SettingsAccessor
@@ -173,8 +154,9 @@ public:
                               const QString &displayName, const QString &applicationDisplayName);
 
     RestoreData readData(const FilePath &path, QWidget *parent) const override;
-    optional<Issue> writeData(const FilePath &path, const QVariantMap &data,
-                              QWidget *parent) const override;
+    std::optional<Issue> writeData(const FilePath &path,
+                                   const QVariantMap &data,
+                                   QWidget *parent) const override;
 
     BackUpStrategy *strategy() const { return m_strategy.get(); }
 
@@ -202,8 +184,9 @@ public:
     int compare(const SettingsAccessor::RestoreData &data1,
                 const SettingsAccessor::RestoreData &data2) const override;
 
-    optional<FilePath>
-    backupName(const QVariantMap &oldData, const FilePath &path, const QVariantMap &data) const override;
+    std::optional<FilePath> backupName(const QVariantMap &oldData,
+                                       const FilePath &path,
+                                       const QVariantMap &data) const override;
 
     const UpgradingSettingsAccessor *accessor() const { return m_accessor; }
 
@@ -224,7 +207,7 @@ public:
     virtual QVariantMap upgrade(const QVariantMap &data) = 0;
 
 protected:
-    using Change = QPair<QLatin1String,QLatin1String>;
+    using Change = QPair<QLatin1String, QLatin1String>;
     QVariantMap renameKeys(const QList<Change> &changes, QVariantMap map) const;
 
 private:

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "delegates.h"
 
@@ -178,7 +156,7 @@ QWidget *BindingDelegate::createEditor(QWidget *parent, const QStyleOptionViewIt
         default: qWarning() << "BindingDelegate::createEditor column" << index.column();
         }
 
-        connect(bindingComboBox, QOverload<int>::of(&QComboBox::activated), this, [=]() {
+        connect(bindingComboBox, &QComboBox::activated, this, [=] {
             auto delegate = const_cast<BindingDelegate*>(this);
             emit delegate->commitData(bindingComboBox);
         });
@@ -209,11 +187,11 @@ QWidget *DynamicPropertiesDelegate::createEditor(QWidget *parent, const QStyleOp
             return widget;
         }
 
-        if (!model->connectionView()) {
+        if (!model->view()) {
             qWarning() << "BindingDelegate::createEditor no connection view";
             return widget;
         }
-        model->connectionView()->allModelNodes();
+        model->view()->allModelNodes();
 
         switch (index.column()) {
         case DynamicPropertiesModel::TargetModelNodeRow: {
@@ -225,13 +203,13 @@ QWidget *DynamicPropertiesDelegate::createEditor(QWidget *parent, const QStyleOp
         case DynamicPropertiesModel::PropertyTypeRow: {
 
             auto dynamicPropertiesComboBox = new PropertiesComboBox(parent);
-            connect(dynamicPropertiesComboBox, QOverload<int>::of(&QComboBox::activated), this, [=]() {
+            connect(dynamicPropertiesComboBox, &QComboBox::activated, this, [=] {
                 auto delegate = const_cast<DynamicPropertiesDelegate*>(this);
                 emit delegate->commitData(dynamicPropertiesComboBox);
             });
 
             dynamicPropertiesComboBox->addItem(QLatin1String("alias"));
-            //dynamicPropertiesComboBox->addItem(QLatin1String("Item"));
+            dynamicPropertiesComboBox->addItem(QLatin1String("Item"));
             dynamicPropertiesComboBox->addItem(QLatin1String("real"));
             dynamicPropertiesComboBox->addItem(QLatin1String("int"));
             dynamicPropertiesComboBox->addItem(QLatin1String("string"));
@@ -239,6 +217,10 @@ QWidget *DynamicPropertiesDelegate::createEditor(QWidget *parent, const QStyleOp
             dynamicPropertiesComboBox->addItem(QLatin1String("url"));
             dynamicPropertiesComboBox->addItem(QLatin1String("color"));
             dynamicPropertiesComboBox->addItem(QLatin1String("variant"));
+            dynamicPropertiesComboBox->addItem(QLatin1String("TextureInput"));
+            dynamicPropertiesComboBox->addItem(QLatin1String("vector2d"));
+            dynamicPropertiesComboBox->addItem(QLatin1String("vector3d"));
+            dynamicPropertiesComboBox->addItem(QLatin1String("vector4d"));
             return dynamicPropertiesComboBox;
         };
         case DynamicPropertiesModel::PropertyValueRow: {
@@ -298,25 +280,13 @@ QWidget *ConnectionDelegate::createEditor(QWidget *parent, const QStyleOptionVie
 
         auto addMetaInfoProperties = [&](const NodeMetaInfo& itemMetaInfo, QString itemName){
             if (itemMetaInfo.isValid()) {
-                for (const PropertyName &propertyName : itemMetaInfo.propertyNames()) {
-                    TypeName propertyType = itemMetaInfo.propertyTypeName(propertyName);
-                    if (!propertyType.isEmpty()) {
-                        //first letter is a reliable item indicator
-                        QChar firstLetter = QString::fromUtf8(propertyType).at(0);
-                        if (firstLetter.isLetter() && firstLetter.isUpper()) {
-                            if (!itemMetaInfo.propertyIsEnumType(propertyName)
-                                    && !itemMetaInfo.propertyIsPrivate(propertyName)
-                                    && !itemMetaInfo.propertyIsListProperty(propertyName)
-                                    && !itemMetaInfo.propertyIsPointer(propertyName)) {
-                                NodeMetaInfo propertyMetaInfo =
-                                        connectionModel->connectionView()->model()->metaInfo(propertyType);
-                                if (propertyMetaInfo.isValid()) {
-                                    if (propertyMetaInfo.isQmlItem()) {
-                                        connectionComboBox->addItem(itemName
-                                                                    + "."
-                                                                    + propertyName);
-                                    }
-                                }
+                for (const auto &property : itemMetaInfo.properties()) {
+                    NodeMetaInfo propertyType = property.propertyType();
+                    if (propertyType.isValid() && propertyType.isFileComponent()) {
+                        if (!property.isEnumType() && !property.isPrivate()
+                            && !property.isListProperty() && !property.isPointer()) {
+                            if (propertyType.isQtObject()) {
+                                connectionComboBox->addItem(itemName + "." + property.name());
                             }
                         }
                     }
@@ -390,7 +360,7 @@ QWidget *ConnectionDelegate::createEditor(QWidget *parent, const QStyleOptionVie
     default: qWarning() << "ConnectionDelegate::createEditor column" << index.column();
     }
 
-    connect(connectionComboBox, QOverload<int>::of(&QComboBox::activated), this, [=]() {
+    connect(connectionComboBox, &QComboBox::activated, this, [=] {
         auto delegate = const_cast<ConnectionDelegate*>(this);
         emit delegate->commitData(connectionComboBox);
     });
@@ -417,7 +387,7 @@ QWidget *BackendDelegate::createEditor(QWidget *parent, const QStyleOptionViewIt
         case BackendModel::TypeNameColumn: {
             auto backendComboBox = new PropertiesComboBox(parent);
             backendComboBox->addItems(model->possibleCppTypes());
-            connect(backendComboBox, QOverload<int>::of(&QComboBox::activated), this, [=]() {
+            connect(backendComboBox, &QComboBox::activated, this, [=] {
                 auto delegate = const_cast<BackendDelegate*>(this);
                 emit delegate->commitData(backendComboBox);
             });

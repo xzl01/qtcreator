@@ -1,45 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "vcsoutputwindow.h"
 
-#include <coreplugin/editormanager/editormanager.h>
+#include "vcsbasetr.h"
+#include "vcsoutputformatter.h"
 
+#include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/outputwindow.h>
-#include <utils/fileutils.h>
-#include <utils/qtcprocess.h>
+
 #include <texteditor/behaviorsettings.h>
 #include <texteditor/fontsettings.h>
 #include <texteditor/texteditorsettings.h>
+
+#include <utils/filepath.h>
+#include <utils/qtcprocess.h>
 #include <utils/theme/theme.h>
-#include <vcsbase/vcsoutputformatter.h>
 
 #include <QAction>
 #include <QContextMenuEvent>
-#include <QDir>
-#include <QFileInfo>
 #include <QMenu>
 #include <QPlainTextEdit>
 #include <QPoint>
@@ -81,11 +60,11 @@ const char zoomSettingsKey[] = "Vcs/OutputPane/Zoom";
 class RepositoryUserData : public QTextBlockUserData
 {
 public:
-    explicit RepositoryUserData(const QString &repo) : m_repository(repo) {}
-    const QString &repository() const { return m_repository; }
+    explicit RepositoryUserData(const FilePath &repository) : m_repository(repository) {}
+    const FilePath &repository() const { return m_repository; }
 
 private:
-    const QString m_repository;
+    const FilePath m_repository;
 };
 
 // A plain text edit with a special context menu containing "Clear"
@@ -95,9 +74,9 @@ class OutputWindowPlainTextEdit : public Core::OutputWindow
 public:
     explicit OutputWindowPlainTextEdit(QWidget *parent = nullptr);
 
-    void appendLines(const QString &s, const QString &repository = QString());
+    void appendLines(const QString &s, const FilePath &repository = {});
     void appendLinesWithStyle(const QString &s, VcsOutputWindow::MessageStyle style,
-                              const QString &repository = QString());
+                              const FilePath &repository = {});
     VcsOutputLineParser *parser();
 
 protected:
@@ -106,9 +85,9 @@ protected:
 
 private:
     void setFormat(VcsOutputWindow::MessageStyle style);
-    QString identifierUnderCursor(const QPoint &pos, QString *repository = nullptr) const;
+    QString identifierUnderCursor(const QPoint &pos, FilePath *repository = nullptr) const;
 
-    Utils::OutputFormat m_format;
+    OutputFormat m_format;
     VcsOutputLineParser *m_parser = nullptr;
 };
 
@@ -133,7 +112,7 @@ static inline int firstWordCharacter(const QString &s, int startPos)
     return 0;
 }
 
-QString OutputWindowPlainTextEdit::identifierUnderCursor(const QPoint &widgetPos, QString *repository) const
+QString OutputWindowPlainTextEdit::identifierUnderCursor(const QPoint &widgetPos, FilePath *repository) const
 {
     if (repository)
         repository->clear();
@@ -145,7 +124,7 @@ QString OutputWindowPlainTextEdit::identifierUnderCursor(const QPoint &widgetPos
     cursor.select(QTextCursor::BlockUnderCursor);
     if (!cursor.hasSelection())
         return QString();
-    QString block = cursor.selectedText();
+    const QString block = cursor.selectedText();
     // Determine cursor position within line and find blank-delimited word
     const int cursorPos = cursorDocumentPos - cursor.block().position();
     const int blockSize = block.size();
@@ -167,32 +146,30 @@ void OutputWindowPlainTextEdit::contextMenuEvent(QContextMenuEvent *event)
     const QString href = anchorAt(event->pos());
     QMenu *menu = href.isEmpty() ? createStandardContextMenu(event->pos()) : new QMenu;
     // Add 'open file'
-    QString repository;
-    const QString token = identifierUnderCursor(event->pos(), &repository);
-    if (!repository.isEmpty()) {
+    FilePath repo;
+    const QString token = identifierUnderCursor(event->pos(), &repo);
+    if (!repo.isEmpty()) {
         if (VcsOutputLineParser * const p = parser()) {
             if (!href.isEmpty())
-                p->fillLinkContextMenu(menu, FilePath::fromString(repository), href);
+                p->fillLinkContextMenu(menu, repo, href);
         }
     }
     QAction *openAction = nullptr;
     if (!token.isEmpty()) {
         // Check for a file, expand via repository if relative
-        QFileInfo fi(token);
-        if (!repository.isEmpty() && !fi.isFile() && fi.isRelative())
-            fi = QFileInfo(repository + '/' + token);
-        if (fi.isFile())  {
+        if (!repo.isEmpty() && !repo.isFile() && repo.isRelativePath())
+            repo = repo.pathAppended(token);
+        if (repo.isFile())  {
             menu->addSeparator();
-            openAction = menu->addAction(VcsOutputWindow::tr("Open \"%1\"").
-                                         arg(QDir::toNativeSeparators(fi.fileName())));
-            openAction->setData(fi.absoluteFilePath());
+            openAction = menu->addAction(Tr::tr("Open \"%1\"").arg(repo.nativePath()));
+            openAction->setData(repo.absoluteFilePath().toVariant());
         }
     }
     QAction *clearAction = nullptr;
     if (href.isEmpty()) {
         // Add 'clear'
         menu->addSeparator();
-        clearAction = menu->addAction(VcsOutputWindow::tr("Clear"));
+        clearAction = menu->addAction(Tr::tr("Clear"));
     }
 
     // Run
@@ -203,7 +180,7 @@ void OutputWindowPlainTextEdit::contextMenuEvent(QContextMenuEvent *event)
             return;
         }
         if (action == openAction) {
-            const auto fileName = Utils::FilePath::fromVariant(action->data());
+            const auto fileName = FilePath::fromVariant(action->data());
             Core::EditorManager::openEditor(fileName);
         }
     }
@@ -215,7 +192,7 @@ void OutputWindowPlainTextEdit::handleLink(const QPoint &pos)
     const QString href = anchorAt(pos);
     if (href.isEmpty())
         return;
-    QString repository;
+    FilePath repository;
     identifierUnderCursor(pos, &repository);
     if (repository.isEmpty()) {
         OutputWindow::handleLink(pos);
@@ -224,10 +201,10 @@ void OutputWindowPlainTextEdit::handleLink(const QPoint &pos)
     if (outputFormatter()->handleFileLink(href))
         return;
     if (VcsOutputLineParser * const p = parser())
-        p->handleVcsLink(FilePath::fromString(repository), href);
+        p->handleVcsLink(repository, href);
 }
 
-void OutputWindowPlainTextEdit::appendLines(const QString &s, const QString &repository)
+void OutputWindowPlainTextEdit::appendLines(const QString &s, const FilePath &repository)
 {
     if (s.isEmpty())
         return;
@@ -249,7 +226,7 @@ void OutputWindowPlainTextEdit::appendLines(const QString &s, const QString &rep
 
 void OutputWindowPlainTextEdit::appendLinesWithStyle(const QString &s,
                                                      VcsOutputWindow::MessageStyle style,
-                                                     const QString &repository)
+                                                     const FilePath &repository)
 {
     setFormat(style);
 
@@ -297,7 +274,7 @@ class VcsOutputWindowPrivate
 {
 public:
     Internal::OutputWindowPlainTextEdit widget;
-    QString repository;
+    FilePath repository;
     const QRegularExpression passwordRegExp = QRegularExpression("://([^@:]+):([^@]+)@");
 };
 
@@ -315,7 +292,12 @@ VcsOutputWindow::VcsOutputWindow()
                     TextEditor::TextEditorSettings::behaviorSettings().m_scrollWheelZooming);
     };
 
+    auto updateFontSettings = [] {
+        d->widget.setBaseFont(TextEditor::TextEditorSettings::fontSettings().font());
+    };
+
     updateBehaviorSettings();
+    updateFontSettings();
     setupContext(Internal::C_VCS_OUTPUT_PANE, &d->widget);
 
     connect(this, &IOutputPane::zoomInRequested, &d->widget, &Core::OutputWindow::zoomIn);
@@ -323,6 +305,8 @@ VcsOutputWindow::VcsOutputWindow()
     connect(this, &IOutputPane::resetZoomRequested, &d->widget, &Core::OutputWindow::resetZoom);
     connect(TextEditor::TextEditorSettings::instance(), &TextEditor::TextEditorSettings::behaviorSettingsChanged,
             this, updateBehaviorSettings);
+    connect(TextEditor::TextEditorSettings::instance(),
+            &TextEditor::TextEditorSettings::fontSettingsChanged, this, updateFontSettings);
 }
 
 static QString filterPasswordFromUrls(QString input)
@@ -345,7 +329,7 @@ QWidget *VcsOutputWindow::outputWidget(QWidget *parent)
 
 QString VcsOutputWindow::displayName() const
 {
-    return tr("Version Control");
+    return Tr::tr("Version Control");
 }
 
 int VcsOutputWindow::priorityInStatusBar() const
@@ -421,19 +405,46 @@ void VcsOutputWindow::append(const QString &text, MessageStyle style, bool silen
 
 void VcsOutputWindow::appendError(const QString &text)
 {
-    append(text, Error, false);
+    append((text.endsWith('\n') || text.endsWith('\r')) ? text : text + '\n', Error, false);
 }
 
 void VcsOutputWindow::appendWarning(const QString &text)
 {
-    append(text, Warning, false);
+    append(text + '\n', Warning, false);
+}
+
+// Helper to format arguments for log windows hiding common password options.
+static inline QString formatArguments(const QStringList &args)
+{
+    const char passwordOptionC[] = "--password";
+    QString rc;
+    QTextStream str(&rc);
+    const int size = args.size();
+    // Skip authentication options
+    for (int i = 0; i < size; i++) {
+        const QString arg = filterPasswordFromUrls(args.at(i));
+        if (i)
+            str << ' ';
+        if (arg.startsWith(QString::fromLatin1(passwordOptionC) + '=')) {
+            str << ProcessArgs::quoteArg("--password=********");
+            continue;
+        }
+        str << ProcessArgs::quoteArg(arg);
+        if (arg == passwordOptionC) {
+            str << ' ' << ProcessArgs::quoteArg("********");
+            i++;
+        }
+    }
+    return rc;
 }
 
 QString VcsOutputWindow::msgExecutionLogEntry(const FilePath &workingDir, const CommandLine &command)
 {
+    const QString maskedCmdline = ProcessArgs::quoteArg(command.executable().toUserOutput())
+            + ' ' + formatArguments(command.splitArguments());
     if (workingDir.isEmpty())
-        return tr("Running: %1").arg(command.toUserOutput()) + '\n';
-    return tr("Running in %1: %2").arg(workingDir.toUserOutput(), command.toUserOutput()) + '\n';
+        return Tr::tr("Running: %1").arg(maskedCmdline) + '\n';
+    return Tr::tr("Running in %1: %2").arg(workingDir.toUserOutput(), maskedCmdline) + '\n';
 }
 
 void VcsOutputWindow::appendShellCommandLine(const QString &text)
@@ -448,7 +459,7 @@ void VcsOutputWindow::appendCommand(const FilePath &workingDirectory, const Comm
 
 void VcsOutputWindow::appendMessage(const QString &text)
 {
-    append(text, Message, true);
+    append(text + '\n', Message, true);
 }
 
 void VcsOutputWindow::destroy()
@@ -464,14 +475,9 @@ VcsOutputWindow *VcsOutputWindow::instance()
     return m_instance;
 }
 
-QString VcsOutputWindow::repository() const
+void VcsOutputWindow::setRepository(const FilePath &repository)
 {
-    return d->repository;
-}
-
-void VcsOutputWindow::setRepository(const QString &r)
-{
-    d->repository = r;
+    d->repository = repository;
 }
 
 void VcsOutputWindow::clearRepository()

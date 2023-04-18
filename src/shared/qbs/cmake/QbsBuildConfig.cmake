@@ -2,7 +2,9 @@ option(WITH_TESTS "Build Tests" ON)
 option(WITH_UNIT_TESTS "Build Unit Tests" OFF)
 option(INSTALL_PUBLIC_HEADERS "Whether to install public headers" ON)
 option(QBS_ENABLE_RPATH "Whether to enable RPATH" ON)
-option(QBS_USE_BUNDLED_QT_SCRIPT "Whether to use bundled QtScript module" OFF)
+
+include(CMakeDependentOption)
+cmake_dependent_option(QBS_QUICKJS_LEAK_CHECK "Whether to check for quickjs leaks at the end" ON "CMAKE_BUILD_TYPE STREQUAL Debug" OFF)
 
 set(QBS_APP_INSTALL_DIR "bin" CACHE STRING "Relative install location for Qbs binaries.")
 # default paths
@@ -24,6 +26,7 @@ set(QBS_PLUGINS_INSTALL_BASE "${QBS_LIBDIR_NAME}" CACHE STRING "Relative install
 set(QBS_RESOURCES_INSTALL_BASE "." CACHE STRING "Relative install location for Qbs resources.")
 set(QBS_HEADERS_INSTALL_DIR "include/qbs" CACHE STRING "Relative install location for Qbs headers.")
 set(QBS_DOC_INSTALL_DIR "${QBS_RESOURCES_INSTALL_BASE}/share/doc/qbs" CACHE STRING "Relative install location for Qbs documentation.")
+set(QBS_DOC_HTML_DIR_NAME "html" CACHE STRING "The name of the dir with HTML files, appended to QBS_DOC_INSTALL_DIR.")
 
 set(QBS_PLUGINS_INSTALL_DIR "${QBS_PLUGINS_INSTALL_BASE}/qbs/plugins")
 set(QBS_RESOURCES_INSTALL_DIR "${QBS_RESOURCES_INSTALL_BASE}/share")
@@ -142,7 +145,7 @@ function(add_qbs_library target_name)
         set(library_type STATIC)
     endif()
 
-    string(REGEX REPLACE "\\.[0..9]+$" "" _SOVERSION ${QBS_VERSION})
+    string(REGEX REPLACE "\\.[0-9]+$" "" _SOVERSION ${QBS_VERSION})
 
     add_library(${target_name} ${library_type} ${_arg_SOURCES})
     target_compile_definitions(
@@ -171,6 +174,9 @@ function(add_qbs_library target_name)
             LIBRARY DESTINATION ${QBS_LIB_INSTALL_DIR}
             RUNTIME DESTINATION ${QBS_DLL_INSTALL_DIR}
         )
+    endif()
+    if(MSVC)
+      target_compile_options(${target_name} PUBLIC /EHsc)
     endif()
 endfunction()
 

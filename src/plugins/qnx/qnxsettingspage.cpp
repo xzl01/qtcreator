@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: BlackBerry (qt@blackberry.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qnxsettingspage.h"
 
-#include "ui_qnxsettingswidget.h"
 #include "qnxconfiguration.h"
 #include "qnxconfigurationmanager.h"
+#include "qnxtr.h"
 
 #include <coreplugin/icore.h>
 
@@ -35,17 +13,21 @@
 
 #include <qtsupport/qtversionmanager.h>
 
+#include <utils/layoutbuilder.h>
+
+#include <QCheckBox>
+#include <QComboBox>
+#include <QGroupBox>
+#include <QLabel>
 #include <QMessageBox>
+#include <QPushButton>
 
 using namespace Utils;
 
-namespace Qnx {
-namespace Internal {
+namespace Qnx::Internal {
 
 class QnxSettingsWidget final : public Core::IOptionsPageWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Qnx::Internal::QnxSettingsWidget)
-
 public:
     QnxSettingsWidget();
 
@@ -78,24 +60,54 @@ public:
     void setConfigState(QnxConfiguration *config, State state);
 
 private:
-    Ui_QnxSettingsWidget m_ui;
-    QnxConfigurationManager *m_qnxConfigManager;
+    QComboBox *m_configsCombo = new QComboBox;
+    QCheckBox *m_generateKitsCheckBox = new QCheckBox(Tr::tr("Generate kits"));
+    QLabel *m_configName = new QLabel;
+    QLabel *m_configVersion = new QLabel;
+    QLabel *m_configHost = new QLabel;
+    QLabel *m_configTarget = new QLabel;
+
+    QnxConfigurationManager *m_qnxConfigManager = QnxConfigurationManager::instance();
     QList<ConfigState> m_changedConfigs;
 };
 
-QnxSettingsWidget::QnxSettingsWidget() :
-    m_qnxConfigManager(QnxConfigurationManager::instance())
+QnxSettingsWidget::QnxSettingsWidget()
 {
-    m_ui.setupUi(this);
+    auto addButton = new QPushButton(Tr::tr("Add..."));
+    auto removeButton = new QPushButton(Tr::tr("Remove"));
+
+    using namespace Layouting;
+
+    Row {
+        Column {
+            m_configsCombo,
+            Row { m_generateKitsCheckBox, st },
+            Group {
+                title(Tr::tr("Configuration Information:")),
+                Form {
+                    Tr::tr("Name:"), m_configName, br,
+                    Tr::tr("Version:"), m_configVersion, br,
+                    Tr::tr("Host:"), m_configHost, br,
+                    Tr::tr("Target:"), m_configTarget
+                }
+            },
+            st
+        },
+        Column {
+            addButton,
+            removeButton,
+            st
+        }
+    }.attachTo(this);
 
     populateConfigsCombo();
-    connect(m_ui.addButton, &QAbstractButton::clicked,
+    connect(addButton, &QAbstractButton::clicked,
             this, &QnxSettingsWidget::addConfiguration);
-    connect(m_ui.removeButton, &QAbstractButton::clicked,
+    connect(removeButton, &QAbstractButton::clicked,
             this, &QnxSettingsWidget::removeConfiguration);
-    connect(m_ui.configsCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_configsCombo, &QComboBox::currentIndexChanged,
             this, &QnxSettingsWidget::updateInformation);
-    connect(m_ui.generateKitsCheckBox, &QAbstractButton::toggled,
+    connect(m_generateKitsCheckBox, &QAbstractButton::toggled,
             this, &QnxSettingsWidget::generateKits);
     connect(m_qnxConfigManager, &QnxConfigurationManager::configurationsListUpdated,
             this, &QnxSettingsWidget::populateConfigsCombo);
@@ -112,52 +124,51 @@ void QnxSettingsWidget::addConfiguration()
     else
         filter = "*.sh file";
 
-    const FilePath envFile = FileUtils::getOpenFilePath(this, tr("Select QNX Environment File"),
+    const FilePath envFile = FileUtils::getOpenFilePath(this, Tr::tr("Select QNX Environment File"),
                                                         {}, filter);
     if (envFile.isEmpty())
         return;
 
     QnxConfiguration *config = new QnxConfiguration(envFile);
-    if (m_qnxConfigManager->configurations().contains(config)
-            || !config->isValid()) {
+    if (m_qnxConfigManager->configurations().contains(config) || !config->isValid()) {
         QMessageBox::warning(Core::ICore::dialogParent(),
-                             tr("Warning"),
-                             tr("Configuration already exists or is invalid."));
+                             Tr::tr("Warning"),
+                             Tr::tr("Configuration already exists or is invalid."));
         delete config;
         return;
     }
 
     setConfigState(config, Added);
-    m_ui.configsCombo->addItem(config->displayName(),
-                                   QVariant::fromValue(static_cast<void*>(config)));
+    m_configsCombo->addItem(config->displayName(),
+                            QVariant::fromValue(static_cast<void*>(config)));
 }
 
 void QnxSettingsWidget::removeConfiguration()
 {
-    const int currentIndex = m_ui.configsCombo->currentIndex();
+    const int currentIndex = m_configsCombo->currentIndex();
     auto config = static_cast<QnxConfiguration*>(
-            m_ui.configsCombo->itemData(currentIndex).value<void*>());
+            m_configsCombo->itemData(currentIndex).value<void*>());
 
     if (!config)
         return;
 
     QMessageBox::StandardButton button =
             QMessageBox::question(Core::ICore::dialogParent(),
-                                  tr("Remove QNX Configuration"),
-                                  tr("Are you sure you want to remove:\n %1?").arg(config->displayName()),
+                                  Tr::tr("Remove QNX Configuration"),
+                                  Tr::tr("Are you sure you want to remove:\n %1?").arg(config->displayName()),
                                   QMessageBox::Yes | QMessageBox::No);
 
     if (button == QMessageBox::Yes) {
         setConfigState(config, Removed);
-        m_ui.configsCombo->removeItem(currentIndex);
+        m_configsCombo->removeItem(currentIndex);
     }
 }
 
 void QnxSettingsWidget::generateKits(bool checked)
 {
-    const int currentIndex = m_ui.configsCombo->currentIndex();
+    const int currentIndex = m_configsCombo->currentIndex();
     auto config = static_cast<QnxConfiguration*>(
-                m_ui.configsCombo->itemData(currentIndex).value<void*>());
+                m_configsCombo->itemData(currentIndex).value<void*>());
     if (!config)
         return;
 
@@ -166,30 +177,30 @@ void QnxSettingsWidget::generateKits(bool checked)
 
 void QnxSettingsWidget::updateInformation()
 {
-    const int currentIndex = m_ui.configsCombo->currentIndex();
+    const int currentIndex = m_configsCombo->currentIndex();
 
     auto config = static_cast<QnxConfiguration*>(
-            m_ui.configsCombo->itemData(currentIndex).value<void*>());
+            m_configsCombo->itemData(currentIndex).value<void*>());
 
     // update the checkbox
-    m_ui.generateKitsCheckBox->setEnabled(config ? config->canCreateKits() : false);
-    m_ui.generateKitsCheckBox->setChecked(config ? config->isActive() : false);
+    m_generateKitsCheckBox->setEnabled(config ? config->isValid() : false);
+    m_generateKitsCheckBox->setChecked(config ? config->isActive() : false);
 
     // update information
-    m_ui.configName->setText(config ? config->displayName() : QString());
-    m_ui.configVersion->setText(config ? config->version().toString() : QString());
-    m_ui.configHost->setText(config ? config->qnxHost().toString() : QString());
-    m_ui.configTarget->setText(config ? config->qnxTarget().toString() : QString());
+    m_configName->setText(config ? config->displayName() : QString());
+    m_configVersion->setText(config ? config->version().toString() : QString());
+    m_configHost->setText(config ? config->qnxHost().toString() : QString());
+    m_configTarget->setText(config ? config->qnxTarget().toString() : QString());
 }
 
 void QnxSettingsWidget::populateConfigsCombo()
 {
-    m_ui.configsCombo->clear();
-    foreach (QnxConfiguration *config, m_qnxConfigManager->configurations()) {
-        m_ui.configsCombo->addItem(config->displayName(),
-                                       QVariant::fromValue(static_cast<void*>(config)));
+    m_configsCombo->clear();
+    const QList<QnxConfiguration *> configList = m_qnxConfigManager->configurations();
+    for (QnxConfiguration *config : configList) {
+        m_configsCombo->addItem(config->displayName(),
+                                QVariant::fromValue(static_cast<void*>(config)));
     }
-
     updateInformation();
 }
 
@@ -211,7 +222,7 @@ void QnxSettingsWidget::setConfigState(QnxConfiguration *config, State state)
         break;
     }
 
-    for (const ConfigState &configState : qAsConst(m_changedConfigs)) {
+    for (const ConfigState &configState : std::as_const(m_changedConfigs)) {
         if (configState.config == config && configState.state == stateToRemove)
             m_changedConfigs.removeAll(configState);
     }
@@ -221,7 +232,7 @@ void QnxSettingsWidget::setConfigState(QnxConfiguration *config, State state)
 
 void QnxSettingsWidget::apply()
 {
-    for (const ConfigState &configState : qAsConst(m_changedConfigs)) {
+    for (const ConfigState &configState : std::as_const(m_changedConfigs)) {
         switch (configState.state) {
         case Activated :
             configState.config->activate();
@@ -248,10 +259,9 @@ void QnxSettingsWidget::apply()
 QnxSettingsPage::QnxSettingsPage()
 {
     setId("DD.Qnx Configuration");
-    setDisplayName(QnxSettingsWidget::tr("QNX"));
+    setDisplayName(Tr::tr("QNX"));
     setCategory(ProjectExplorer::Constants::DEVICE_SETTINGS_CATEGORY);
     setWidgetCreator([] { return new QnxSettingsWidget; });
 }
 
-} // namespace Internal
-} // namespace Qnx
+} // Qnx::Internal

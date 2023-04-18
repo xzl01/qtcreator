@@ -1,30 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "metainforeader.h"
 #include "metainfo.h"
+
+#include <invalidmetainfoexception.h>
 
 #include <utils/algorithm.h>
 
@@ -87,9 +67,9 @@ void MetaInfoReader::setQualifcation(const TypeName &qualification)
     m_qualication = qualification;
 }
 
-void MetaInfoReader::elementStart(const QString &name, const QmlJS::SourceLocation &nameLocation)
+void MetaInfoReader::elementStart(const QString &name,
+                                  [[maybe_unused]] const QmlJS::SourceLocation &nameLocation)
 {
-    Q_UNUSED(nameLocation)
     switch (parserState()) {
     case ParsingDocument: setParserState(readDocument(name)); break;
     case ParsingMetaInfo: setParserState(readMetaInfoRootElement(name)); break;
@@ -130,12 +110,10 @@ void MetaInfoReader::elementEnd()
 }
 
 void MetaInfoReader::propertyDefinition(const QString &name,
-                        const QmlJS::SourceLocation &nameLocation,
-                        const QVariant &value,
-                        const QmlJS::SourceLocation &valueLocation)
+                                        [[maybe_unused]] const QmlJS::SourceLocation &nameLocation,
+                                        const QVariant &value,
+                                        [[maybe_unused]] const QmlJS::SourceLocation &valueLocation)
 {
-    Q_UNUSED(nameLocation)
-    Q_UNUSED(valueLocation)
     switch (parserState()) {
     case ParsingType: readTypeProperty(name, value); break;
     case ParsingImports: readImportsProperty(name, value); break;
@@ -288,6 +266,8 @@ void MetaInfoReader::readItemLibraryEntryProperty(const QString &name, const QVa
         setVersion(value.toString());
     } else if (name == QStringLiteral("requiredImport")) {
         m_currentEntry.setRequiredImport(value.toString());
+    } else if (name == QStringLiteral("toolTip")) {
+        m_currentEntry.setToolTip(value.toString());
     } else {
         addError(::QmlDesigner::Internal::MetaInfoReader::tr(
                      "Unknown property for ItemLibraryEntry %1")

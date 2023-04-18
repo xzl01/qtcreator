@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import platform;
 import re;
@@ -40,12 +18,6 @@ except ImportError:
     import builtins as __builtin__      # Python 3
 
 
-# ensure global variables are defined before including shared scripts
-qt4Path = os.path.expanduser("~/Qt4.8.7")
-if platform.system() in ('Windows', 'Microsoft'):
-    qt4Path = "C:\\Qt\\Qt4.8.7"
-
-qt4Available = os.path.exists(qt4Path)
 srcPath = ''
 SettingsPath = []
 tmpSettingsDir = ''
@@ -64,17 +36,20 @@ source("../../shared/clang.py")
 source("../../shared/welcome.py")
 source("../../shared/workarounds.py") # include this at last
 
+settingsPathsWithExplicitlyEnabledClangd = set()
 
 def __closeInfoBarEntry__(leftButtonText):
     toolButton = ("text='%s' type='QToolButton' unnamed='1' visible='1' "
                   "window=':Qt Creator_Core::Internal::MainWindow'")
     doNotShowAgain = toolButton % "Do Not Show Again"
     leftWidget = "leftWidget={%s}" % (toolButton % leftButtonText)
+    test.log("closing %s" % leftButtonText)
     clickButton(waitForObject("{%s %s}" % (doNotShowAgain, leftWidget)))
 
 # additionalParameters must be a list or tuple of strings or None
 def startQC(additionalParameters=None, withPreparedSettingsPath=True, closeLinkToQt=True, cancelTour=True):
     global SettingsPath
+    global settingsPathsWithExplicitlyEnabledClangd
     appWithOptions = ['"Qt Creator"' if platform.system() == 'Darwin' else "qtcreator"]
     if withPreparedSettingsPath:
         appWithOptions.extend(SettingsPath)
@@ -84,8 +59,22 @@ def startQC(additionalParameters=None, withPreparedSettingsPath=True, closeLinkT
         appWithOptions.extend(('-platform', 'windows:dialogs=none'))
     test.log("Starting now: %s" % ' '.join(appWithOptions))
     appContext = startApplication(' '.join(appWithOptions))
-    if closeLinkToQt or cancelTour:
+    if (closeLinkToQt or cancelTour or
+        str(SettingsPath) not in settingsPathsWithExplicitlyEnabledClangd):
         progressBarWait(3000)  # wait for the "Updating documentation" progress bar
+    if str(SettingsPath) not in settingsPathsWithExplicitlyEnabledClangd:
+        # This block will incorrectly be skipped when a test calls startQC multiple times in a row
+        # passing different settings paths in "additionalParameters". Currently we don't have such
+        # a test. Even if we did, it would only make a difference if the test relied on clangd
+        # being active and ran on a machine with insufficient memory.
+        try:
+            mouseClick(waitForObject("{text='Enable Anyway' type='QToolButton' "
+                                     "unnamed='1' visible='1' "
+                                     "window=':Qt Creator_Core::Internal::MainWindow'}", 500))
+            settingsPathsWithExplicitlyEnabledClangd.add(str(SettingsPath))
+        except:
+            pass
+    if closeLinkToQt or cancelTour:
         if closeLinkToQt:
             __closeInfoBarEntry__("Link with Qt")
         if cancelTour:
@@ -196,6 +185,16 @@ def substituteTildeWithinQtVersion(settingsDir):
     test.log("Substituted all tildes with '%s' inside qtversion.xml..." % home)
 
 
+def substituteOnlineInstallerPath(settingsDir):
+    qtversions = os.path.join(settingsDir, "QtProject", 'qtcreator', 'qtversion.xml')
+    dflt = "C:/Qt" if platform.system() in ('Microsoft', 'Windows') else os.path.expanduser("~/Qt")
+    replacement = str(os.getenv("SYSTEST_QTOI_BASEPATH", dflt)).replace('\\', '/')
+    while replacement.endswith('/'):
+        replacement = replacement[:-1]
+    __substitute__(qtversions, "SQUISH_QTOI_BASEPATH", replacement)
+    test.log("Substituted online installer base path (%s) inside qtversions.xml." % replacement)
+
+
 def substituteDefaultCompiler(settingsDir):
     compiler = None
     if platform.system() == 'Darwin':
@@ -236,6 +235,48 @@ def substituteCdb(settingsDir):
     __substitute__(debuggers, "SQUISH_DEBUGGER_ARCHITECTURE", architecture)
     __substitute__(debuggers, "SQUISH_DEBUGGER_BITNESS", bitness)
     test.log("Injected architecture '%s' and bitness '%s' in cdb path..." % (architecture, bitness))
+
+
+def substituteMsvcPaths(settingsDir, version, targetBitness=64):
+    if not version in ['2017', '2019']:
+        test.fatal('Unexpected MSVC version - "%s" not implemented yet.' % version)
+        return
+
+    hostArch = "Hostx64" if targetBitness == 64 else "Hostx86"
+    targetArch = "x64" if targetBitness == 64 else "x86"
+    for msvcFlavor in ["Community", "BuildTools"]:
+        try:
+            msvcPath = os.path.join("C:\\Program Files (x86)", "Microsoft Visual Studio",
+                                    version, msvcFlavor, "VC", "Tools", "MSVC")
+            msvcPath = os.path.join(msvcPath, os.listdir(msvcPath)[0], "bin", hostArch, targetArch)
+            __substitute__(os.path.join(settingsDir, "QtProject", 'qtcreator', 'toolchains.xml'),
+                           "SQUISH_MSVC%s_%d_PATH" % (version, targetBitness), msvcPath)
+            return
+        except:
+            continue
+    test.warning("PATH variable for MSVC%s could not be set, some tests will fail." % version,
+                 "Please make sure that MSVC%s is installed correctly." % version)
+
+
+def prependWindowsKit(settingsDir, targetBitness=64):
+    targetArch = "x64" if targetBitness == 64 else "x86"
+    profilesPath = os.path.join(settingsDir, 'QtProject', 'qtcreator', 'profiles.xml')
+    winkits = os.path.join("C:\\Program Files (x86)", "Windows Kits", "10")
+    if not os.path.exists(winkits):
+        __substitute__(profilesPath, "SQUISH_ENV_MODIFICATION", "")
+        return
+    possibleVersions = os.listdir(os.path.join(winkits, 'bin'))
+    possibleVersions.reverse() # prefer higher versions
+    for version in possibleVersions:
+        if not version.startswith("10"):
+            continue
+        toolsPath = os.path.join(winkits, 'bin', version, targetArch)
+        if os.path.exists(os.path.join(toolsPath, 'rc.exe')):
+            __substitute__(profilesPath, "SQUISH_ENV_MODIFICATION", "PATH=+%s" % toolsPath)
+            return
+    test.warning("Windows Kit path could not be added, some tests mail fail.")
+    __substitute__(profilesPath, "SQUISH_ENV_MODIFICATION", "")
+
 
 def __guessABI__(supportedABIs, use64Bit):
     if platform.system() == 'Linux':
@@ -331,6 +372,11 @@ def copySettingsToTmpDir(destination=None, omitFiles=[]):
         substituteDefaultCompiler(tmpSettingsDir)
     elif platform.system() in ('Windows', 'Microsoft'):
         substituteCdb(tmpSettingsDir)
+        substituteMsvcPaths(tmpSettingsDir, '2017', 64)
+        substituteMsvcPaths(tmpSettingsDir, '2017', 32)
+        substituteMsvcPaths(tmpSettingsDir, '2019', 64)
+        prependWindowsKit(tmpSettingsDir, 32)
+    substituteOnlineInstallerPath(tmpSettingsDir)
     substituteUnchosenTargetABIs(tmpSettingsDir)
     SettingsPath = ['-settingspath', '"%s"' % tmpSettingsDir]
 

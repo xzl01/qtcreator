@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "typehierarchybuilder.h"
 
 #include <cplusplus/FindUsages.h>
 
 using namespace CPlusPlus;
+using namespace Utils;
 
 namespace CppEditor::Internal {
 namespace {
@@ -159,7 +138,7 @@ LookupItem TypeHierarchyBuilder::followTypedef(const LookupContext &context, con
         Symbol *s = item.declaration();
         if (!s)
             continue;
-        if (!s->isClass() && !s->isTemplate() && !s->isTypedef())
+        if (!s->asClass() && !s->asTemplate() && !s->isTypedef())
             continue;
         if (!typedefs.insert(s).second)
             continue;
@@ -184,14 +163,13 @@ LookupItem TypeHierarchyBuilder::followTypedef(const LookupContext &context, con
     return matchingItem;
 }
 
-static Utils::FilePaths filesDependingOn(const Snapshot &snapshot,
-                                         Symbol *symbol)
+static FilePaths filesDependingOn(const Snapshot &snapshot, Symbol *symbol)
 {
     if (!symbol)
-        return Utils::FilePaths();
+        return {};
 
-    const Utils::FilePath file = Utils::FilePath::fromUtf8(symbol->fileName(), symbol->fileNameLength());
-    return Utils::FilePaths { file } + snapshot.filesDependingOn(file);
+    const FilePath file = symbol->filePath();
+    return FilePaths{file} + snapshot.filesDependingOn(file);
 }
 
 void TypeHierarchyBuilder::buildDerived(QFutureInterfaceBase &futureInterface,
@@ -209,12 +187,12 @@ void TypeHierarchyBuilder::buildDerived(QFutureInterfaceBase &futureInterface,
     const QString &symbolName = _overview.prettyName(LookupContext::fullyQualifiedName(symbol));
     DerivedHierarchyVisitor visitor(symbolName, cache);
 
-    const Utils::FilePaths &dependingFiles = filesDependingOn(snapshot, symbol);
+    const FilePaths dependingFiles = filesDependingOn(snapshot, symbol);
     if (depth == 0)
         futureInterface.setProgressRange(0, dependingFiles.size());
 
     int i = -1;
-    for (const Utils::FilePath &fileName : dependingFiles) {
+    for (const FilePath &fileName : dependingFiles) {
         if (futureInterface.isCanceled())
             return;
         if (depth == 0)

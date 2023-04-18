@@ -1,70 +1,40 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "remotelinuxsignaloperation.h"
 
-#include <ssh/sshremoteprocessrunner.h>
-#include <ssh/sshconnection.h>
-#include <utils/qtcassert.h>
-#include <utils/fileutils.h>
+#include "remotelinuxtr.h"
 
-using namespace RemoteLinux;
+#include <utils/commandline.h>
+#include <utils/fileutils.h>
+#include <utils/qtcassert.h>
+#include <utils/qtcprocess.h>
+
 using namespace ProjectExplorer;
+using namespace Utils;
+
+namespace RemoteLinux {
 
 RemoteLinuxSignalOperation::RemoteLinuxSignalOperation(
-        const QSsh::SshConnectionParameters &sshParameters)
-    : m_sshParameters(sshParameters)
+        const IDeviceConstPtr &device)
+    : m_device(device)
 {}
 
-RemoteLinuxSignalOperation::~RemoteLinuxSignalOperation()
-{
-    if (m_runner)
-        m_runner->deleteLater();
-}
+RemoteLinuxSignalOperation::~RemoteLinuxSignalOperation() = default;
 
 static QString signalProcessGroupByPidCommandLine(qint64 pid, int signal)
 {
-    return QString::fromLatin1("kill -%1 -%2 %2").arg(signal).arg(pid);
+    return QString::fromLatin1("kill -%1 -%2").arg(signal).arg(pid);
 }
 
 void RemoteLinuxSignalOperation::run(const QString &command)
 {
-    QTC_ASSERT(!m_runner, return);
-    m_runner = new QSsh::SshRemoteProcessRunner();
-    connect(m_runner, &QSsh::SshRemoteProcessRunner::processClosed,
-            this, &RemoteLinuxSignalOperation::runnerProcessFinished);
-    connect(m_runner, &QSsh::SshRemoteProcessRunner::connectionError,
-            this, &RemoteLinuxSignalOperation::runnerConnectionError);
-    m_runner->run(command, m_sshParameters);
-}
+    QTC_ASSERT(!m_process, return);
+    m_process.reset(new QtcProcess);
+    connect(m_process.get(), &QtcProcess::done, this, &RemoteLinuxSignalOperation::runnerDone);
 
-void RemoteLinuxSignalOperation::finish()
-{
-    delete m_runner;
-    m_runner = nullptr;
-    emit finished(m_errorMessage);
+    m_process->setCommand({m_device->filePath("/bin/sh"), {"-c", command}});
+    m_process->start();
 }
 
 static QString signalProcessGroupByNameCommandLine(const QString &filePath, int signal)
@@ -91,9 +61,8 @@ QString RemoteLinuxSignalOperation::interruptProcessByNameCommandLine(const QStr
 
 void RemoteLinuxSignalOperation::killProcess(qint64 pid)
 {
-    run(QString::fromLatin1("%1; sleep 1; %2 && %3")
+    run(QString::fromLatin1("%1 && %2")
         .arg(signalProcessGroupByPidCommandLine(pid, 15),
-             signalProcessGroupByPidCommandLine(pid, 0),
              signalProcessGroupByPidCommandLine(pid, 9)));
 }
 
@@ -112,21 +81,18 @@ void RemoteLinuxSignalOperation::interruptProcess(const QString &filePath)
     run(interruptProcessByNameCommandLine(filePath));
 }
 
-void RemoteLinuxSignalOperation::runnerProcessFinished()
+void RemoteLinuxSignalOperation::runnerDone()
 {
     m_errorMessage.clear();
-    if (m_runner->processExitStatus() != QProcess::NormalExit) {
-        m_errorMessage = m_runner->processErrorString();
-    } else if (m_runner->processExitCode() != 0) {
-        m_errorMessage = tr("Exit code is %1. stderr:").arg(m_runner->processExitCode())
+    if (m_process->exitStatus() != QProcess::NormalExit) {
+        m_errorMessage = m_process->errorString();
+    } else if (m_process->exitCode() != 0) {
+        m_errorMessage = Tr::tr("Exit code is %1. stderr:").arg(m_process->exitCode())
                 + QLatin1Char(' ')
-                + QString::fromLatin1(m_runner->readAllStandardError());
+                + QString::fromLatin1(m_process->readAllRawStandardError());
     }
-    finish();
+    m_process.release()->deleteLater();
+    emit finished(m_errorMessage);
 }
 
-void RemoteLinuxSignalOperation::runnerConnectionError()
-{
-    m_errorMessage = m_runner->lastConnectionErrorString();
-    finish();
-}
+} // RemoteLinux

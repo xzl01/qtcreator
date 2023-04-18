@@ -1,59 +1,39 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Orgad Shaneh <orgads@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Orgad Shaneh <orgads@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gitgrep.h"
-#include "gitclient.h"
-#include "gitconstants.h"
 
-#include <coreplugin/editormanager/editormanager.h>
-#include <coreplugin/progressmanager/progressmanager.h>
+#include "gitclient.h"
+#include "gittr.h"
+
 #include <coreplugin/vcsmanager.h>
+
 #include <texteditor/findinfiles.h>
-#include <vcsbase/vcscommand.h>
+
 #include <vcsbase/vcsbaseconstants.h>
 
 #include <utils/algorithm.h>
+#include <utils/environment.h>
 #include <utils/fancylineedit.h>
 #include <utils/filesearch.h>
-#include <utils/fileutils.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 #include <utils/runextensions.h>
-#include <utils/textfileformat.h>
 
 #include <QCheckBox>
 #include <QFuture>
-#include <QFutureWatcher>
 #include <QHBoxLayout>
 #include <QRegularExpressionValidator>
-#include <QScopedPointer>
 #include <QSettings>
 #include <QTextStream>
 
-namespace Git {
-namespace Internal {
+using namespace Core;
+using namespace Utils;
+using namespace VcsBase;
+
+namespace Git::Internal {
+
+const char GitGrepRef[] = "GitGrepRef";
 
 class GitGrepParameters
 {
@@ -62,14 +42,6 @@ public:
     bool recurseSubmodules = false;
     QString id() const { return recurseSubmodules ? ref + ".Rec" : ref; }
 };
-
-using namespace Core;
-using namespace Utils;
-using VcsBase::VcsCommand;
-
-namespace {
-
-const char GitGrepRef[] = "GitGrepRef";
 
 class GitGrepRunner
 {
@@ -80,8 +52,8 @@ public:
         : m_parameters(parameters)
     {
         m_directory = FilePath::fromString(parameters.additionalParameters.toString());
-        m_command.reset(GitClient::instance()->createCommand(m_directory));
         m_vcsBinary = GitClient::instance()->vcsBinary();
+        m_environment = GitClient::instance()->processEnvironment();
     }
 
     struct Match
@@ -106,7 +78,7 @@ public:
         QString filePath = line.left(lineSeparator);
         if (!m_ref.isEmpty() && filePath.startsWith(m_ref))
             filePath.remove(0, m_ref.length());
-        single.fileName = m_directory.pathAppended(filePath).toString();
+        single.fileName = m_directory.pathAppended(filePath);
         const int textSeparator = line.indexOf(QChar::Null, lineSeparator + 1);
         single.lineNumber = line.mid(lineSeparator + 1, textSeparator - lineSeparator - 1).toInt();
         QString text = line.mid(textSeparator + 1);
@@ -136,7 +108,7 @@ public:
         }
         single.matchingLine = text;
 
-        for (const auto &match : qAsConst(matches)) {
+        for (const auto &match : std::as_const(matches)) {
             single.matchStart = match.matchStart;
             single.matchLength = match.matchLength;
             single.regexpCapturedTexts = match.regexpCapturedTexts;
@@ -151,13 +123,12 @@ public:
         QTextStream stream(&t);
         while (!stream.atEnd() && !fi.isCanceled())
             processLine(stream.readLine(), &resultList);
-        if (!resultList.isEmpty())
+        if (!resultList.isEmpty() && !fi.isCanceled())
             fi.reportResult(resultList);
     }
 
     void operator()(FutureInterfaceType &fi)
     {
-        Core::ProgressTimer progress(fi, 5);
         QStringList arguments = {
             "-c", "color.grep.match=bold red",
             "-c", "color.grep=always",
@@ -189,28 +160,23 @@ public:
                     return QString(":!" + filter);
                 });
         arguments << "--" << filterArgs << exclusionArgs;
-        m_command->addFlags(VcsCommand::SilentOutput | VcsCommand::SuppressFailMessage);
-        m_command->setProgressiveOutput(true);
-        QFutureWatcher<FileSearchResultList> watcher;
-        QObject::connect(&watcher,
-                         &QFutureWatcher<FileSearchResultList>::canceled,
-                         m_command.get(),
-                         &VcsCommand::cancel);
-        watcher.setFuture(fi.future());
-        QObject::connect(m_command.get(),
-                         &VcsCommand::stdOutText,
-                         [this, &fi](const QString &text) { read(fi, text); });
-        QtcProcess proc;
-        proc.setTimeoutS(0);
-        m_command->runCommand(proc, {m_vcsBinary, arguments});
-        switch (proc.result()) {
-        case QtcProcess::TerminatedAbnormally:
-        case QtcProcess::StartFailed:
-        case QtcProcess::Hang:
+
+        QtcProcess process;
+        process.setEnvironment(m_environment);
+        process.setCommand({m_vcsBinary, arguments});
+        process.setWorkingDirectory(m_directory);
+        process.setStdOutCallback([this, &fi](const QString &text) { read(fi, text); });
+        process.start();
+        process.waitForFinished();
+
+        switch (process.result()) {
+        case ProcessResult::TerminatedAbnormally:
+        case ProcessResult::StartFailed:
+        case ProcessResult::Hang:
             fi.reportCanceled();
             break;
-        case QtcProcess::FinishedWithSuccess:
-        case QtcProcess::FinishedWithError:
+        case ProcessResult::FinishedWithSuccess:
+        case ProcessResult::FinishedWithError:
             // When no results are found, git-grep exits with non-zero status.
             // Do not consider this as an error.
             break;
@@ -222,16 +188,14 @@ private:
     FilePath m_directory;
     QString m_ref;
     TextEditor::FileFindParameters m_parameters;
-    std::unique_ptr<VcsCommand> m_command;
+    Environment m_environment;
 };
-
-} // namespace
 
 static bool isGitDirectory(const FilePath &path)
 {
     static IVersionControl *gitVc = VcsManager::versionControl(VcsBase::Constants::VCS_ID_GIT);
     QTC_ASSERT(gitVc, return false);
-    return gitVc == VcsManager::findVersionControlForDirectory(path, nullptr);
+    return gitVc == VcsManager::findVersionControlForDirectory(path);
 }
 
 GitGrep::GitGrep(GitClient *client)
@@ -241,16 +205,21 @@ GitGrep::GitGrep(GitClient *client)
     auto layout = new QHBoxLayout(m_widget);
     layout->setContentsMargins(0, 0, 0, 0);
     m_treeLineEdit = new FancyLineEdit;
-    m_treeLineEdit->setPlaceholderText(tr("Tree (optional)"));
-    m_treeLineEdit->setToolTip(tr("Can be HEAD, tag, local or remote branch, or a commit hash.\n"
+    m_treeLineEdit->setPlaceholderText(Tr::tr("Tree (optional)"));
+    m_treeLineEdit->setToolTip(Tr::tr("Can be HEAD, tag, local or remote branch, or a commit hash.\n"
                                   "Leave empty to search through the file system."));
     const QRegularExpression refExpression("[\\S]*");
     m_treeLineEdit->setValidator(new QRegularExpressionValidator(refExpression, this));
     layout->addWidget(m_treeLineEdit);
-    if (client->gitVersion() >= 0x021300) {
-        m_recurseSubmodules = new QCheckBox(tr("Recurse submodules"));
-        layout->addWidget(m_recurseSubmodules);
-    }
+    // asynchronously check git version, add "recurse submodules" option if available
+    Utils::onResultReady(client->gitVersion(),
+                         this,
+                         [this, pLayout = QPointer<QHBoxLayout>(layout)](unsigned version) {
+                             if (version >= 0x021300 && pLayout) {
+                                 m_recurseSubmodules = new QCheckBox(Tr::tr("Recurse submodules"));
+                                 pLayout->addWidget(m_recurseSubmodules);
+                             }
+                         });
     TextEditor::FindInFiles *findInFiles = TextEditor::FindInFiles::instance();
     QTC_ASSERT(findInFiles, return);
     connect(findInFiles, &TextEditor::FindInFiles::pathChanged,
@@ -268,14 +237,14 @@ GitGrep::~GitGrep()
 
 QString GitGrep::title() const
 {
-    return tr("Git Grep");
+    return Tr::tr("Git Grep");
 }
 
 QString GitGrep::toolTip() const
 {
     const QString ref = m_treeLineEdit->text();
     if (!ref.isEmpty())
-        return tr("Ref: %1\n%2").arg(ref);
+        return Tr::tr("Ref: %1\n%2").arg(ref);
     return QLatin1String("%1");
 }
 
@@ -312,19 +281,19 @@ QFuture<FileSearchResultList> GitGrep::executeSearch(const TextEditor::FileFindP
 IEditor *GitGrep::openEditor(const SearchResultItem &item,
                              const TextEditor::FileFindParameters &parameters)
 {
-    GitGrepParameters params = parameters.searchEngineParameters.value<GitGrepParameters>();
-    if (params.ref.isEmpty() || item.path().isEmpty())
+    const GitGrepParameters params = parameters.searchEngineParameters.value<GitGrepParameters>();
+    const QStringList &itemPath = item.path();
+    if (params.ref.isEmpty() || itemPath.isEmpty())
         return nullptr;
-    const QString path = QDir::fromNativeSeparators(item.path().first());
+    const FilePath path = FilePath::fromUserInput(itemPath.first());
     const FilePath topLevel = FilePath::fromString(parameters.additionalParameters.toString());
-    IEditor *editor = m_client->openShowEditor(
-                topLevel, params.ref, path, GitClient::ShowEditor::OnlyIfDifferent);
+    IEditor *editor = m_client->openShowEditor(topLevel, params.ref, path,
+                                               GitClient::ShowEditor::OnlyIfDifferent);
     if (editor)
         editor->gotoLine(item.mainRange().begin.line, item.mainRange().begin.column);
     return editor;
 }
 
-} // Internal
-} // Git
+} // Git::Internal
 
 Q_DECLARE_METATYPE(Git::Internal::GitGrepParameters)

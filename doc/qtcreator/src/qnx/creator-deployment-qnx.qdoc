@@ -1,31 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Blackberry
-** Contact: Blackberry (qt@blackberry.com)
-** Contact: KDAB (info@kdab.com)
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 Blackberry
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -34,11 +9,10 @@
 // **********************************************************************
 
 /*!
-    \previouspage creator-deployment-embedded-linux.html
+    \previouspage creator-deployment-b2qt.html
     \page creator-deployment-qnx.html
-    \nextpage creator-connecting-mobile.html
-
-    \title Deploying Applications to QNX Neutrino Devices
+    \nextpage creator-deployment-embedded-linux.html
+    \title Deploying to QNX Neutrino
 
     You can specify settings for deploying applications to QNX Neutrino
     devices in the project configuration file and in \uicontrol Projects
@@ -47,5 +21,10 @@
     \image qtcreator-qnx-deployment.png "Deploy to device"
 
     The deployment process is described in more detail in
-    \l{Deploying Applications to Generic Remote Linux Devices}.
+    \l{Deploying to Remote Linux}.
+
+    \section1 Finding Configured Devices
+
+    The \uicontrol {Check for a configured device} deployment step looks for a
+    device that is ready for deployment.
 */

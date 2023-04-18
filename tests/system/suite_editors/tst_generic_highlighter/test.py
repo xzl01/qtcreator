@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 source("../../shared/qtcreator.py")
 
@@ -52,13 +30,13 @@ def getOrModifyFilePatternsFor(mimeType, filter='', toBePresent=None):
     toSuffixArray = lambda x : [pat.replace("*", "") for pat in x.split(";")]
 
     result = []
-    invokeMenuItem("Tools", "Options...")
+    invokeMenuItem("Edit", "Preferences...")
     mouseClick(waitForObjectItem(":Options_QListView", "Environment"))
     waitForObject("{container=':Options.qt_tabwidget_tabbar_QTabBar' type='TabItem' "
                   "text='MIME Types'}")
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "MIME Types")
-    replaceEditorContent(waitForObject("{name='filterLineEdit' type='QLineEdit' visible='1'}"),
-                         filter)
+    replaceEditorContent(waitForObject("{name='filterLineEdit' type='Utils::FancyLineEdit' "
+                                       "visible='1'}"), filter)
     mimeTypeTable = waitForObject("{name='mimeTypesTreeView' type='QTreeView' visible='1'}")
     model = mimeTypeTable.model()
     if filter == '':
@@ -115,13 +93,13 @@ def addHighlighterDefinition(*languages):
     syntaxDirectory = __highlighterDefinitionsDirectory__()
     toBeChecked = (os.path.join(syntaxDirectory, x + ".xml") for x in languages)
     test.log("Updating highlighter definitions...")
-    invokeMenuItem("Tools", "Options...")
+    invokeMenuItem("Edit", "Preferences...")
     mouseClick(waitForObjectItem(":Options_QListView", "Text Editor"))
     waitForObject("{container=':Options.qt_tabwidget_tabbar_QTabBar' type='TabItem' "
                   "text='Generic Highlighter'}")
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Generic Highlighter")
 
-    clickButton("{text='Download Definitions' type='QPushButton' name='downloadDefinitions' visible='1'}")
+    clickButton("{text='Download Definitions' type='QPushButton' unnamed='1' visible='1'}")
     updateStatus = "{name='updateStatus' type='QLabel' visible='1'}"
     waitFor("object.exists(updateStatus)", 5000)
     if waitFor('str(findObject(updateStatus).text) == "Download finished"', 5000):
@@ -218,9 +196,8 @@ def main():
         if current.endswith(".lhs"):
             type(editor, ">")
         type(editor, "<Tab>")
+    saveAndExit()
 
-    invokeMenuItem("File", "Save All")
-    invokeMenuItem("File", "Exit")
 
 def init():
     syntaxDirectory = __highlighterDefinitionsDirectory__()

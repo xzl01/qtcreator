@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelinegraphicsscene.h"
 
@@ -37,6 +15,7 @@
 #include "timelineview.h"
 #include "timelinewidget.h"
 
+#include <auxiliarydataproperties.h>
 #include <designdocumentview.h>
 #include <exception.h>
 #include <rewritertransaction.h>
@@ -83,12 +62,14 @@ QList<QmlTimelineKeyframeGroup> allTimelineFrames(const QmlTimeline &timeline)
     return returnList;
 }
 
-TimelineGraphicsScene::TimelineGraphicsScene(TimelineWidget *parent)
+TimelineGraphicsScene::TimelineGraphicsScene(TimelineWidget *parent,
+                                             ExternalDependenciesInterface &m_externalDependencies)
     : AbstractScrollGraphicsScene(parent)
     , m_parent(parent)
     , m_layout(new TimelineGraphicsLayout(this))
     , m_currentFrameIndicator(new TimelineFrameHandle)
     , m_tools(this)
+    , m_externalDependencies{m_externalDependencies}
 {
     addItem(m_layout);
     addItem(m_currentFrameIndicator);
@@ -238,7 +219,7 @@ void TimelineGraphicsScene::setCurrentFrame(int frame)
     QmlTimeline timeline(timelineModelNode());
 
     if (timeline.isValid()) {
-        timeline.modelNode().setAuxiliaryData("currentFrame@NodeInstance", frame);
+        timeline.modelNode().setAuxiliaryData(currentFrameProperty, frame);
         m_currentFrameIndicator->setPosition(frame);
     } else {
         m_currentFrameIndicator->setPosition(0);
@@ -363,7 +344,7 @@ void TimelineGraphicsScene::setZoom(int scaleFactor, double pivot)
 
     if (timeline.isValid())
         setCurrenFrame(timeline,
-                       timeline.modelNode().auxiliaryData("currentFrame@NodeInstance").toReal());
+                       timeline.modelNode().auxiliaryDataWithDefault(currentFrameProperty).toReal());
 
     invalidateScrollbar();
     update();
@@ -375,7 +356,7 @@ void TimelineGraphicsScene::commitCurrentFrame(qreal frame)
 
     if (timeline.isValid()) {
         frame = setCurrenFrame(timeline, qRound(frame));
-        timeline.modelNode().setAuxiliaryData("currentFrame@NodeInstance", qRound(frame));
+        timeline.modelNode().setAuxiliaryData(currentFrameProperty, qRound(frame));
         invalidateCurrentValues();
     }
 }
@@ -444,10 +425,12 @@ void TimelineGraphicsScene::invalidateHeightForTarget(const ModelNode &target)
 
 void TimelineGraphicsScene::invalidateScene()
 {
-    ModelNode node = timelineView()->modelNodeForId(
-        timelineWidget()->toolBar()->currentTimelineId());
-    setTimeline(QmlTimeline(node));
-    invalidateScrollbar();
+    if (timelineView()->isAttached()) {
+        ModelNode node = timelineView()->modelNodeForId(
+            timelineWidget()->toolBar()->currentTimelineId());
+        setTimeline(QmlTimeline(node));
+        invalidateScrollbar();
+    }
 }
 
 void TimelineGraphicsScene::invalidateScrollbar()
@@ -556,7 +539,7 @@ void AbstractScrollGraphicsScene::selectKeyframes(const SelectionMode &mode,
 
 void AbstractScrollGraphicsScene::clearSelection()
 {
-    for (auto *keyframe : qAsConst(m_selectedKeyframes))
+    for (auto *keyframe : std::as_const(m_selectedKeyframes))
         if (keyframe)
             keyframe->setHighlighted(false);
 
@@ -754,8 +737,9 @@ void TimelineGraphicsScene::pasteKeyframesToTarget(const ModelNode &targetNode)
 
 void TimelineGraphicsScene::copySelectedKeyframes()
 {
-    TimelineActions::copyKeyframes(
-        Utils::transform(selectedKeyframes(), &TimelineKeyframeItem::frameNode));
+    TimelineActions::copyKeyframes(Utils::transform(selectedKeyframes(),
+                                                    &TimelineKeyframeItem::frameNode),
+                                   m_externalDependencies);
 }
 
 void TimelineGraphicsScene::pasteSelectedKeyframes()
@@ -788,7 +772,7 @@ void TimelineGraphicsScene::deleteKeyframes(const QList<ModelNode> &frames)
                 ModelNode frame = keyframe;
                 ModelNode parent = frame.parentProperty().parentModelNode();
                 keyframe.destroy();
-                if (parent.isValid() && parent.defaultNodeListProperty().isEmpty())
+                if (parent.defaultNodeListProperty().isEmpty())
                     parent.destroy();
             }
         }

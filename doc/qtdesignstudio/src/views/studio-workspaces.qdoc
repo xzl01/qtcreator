@@ -1,36 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page creator-project-managing-workspaces.html
+    \if defined(qtdesignstudio)
+    \previouspage studio-texture-editor.html
+    \else
     \previouspage creator-open-documents-view.html
+    \endif
     \nextpage creator-project-managing-sessions.html
 
     \title Managing Workspaces
 
-    In the \uicontrol Design mode, you can arrange a set of \QC
+    In the \uicontrol Design mode, you can arrange a set of \QDS
     views as a \e workspace on the screen.
 
     To detach views:
@@ -56,10 +38,10 @@
 
     \section1 Saving Workspaces
 
-    The changes you make to a workspace are saved when you exit \QC.
+    The changes you make to a workspace are saved when you exit \QDS.
     Select \uicontrol View > \uicontrol Workspaces >
     \uicontrol Manage > \uicontrol {Restore last workspace on startup}
-    to restore the current workspace the next time you start \QC.
+    to restore the current workspace the next time you start \QDS.
 
     \image qtcreator-workspace-manager.png "Workspace Manager"
 

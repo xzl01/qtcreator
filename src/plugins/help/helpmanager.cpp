@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "helpmanager.h"
+
+#include "helptr.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/progressmanager/progressmanager.h>
@@ -34,6 +14,7 @@
 
 #include <QDateTime>
 #include <QDebug>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
 #include <QStringList>
@@ -43,14 +24,7 @@
 
 #include <QMutexLocker>
 
-#ifndef HELP_NEW_FILTER_ENGINE
-#include <QSqlDatabase>
-#include <QSqlDriver>
-#include <QSqlError>
-#include <QSqlQuery>
-#else
 #include <QtHelp/QHelpLink>
-#endif
 
 using namespace Core;
 
@@ -88,19 +62,6 @@ struct HelpManagerPrivate
 static HelpManager *m_instance = nullptr;
 static HelpManagerPrivate *d = nullptr;
 
-#ifndef HELP_NEW_FILTER_ENGINE
-
-// -- DbCleaner
-
-struct DbCleaner
-{
-    DbCleaner(const QString &dbName) : name(dbName) {}
-    ~DbCleaner() { QSqlDatabase::removeDatabase(name); }
-    QString name;
-};
-
-#endif
-
 // -- HelpManager
 
 HelpManager::HelpManager(QObject *parent) :
@@ -109,10 +70,12 @@ HelpManager::HelpManager(QObject *parent) :
     QTC_CHECK(!m_instance);
     m_instance = this;
     d = new HelpManagerPrivate;
+    QDesktopServices::setUrlHandler("qthelp", this, "showHelpUrl");
 }
 
 HelpManager::~HelpManager()
 {
+    QDesktopServices::unsetUrlHandler("qthelp");
     delete d;
     m_instance = nullptr;
 }
@@ -143,7 +106,7 @@ void HelpManager::registerDocumentation(const QStringList &files)
             emit Core::HelpManager::Signals::instance()->documentationChanged();
         }
     });
-    ProgressManager::addTask(future, tr("Update Documentation"), kUpdateDocumentationTask);
+    ProgressManager::addTask(future, Tr::tr("Update Documentation"), kUpdateDocumentationTask);
 }
 
 void HelpManager::unregisterDocumentation(const QStringList &fileNames)
@@ -168,9 +131,7 @@ void HelpManager::registerDocumentationNow(QFutureInterface<bool> &futureInterfa
     futureInterface.setProgressValue(0);
 
     QHelpEngineCore helpEngine(collectionFilePath());
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     helpEngine.setReadOnly(false);
-#endif
     helpEngine.setupData();
     bool docsChanged = false;
     QStringList nameSpaces = helpEngine.registeredDocumentations();
@@ -234,21 +195,32 @@ QSet<QString> HelpManager::userDocumentationPaths()
     return d->m_userRegisteredFiles;
 }
 
-// This should go into Qt 4.8 once we start using it for Qt Creator
+QMultiMap<QString, QUrl> HelpManager::linksForKeyword(QHelpEngineCore *engine,
+                                                      const QString &key,
+                                                      std::optional<QString> filterName)
+{
+    QMultiMap<QString, QUrl> links;
+    const QList<QHelpLink> docs = filterName.has_value()
+                                      ? engine->documentsForKeyword(key, filterName.value())
+                                      : engine->documentsForKeyword(key);
+
+    for (const auto &doc : docs)
+        links.insert(doc.title, doc.url);
+
+    // Remove duplicates (workaround for QTBUG-108131)
+    links.removeIf([&links](const QMultiMap<QString, QUrl>::iterator it) {
+        return links.find(it.key(), it.value()) != it;
+    });
+
+    return links;
+}
+
 QMultiMap<QString, QUrl> HelpManager::linksForKeyword(const QString &key)
 {
     QTC_ASSERT(!d->m_needsSetup, return {});
     if (key.isEmpty())
         return {};
-#ifndef HELP_NEW_FILTER_ENGINE
-    return d->m_helpEngine->linksForKeyword(key);
-#else
-    QMultiMap<QString, QUrl> links;
-    const QList<QHelpLink> docs = d->m_helpEngine->documentsForKeyword(key, QString());
-    for (const auto &doc : docs)
-        links.insert(doc.title, doc.url);
-    return links;
-#endif
+    return HelpManager::linksForKeyword(d->m_helpEngine, key, QString());
 }
 
 QMultiMap<QString, QUrl> HelpManager::linksForIdentifier(const QString &id)
@@ -256,15 +228,11 @@ QMultiMap<QString, QUrl> HelpManager::linksForIdentifier(const QString &id)
     QTC_ASSERT(!d->m_needsSetup, return {});
     if (id.isEmpty())
         return {};
-#ifndef HELP_NEW_FILTER_ENGINE
-    return d->m_helpEngine->linksForIdentifier(id);
-#else
     QMultiMap<QString, QUrl> links;
     const QList<QHelpLink> docs = d->m_helpEngine->documentsForIdentifier(id, QString());
     for (const auto &doc : docs)
         links.insert(doc.title, doc.url);
     return links;
-#endif
 }
 
 QUrl HelpManager::findFile(const QUrl &url)
@@ -318,76 +286,6 @@ QVariant HelpManager::customValue(const QString &key, const QVariant &value)
     return d->m_helpEngine->customValue(key, value);
 }
 
-#ifndef HELP_NEW_FILTER_ENGINE
-
-HelpManager::Filters HelpManager::filters()
-{
-    QTC_ASSERT(!d->m_needsSetup, return {});
-
-    Filters filters;
-    const QStringList &customFilters = d->m_helpEngine->customFilters();
-    for (const QString &filter : customFilters)
-        filters.insert(filter, d->m_helpEngine->filterAttributes(filter));
-    return filters;
-}
-
-HelpManager::Filters HelpManager::fixedFilters()
-{
-    QTC_ASSERT(!d->m_needsSetup, return {});
-
-    const QLatin1String sqlite("QSQLITE");
-    const QLatin1String name("HelpManager::fixedCustomFilters");
-
-    Filters fixedFilters;
-    DbCleaner cleaner(name);
-    QSqlDatabase db = QSqlDatabase::addDatabase(sqlite, name);
-    if (db.driver() && db.driver()->lastError().type() == QSqlError::NoError) {
-        const QStringList &registeredDocs = d->m_helpEngine->registeredDocumentations();
-        for (const QString &nameSpace : registeredDocs) {
-            db.setDatabaseName(d->m_helpEngine->documentationFileName(nameSpace));
-            if (db.open()) {
-                QSqlQuery query = QSqlQuery(db);
-                query.setForwardOnly(true);
-                query.exec(QLatin1String("SELECT Name FROM FilterNameTable"));
-                while (query.next()) {
-                    const QString &filter = query.value(0).toString();
-                    fixedFilters.insert(filter, d->m_helpEngine->filterAttributes(filter));
-                }
-            }
-        }
-    }
-    return fixedFilters;
-}
-
-HelpManager::Filters HelpManager::userDefinedFilters()
-{
-    QTC_ASSERT(!d->m_needsSetup, return {});
-
-    Filters all = filters();
-    const Filters &fixed = fixedFilters();
-    for (Filters::const_iterator it = fixed.constBegin(); it != fixed.constEnd(); ++it)
-        all.remove(it.key());
-    return all;
-}
-
-void HelpManager::removeUserDefinedFilter(const QString &filter)
-{
-    QTC_ASSERT(!d->m_needsSetup, return);
-
-    if (d->m_helpEngine->removeCustomFilter(filter))
-        emit m_instance->collectionFileChanged();
-}
-
-void HelpManager::addUserDefinedFilter(const QString &filter, const QStringList &attr)
-{
-    QTC_ASSERT(!d->m_needsSetup, return);
-
-    if (d->m_helpEngine->addCustomFilter(filter, attr))
-        emit m_instance->collectionFileChanged();
-}
-
-#endif
-
 void HelpManager::aboutToShutdown()
 {
     if (d && d->m_registerFuture.isRunning()) {
@@ -408,12 +306,8 @@ void HelpManager::setupHelpManager()
 
     // create the help engine
     d->m_helpEngine = new QHelpEngineCore(collectionFilePath(), m_instance);
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     d->m_helpEngine->setReadOnly(false);
-#endif
-#ifdef HELP_NEW_FILTER_ENGINE
     d->m_helpEngine->setUsesFilterEngine(true);
-#endif
     d->m_helpEngine->setupData();
 
     for (const QString &filePath : d->documentationFromInstaller())

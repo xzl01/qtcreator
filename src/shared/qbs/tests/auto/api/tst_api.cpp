@@ -362,7 +362,10 @@ void TestApi::buildProject()
             + QLatin1String(".qbs");
     qbs::SetupProjectParameters params = defaultSetupParameters(projectFilePath);
     removeBuildDir(params);
-    qbs::ErrorInfo errorInfo = doBuildProject(projectFilePath);
+    ProcessResultReceiver resultReceiver;
+    qbs::ErrorInfo errorInfo = doBuildProject(projectFilePath, nullptr, &resultReceiver);
+    if (resultReceiver.output.contains("mingw32_gt_pch_use_address"))
+        QSKIP("https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91440");
     VERIFY_NO_ERROR(errorInfo);
     QVERIFY(regularFileExists(relativeBuildGraphFilePath()));
     if (!productFileName.isEmpty()) {
@@ -483,9 +486,14 @@ void TestApi::buildSingleFile()
     m_logSink->setLogLevel(qbs::LoggerMaxLevel);
     std::unique_ptr<qbs::BuildJob> buildJob(project.buildAllProducts(options));
     BuildDescriptionReceiver receiver;
+    ProcessResultReceiver resultReceiver;
+    connect(buildJob.get(), &qbs::BuildJob::reportProcessResult,
+            &resultReceiver, &ProcessResultReceiver::handleProcessResult);
     connect(buildJob.get(), &qbs::BuildJob::reportCommandDescription, &receiver,
             &BuildDescriptionReceiver::handleDescription);
     waitForFinished(buildJob.get());
+    if (resultReceiver.output.contains("mingw32_gt_pch_use_address"))
+        QSKIP("https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91440");
     QVERIFY2(!buildJob->error().hasError(), qPrintable(buildJob->error().toString()));
     QCOMPARE(receiver.descriptions.count("compiling"), 2);
     QCOMPARE(receiver.descriptions.count("precompiling"), 1);
@@ -1002,7 +1010,7 @@ void TestApi::errorInSetupRunEnvironment()
         qbs::ErrorInfo error;
         const QProcessEnvironment env = runEnv.runEnvironment(&error);
         QVERIFY(error.hasError());
-        QVERIFY(error.toString().contains("trallala"));
+        QVERIFY2(error.toString().contains("trallala"), qPrintable(error.toString()));
     } catch (const qbs::ErrorInfo &) {
         exceptionCaught = true;
     }
@@ -1426,7 +1434,7 @@ void TestApi::infiniteLoopResolving()
                                                                               m_logSink, nullptr));
     QTimer::singleShot(1000, setupJob.get(), &qbs::AbstractJob::cancel);
     QVERIFY(waitForFinished(setupJob.get(), testTimeoutInMsecs()));
-    QVERIFY2(setupJob->error().toString().toLower().contains("cancel"),
+    QVERIFY2(setupJob->error().toString().toLower().contains("interrupted"),
              qPrintable(setupJob->error().toString()));
 }
 

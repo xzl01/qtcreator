@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "contentwindow.h"
 
@@ -29,11 +7,13 @@
 #include <localhelpmanager.h>
 #include <openpagesmanager.h>
 
+#include <help/helptr.h>
+
 #include <utils/navigationtreeview.h>
 
-#include <QLayout>
 #include <QFocusEvent>
 #include <QMenu>
+#include <QVBoxLayout>
 
 #include <QHelpEngine>
 #include <QHelpContentModel>
@@ -128,10 +108,10 @@ void ContentWindow::showContextMenu(const QPoint &pos)
         contentModel->contentItemAt(m_contentWidget->currentIndex());
 
     QMenu menu;
-    QAction *curTab = menu.addAction(tr("Open Link"));
+    QAction *curTab = menu.addAction(::Help::Tr::tr("Open Link"));
     QAction *newTab = 0;
     if (m_isOpenInNewPageActionVisible)
-        newTab = menu.addAction(tr("Open Link as New Page"));
+        newTab = menu.addAction(::Help::Tr::tr("Open Link as New Page"));
 
     QAction *action = menu.exec(m_contentWidget->mapToGlobal(pos));
     if (curTab == action)

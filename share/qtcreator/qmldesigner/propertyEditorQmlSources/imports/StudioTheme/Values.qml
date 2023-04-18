@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 pragma Singleton
 import QtQuick 2.15
@@ -32,13 +10,23 @@ QtObject {
 
     property real baseHeight: 29
     property real baseFont: 12
+    property real mediumFont: 14
+    property real bigFont: 16
     property real baseIconFont: 12
+    property real mediumIconFont: 18
+    property real bigIconFont: 26
 
     property real scaleFactor: 1.0
 
     property real height: Math.round(values.baseHeight * values.scaleFactor)
-    property real myFontSize: Math.round(values.baseFont * values.scaleFactor)
-    property real myIconFontSize: Math.round(values.baseIconFont * values.scaleFactor)
+    property real baseFontSize: Math.round(values.baseFont * values.scaleFactor)
+    property real myFontSize: values.baseFontSize // TODO: rename all refs to myFontSize -> baseFontSize then remove myFontSize
+    property real mediumFontSize: Math.round(values.mediumFont * values.scaleFactor)
+    property real bigFontSize: Math.round(values.bigFont * values.scaleFactor)
+    property real baseIconFontSize: Math.round(values.baseIconFont * values.scaleFactor)
+    property real myIconFontSize: values.baseIconFontSize;  // TODO: rename all refs to myIconFontSize -> baseIconFontSize then remove myIconFontSize
+    property real mediumIconFontSize: Math.round(values.mediumIconFont * values.scaleFactor)
+    property real bigIconFontSize: Math.round(values.bigIconFont * values.scaleFactor)
 
     property real squareComponentWidth: values.height
     property real smallRectWidth: values.height / 2 * 1.5
@@ -78,6 +66,7 @@ QtObject {
 
     property real marginTopBottom: 4
     property real border: 1
+    property real borderHover: 3
 
     property real maxComboBoxPopupHeight: Math.round(300 * values.scaleFactor)
     property real maxTextAreaPopupHeight: Math.round(150 * values.scaleFactor)
@@ -207,6 +196,15 @@ QtObject {
     property real colorEditorPopupCmoboBoxWidth: 110
     property real colorEditorPopupSpinBoxWidth: 54
 
+    // Toolbar
+    property real toolbarHeight: 35
+    property real toolbarSpacing: 8
+
+    // Dialog
+    property real dialogPadding: 12
+    property real dialogButtonSpacing: 10
+    property real dialogButtonPadding: 4
+
     // Theme Colors
 
     property bool isLightTheme: themeControlBackground.hsvValue > themeTextColor.hsvValue
@@ -279,7 +277,7 @@ QtObject {
 
     // Slider colors
     property string themeSliderActiveTrack: Theme.color(Theme.DSsliderActiveTrack)
-    property string themeSliderActiveTrackHover: Theme.color(Theme.DSactiveTrackHover)
+    property string themeSliderActiveTrackHover: Theme.color(Theme.DSsliderActiveTrackHover)
     property string themeSliderActiveTrackFocus: Theme.color(Theme.DSsliderActiveTrackFocus)
     property string themeSliderInactiveTrack: Theme.color(Theme.DSsliderInactiveTrack)
     property string themeSliderInactiveTrackHover: Theme.color(Theme.DSsliderInactiveTrackHover)
@@ -299,9 +297,14 @@ QtObject {
     property string themeTabInactiveBackground: Theme.color(Theme.DStabInactiveBackground)
     property string themeTabInactiveText: Theme.color(Theme.DStabInactiveText)
 
+    // State Editor
     property string themeStateSeparator: Theme.color(Theme.DSstateSeparatorColor)
     property string themeStateBackground: Theme.color(Theme.DSstateBackgroundColor)
     property string themeStatePreviewOutline: Theme.color(Theme.DSstatePreviewOutline)
+
+    // State Editor *new*
+    property color themeStatePanelBackground: Theme.color(Theme.DSstatePanelBackground)
+    property color themeStateHighlight: Theme.color(Theme.DSstateHighlight)
 
     property string themeUnimportedModuleColor: Theme.color(Theme.DSUnimportedModuleColor)
 
@@ -325,9 +328,13 @@ QtObject {
     property string themeListItemTextHover: Theme.color(Theme.DSnavigatorTextHover)
     property string themeListItemTextPress: Theme.color(Theme.DSnavigatorTextSelected)
 
-    //Welcome Page
+    // Welcome Page
     property string welcomeScreenBackground: Theme.color(Theme.DSwelcomeScreenBackground)
     property string themeSubPanelBackground: Theme.color(Theme.DSsubPanelBackground)
     property string themeThumbnailBackground: Theme.color(Theme.DSthumbnailBackground)
     property string themeThumbnailLabelBackground: Theme.color(Theme.DSthumbnailLabelBackground)
+
+    // Dialog
+    property color themeDialogBackground: values.themeThumbnailBackground
+    property color themeDialogOutline: values.themeInteraction
 }

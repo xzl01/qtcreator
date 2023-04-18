@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -30,15 +8,14 @@
 #include "buildconfiguration.h"
 #include "projectexplorer_export.h"
 
-#include <utils/optional.h>
 #include <utils/qtcassert.h>
 
-#include <QFutureInterface>
 #include <QWidget>
 
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace Utils {
 class Environment;
@@ -99,8 +76,6 @@ public:
 
     enum OutputNewlineSetting { DoAppendNewline, DontAppendNewline };
 
-    static void reportRunResult(QFutureInterface<bool> &fi, bool success);
-
     bool widgetExpandedByDefault() const;
     void setWidgetExpandedByDefault(bool widgetExpandedByDefault);
 
@@ -142,9 +117,6 @@ signals:
 protected:
     virtual QWidget *createConfigWidget();
 
-    void runInThread(const std::function<bool()> &syncImpl);
-
-    std::function<bool()> cancelChecker() const;
     bool isCanceled() const;
 
 private:
@@ -157,9 +129,8 @@ private:
     bool m_enabled = true;
     bool m_immutable = false;
     bool m_widgetExpandedByDefault = true;
-    bool m_runInGuiThread = true;
     bool m_addMacroExpander = false;
-    Utils::optional<bool> m_wasExpanded;
+    std::optional<bool> m_wasExpanded;
     std::function<QString()> m_summaryUpdater;
 
     QString m_summaryText;

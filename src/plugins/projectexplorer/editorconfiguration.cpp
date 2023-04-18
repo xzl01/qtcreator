@@ -1,37 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "editorconfiguration.h"
+
 #include "project.h"
-#include "projectexplorer.h"
+#include "projectexplorertr.h"
 #include "session.h"
 
 #include <utils/algorithm.h>
 
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/editormanager.h>
+
 #include <texteditor/texteditor.h>
 #include <texteditor/textdocument.h>
 #include <texteditor/texteditorsettings.h>
@@ -44,8 +24,6 @@
 #include <texteditor/marginsettings.h>
 #include <texteditor/icodestylepreferencesfactory.h>
 
-#include <QLatin1String>
-#include <QByteArray>
 #include <QTextCodec>
 #include <QDebug>
 
@@ -96,7 +74,7 @@ EditorConfiguration::EditorConfiguration() : d(std::make_unique<EditorConfigurat
         // project prefs can point to the global language pool, which contains also the global language prefs
         preferences->setDelegatingPool(TextEditorSettings::codeStylePool(languageId));
         preferences->setId(languageId.name() + "Project");
-        preferences->setDisplayName(tr("Project %1", "Settings, %1 is a language (C++ or QML)").arg(factory->displayName()));
+        preferences->setDisplayName(Tr::tr("Project %1", "Settings, %1 is a language (C++ or QML)").arg(factory->displayName()));
         // project prefs by default point to global prefs (which in turn can delegate to anything else or not)
         preferences->setCurrentDelegate(originalPreferences);
         d->m_languageCodeStylePreferences.insert(languageId, preferences);
@@ -105,7 +83,7 @@ EditorConfiguration::EditorConfiguration() : d(std::make_unique<EditorConfigurat
     // clone of global prefs (not language specific), for project scope
     d->m_defaultCodeStyle = new SimpleCodeStylePreferences(this);
     d->m_defaultCodeStyle->setDelegatingPool(TextEditorSettings::codeStylePool());
-    d->m_defaultCodeStyle->setDisplayName(tr("Project", "Settings"));
+    d->m_defaultCodeStyle->setDisplayName(Tr::tr("Project", "Settings"));
     d->m_defaultCodeStyle->setId("Project");
     // if setCurrentDelegate is 0 values are read from *this prefs
     d->m_defaultCodeStyle->setCurrentDelegate(TextEditorSettings::codeStyle());
@@ -282,7 +260,8 @@ void EditorConfiguration::setUseGlobalSettings(bool use)
 {
     d->m_useGlobal = use;
     d->m_defaultCodeStyle->setCurrentDelegate(use ? TextEditorSettings::codeStyle() : nullptr);
-    foreach (Core::IEditor *editor, Core::DocumentModel::editorsForOpenedDocuments()) {
+    const QList<Core::IEditor *> editors = Core::DocumentModel::editorsForOpenedDocuments();
+    for (Core::IEditor *editor : editors) {
         if (auto widget = TextEditorWidget::fromEditor(editor)) {
             Project *project = SessionManager::projectForFile(editor->document()->filePath());
             if (project && project->editorConfiguration() == this)
@@ -382,6 +361,14 @@ void EditorConfiguration::setShowWrapColumn(bool onoff)
     }
 }
 
+void EditorConfiguration::setTintMarginArea(bool onoff)
+{
+    if (d->m_marginSettings.m_tintMarginArea != onoff) {
+        d->m_marginSettings.m_tintMarginArea = onoff;
+        emit marginSettingsChanged(d->m_marginSettings);
+    }
+}
+
 void EditorConfiguration::setUseIndenter(bool onoff)
 {
     if (d->m_marginSettings.m_useIndenter != onoff) {
@@ -403,16 +390,16 @@ void EditorConfiguration::slotAboutToRemoveProject(Project *project)
     if (project->editorConfiguration() != this)
         return;
 
-    foreach (BaseTextEditor *editor, d->m_editors)
+    for (BaseTextEditor *editor : std::as_const(d->m_editors))
         deconfigureEditor(editor);
 }
 
-TabSettings actualTabSettings(const QString &fileName,
+TabSettings actualTabSettings(const Utils::FilePath &file,
                               const TextDocument *baseTextdocument)
 {
     if (baseTextdocument)
         return baseTextdocument->tabSettings();
-    if (Project *project = SessionManager::projectForFile(Utils::FilePath::fromString(fileName)))
+    if (Project *project = SessionManager::projectForFile(file))
         return project->editorConfiguration()->codeStyle()->tabSettings();
     return TextEditorSettings::codeStyle()->tabSettings();
 }

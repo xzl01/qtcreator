@@ -1,47 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qbsprofilessettingspage.h"
-#include "ui_qbsprofilessettingswidget.h"
 
 #include "qbsprofilemanager.h"
 #include "qbsprojectmanagerconstants.h"
-#include "qbssettings.h"
+#include "qbsprojectmanagertr.h"
 
 #include <coreplugin/icore.h>
 #include <projectexplorer/kit.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectexplorericons.h>
-#include <projectexplorer/taskhub.h>
 #include <utils/algorithm.h>
+#include <utils/layoutbuilder.h>
 #include <utils/qtcassert.h>
 #include <utils/treemodel.h>
 
 #include <QCoreApplication>
+#include <QComboBox>
 #include <QHash>
+#include <QHeaderView>
+#include <QTreeView>
 #include <QWidget>
 
 using namespace ProjectExplorer;
@@ -77,7 +57,7 @@ class ProfileModel : public Utils::TreeModel<ProfileTreeItem>
 public:
     ProfileModel() : TreeModel(static_cast<QObject *>(nullptr))
     {
-        setHeader(QStringList{tr("Key"), tr("Value")});
+        setHeader(QStringList{Tr::tr("Key"), Tr::tr("Value")});
         reload();
     }
 
@@ -121,14 +101,16 @@ private:
     void refreshKitsList();
     void displayCurrentProfile();
 
-    Ui::QbsProfilesSettingsWidget m_ui;
     ProfileModel m_model;
+    QComboBox *m_kitsComboBox;
+    QLabel *m_profileValueLabel;
+    QTreeView *m_propertiesView;
 };
 
 QbsProfilesSettingsPage::QbsProfilesSettingsPage()
 {
     setId("Y.QbsProfiles");
-    setDisplayName(QCoreApplication::translate("QbsProjectManager", "Profiles"));
+    setDisplayName(Tr::tr("Profiles"));
     setCategory(Constants::QBS_SETTINGS_CATEGORY);
 }
 
@@ -147,62 +129,84 @@ void QbsProfilesSettingsPage::finish()
 
 QbsProfilesSettingsWidget::QbsProfilesSettingsWidget()
 {
-    m_ui.setupUi(this);
+    m_kitsComboBox = new QComboBox;
+    m_profileValueLabel = new QLabel;
+    m_propertiesView = new QTreeView;
+
+    using namespace Utils::Layouting;
+    Column {
+        Form {
+            Tr::tr("Kit:"), m_kitsComboBox, br,
+            Tr::tr("Associated profile:"), m_profileValueLabel, br,
+        },
+        hr,
+        Tr::tr("Profile properties:"),
+        Row {
+            m_propertiesView,
+            Column {
+                PushButton {
+                    text(Tr::tr("E&xpand All")),
+                    onClicked([this] { m_propertiesView->expandAll(); }),
+                },
+                PushButton {
+                    text(Tr::tr("&Collapse All")),
+                    onClicked([this] { m_propertiesView->collapseAll(); }),
+                },
+                st,
+            },
+        },
+    }.attachTo(this);
+
     connect(QbsProfileManager::instance(), &QbsProfileManager::qbsProfilesUpdated,
             this, &QbsProfilesSettingsWidget::refreshKitsList);
-    connect(m_ui.expandButton, &QAbstractButton::clicked,
-            m_ui.propertiesView, &QTreeView::expandAll);
-    connect(m_ui.collapseButton, &QAbstractButton::clicked,
-            m_ui.propertiesView, &QTreeView::collapseAll);
     refreshKitsList();
 }
 
 void QbsProfilesSettingsWidget::refreshKitsList()
 {
-    m_ui.kitsComboBox->disconnect(this);
-    m_ui.propertiesView->setModel(nullptr);
+    m_kitsComboBox->disconnect(this);
+    m_propertiesView->setModel(nullptr);
     m_model.reload();
-    m_ui.profileValueLabel->clear();
+    m_profileValueLabel->clear();
     Utils::Id currentId;
-    if (m_ui.kitsComboBox->count() > 0)
-        currentId = Utils::Id::fromSetting(m_ui.kitsComboBox->currentData());
-    m_ui.kitsComboBox->clear();
+    if (m_kitsComboBox->count() > 0)
+        currentId = Utils::Id::fromSetting(m_kitsComboBox->currentData());
+    m_kitsComboBox->clear();
     int newCurrentIndex = -1;
     QList<Kit *> validKits = KitManager::kits();
     Utils::erase(validKits, [](const Kit *k) { return !k->isValid(); });
     const bool hasKits = !validKits.isEmpty();
-    for (const Kit * const kit : qAsConst(validKits)) {
+    for (const Kit * const kit : std::as_const(validKits)) {
         if (kit->id() == currentId)
-            newCurrentIndex = m_ui.kitsComboBox->count();
-        m_ui.kitsComboBox->addItem(kit->displayName(), kit->id().toSetting());
+            newCurrentIndex = m_kitsComboBox->count();
+        m_kitsComboBox->addItem(kit->displayName(), kit->id().toSetting());
     }
     if (newCurrentIndex != -1)
-        m_ui.kitsComboBox->setCurrentIndex(newCurrentIndex);
+        m_kitsComboBox->setCurrentIndex(newCurrentIndex);
     else if (hasKits)
-        m_ui.kitsComboBox->setCurrentIndex(0);
+        m_kitsComboBox->setCurrentIndex(0);
     displayCurrentProfile();
-    connect(m_ui.kitsComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_kitsComboBox, &QComboBox::currentIndexChanged,
             this, &QbsProfilesSettingsWidget::displayCurrentProfile);
 }
 
 void QbsProfilesSettingsWidget::displayCurrentProfile()
 {
-    m_ui.propertiesView->setModel(nullptr);
-    if (m_ui.kitsComboBox->currentIndex() == -1)
+    m_propertiesView->setModel(nullptr);
+    if (m_kitsComboBox->currentIndex() == -1)
         return;
-    const Utils::Id kitId = Utils::Id::fromSetting(m_ui.kitsComboBox->currentData());
+    const Utils::Id kitId = Utils::Id::fromSetting(m_kitsComboBox->currentData());
     const Kit * const kit = KitManager::kit(kitId);
     QTC_ASSERT(kit, return);
     const QString profileName = QbsProfileManager::ensureProfileForKit(kit);
-    m_ui.profileValueLabel->setText(profileName);
+    m_profileValueLabel->setText(profileName);
     for (int i = 0; i < m_model.rowCount(); ++i) {
         const QModelIndex currentProfileIndex = m_model.index(i, 0);
         if (m_model.data(currentProfileIndex, Qt::DisplayRole).toString() != profileName)
             continue;
-        m_ui.propertiesView->setModel(&m_model);
-        m_ui.propertiesView->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-        m_ui.propertiesView->setRootIndex(currentProfileIndex);
+        m_propertiesView->setModel(&m_model);
+        m_propertiesView->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        m_propertiesView->setRootIndex(currentProfileIndex);
         return;
     }
 }

@@ -1,29 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "assetexporter.h"
-#include "assetexportpluginconstants.h"
 #include "componentexporter.h"
 #include "exportnotification.h"
 
@@ -36,9 +13,10 @@
 #include "coreplugin/editormanager/editormanager.h"
 #include "utils/qtcassert.h"
 #include "utils/runextensions.h"
-#include "variantproperty.h"
 #include "projectexplorer/session.h"
 #include "projectexplorer/project.h"
+
+#include <auxiliarydataproperties.h>
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -149,7 +127,7 @@ void AssetExporter::exportQml(const Utils::FilePaths &qmlFiles, const Utils::Fil
 
 void AssetExporter::beginExport()
 {
-    for (const Utils::FilePath &p : qAsConst(m_exportFiles)) {
+    for (const Utils::FilePath &p : std::as_const(m_exportFiles)) {
         if (m_cancelled)
             break;
         preprocessQmlFile(p);
@@ -181,7 +159,7 @@ const QPixmap &AssetExporter::generateAsset(const ModelNode &node)
     if (m_cancelled)
         return nullPixmap;
 
-    const QString uuid = node.auxiliaryData(Constants::UuidAuxTag).toString();
+    const QString uuid = node.auxiliaryDataWithDefault(uuidProperty).toString();
     QTC_ASSERT(!uuid.isEmpty(), return nullPixmap);
 
     if (!m_assets.contains(uuid)) {
@@ -196,7 +174,7 @@ const QPixmap &AssetExporter::generateAsset(const ModelNode &node)
 Utils::FilePath AssetExporter::assetPath(const ModelNode &node, const Component *component,
                                          const QString &suffix) const
 {
-    const QString uuid = node.auxiliaryData(Constants::UuidAuxTag).toString();
+    const QString uuid = node.auxiliaryDataWithDefault(uuidProperty).toString();
     if (!component || uuid.isEmpty())
         return {};
 
@@ -277,7 +255,7 @@ void AssetExporter::preprocessQmlFile(const Utils::FilePath &path)
 {
     // Load the QML file and assign UUIDs to items having none.
     // Meanwhile cache the Component UUIDs as well
-    std::unique_ptr<Model> model(Model::create("Item", 2, 7));
+    ModelPointer model(Model::create("Item", 2, 7));
     Utils::FileReader reader;
     if (!reader.fetch(path)) {
         ExportNotification::addError(tr("Cannot preprocess file: %1. Error %2")
@@ -289,10 +267,11 @@ void AssetExporter::preprocessQmlFile(const Utils::FilePath &path)
     textEdit.setPlainText(QString::fromUtf8(reader.data()));
     NotIndentingTextEditModifier *modifier = new NotIndentingTextEditModifier(&textEdit);
     modifier->setParent(model.get());
-    RewriterView *rewriterView = new RewriterView(QmlDesigner::RewriterView::Validate, model.get());
+    auto rewriterView = std::make_unique<RewriterView>(m_view->externalDependencies(),
+                                                       QmlDesigner::RewriterView::Validate);
     rewriterView->setCheckSemanticErrors(false);
     rewriterView->setTextModifier(modifier);
-    model->attachView(rewriterView);
+    model->attachView(rewriterView.get());
     rewriterView->restoreAuxiliaryData();
     ModelNode rootNode = rewriterView->rootModelNode();
     if (!rootNode.isValid()) {
@@ -324,7 +303,7 @@ void AssetExporter::preprocessQmlFile(const Utils::FilePath &path)
     }
 
     // Cache component UUID
-    const QString uuid = rootNode.auxiliaryData(Constants::UuidAuxTag).toString();
+    const QString uuid = rootNode.auxiliaryDataWithDefault(uuidProperty).toString();
     m_componentUuidCache[path.toString()] = uuid;
 }
 
@@ -334,11 +313,11 @@ bool AssetExporter::assignUuids(const ModelNode &root)
     // Return true if an assignment takes place.
     bool changed = false;
     for (const ModelNode &node : root.allSubModelNodesAndThisNode()) {
-        const QString uuid = node.auxiliaryData(Constants::UuidAuxTag).toString();
+        const QString uuid = node.auxiliaryDataWithDefault(uuidProperty).toString();
         if (uuid.isEmpty()) {
             // Assign an unique identifier to the node.
             QByteArray uuid = generateUuid(node);
-            node.setAuxiliaryData(Constants::UuidAuxTag, QString::fromLatin1(uuid));
+            node.setAuxiliaryData(uuidProperty, QString::fromLatin1(uuid));
             changed = true;
         }
     }

@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 def jumpToFirstLine(editor):
     home = "<Home>" if platform.system() == 'Darwin' else "<Ctrl+Home>"
@@ -190,7 +168,7 @@ def __handleTextTips__(textTip, expectedVals, alternativeVals):
     if not expFail:
         test.passes("TextTip verified")
     else:
-        for key,val in eResult.iteritems():
+        for key,val in eResult.items():
             if val == False:
                 if aResult and aResult.get(key):
                     test.passes("Property '%s' does not match expected, but alternative value" % key)
@@ -262,7 +240,7 @@ def verifyProperties(properties, expectedProps):
         test.warning("Wrong usage - both parameter must be of type dict")
         return {}
     result = {}
-    for key,val in expectedProps.iteritems():
+    for key,val in expectedProps.items():
         foundVal = properties.get(key, None)
         if foundVal != None:
             result[key] = val == foundVal
@@ -358,9 +336,16 @@ def validateSearchResult(expectedCount):
 
 # this function invokes context menu and command from it
 def invokeContextMenuItem(editorArea, command1, command2 = None):
-    ctxtMenu = openContextMenuOnTextCursorPosition(editorArea)
-    snooze(1)
-    item1 = waitForObjectItem(objectMap.realName(ctxtMenu), command1, 2000)
+    for _ in range(2):
+        ctxtMenu = openContextMenuOnTextCursorPosition(editorArea)
+        snooze(1)
+        try:
+            item1 = waitForObjectItem(objectMap.realName(ctxtMenu), command1, 2000)
+            break
+        except:
+            test.warning("Context menu item not ready (%s) - trying once more." % command1)
+            type(editorArea, "<Escape>")
+
     if command2 and platform.system() == 'Darwin':
         mouseMove(item1)
     activateItem(item1)
@@ -389,24 +374,42 @@ def addBranchWildcardToRoot(rootNode):
     return rootNode[:pos] + " [[]*[]]" + rootNode[pos:]
 
 def openDocument(treeElement):
+    # split into tree elements
+    treePathElements = re.split(r"(?<!\\)\.", treeElement)
+    # 'unmask' the extension delimiter
+    treePathElements = list(x.replace("\\.", ".") for x in treePathElements)
     try:
+        parentIndex = None
         selectFromCombo(":Qt Creator_Core::Internal::NavComboBox", "Projects")
         navigator = waitForObject(":Qt Creator_Utils::NavigationTreeView")
-        try:
-            item = waitForObjectItem(navigator, treeElement, 3000)
-        except:
-            treeElement = addBranchWildcardToRoot(treeElement)
-            item = waitForObjectItem(navigator, treeElement)
-        expected = str(item.text).split("/")[-1]
-        for _ in range(2):
-            # Expands items as needed what might make scrollbars appear.
-            # These might cover the item to click.
-            # In this case, do it again to hit the item then.
-            doubleClickItem(navigator, treeElement, 5, 5, 0, Qt.LeftButton)
-            mainWindow = waitForObject(":Qt Creator_Core::Internal::MainWindow")
-            if waitFor("str(mainWindow.windowTitle).startswith(expected + ' ')", 5000):
-                return True
-        test.log("Expected file (%s) was not being opened in openDocument()" % expected)
+
+        for i, t in enumerate(treePathElements):
+            indices = dumpIndices(navigator.model(), parentIndex)
+            foundT = False
+            for index in indices:
+                iText = str(index.text)
+                if (iText == t
+                    or (i == 0 and re.match(t + " [[].+[]]", iText) is not None)):
+                    foundT = True
+                    parentIndex = index
+                    break
+            if not foundT:
+                raise Exception("Failed to get index '%s' (%d)." % (t, i))
+            if not navigator.isExpanded(parentIndex):
+                navigator.scrollTo(parentIndex)
+                rect = navigator.visualRect(parentIndex)
+                doubleClick(navigator, rect.x + 50, rect.y + 5, 0, Qt.LeftButton)
+        # now we should have a full expanded tree up to the requested file
+        rect = navigator.visualRect(parentIndex)
+        doubleClick(navigator, rect.x + 50, rect.y + 5, 0, Qt.LeftButton)
+        mainWindow = waitForObject(":Qt Creator_Core::Internal::MainWindow")
+        fileNameWithoutLinePrefix = treePathElements[-1]
+        matching = re.match("^(.+)(:\\d+)$", fileNameWithoutLinePrefix)
+        if matching is not None:
+            fileNameWithoutLinePrefix = matching.group(1)
+        if waitFor("str(mainWindow.windowTitle).startswith(fileNameWithoutLinePrefix + ' ')", 5000):
+            return True
+        test.log("Expected file (%s) was not being opened in openDocument()" % treePathElements[-1])
         return False
     except:
         t,v = sys.exc_info()[:2]
@@ -415,8 +418,7 @@ def openDocument(treeElement):
 
 def earlyExit(details="No additional information"):
     test.fail("Something went wrong running this test", details)
-    invokeMenuItem("File", "Save All")
-    invokeMenuItem("File", "Exit")
+    saveAndExit()
 
 def openDocumentPlaceCursor(doc, line, additionalFunction=None):
     cppEditorStr = ":Qt Creator_CppEditor::Internal::CPPEditorWidget"

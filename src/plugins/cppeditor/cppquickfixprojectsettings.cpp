@@ -1,31 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Leander Schulten <Leander.Schulten@rwth-aachen.de>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Leander Schulten <Leander.Schulten@rwth-aachen.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppquickfixprojectsettings.h"
+
 #include "cppeditorconstants.h"
+#include "cppeditortr.h"
+
 #include <coreplugin/icore.h>
+
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
@@ -33,10 +15,11 @@
 
 namespace CppEditor {
 namespace Internal {
+
 using namespace Constants;
 
-static const char SETTINGS_FILE_NAME[] = ".cppQuickFix";
-static const char USE_GLOBAL_SETTINGS[] = "UseGlobalSettings";
+const char SETTINGS_FILE_NAME[] = ".cppQuickFix";
+const char USE_GLOBAL_SETTINGS[] = "UseGlobalSettings";
 
 CppQuickFixProjectsSettings::CppQuickFixProjectsSettings(ProjectExplorer::Project *project)
 {
@@ -125,15 +108,15 @@ bool CppQuickFixProjectsSettings::useCustomSettings()
             m_settingsFile = defaultLocation;
         } else if (m_settingsFile != defaultLocation) {
             QMessageBox msgBox(Core::ICore::dialogParent());
-            msgBox.setText(tr("Quick Fix settings are saved in a file. Existing settings file "
-                              "\"%1\" found. Should this file be used or a "
-                              "new one be created?")
+            msgBox.setText(Tr::tr("Quick Fix settings are saved in a file. Existing settings file "
+                                  "\"%1\" found. Should this file be used or a "
+                                  "new one be created?")
                                .arg(m_settingsFile.toString()));
             QPushButton *cancel = msgBox.addButton(QMessageBox::Cancel);
-            cancel->setToolTip(tr("Switch Back to Global Settings"));
-            QPushButton *useExisting = msgBox.addButton(tr("Use Existing"), QMessageBox::AcceptRole);
+            cancel->setToolTip(Tr::tr("Switch Back to Global Settings"));
+            QPushButton *useExisting = msgBox.addButton(Tr::tr("Use Existing"), QMessageBox::AcceptRole);
             useExisting->setToolTip(m_settingsFile.toString());
-            QPushButton *createNew = msgBox.addButton(tr("Create New"), QMessageBox::ActionRole);
+            QPushButton *createNew = msgBox.addButton(Tr::tr("Create New"), QMessageBox::ActionRole);
             createNew->setToolTip(defaultLocation.toString());
             msgBox.exec();
             if (msgBox.clickedButton() == createNew) {

@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Openismus GmbH.
-** Author: Peter Penz (ppenz@openismus.com)
-** Author: Patricia Santana Cruz (patriciasantanacruz@gmail.com)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Openismus GmbH.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "autotoolsbuildsystem.h"
 
 #include "makefileparserthread.h"
-#include "makestep.h"
 
 #include <cppeditor/cppprojectupdater.h>
 #include <projectexplorer/buildconfiguration.h>
@@ -36,72 +11,49 @@
 #include <qtsupport/qtcppkitinfo.h>
 
 #include <utils/filesystemwatcher.h>
+#include <utils/qtcassert.h>
 
 using namespace ProjectExplorer;
 
-namespace AutotoolsProjectManager {
-namespace Internal {
+namespace AutotoolsProjectManager::Internal {
 
 AutotoolsBuildSystem::AutotoolsBuildSystem(Target *target)
     : BuildSystem(target)
     , m_cppCodeModelUpdater(new CppEditor::CppProjectUpdater)
 {
-    connect(target, &Target::activeBuildConfigurationChanged, this, [this]() { requestParse(); });
-
-    connect(target->project(), &Project::projectFileIsDirty, this, [this]() { requestParse(); });
+    connect(target, &Target::activeBuildConfigurationChanged, this, [this] { requestParse(); });
+    connect(target->project(), &Project::projectFileIsDirty, this, [this] { requestParse(); });
 }
 
 AutotoolsBuildSystem::~AutotoolsBuildSystem()
 {
     delete m_cppCodeModelUpdater;
 
-    if (m_makefileParserThread) {
+    if (m_makefileParserThread)
         m_makefileParserThread->wait();
-        delete m_makefileParserThread;
-        m_makefileParserThread = nullptr;
-    }
 }
 
 void AutotoolsBuildSystem::triggerParsing()
 {
-    if (m_makefileParserThread) {
-        // The thread is still busy parsing a previous configuration.
-        // Wait until the thread has been finished and delete it.
-        // TODO: Discuss whether blocking is acceptable.
-        disconnect(m_makefileParserThread,
-                   &QThread::finished,
-                   this,
-                   &AutotoolsBuildSystem::makefileParsingFinished);
+    // The thread is still busy parsing a previous configuration.
+    // Wait until the thread has been finished and delete it.
+    // TODO: Discuss whether blocking is acceptable.
+    if (m_makefileParserThread)
         m_makefileParserThread->wait();
-        delete m_makefileParserThread;
-        m_makefileParserThread = nullptr;
-    }
 
     // Parse the makefile asynchronously in a thread
-    m_makefileParserThread = new MakefileParserThread(this);
+    m_makefileParserThread.reset(new MakefileParserThread(this));
 
-    connect(m_makefileParserThread,
-            &MakefileParserThread::finished,
-            this,
-            &AutotoolsBuildSystem::makefileParsingFinished);
+    connect(m_makefileParserThread.get(), &MakefileParserThread::done,
+            this, &AutotoolsBuildSystem::makefileParsingFinished);
     m_makefileParserThread->start();
 }
 
 void AutotoolsBuildSystem::makefileParsingFinished()
 {
-    // The finished() signal is from a previous makefile-parser-thread
-    // and can be skipped. This can happen, if the thread has emitted the
-    // finished() signal during the execution of AutotoolsBuildSystem::loadProjectTree().
-    // In this case the signal is in the message queue already and deleting
-    // the thread of course does not remove the signal again.
-    if (sender() != m_makefileParserThread)
-        return;
-
+    // The parsing has been cancelled by the user. Don't show any project data at all.
     if (m_makefileParserThread->isCanceled()) {
-        // The parsing has been cancelled by the user. Don't show any
-        // project data at all.
-        m_makefileParserThread->deleteLater();
-        m_makefileParserThread = nullptr;
+        m_makefileParserThread.release()->deleteLater();
         return;
     }
 
@@ -116,13 +68,13 @@ void AutotoolsBuildSystem::makefileParsingFinished()
     const QFileInfo fileInfo = projectFilePath().toFileInfo();
     const QDir dir = fileInfo.absoluteDir();
     const QStringList files = m_makefileParserThread->sources();
-    foreach (const QString& file, files)
+    for (const QString& file : files)
         m_files.append(dir.absoluteFilePath(file));
 
     // Watch for changes of Makefile.am files. If a Makefile.am file
     // has been changed, the project tree must be reparsed.
     const QStringList makefiles = m_makefileParserThread->makefiles();
-    foreach (const QString &makefile, makefiles) {
+    for (const QString &makefile : makefiles) {
         const QString absMakefile = dir.absoluteFilePath(makefile);
 
         m_files.append(absMakefile);
@@ -141,7 +93,7 @@ void AutotoolsBuildSystem::makefileParsingFinished()
     }
 
     auto newRoot = std::make_unique<ProjectNode>(project()->projectDirectory());
-    for (const QString &f : qAsConst(m_files)) {
+    for (const QString &f : std::as_const(m_files)) {
         const Utils::FilePath path = Utils::FilePath::fromString(f);
         newRoot->addNestedNode(std::make_unique<FileNode>(path,
                                                           FileNode::fileTypeForFileName(path)));
@@ -151,8 +103,7 @@ void AutotoolsBuildSystem::makefileParsingFinished()
 
     updateCppCodeModel();
 
-    m_makefileParserThread->deleteLater();
-    m_makefileParserThread = nullptr;
+    m_makefileParserThread.release()->deleteLater();
 
     emitBuildSystemUpdated();
 }
@@ -161,7 +112,7 @@ static QStringList filterIncludes(const QString &absSrc, const QString &absBuild
                                   const QStringList &in)
 {
     QStringList result;
-    foreach (const QString i, in) {
+    for (const QString &i : in) {
         QString out = i;
         out.replace(QLatin1String("$(top_srcdir)"), absSrc);
         out.replace(QLatin1String("$(abs_top_srcdir)"), absSrc);
@@ -205,5 +156,4 @@ void AutotoolsBuildSystem::updateCppCodeModel()
     m_cppCodeModelUpdater->update({project(), kitInfo, activeParseEnvironment(), {rpp}});
 }
 
-} // namespace Internal
-} // namespace AutotoolsProjectManager
+} // AutotoolsProjectManager::Internal

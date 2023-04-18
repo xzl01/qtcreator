@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company,
-** info@kdab.com, author Tim Henning <tim.henning@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company,
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "ctfstatisticsmodel.h"
 
 #include "ctfvisualizerconstants.h"
+#include "ctfvisualizertr.h"
 
 #include <tracing/timelineformattime.h>
 
@@ -190,19 +168,19 @@ QVariant CtfStatisticsModel::headerData(int section, Qt::Orientation orientation
 
     switch (section) {
     case Column::Title:
-        return tr("Title");
+        return Tr::tr("Title");
     case Column::Count:
-        return tr("Count");
+        return Tr::tr("Count");
     case Column::TotalDuration:
-        return tr("Total Time");
+        return Tr::tr("Total Time");
     case Column::RelativeDuration:
-        return tr("Percentage");
+        return Tr::tr("Percentage");
     case Column::MinDuration:
-        return tr("Minimum Time");
+        return Tr::tr("Minimum Time");
     case Column::AvgDuration:
-        return tr("Average Time");
+        return Tr::tr("Average Time");
     case Column::MaxDuration:
-        return tr("Maximum Time");
+        return Tr::tr("Maximum Time");
     default:
         return "";
     }

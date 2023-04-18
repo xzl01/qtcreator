@@ -1,45 +1,28 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cmakeprocess.h"
 
+#include "builddirparameters.h"
 #include "cmakeparser.h"
+#include "cmakeprojectconstants.h"
+#include "cmakeprojectmanagertr.h"
+#include "cmakespecificsettings.h"
 
-#include <coreplugin/progressmanager/progressmanager.h>
+#include <coreplugin/progressmanager/processprogress.h>
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/taskhub.h>
 
+#include <utils/processinterface.h>
+#include <utils/qtcprocess.h>
 #include <utils/stringutils.h>
 
+using namespace Core;
+using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace CMakeProjectManager {
-namespace Internal {
-
-using namespace ProjectExplorer;
+namespace CMakeProjectManager::Internal {
 
 static QString stripTrailingNewline(QString str)
 {
@@ -48,80 +31,98 @@ static QString stripTrailingNewline(QString str)
     return str;
 }
 
-CMakeProcess::CMakeProcess()
-{
-    connect(&m_cancelTimer, &QTimer::timeout, this, &CMakeProcess::checkForCancelled);
-    m_cancelTimer.setInterval(500);
-}
+CMakeProcess::CMakeProcess() = default;
 
 CMakeProcess::~CMakeProcess()
 {
-    m_process.reset();
     m_parser.flush();
-
-    if (m_future) {
-        reportCanceled();
-        reportFinished();
-    }
 }
+
+static const int failedToStartExitCode = 0xFF; // See QtcProcessPrivate::handleDone() impl
 
 void CMakeProcess::run(const BuildDirParameters &parameters, const QStringList &arguments)
 {
-    QTC_ASSERT(!m_process && !m_future, return);
+    QTC_ASSERT(!m_process, return);
 
     CMakeTool *cmake = parameters.cmakeTool();
     QTC_ASSERT(parameters.isValid() && cmake, return);
 
     const FilePath cmakeExecutable = cmake->cmakeExecutable();
 
+    if (!cmakeExecutable.ensureReachable(parameters.sourceDirectory)) {
+        const QString msg = ::CMakeProjectManager::Tr::tr(
+                "The source directory %1 is not reachable by the CMake executable %2.")
+            .arg(parameters.sourceDirectory.displayName()).arg(cmakeExecutable.displayName());
+        BuildSystem::appendBuildSystemOutput(msg + '\n');
+        emit finished(failedToStartExitCode);
+        return;
+    }
+
+    if (!cmakeExecutable.ensureReachable(parameters.buildDirectory)) {
+        const QString msg = ::CMakeProjectManager::Tr::tr(
+                "The build directory %1 is not reachable by the CMake executable %2.")
+            .arg(parameters.buildDirectory.displayName()).arg(cmakeExecutable.displayName());
+        BuildSystem::appendBuildSystemOutput(msg + '\n');
+        emit finished(failedToStartExitCode);
+        return;
+    }
+
     const FilePath sourceDirectory = parameters.sourceDirectory.onDevice(cmakeExecutable);
     const FilePath buildDirectory = parameters.buildDirectory.onDevice(cmakeExecutable);
 
     if (!buildDirectory.exists()) {
-        QString msg = tr("The build directory \"%1\" does not exist")
-                .arg(buildDirectory.toUserOutput());
+        const QString msg = ::CMakeProjectManager::Tr::tr(
+                "The build directory \"%1\" does not exist").arg(buildDirectory.toUserOutput());
         BuildSystem::appendBuildSystemOutput(msg + '\n');
-        emit finished();
+        emit finished(failedToStartExitCode);
         return;
     }
 
     if (buildDirectory.needsDevice()) {
         if (cmake->cmakeExecutable().host() != buildDirectory.host()) {
-            QString msg = tr("CMake executable \"%1\" and build directory "
-                    "\"%2\" must be on the same device.")
-                .arg(cmake->cmakeExecutable().toUserOutput(), buildDirectory.toUserOutput());
+            const QString msg = ::CMakeProjectManager::Tr::tr(
+                  "CMake executable \"%1\" and build directory \"%2\" must be on the same device.")
+                    .arg(cmake->cmakeExecutable().toUserOutput(), buildDirectory.toUserOutput());
             BuildSystem::appendBuildSystemOutput(msg + '\n');
-            emit finished();
+            emit finished(failedToStartExitCode);
             return;
         }
     }
 
+    // Copy the "package-manager" CMake code from the ${IDE:ResourcePath} to the build directory
+    if (Internal::CMakeSpecificSettings::instance()->packageManagerAutoSetup.value()) {
+        const FilePath localPackageManagerDir = buildDirectory.pathAppended(Constants::PACKAGE_MANAGER_DIR);
+        const FilePath idePackageManagerDir = FilePath::fromString(
+            parameters.expander->expand(QStringLiteral("%{IDE:ResourcePath}/package-manager")));
+
+        if (!localPackageManagerDir.exists() && idePackageManagerDir.exists())
+            idePackageManagerDir.copyRecursively(localPackageManagerDir);
+    }
+
     const auto parser = new CMakeParser;
-    parser->setSourceDirectory(parameters.sourceDirectory.path());
+    parser->setSourceDirectory(parameters.sourceDirectory);
     m_parser.addLineParser(parser);
 
     // Always use the sourceDir: If we are triggered because the build directory is getting deleted
     // then we are racing against CMakeCache.txt also getting deleted.
 
-    auto process = std::make_unique<QtcProcess>();
-    m_processWasCanceled = false;
+    m_process.reset(new QtcProcess);
 
-    m_cancelTimer.start();
+    m_process->setWorkingDirectory(buildDirectory);
+    m_process->setEnvironment(parameters.environment);
 
-    process->setWorkingDirectory(buildDirectory);
-    process->setEnvironment(parameters.environment);
-
-    process->setStdOutLineCallback([](const QString &s) {
+    m_process->setStdOutLineCallback([](const QString &s) {
         BuildSystem::appendBuildSystemOutput(stripTrailingNewline(s));
     });
 
-    process->setStdErrLineCallback([this](const QString &s) {
+    m_process->setStdErrLineCallback([this](const QString &s) {
         m_parser.appendMessage(s, StdErrFormat);
         BuildSystem::appendBuildSystemOutput(stripTrailingNewline(s));
     });
 
-    connect(process.get(), &QtcProcess::finished,
-            this, &CMakeProcess::handleProcessFinished);
+    connect(m_process.get(), &QtcProcess::done, this, [this] {
+        handleProcessDone(m_process->resultData());
+    });
 
     CommandLine commandLine(cmakeExecutable);
     commandLine.addArgs({"-S", sourceDirectory.path(), "-B", buildDirectory.path()});
@@ -129,106 +130,48 @@ void CMakeProcess::run(const BuildDirParameters &parameters, const QStringList &
 
     TaskHub::clearTasks(ProjectExplorer::Constants::TASK_CATEGORY_BUILDSYSTEM);
 
-    BuildSystem::startNewBuildSystemOutput(
-        tr("Running %1 in %2.").arg(commandLine.toUserOutput()).arg(buildDirectory.toUserOutput()));
+    BuildSystem::startNewBuildSystemOutput(::CMakeProjectManager::Tr::tr("Running %1 in %2.")
+            .arg(commandLine.toUserOutput(), buildDirectory.toUserOutput()));
 
-    auto future = std::make_unique<QFutureInterface<void>>();
-    future->setProgressRange(0, 1);
-    Core::ProgressManager::addTimedTask(*future.get(),
-                                        tr("Configuring \"%1\"").arg(parameters.projectName),
-                                        "CMake.Configure",
-                                        10);
-
-    process->setCommand(commandLine);
-    emit started();
+    ProcessProgress *progress = new ProcessProgress(m_process.get());
+    progress->setDisplayName(::CMakeProjectManager::Tr::tr("Configuring \"%1\"")
+                             .arg(parameters.projectName));
+    m_process->setTimeoutS(10); // for process progress timeout estimation
+    m_process->setCommand(commandLine);
     m_elapsed.start();
-    process->start();
-
-    m_process = std::move(process);
-    m_future = std::move(future);
+    m_process->start();
 }
 
-void CMakeProcess::terminate()
-{
-    if (m_process) {
-        m_processWasCanceled = true;
-        m_process->terminate();
-    }
-}
-
-QProcess::ProcessState CMakeProcess::state() const
+void CMakeProcess::stop()
 {
     if (m_process)
-        return m_process->state();
-    return QProcess::NotRunning;
+        m_process->stop();
 }
 
-void CMakeProcess::reportCanceled()
+void CMakeProcess::handleProcessDone(const Utils::ProcessResultData &resultData)
 {
-    QTC_ASSERT(m_future, return);
-    m_future->reportCanceled();
-}
-
-void CMakeProcess::reportFinished()
-{
-    QTC_ASSERT(m_future, return);
-    m_future->reportFinished();
-    m_future.reset();
-}
-
-void CMakeProcess::setProgressValue(int p)
-{
-    QTC_ASSERT(m_future, return);
-    m_future->setProgressValue(p);
-}
-
-void CMakeProcess::handleProcessFinished()
-{
-    QTC_ASSERT(m_process && m_future, return);
-
-    m_cancelTimer.stop();
-
-    const int code = m_process->exitCode();
-
+    const int code = resultData.m_exitCode;
     QString msg;
-    if (m_process->exitStatus() != QProcess::NormalExit) {
-        if (m_processWasCanceled) {
-            msg = tr("CMake process was canceled by the user.");
-        } else {
-            msg = tr("CMake process crashed.");
-        }
+    if (resultData.m_error == QProcess::FailedToStart) {
+        msg = ::CMakeProjectManager::Tr::tr("CMake process failed to start.");
+    } else if (resultData.m_exitStatus != QProcess::NormalExit) {
+        if (resultData.m_canceledByUser)
+            msg = ::CMakeProjectManager::Tr::tr("CMake process was canceled by the user.");
+        else
+            msg = ::CMakeProjectManager::Tr::tr("CMake process crashed.");
     } else if (code != 0) {
-        msg = tr("CMake process exited with exit code %1.").arg(code);
+        msg = ::CMakeProjectManager::Tr::tr("CMake process exited with exit code %1.").arg(code);
     }
-    m_lastExitCode = code;
 
     if (!msg.isEmpty()) {
         BuildSystem::appendBuildSystemOutput(msg + '\n');
         TaskHub::addTask(BuildSystemTask(Task::Error, msg));
-        m_future->reportCanceled();
-    } else {
-        m_future->setProgressValue(1);
     }
 
-    m_future->reportFinished();
-
-    emit finished();
+    emit finished(code);
 
     const QString elapsedTime = Utils::formatElapsedTime(m_elapsed.elapsed());
     BuildSystem::appendBuildSystemOutput(elapsedTime + '\n');
 }
 
-void CMakeProcess::checkForCancelled()
-{
-    if (!m_process || !m_future)
-        return;
-
-    if (m_future->isCanceled()) {
-        m_cancelTimer.stop();
-        m_processWasCanceled = true;
-        m_process->close();
-    }
-}
-
-} // namespace Internal
-} // namespace CMakeProjectManager
+} // CMakeProjectManager::Internal

@@ -15,9 +15,10 @@ QtcPlugin {
     Group {
         name: "General"
         files: [
-            "nimplugin.cpp", "nimplugin.h",
-            "nimconstants.h",
             "nim.qrc",
+            "nimconstants.h",
+            "nimplugin.cpp", "nimplugin.h",
+            "nimtr.h",
         ]
     }
 
@@ -60,7 +61,7 @@ QtcPlugin {
         prefix: "settings/"
         files: [
             "nimcodestylepreferencesfactory.h", "nimcodestylepreferencesfactory.cpp",
-            "nimcodestylepreferenceswidget.h", "nimcodestylepreferenceswidget.cpp", "nimcodestylepreferenceswidget.ui",
+            "nimcodestylepreferenceswidget.h", "nimcodestylepreferenceswidget.cpp",
             "nimcodestylesettingspage.h", "nimcodestylesettingspage.cpp",
             "nimsettings.h", "nimsettings.cpp",
         ]

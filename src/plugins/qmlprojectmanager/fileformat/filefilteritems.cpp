@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "filefilteritems.h"
 
@@ -37,8 +15,7 @@
 
 namespace QmlProjectManager {
 
-FileFilterBaseItem::FileFilterBaseItem(QObject *parent) :
-        QmlProjectContentItem(parent)
+FileFilterBaseItem::FileFilterBaseItem()
 {
     m_updateFileListTimer.setSingleShot(true);
     m_updateFileListTimer.setInterval(50);
@@ -225,7 +202,7 @@ void FileFilterBaseItem::updateFileListNow()
 
     QSet<QString> dirsToBeWatched;
     QSet<QString> newFiles;
-    for (const QString &explicitPath : qAsConst(m_explicitFiles))
+    for (const QString &explicitPath : std::as_const(m_explicitFiles))
         newFiles << absolutePath(explicitPath);
 
     if ((!m_fileSuffixes.isEmpty() || !m_regExpList.isEmpty()) && m_explicitFiles.isEmpty())
@@ -258,12 +235,12 @@ void FileFilterBaseItem::updateFileListNow()
 
 bool FileFilterBaseItem::fileMatches(const QString &fileName) const
 {
-    for (const QString &suffix : qAsConst(m_fileSuffixes)) {
+    for (const QString &suffix : std::as_const(m_fileSuffixes)) {
         if (fileName.endsWith(suffix, Qt::CaseInsensitive))
             return true;
     }
 
-    for (const QRegularExpression &filter : qAsConst(m_regExpList)) {
+    for (const QRegularExpression &filter : std::as_const(m_regExpList)) {
         if (filter.match(fileName).hasMatch())
             return true;
     }
@@ -293,21 +270,19 @@ QSet<QString> FileFilterBaseItem::filesInSubTree(const QDir &rootDir, const QDir
     return fileSet;
 }
 
-ImageFileFilterItem::ImageFileFilterItem(QObject *parent)
-    : FileFilterBaseItem(parent)
+ImageFileFilterItem::ImageFileFilterItem()
 {
     QString filter;
     // supported image formats according to
     QList<QByteArray> extensions = QImageReader::supportedImageFormats();
     extensions.append("hdr");
     extensions.append("ktx");
-    for (const QByteArray &extension : qAsConst(extensions))
+    for (const QByteArray &extension : std::as_const(extensions))
         filter.append(QString::fromLatin1("*.%1;").arg(QString::fromLatin1(extension)));
     setFilter(filter);
 }
 
-FileFilterItem::FileFilterItem(const QString &fileFilter, QObject *parent)
-    : FileFilterBaseItem(parent)
+FileFilterItem::FileFilterItem(const QString &fileFilter)
 {
     setFilter(fileFilter);
 }

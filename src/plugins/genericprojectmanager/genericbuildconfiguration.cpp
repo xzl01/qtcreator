@@ -1,38 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "genericbuildconfiguration.h"
 
 #include "genericmakestep.h"
 #include "genericproject.h"
 #include "genericprojectconstants.h"
+#include "genericprojectmanagertr.h"
 
 #include <projectexplorer/buildinfo.h>
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/projectexplorertr.h>
 #include <projectexplorer/target.h>
 
 #include <qtsupport/qtkitinformation.h>
@@ -51,7 +31,7 @@ namespace Internal {
 GenericBuildConfiguration::GenericBuildConfiguration(Target *parent, Utils::Id id)
     : BuildConfiguration(parent, id)
 {
-    setConfigWidgetDisplayName(tr("Generic Manager"));
+    setConfigWidgetDisplayName(GenericProjectManager::Tr::tr("Generic Manager"));
     setBuildDirectoryHistoryCompleter("Generic.BuildDir.History");
 
     setInitializer([this](const BuildInfo &) {
@@ -76,12 +56,12 @@ GenericBuildConfigurationFactory::GenericBuildConfigurationFactory()
 
     setBuildGenerator([](const Kit *, const FilePath &projectPath, bool forSetup) {
         BuildInfo info;
-        info.typeName = BuildConfiguration::tr("Build");
+        info.typeName = ProjectExplorer::Tr::tr("Build");
         info.buildDirectory = forSetup ? Project::projectDirectory(projectPath) : projectPath;
 
         if (forSetup)  {
             //: The name of the build configuration created by default for a generic project.
-            info.displayName = BuildConfiguration::tr("Default");
+            info.displayName = ProjectExplorer::Tr::tr("Default");
         }
 
         return QList<BuildInfo>{info};

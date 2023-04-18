@@ -1,33 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
+#include <projectstoragefwd.h>
+
 #include <QList>
+#include <QObject>
+#include <QTimer>
 
 #include <memory>
+#include <mutex>
 
 QT_FORWARD_DECLARE_CLASS(QQmlEngine)
 
@@ -42,16 +25,24 @@ class Target;
 
 namespace QmlDesigner {
 
-class QmlDesignerProjectManagerProjectData;
-class PreviewImageCacheData;
+class ExternalDependenciesInterface;
 
-class QmlDesignerProjectManager
+class QmlDesignerProjectManager : public QObject
 {
+    Q_OBJECT
+
+    class QmlDesignerProjectManagerProjectData;
+    class PreviewImageCacheData;
+    class ImageCacheData;
+
 public:
-    QmlDesignerProjectManager();
+    QmlDesignerProjectManager(ExternalDependenciesInterface &externalDependencies);
     ~QmlDesignerProjectManager();
 
     void registerPreviewImageProvider(QQmlEngine *engine) const;
+
+    class AsynchronousImageCache &asynchronousImageCache();
+    ProjectStorage<Sqlite::Database> &projectStorage();
 
 private:
     void editorOpened(::Core::IEditor *editor);
@@ -60,9 +51,24 @@ private:
     void projectAdded(::ProjectExplorer::Project *project);
     void aboutToRemoveProject(::ProjectExplorer::Project *project);
     void projectRemoved(::ProjectExplorer::Project *project);
+    void generatePreview();
+    ImageCacheData *imageCacheData();
+
+    void fileListChanged();
+    void activeTargetChanged(::ProjectExplorer::Target *target);
+    void aboutToRemoveTarget(::ProjectExplorer::Target *target);
+    void kitChanged();
+    void projectChanged();
 
 private:
-    std::unique_ptr<PreviewImageCacheData> m_imageCacheData;
+    void update();
+
+private:
+    std::once_flag imageCacheFlag;
+    std::unique_ptr<ImageCacheData> m_imageCacheData;
+    std::unique_ptr<PreviewImageCacheData> m_previewImageCacheData;
     std::unique_ptr<QmlDesignerProjectManagerProjectData> m_projectData;
+    QTimer m_previewTimer;
+    ExternalDependenciesInterface &m_externalDependencies;
 };
 } // namespace QmlDesigner

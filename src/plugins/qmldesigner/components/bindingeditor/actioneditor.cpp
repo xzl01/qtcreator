@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "actioneditor.h"
 
@@ -41,6 +19,8 @@
 
 #include <qmljs/qmljsscopechain.h>
 #include <qmljs/qmljsvalueowner.h>
+
+#include <tuple>
 
 static Q_LOGGING_CATEGORY(ceLog, "qtc.qmldesigner.connectioneditor", QtWarningMsg)
 
@@ -143,6 +123,8 @@ void ActionEditor::setModelNode(const ModelNode &modelNode)
         m_modelNode = modelNode;
 }
 
+namespace {
+
 bool isLiteral(QmlJS::AST::Node *ast)
 {
     if (QmlJS::AST::cast<QmlJS::AST::StringLiteral *>(ast)
@@ -150,10 +132,20 @@ bool isLiteral(QmlJS::AST::Node *ast)
         || QmlJS::AST::cast<QmlJS::AST::TrueLiteral *>(ast)
         || QmlJS::AST::cast<QmlJS::AST::FalseLiteral *>(ast))
         return true;
-    else
-        return false;
+    return false;
 }
 
+TypeName skipCpp(TypeName typeName)
+{
+    // TODO remove after project storage introduction
+
+    if (typeName.contains("<cpp>."))
+        typeName.remove(0, 6);
+
+    return typeName;
+}
+
+} // namespace
 void ActionEditor::prepareConnections()
 {
     if (!m_modelNode.isValid())
@@ -177,12 +169,13 @@ void ActionEditor::prepareConnections()
     const QmlJS::ContextPtr &context = semanticInfo.context;
     const QmlJS::ScopeChain &scopeChain = semanticInfo.scopeChain(path);
 
-    static QList<TypeName> typeWhiteList({"string",
-                                          "real", "int", "double",
-                                          "bool",
-                                          "QColor", "color",
-                                          "QtQuick.Item", "QQuickItem"});
+    constexpr auto typeWhiteList = std::make_tuple(
+        "string", "real", "int", "double", "bool", "QColor", "color", "QtQuick.Item", "QQuickItem");
 
+    auto isSkippedType = [](auto &&type) {
+        return !(type.isString() || type.isInteger() || type.isBool() || type.isColor()
+                 || type.isFloat() || type.isQtObject());
+    };
     static QList<PropertyName> methodBlackList({"toString", "destroy"});
 
     QList<ActionEditorDialog::ConnectionOption> connections;
@@ -197,31 +190,28 @@ void ActionEditor::prepareConnections()
 
         ActionEditorDialog::ConnectionOption connection(modelNode.id());
 
-        for (const auto &propertyName : modelNode.metaInfo().propertyNames()) {
-            if (!typeWhiteList.contains(modelNode.metaInfo().propertyTypeName(propertyName)))
+        for (const auto &property : modelNode.metaInfo().properties()) {
+            if (isSkippedType(property.propertyType()))
                 continue;
 
-            const QString name = QString::fromUtf8(propertyName);
-            const bool writeable = modelNode.metaInfo().propertyIsWritable(propertyName);
-            TypeName type = modelNode.metaInfo().propertyTypeName(propertyName);
-            if (type.contains("<cpp>."))
-                type.remove(0, 6);
-
-            connection.properties.append(ActionEditorDialog::PropertyOption(name, type, writeable));
+            connection.properties.append(
+                ActionEditorDialog::PropertyOption(QString::fromUtf8(property.name()),
+                                                   skipCpp(property.propertyType().typeName()),
+                                                   property.isWritable()));
         }
 
         for (const VariantProperty &variantProperty : modelNode.variantProperties()) {
             if (variantProperty.isValid() && variantProperty.isDynamic()) {
-                if (!typeWhiteList.contains(variantProperty.dynamicTypeName()))
+                if (!variantProperty.hasDynamicTypeName(typeWhiteList))
                     continue;
 
                 const QString name = QString::fromUtf8(variantProperty.name());
-                const bool writeable = modelNode.metaInfo().propertyIsWritable(variantProperty.name());
-                TypeName type = variantProperty.dynamicTypeName();
-                if (type.contains("<cpp>."))
-                    type.remove(0, 6);
+                const bool writeable = modelNode.metaInfo().property(variantProperty.name()).isWritable();
 
-                connection.properties.append(ActionEditorDialog::PropertyOption(name, type, writeable));
+                connection.properties.append(
+                    ActionEditorDialog::PropertyOption(name,
+                                                       skipCpp(variantProperty.dynamicTypeName()),
+                                                       writeable));
             }
         }
 
@@ -229,21 +219,27 @@ void ActionEditor::prepareConnections()
             if (slotName.startsWith("q_") || slotName.startsWith("_q_"))
                 continue;
 
-            QmlJS::Document::MutablePtr newDoc = QmlJS::Document::create(
-                        QLatin1String("<expression>"), QmlJS::Dialect::JavaScript);
+            QmlJS::Document::MutablePtr newDoc
+                = QmlJS::Document::create(Utils::FilePath::fromString("<expression>"),
+                                          QmlJS::Dialect::JavaScript);
             newDoc->setSource(modelNode.id() + "." + QLatin1String(slotName));
             newDoc->parseExpression();
 
             QmlJS::AST::ExpressionNode *expression = newDoc->expression();
 
             if (expression && !isLiteral(expression)) {
-                QmlJS::ValueOwner *interp = context->valueOwner();
-                const QmlJS::Value *value = interp->convertToObject(scopeChain.evaluate(expression));
+                if (QmlJS::ValueOwner *interp = context->valueOwner()) {
+                    if (const QmlJS::Value *value = interp->convertToObject(
+                            scopeChain.evaluate(expression))) {
+                        if (value->asNullValue() && !methodBlackList.contains(slotName))
+                            connection.methods.append(QString::fromUtf8(slotName));
 
-                if (const QmlJS::FunctionValue *f = value->asFunctionValue()) {
-                    // Only add slots with zero arguments
-                    if (f->namedArgumentCount() == 0 && !methodBlackList.contains(slotName))
-                        connection.methods.append(QString::fromUtf8(slotName));
+                        if (const QmlJS::FunctionValue *f = value->asFunctionValue()) {
+                            // Only add slots with zero arguments
+                            if (f->namedArgumentCount() == 0 && !methodBlackList.contains(slotName))
+                                connection.methods.append(QString::fromUtf8(slotName));
+                        }
+                    }
                 }
             }
         }
@@ -259,18 +255,14 @@ void ActionEditor::prepareConnections()
                 NodeMetaInfo metaInfo = m_modelNode.view()->model()->metaInfo(data.typeName.toUtf8());
                 if (metaInfo.isValid()) {
                     ActionEditorDialog::SingletonOption singelton;
-                    for (const PropertyName &propertyName : metaInfo.propertyNames()) {
-                        TypeName type = metaInfo.propertyTypeName(propertyName);
-
-                        if (!typeWhiteList.contains(type))
+                    for (const auto &property : metaInfo.properties()) {
+                        if (isSkippedType(property.propertyType()))
                             continue;
 
-                        const QString name = QString::fromUtf8(propertyName);
-                        const bool writeable = metaInfo.propertyIsWritable(propertyName);
-                        if (type.contains("<cpp>."))
-                            type.remove(0, 6);
-
-                        singelton.properties.append(ActionEditorDialog::PropertyOption(name, type, writeable));
+                        singelton.properties.append(ActionEditorDialog::PropertyOption(
+                            QString::fromUtf8(property.name()),
+                            skipCpp(property.propertyType().typeName()),
+                            property.isWritable()));
                     }
 
                     if (!singelton.properties.isEmpty()) {
@@ -299,6 +291,79 @@ void ActionEditor::updateWindowName(const QString &targetName)
             m_dialog->setWindowTitle(m_dialog->defaultTitle() + " [" + targetName + "]");
         m_dialog->raise();
     }
+}
+
+void ActionEditor::invokeEditor(SignalHandlerProperty signalHandler,
+                                std::function<void(SignalHandlerProperty)> removeSignalFunction,
+                                bool removeOnReject,
+                                QObject * parent)
+{
+    if (!signalHandler.isValid())
+        return;
+
+    ModelNode connectionNode = signalHandler.parentModelNode();
+    if (!connectionNode.isValid())
+        return;
+
+    if (!connectionNode.bindingProperty("target").isValid())
+        return;
+
+    ModelNode targetNode = connectionNode.bindingProperty("target").resolveToModelNode();
+    if (!targetNode.isValid())
+        return;
+
+    const QString source = signalHandler.source();
+
+    QPointer<ActionEditor> editor = new ActionEditor(parent);
+
+    editor->showWidget();
+    editor->setModelNode(connectionNode);
+    editor->setConnectionValue(source);
+    editor->prepareConnections();
+    editor->updateWindowName(targetNode.validId() + "." + signalHandler.name());
+
+    QObject::connect(editor, &ActionEditor::accepted, [=]() {
+        if (!editor)
+            return;
+        if (editor->m_modelNode.isValid()) {
+            editor->m_modelNode.view()
+                ->executeInTransaction("ActionEditor::"
+                                       "invokeEditorAccepted",
+                                       [=]() {
+                                           if (!editor)
+                                               return;
+
+                                           const QString newSource = editor->connectionValue();
+                                           if ((newSource.isNull() || newSource.trimmed().isEmpty())
+                                               && removeSignalFunction) {
+                                               removeSignalFunction(signalHandler);
+                                           } else {
+                                               editor->m_modelNode
+                                                   .signalHandlerProperty(signalHandler.name())
+                                                   .setSource(newSource);
+                                           }
+                                       });
+        }
+
+        //closing editor widget somewhy triggers rejected() signal. Lets disconect before it affects us:
+        editor->disconnect();
+        editor->deleteLater();
+    });
+
+    QObject::connect(editor, &ActionEditor::rejected, [=]() {
+        if (!editor)
+            return;
+
+        if (removeOnReject && removeSignalFunction) {
+            editor->m_modelNode.view()->executeInTransaction("ActionEditor::"
+                                                             "invokeEditorOnRejectFunc",
+                                                             [=]() { removeSignalFunction(signalHandler); });
+        }
+
+        //closing editor widget somewhy triggers rejected() signal 2nd time. Lets disconect before it affects us:
+        editor->disconnect();
+        editor->deleteLater();
+    });
 }
 
 } // QmlDesigner namespace

@@ -1,30 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Canonical Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Canonical Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cmaketoolmanager.h"
 
+#include "cmakeprojectmanagertr.h"
+#include "cmakespecificsettings.h"
 #include "cmaketoolsettingsaccessor.h"
 
 #include <extensionsystem/pluginmanager.h>
@@ -41,10 +21,6 @@ using namespace Utils;
 
 namespace CMakeProjectManager {
 
-// --------------------------------------------------------------------
-// CMakeToolManagerPrivate:
-// --------------------------------------------------------------------
-
 class CMakeToolManagerPrivate
 {
 public:
@@ -52,12 +28,8 @@ public:
     std::vector<std::unique_ptr<CMakeTool>> m_cmakeTools;
     Internal::CMakeToolSettingsAccessor m_accessor;
 };
+
 static CMakeToolManagerPrivate *d = nullptr;
-
-// --------------------------------------------------------------------
-// CMakeToolManager:
-// --------------------------------------------------------------------
-
 CMakeToolManager *CMakeToolManager::m_instance = nullptr;
 
 CMakeToolManager::CMakeToolManager()
@@ -167,6 +139,14 @@ void CMakeToolManager::restoreCMakeTools()
     updateDocumentation();
 
     emit m_instance->cmakeToolsLoaded();
+
+    // Store the default CMake tool "Autorun CMake" value globally
+    auto settings = Internal::CMakeSpecificSettings::instance();
+    if (settings->autorunCMake.value() == settings->autorunCMake.defaultValue()) {
+        CMakeTool *cmake = defaultCMakeTool();
+        settings->autorunCMake.setValue(cmake ? cmake->isAutoRun() : true);
+        settings->writeSettings(Core::ICore::settings());
+    }
 }
 
 void CMakeToolManager::updateDocumentation()
@@ -180,46 +160,54 @@ void CMakeToolManager::updateDocumentation()
     Core::HelpManager::registerDocumentation(docs);
 }
 
-void CMakeToolManager::autoDetectCMakeForDevice(const FilePaths &searchPaths,
+QList<Id> CMakeToolManager::autoDetectCMakeForDevice(const FilePaths &searchPaths,
                                                 const QString &detectionSource,
                                                 QString *logMessage)
 {
-    QStringList messages{tr("Searching CMake binaries...")};
+    QList<Id> result;
+    QStringList messages{Tr::tr("Searching CMake binaries...")};
     for (const FilePath &path : searchPaths) {
         const FilePath cmake = path.pathAppended("cmake").withExecutableSuffix();
         if (cmake.isExecutableFile()) {
-            registerCMakeByPath(cmake, detectionSource);
-            messages.append(tr("Found \"%1\"").arg(cmake.toUserOutput()));
+            const Id currentId = registerCMakeByPath(cmake, detectionSource);
+            if (currentId.isValid())
+                result.push_back(currentId);
+            messages.append(Tr::tr("Found \"%1\"").arg(cmake.toUserOutput()));
         }
     }
     if (logMessage)
         *logMessage = messages.join('\n');
+
+    return result;
 }
 
 
-void CMakeToolManager::registerCMakeByPath(const FilePath &cmakePath, const QString &detectionSource)
+Id CMakeToolManager::registerCMakeByPath(const FilePath &cmakePath, const QString &detectionSource)
 {
-    const Id id = Id::fromString(cmakePath.toUserOutput());
+    Id id = Id::fromString(cmakePath.toUserOutput());
 
     CMakeTool *cmakeTool = findById(id);
     if (cmakeTool)
-        return;
+        return cmakeTool->id();
 
     auto newTool = std::make_unique<CMakeTool>(CMakeTool::ManualDetection, id);
     newTool->setFilePath(cmakePath);
     newTool->setDetectionSource(detectionSource);
     newTool->setDisplayName(cmakePath.toUserOutput());
+    id = newTool->id();
     registerCMakeTool(std::move(newTool));
+
+    return id;
 }
 
 void CMakeToolManager::removeDetectedCMake(const QString &detectionSource, QString *logMessage)
 {
-    QStringList logMessages{tr("Removing CMake entries...")};
+    QStringList logMessages{Tr::tr("Removing CMake entries...")};
     while (true) {
         auto toRemove = Utils::take(d->m_cmakeTools, Utils::equal(&CMakeTool::detectionSource, detectionSource));
         if (!toRemove.has_value())
             break;
-        logMessages.append(tr("Removed \"%1\"").arg((*toRemove)->displayName()));
+        logMessages.append(Tr::tr("Removed \"%1\"").arg((*toRemove)->displayName()));
         emit m_instance->cmakeRemoved((*toRemove)->id());
     }
 
@@ -232,8 +220,8 @@ void CMakeToolManager::removeDetectedCMake(const QString &detectionSource, QStri
 void CMakeToolManager::listDetectedCMake(const QString &detectionSource, QString *logMessage)
 {
     QTC_ASSERT(logMessage, return);
-    QStringList logMessages{tr("CMake:")};
-    for (const auto &tool : qAsConst(d->m_cmakeTools)) {
+    QStringList logMessages{Tr::tr("CMake:")};
+    for (const auto &tool : std::as_const(d->m_cmakeTools)) {
         if (tool->detectionSource() == detectionSource)
             logMessages.append(tool->displayName());
     }
@@ -271,4 +259,4 @@ void CMakeToolManager::ensureDefaultCMakeToolIsValid()
         emit m_instance->defaultCMakeChanged();
 }
 
-} // namespace CMakeProjectManager
+} // CMakeProjectManager

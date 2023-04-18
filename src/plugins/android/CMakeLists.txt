@@ -1,15 +1,15 @@
 add_qtc_plugin(Android
-  DEPENDS QtcSsh QmlDebug Qt5::Xml LanguageServerProtocol
+  DEPENDS QmlDebug Qt::Xml LanguageServerProtocol
   PLUGIN_DEPENDS Core Debugger ProjectExplorer QtSupport LanguageClient
   SOURCES
-    addnewavddialog.ui
     android.qrc
     android_global.h
+    androidtr.h
     androidavdmanager.cpp androidavdmanager.h
     androidbuildapkstep.cpp androidbuildapkstep.h
     androidconfigurations.cpp androidconfigurations.h
     androidconstants.h
-    androidcreatekeystorecertificate.cpp androidcreatekeystorecertificate.h androidcreatekeystorecertificate.ui
+    androidcreatekeystorecertificate.cpp androidcreatekeystorecertificate.h
     androiddebugsupport.cpp androiddebugsupport.h
     androiddeployqtstep.cpp androiddeployqtstep.h
     androiddevice.cpp androiddevice.h
@@ -36,11 +36,10 @@ add_qtc_plugin(Android
     androidrunnerworker.cpp androidrunnerworker.h
     androidsdkdownloader.cpp androidsdkdownloader.h
     androidsdkmanager.cpp androidsdkmanager.h
-    androidsdkmanagerwidget.cpp androidsdkmanagerwidget.h androidsdkmanagerwidget.ui
+    androidsdkmanagerwidget.cpp androidsdkmanagerwidget.h
     androidsdkmodel.cpp androidsdkmodel.h
     androidsdkpackage.cpp androidsdkpackage.h
-    androidservicewidget.cpp androidservicewidget.h androidservicewidget_p.h
-    androidsettingswidget.cpp androidsettingswidget.h androidsettingswidget.ui
+    androidsettingswidget.cpp androidsettingswidget.h
     androidsignaloperation.cpp androidsignaloperation.h
     androidtoolchain.cpp androidtoolchain.h
     avddialog.cpp avddialog.h
@@ -53,10 +52,13 @@ add_qtc_plugin(Android
     javaparser.cpp javaparser.h
     splashscreencontainerwidget.cpp splashscreencontainerwidget.h
     splashscreenwidget.cpp splashscreenwidget.h
+    sdkmanageroutputparser.cpp sdkmanageroutputparser.h
 )
 
 extend_qtc_plugin(Android
   CONDITION WITH_TESTS
   SOURCES
+    androidsdkmanager_test.cpp androidsdkmanager_test.h
+    sdkmanageroutputparser_test.cpp sdkmanageroutputparser_test.h
     android_tst.qrc
 )

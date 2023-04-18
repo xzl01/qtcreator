@@ -1,37 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include <coreplugin/helpitem.h>
-#include <texteditor/texteditor.h>
+#include "typehierarchybuilder.h"
 
+#include <coreplugin/helpitem.h>
 #include <cplusplus/CppDocument.h>
+#include <texteditor/texteditor.h>
+#include <utils/utilsicons.h>
 
 #include <QFuture>
-#include <QIcon>
 #include <QSharedPointer>
 #include <QString>
 #include <QStringList>
@@ -40,6 +19,7 @@
 #include <functional>
 
 namespace CPlusPlus {
+class ClassOrNamespace;
 class LookupItem;
 class LookupContext;
 }
@@ -61,13 +41,13 @@ public:
     void execute();
     static QFuture<QSharedPointer<CppElement>> asyncExecute(TextEditor::TextEditorWidget *editor);
     static QFuture<QSharedPointer<CppElement>> asyncExecute(const QString &expression,
-                                                            const QString &fileName);
+                                                            const Utils::FilePath &filePath);
     bool identifiedCppElement() const;
     const QSharedPointer<CppElement> &cppElement() const;
     bool hasDiagnosis() const;
     const QString &diagnosis() const;
 
-    static Utils::Link linkFromExpression(const QString &expression, const QString &fileName);
+    static Utils::Link linkFromExpression(const QString &expression, const Utils::FilePath &filePath);
 
 private:
     class CppElementEvaluatorPrivate *d;
@@ -98,11 +78,10 @@ public:
     explicit CppDeclarableElement(CPlusPlus::Symbol *declaration);
 
 public:
-    CPlusPlus::Symbol *declaration;
+    Utils::CodeModelIcon::Type iconType;
     QString name;
     QString qualifiedName;
     QString type;
-    QIcon icon;
 };
 
 class CppClass : public CppDeclarableElement
@@ -111,8 +90,6 @@ public:
     CppClass();
     explicit CppClass(CPlusPlus::Symbol *declaration);
 
-    bool operator==(const CppClass &other);
-
     CppClass *toCppClass() final;
 
     void lookupBases(QFutureInterfaceBase &futureInterface,
@@ -120,9 +97,15 @@ public:
     void lookupDerived(QFutureInterfaceBase &futureInterface,
                        CPlusPlus::Symbol *declaration, const CPlusPlus::Snapshot &snapshot);
 
-public:
     QList<CppClass> bases;
     QList<CppClass> derived;
+
+private:
+    void addBaseHierarchy(QFutureInterfaceBase &futureInterface,
+                          const CPlusPlus::LookupContext &context,
+                          CPlusPlus::ClassOrNamespace *hierarchy,
+                          QSet<CPlusPlus::ClassOrNamespace *> *visited);
+    void addDerivedHierarchy(const TypeHierarchy &hierarchy);
 };
 
 } // namespace Internal

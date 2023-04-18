@@ -1,30 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlprofileranimationsmodel.h"
 #include "qmlprofilermodelmanager.h"
+#include "qmlprofilertr.h"
 
 #include <utils/qtcassert.h>
 #include <tracing/timelineformattime.h>
@@ -42,7 +21,7 @@ namespace Internal {
 
 QmlProfilerAnimationsModel::QmlProfilerAnimationsModel(QmlProfilerModelManager *manager,
                                                        Timeline::TimelineModelAggregator *parent) :
-    QmlProfilerTimelineModel(manager, Event, MaximumRangeType, ProfileAnimations, parent)
+    QmlProfilerTimelineModel(manager, Event, UndefinedRangeType, ProfileAnimations, parent)
 {
     m_minNextStartTimes[0] = m_minNextStartTimes[1] = 0;
 }
@@ -155,16 +134,16 @@ QVariantList QmlProfilerAnimationsModel::labels() const
 
     if (m_maxGuiThreadAnimations > 0) {
         QVariantMap element;
-        element.insert(QLatin1String("displayName"), tr("Animations"));
-        element.insert(QLatin1String("description"), tr("GUI Thread"));
+        element.insert(QLatin1String("displayName"), Tr::tr("Animations"));
+        element.insert(QLatin1String("description"), Tr::tr("GUI Thread"));
         element.insert(QLatin1String("id"), GuiThread);
         result << element;
     }
 
     if (m_maxRenderThreadAnimations > 0) {
         QVariantMap element;
-        element.insert(QLatin1String("displayName"), tr("Animations"));
-        element.insert(QLatin1String("description"), tr("Render Thread"));
+        element.insert(QLatin1String("displayName"), Tr::tr("Animations"));
+        element.insert(QLatin1String("description"), Tr::tr("Render Thread"));
         element.insert(QLatin1String("id"), RenderThread);
         result << element;
     }
@@ -177,11 +156,11 @@ QVariantMap QmlProfilerAnimationsModel::details(int index) const
     QVariantMap result;
 
     result.insert(QStringLiteral("displayName"), displayName());
-    result.insert(tr("Duration"), Timeline::formatTime(duration(index)));
-    result.insert(tr("Framerate"), QString::fromLatin1("%1 FPS").arg(m_data[index].framerate));
-    result.insert(tr("Animations"), QString::number(m_data[index].animationcount));
-    result.insert(tr("Context"), selectionId(index) == GuiThread ? tr("GUI Thread") :
-                                                                   tr("Render Thread"));
+    result.insert(Tr::tr("Duration"), Timeline::formatTime(duration(index)));
+    result.insert(Tr::tr("Framerate"), QString::fromLatin1("%1 FPS").arg(m_data[index].framerate));
+    result.insert(Tr::tr("Animations"), QString::number(m_data[index].animationcount));
+    result.insert(Tr::tr("Context"), selectionId(index) == GuiThread ? Tr::tr("GUI Thread") :
+                                                                   Tr::tr("Render Thread"));
     return result;
 }
 

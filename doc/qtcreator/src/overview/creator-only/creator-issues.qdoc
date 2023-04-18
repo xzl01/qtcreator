@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -96,7 +74,7 @@
 
     \list
 
-        \li  Paths or file names containing spaces or special characters
+        \li  Paths or file names that have spaces or special characters
             (such as colons, dollar signs, and hash marks) may cause problems.
             This is because some of the tools \QC uses in the background have
             restrictions on the characters allowed in file and directory names.
@@ -104,7 +82,7 @@
             items with names consisting of plain characters, numbers,
             underscores, and hyphens.
 
-        \li  If error messages displayed in the \uicontrol {Compile Output} pane contain
+        \li  If error messages displayed in \l {Compile Output} have
             paths where slashes are missing (for example, C:QtSDK),
             check your PATH variable. For more information, see
             \l{Troubleshooting MinGW Compilation Errors}.
@@ -117,7 +95,8 @@
 
         \li  When debugging executables created by the GNU Compiler version 4.5.0
             (all platforms), some data types will not be displayed in the
-            \uicontrol{Locals and Expressions} view due to missing debug information.
+            \uicontrol Locals and \uicontrol Expressions views due to missing
+            debug information.
 
         \li  GDB on Windows may not work if the 'Embassy \reg Security Center'
             software by 'Wave \reg Systems' is installed and active (causing
@@ -131,10 +110,10 @@
 
         \li  Setting breakpoints in files that do not have unique absolute
             paths may fail. For example, remounting parts of a file system
-            using the --bind mount option.
+            using the \c {--bind mount} option.
 
         \li  Setting breakpoints in files will fail when using LLDB if the file path
-            contains symbolic links.
+            has symbolic links.
 
         \li  A regression in GCC 4.5.0 causes return value optimization to
             produce inaccurate debug info that GCC applies also to

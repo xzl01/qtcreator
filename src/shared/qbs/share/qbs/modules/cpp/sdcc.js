@@ -286,18 +286,18 @@ function compilerFlags(project, product, input, outputs, explicitlyDependsOn) {
 
     // C language version flags.
     if (tag === "c") {
-        var knownValues = ["c11", "c99", "c89"];
+        var knownValues = ["c2x", "c17", "c11", "c99", "c89"];
         var cLanguageVersion = Cpp.languageVersion(
                     input.cpp.cLanguageVersion, knownValues, "C");
         switch (cLanguageVersion) {
+        case "c17":
+            cLanguageVersion = "c11";
+            // fall through
         case "c89":
-            args.push("--std-c89");
-            break;
         case "c99":
-            args.push("--std-c99");
-            break;
         case "c11":
-            args.push("--std-c11");
+        case "c2x":
+            args.push("--std-" + cLanguageVersion);
             break;
         }
     }
@@ -396,7 +396,7 @@ function buildLinkerMapFilePath(target, suffix) {
 // We need to replace the '\r\n\' line endings with the'\n' line
 // endings for each generated object file.
 function patchObjectFile(project, product, inputs, outputs, input, output) {
-    var isWindows = Host.os().contains("windows");
+    var isWindows = Host.os().includes("windows");
     if (isWindows && input.cpp.debugInformation) {
         var cmd = new JavaScriptCommand();
         cmd.objectPath = outputs.obj[0].filePath;
@@ -461,10 +461,9 @@ function renameLinkerMapFile(project, product, inputs, outputs, input, output) {
 // remove a listing files only after the linking completes.
 function removeCompilerListingFiles(project, product, inputs, outputs, input, output) {
     var cmd = new JavaScriptCommand();
-    cmd.objects = inputs.obj.map(function(a) { return a; });
     cmd.silent = true;
     cmd.sourceCode = function() {
-        objects.forEach(function(object) {
+        inputs.obj.forEach(function(object) {
             if (!object.filePath.endsWith(".c" + object.cpp.objectSuffix))
                 return; // Skip the assembler generated objects.
             if (!object.cpp.generateCompilerListingFiles

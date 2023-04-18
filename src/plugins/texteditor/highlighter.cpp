@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "highlighter.h"
 
@@ -29,20 +7,22 @@
 #include "tabsettings.h"
 #include "textdocumentlayout.h"
 #include "texteditor.h"
+#include "texteditortr.h"
 #include "texteditorsettings.h"
 
 #include <coreplugin/editormanager/documentmodel.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
-#include <utils/mimetypes/mimedatabase.h>
+
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
 #include <utils/stylehelper.h>
 
-#include <DefinitionDownloader>
-#include <FoldingRegion>
-#include <Format>
-#include <Repository>
-#include <SyntaxHighlighter>
+#include <KSyntaxHighlighting/DefinitionDownloader>
+#include <KSyntaxHighlighting/FoldingRegion>
+#include <KSyntaxHighlighting/Format>
+#include <KSyntaxHighlighting/Repository>
+#include <KSyntaxHighlighting/SyntaxHighlighter>
 
 #include <QLoggingCategory>
 #include <QMetaEnum>
@@ -141,8 +121,18 @@ Highlighter::Definitions Highlighter::definitionsForDocument(const TextDocument 
     }
     if (definitions.isEmpty()) {
         const MimeType &mimeType = Utils::mimeTypeForName(document->mimeType());
-        if (mimeType.isValid())
-            definitions = definitionsForMimeType(mimeType.name());
+        if (mimeType.isValid()) {
+            Utils::visitMimeParents(mimeType, [&](const MimeType &mt) -> bool {
+                // highlight definitions might not use the canonical name but an alias
+                const QStringList names = QStringList(mt.name()) + mt.aliases();
+                for (const QString &name : names) {
+                    definitions = definitionsForMimeType(name);
+                    if (!definitions.isEmpty())
+                        return false; // stop
+                }
+                return true; // continue
+            });
+        }
     }
 
     return definitions;
@@ -241,7 +231,7 @@ void Highlighter::downloadDefinitions(std::function<void()> callback) {
     auto downloader =
         new KSyntaxHighlighting::DefinitionDownloader(highlightRepository());
     connect(downloader, &KSyntaxHighlighting::DefinitionDownloader::done, [downloader, callback]() {
-        Core::MessageManager::writeFlashing(tr("Highlighter updates: done"));
+        Core::MessageManager::writeFlashing(Tr::tr("Highlighter updates: done"));
         downloader->deleteLater();
         reload();
         if (callback)
@@ -250,9 +240,9 @@ void Highlighter::downloadDefinitions(std::function<void()> callback) {
     connect(downloader,
             &KSyntaxHighlighting::DefinitionDownloader::informationMessage,
             [](const QString &message) {
-                Core::MessageManager::writeSilently(tr("Highlighter updates:") + ' ' + message);
+                Core::MessageManager::writeSilently(Tr::tr("Highlighter updates:") + ' ' + message);
             });
-    Core::MessageManager::writeDisrupting(tr("Highlighter updates: starting"));
+    Core::MessageManager::writeDisrupting(Tr::tr("Highlighter updates: starting"));
     downloader->start();
 }
 
@@ -314,7 +304,8 @@ void Highlighter::highlightBlock(const QString &text)
         TextBlockUserData *data = TextDocumentLayout::userData(nextBlock);
         if (data->syntaxState() != state) {
             data->setSyntaxState(state);
-            setCurrentBlockState(currentBlockState() ^ 1); // force rehighlight of next block
+            // Toggles the LSB of current block's userState. It forces rehighlight of next block.
+            setCurrentBlockState(currentBlockState() ^ 1);
         }
         data->setFoldingIndent(TextDocumentLayout::braceDepth(block));
     }

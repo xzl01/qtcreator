@@ -44,8 +44,11 @@ public:
     PerfSymbolTable(qint32 pid, Dwfl_Callbacks *callbacks, PerfUnwind *parent);
     ~PerfSymbolTable();
 
+    static QFileInfo findDebugInfoFile(
+            const QString& root, const QString& file, const QString& debugLinkString);
+
     struct PerfMapSymbol {
-        PerfMapSymbol(quint64 start = 0, quint64 length = 0, QByteArray name = QByteArray()) :
+        PerfMapSymbol(quint64 start = 0, quint64 length = 0, const QByteArray &name = QByteArray()) :
             start(start), length(length), name(name) {}
         quint64 start;
         quint64 length;
@@ -72,7 +75,7 @@ public:
     void updatePerfMap();
     bool containsAddress(quint64 address) const;
 
-    Dwfl *attachDwfl(void *arg);
+    Dwfl *attachDwfl(const Dwfl_Thread_Callbacks *callbacks, PerfUnwind::UnwindInfo *unwindInfo);
     void clearCache();
     bool cacheIsDirty() const { return m_cacheIsDirty; }
 
@@ -82,8 +85,7 @@ private:
     // Report an mmap to dwfl and parse it for symbols and inlines, or simply return it if dwfl has
     // it already
     Dwfl_Module *reportElf(const PerfElfMap::ElfInfo& elf);
-    QFileInfo findFile(const char *path, const QString &fileName,
-                       const QByteArray &buildId = QByteArray()) const;
+    QFileInfo findFile(const QString& path, const QString& fileName, const QByteArray& buildId = QByteArray()) const;
 
     class ElfAndFile {
     public:
@@ -108,6 +110,7 @@ private:
 
     QFile m_perfMapFile;
     QVector<PerfMapSymbol> m_perfMap;
+    bool m_hasPerfMap;
     bool m_cacheIsDirty;
 
     PerfUnwind *m_unwind;

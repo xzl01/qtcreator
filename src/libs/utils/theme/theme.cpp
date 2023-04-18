@@ -1,31 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Thorben Kroeger <thorbenkroeger@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Thorben Kroeger <thorbenkroeger@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "theme.h"
 #include "theme_p.h"
-#include "../algorithm.h"
 #include "../hostosinfo.h"
 #include "../qtcassert.h"
 #ifdef Q_OS_MACOS
@@ -33,7 +10,6 @@
 #endif
 
 #include <QApplication>
-#include <QFileInfo>
 #include <QMetaEnum>
 #include <QPalette>
 #include <QSettings>
@@ -47,7 +23,6 @@ ThemePrivate::ThemePrivate()
     const QMetaObject &m = Theme::staticMetaObject;
     colors.resize        (m.enumerator(m.indexOfEnumerator("Color")).keyCount());
     imageFiles.resize    (m.enumerator(m.indexOfEnumerator("ImageFile")).keyCount());
-    gradients.resize     (m.enumerator(m.indexOfEnumerator("Gradient")).keyCount());
     flags.resize         (m.enumerator(m.indexOfEnumerator("Flag")).keyCount());
 }
 
@@ -145,6 +120,10 @@ bool Theme::flag(Theme::Flag f) const
 
 QColor Theme::color(Theme::Color role) const
 {
+    const auto color = d->colors[role];
+    if (HostOsInfo::isMacHost() && !d->enforceAccentColorOnMacOS.isEmpty()
+        && color.second == d->enforceAccentColorOnMacOS)
+        return initialPalette().color(QPalette::Highlight);
     return d->colors[role].first;
 }
 
@@ -154,24 +133,20 @@ QString Theme::imageFile(Theme::ImageFile imageFile, const QString &fallBack) co
     return file.isEmpty() ? fallBack : file;
 }
 
-QGradientStops Theme::gradient(Theme::Gradient role) const
-{
-    return d->gradients[role];
-}
-
 QPair<QColor, QString> Theme::readNamedColor(const QString &color) const
 {
-    if (d->palette.contains(color))
-        return qMakePair(d->palette[color], color);
+    const auto it = d->palette.constFind(color);
+    if (it != d->palette.constEnd())
+        return {it.value(), color};
     if (color == QLatin1String("style"))
-        return qMakePair(QColor(), QString());
+        return {};
 
     const QColor col('#' + color);
     if (!col.isValid()) {
         qWarning("Color \"%s\" is neither a named color nor a valid color", qPrintable(color));
-        return qMakePair(Qt::black, QString());
+        return {Qt::black, {}};
     }
-    return qMakePair(col, QString());
+    return {col, {}};
 }
 
 QString Theme::filePath() const
@@ -200,6 +175,7 @@ void Theme::readSettings(QSettings &settings)
         d->preferredStyles.removeAll(QString());
         d->defaultTextEditorColorScheme =
                 settings.value(QLatin1String("DefaultTextEditorColorScheme")).toString();
+        d->enforceAccentColorOnMacOS = settings.value("EnforceAccentColorOnMacOS").toString();
     }
     {
         settings.beginGroup(QLatin1String("Palette"));
@@ -233,26 +209,6 @@ void Theme::readSettings(QSettings &settings)
         settings.endGroup();
     }
     {
-        settings.beginGroup(QLatin1String("Gradients"));
-        QMetaEnum e = m.enumerator(m.indexOfEnumerator("Gradient"));
-        for (int i = 0, total = e.keyCount(); i < total; ++i) {
-            const QString key = QLatin1String(e.key(i));
-            QGradientStops stops;
-            int size = settings.beginReadArray(key);
-            for (int j = 0; j < size; ++j) {
-                settings.setArrayIndex(j);
-                QTC_ASSERT(settings.contains(QLatin1String("pos")), return);
-                const double pos = settings.value(QLatin1String("pos")).toDouble();
-                QTC_ASSERT(settings.contains(QLatin1String("color")), return);
-                const QColor c('#' + settings.value(QLatin1String("color")).toString());
-                stops.append(qMakePair(pos, c));
-            }
-            settings.endArray();
-            d->gradients[i] = stops;
-        }
-        settings.endGroup();
-    }
-    {
         settings.beginGroup(QLatin1String("Flags"));
         QMetaEnum e = m.enumerator(m.indexOfEnumerator("Flag"));
         for (int i = 0, total = e.keyCount(); i < total; ++i) {
@@ -270,11 +226,13 @@ bool Theme::systemUsesDarkMode()
         constexpr char regkey[]
             = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
         bool ok;
-        const auto setting = QSettings(regkey, QSettings::NativeFormat).value("AppsUseLightTheme").toInt(&ok);
+        const int setting = QSettings(regkey, QSettings::NativeFormat).value("AppsUseLightTheme").toInt(&ok);
         return ok && setting == 0;
-    } else if (HostOsInfo::isMacHost()) {
-        return macOSSystemIsDark();
     }
+
+    if (HostOsInfo::isMacHost())
+        return macOSSystemIsDark();
+
     return false;
 }
 
@@ -298,6 +256,15 @@ void Theme::setInitialPalette(Theme *initTheme)
     macOSSystemIsDark(); // initialize value for system mode
     setMacAppearance(initTheme);
     initialPalette();
+}
+
+void Theme::setHelpMenu(QMenu *menu)
+{
+#ifdef Q_OS_MACOS
+    Internal::setMacOSHelpMenu(menu);
+#else
+    Q_UNUSED(menu)
+#endif
 }
 
 QPalette Theme::initialPalette()

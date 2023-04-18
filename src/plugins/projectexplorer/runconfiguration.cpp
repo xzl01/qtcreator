@@ -1,31 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "runconfiguration.h"
 
-#include "abi.h"
 #include "buildconfiguration.h"
 #include "buildsystem.h"
 #include "environmentaspect.h"
@@ -33,12 +10,19 @@
 #include "kitinformation.h"
 #include "project.h"
 #include "projectexplorer.h"
+#include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "projectnodes.h"
 #include "runconfigurationaspects.h"
 #include "runcontrol.h"
 #include "session.h"
 #include "target.h"
-#include "toolchain.h"
+
+#include <coreplugin/icontext.h>
+#include <coreplugin/icore.h>
+
+#include <projectexplorer/devicesupport/idevice.h>
+#include <projectexplorer/projectexplorerconstants.h>
 
 #include <utils/algorithm.h>
 #include <utils/checkablemessagebox.h>
@@ -49,11 +33,7 @@
 #include <utils/utilsicons.h>
 #include <utils/variablechooser.h>
 
-#include <coreplugin/icontext.h>
-#include <coreplugin/icore.h>
-
 #include <QDir>
-#include <QFormLayout>
 #include <QHash>
 #include <QPushButton>
 #include <QTimer>
@@ -93,7 +73,10 @@ void ISettingsAspect::setConfigWidgetCreator(const ConfigWidgetCreator &configWi
 //
 ///////////////////////////////////////////////////////////////////////
 
-GlobalOrProjectAspect::GlobalOrProjectAspect() = default;
+GlobalOrProjectAspect::GlobalOrProjectAspect()
+{
+    addDataExtractor(this, &GlobalOrProjectAspect::currentSettings, &Data::currentSettings);
+}
 
 GlobalOrProjectAspect::~GlobalOrProjectAspect()
 {
@@ -182,27 +165,27 @@ RunConfiguration::RunConfiguration(Target *target, Utils::Id id)
     QTC_CHECK(target && target == this->target());
     connect(target, &Target::parsingFinished, this, &RunConfiguration::update);
 
-    m_expander.setDisplayName(tr("Run Settings"));
+    m_expander.setDisplayName(Tr::tr("Run Settings"));
     m_expander.setAccumulating(true);
     m_expander.registerSubProvider([target] {
         BuildConfiguration *bc = target->activeBuildConfiguration();
         return bc ? bc->macroExpander() : target->macroExpander();
     });
-    m_expander.registerPrefix("RunConfig:Env", tr("Variables in the run environment."),
+    m_expander.registerPrefix("RunConfig:Env", Tr::tr("Variables in the run environment."),
                              [this](const QString &var) {
         const auto envAspect = aspect<EnvironmentAspect>();
         return envAspect ? envAspect->environment().expandedValueForKey(var) : QString();
     });
     m_expander.registerVariable("RunConfig:WorkingDir",
-                               tr("The run configuration's working directory."),
+                               Tr::tr("The run configuration's working directory."),
                                [this] {
         const auto wdAspect = aspect<WorkingDirectoryAspect>();
         return wdAspect ? wdAspect->workingDirectory().toString() : QString();
     });
-    m_expander.registerVariable("RunConfig:Name", tr("The run configuration's name."),
+    m_expander.registerVariable("RunConfig:Name", Tr::tr("The run configuration's name."),
             [this] { return displayName(); });
     m_expander.registerFileVariables("RunConfig:Executable",
-                                     tr("The run configuration's executable."),
+                                     Tr::tr("The run configuration's executable."),
                                      [this] { return commandLine().executable(); });
 
 
@@ -212,14 +195,10 @@ RunConfiguration::RunConfiguration(Target *target, Utils::Id id)
             executable = executableAspect->executable();
         QString arguments;
         if (const auto argumentsAspect = aspect<ArgumentsAspect>())
-            arguments = argumentsAspect->arguments(macroExpander());
+            arguments = argumentsAspect->arguments();
+
         return CommandLine{executable, arguments, CommandLine::Raw};
     };
-
-    addPostInit([this] {
-        if (const auto wdAspect = aspect<WorkingDirectoryAspect>())
-            wdAspect->setMacroExpander(&m_expander);
-    });
 }
 
 RunConfiguration::~RunConfiguration() = default;
@@ -227,7 +206,7 @@ RunConfiguration::~RunConfiguration() = default;
 QString RunConfiguration::disabledReason() const
 {
     BuildSystem *bs = activeBuildSystem();
-    return bs ? bs->disabledReason(m_buildKey) : tr("No build system active");
+    return bs ? bs->disabledReason(m_buildKey) : Tr::tr("No build system active");
 }
 
 bool RunConfiguration::isEnabled() const
@@ -239,12 +218,12 @@ bool RunConfiguration::isEnabled() const
 QWidget *RunConfiguration::createConfigurationWidget()
 {
     Layouting::Form builder;
-    for (BaseAspect *aspect : qAsConst(m_aspects)) {
+    for (BaseAspect *aspect : std::as_const(m_aspects)) {
         if (aspect->isVisible())
             aspect->addToLayout(builder.finishRow());
     }
 
-    auto widget = builder.emerge(false);
+    auto widget = builder.emerge(Layouting::WithoutMargins);
 
     VariableChooser::addSupportForChildWidgets(widget, &m_expander);
 
@@ -264,11 +243,19 @@ void RunConfiguration::addAspectFactory(const AspectFactory &aspectFactory)
     theAspectFactories.push_back(aspectFactory);
 }
 
-QMap<Utils::Id, QVariantMap> RunConfiguration::aspectData() const
+QMap<Utils::Id, QVariantMap> RunConfiguration::settingsData() const
 {
     QMap<Utils::Id, QVariantMap> data;
-    for (BaseAspect *aspect : qAsConst(m_aspects))
+    for (BaseAspect *aspect : m_aspects)
         aspect->toActiveMap(data[aspect->id()]);
+    return data;
+}
+
+AspectContainerData RunConfiguration::aspectData() const
+{
+    AspectContainerData data;
+    for (BaseAspect *aspect : m_aspects)
+        data.append(aspect->extractData());
     return data;
 }
 
@@ -405,7 +392,7 @@ Runnable RunConfiguration::runnable() const
     Runnable r;
     r.command = commandLine();
     if (auto workingDirectoryAspect = aspect<WorkingDirectoryAspect>())
-        r.workingDirectory = workingDirectoryAspect->workingDirectory();
+        r.workingDirectory = workingDirectoryAspect->workingDirectory().onDevice(r.command.executable());
     if (auto environmentAspect = aspect<EnvironmentAspect>())
         r.environment = environmentAspect->environment();
     if (m_runnableModifier)
@@ -467,10 +454,10 @@ QString RunConfigurationFactory::decoratedTargetName(const QString &targetName, 
         if (IDevice::ConstPtr dev = DeviceKitAspect::device(target->kit())) {
             if (displayName.isEmpty()) {
                 //: Shown in Run configuration if no executable is given, %1 is device name
-                displayName = RunConfiguration::tr("Run on %{Device:Name}");
+                displayName = Tr::tr("Run on %{Device:Name}");
             } else {
                 //: Shown in Run configuration, Add menu: "name of runnable (on device name)"
-                displayName = RunConfiguration::tr("%1 (on %{Device:Name})").arg(displayName);
+                displayName = Tr::tr("%1 (on %{Device:Name})").arg(displayName);
             }
         }
     }
@@ -573,8 +560,6 @@ RunConfiguration *RunConfigurationFactory::create(Target *target) const
     for (const RunConfiguration::AspectFactory &factory : theAspectFactories)
         rc->m_aspects.registerAspect(factory(target));
 
-    rc->acquaintAspects();
-    rc->doPostInit();
     return rc;
 }
 
@@ -595,7 +580,7 @@ RunConfiguration *RunConfigurationCreationInfo::create(Target *target) const
 
 RunConfiguration *RunConfigurationFactory::restore(Target *parent, const QVariantMap &map)
 {
-    for (RunConfigurationFactory *factory : qAsConst(g_runConfigurationFactories)) {
+    for (RunConfigurationFactory *factory : std::as_const(g_runConfigurationFactories)) {
         if (factory->canHandle(parent)) {
             const Utils::Id id = idFromMap(map);
             if (id.name().startsWith(factory->m_runConfigurationId.name())) {
@@ -620,7 +605,7 @@ RunConfiguration *RunConfigurationFactory::clone(Target *parent, RunConfiguratio
 const QList<RunConfigurationCreationInfo> RunConfigurationFactory::creatorsForTarget(Target *parent)
 {
     QList<RunConfigurationCreationInfo> items;
-    for (RunConfigurationFactory *factory : qAsConst(g_runConfigurationFactories)) {
+    for (RunConfigurationFactory *factory : std::as_const(g_runConfigurationFactories)) {
         if (factory->canHandle(parent))
             items.append(factory->availableCreators(parent));
     }

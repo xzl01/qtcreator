@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "scxmleditorconstants.h"
+#include "scxmleditortr.h"
 #include "warningmodel.h"
 
 #include <utils/algorithm.h>
@@ -38,7 +17,7 @@ WarningModel::WarningModel(QObject *parent)
     m_countChecker = new QTimer(this);
     m_countChecker->setInterval(500);
     m_countChecker->setSingleShot(true);
-    connect(m_countChecker.data(), &QTimer::timeout, this, [this]() {
+    connect(m_countChecker.data(), &QTimer::timeout, this, [this] {
         if (m_warnings.count() != m_oldCount) {
             m_oldCount = m_warnings.count();
             emit countChanged(m_oldCount);
@@ -58,7 +37,7 @@ void WarningModel::clear(bool sendSignal)
 {
     emit modelAboutToBeClear();
 
-    foreach (Warning *w, m_warnings)
+    for (Warning *w : std::as_const(m_warnings))
         w->disconnect(this);
 
     beginResetModel();
@@ -99,13 +78,13 @@ QVariant WarningModel::headerData(int section, Qt::Orientation orientation, int 
     if (orientation == Qt::Horizontal && role == Qt::DisplayRole) {
         switch (section) {
         case 0:
-            return tr("Severity");
+            return Tr::tr("Severity");
         case 1:
-            return tr("Type");
+            return Tr::tr("Type");
         case 2:
-            return tr("Reason");
+            return Tr::tr("Reason");
         case 3:
-            return tr("Description");
+            return Tr::tr("Description");
         default:
             break;
         }
@@ -118,13 +97,13 @@ QString WarningModel::severityName(Warning::Severity severity) const
 {
     switch (severity) {
     case Warning::ErrorType:
-        return tr("Error");
+        return Tr::tr("Error");
     case Warning::WarningType:
-        return tr("Warning");
+        return Tr::tr("Warning");
     case Warning::InfoType:
-        return tr("Info");
+        return Tr::tr("Info");
     default:
-        return tr("Unknown");
+        return Tr::tr("Unknown");
     }
 }
 
@@ -166,7 +145,7 @@ QVariant WarningModel::data(const QModelIndex &index, int role) const
             break;
         }
         case Qt::ToolTipRole: {
-            return tr("Severity:\t%1\nType:     \t%2\nReason: \t%3\nDescription:\t%4")
+            return Tr::tr("Severity:\t%1\nType:     \t%2\nReason: \t%3\nDescription:\t%4")
                 .arg(severityName(it->severity()))
                 .arg(it->typeName())
                 .arg(it->reason())

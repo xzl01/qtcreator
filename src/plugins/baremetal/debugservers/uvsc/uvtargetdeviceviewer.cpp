@@ -1,31 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "uvtargetdeviceviewer.h"
 
 #include "uvproject.h" // for buildPackageId()
 #include "uvtargetdevicemodel.h"
-#include "uvtargetdeviceviewer.h"
+
+#include <baremetal/baremetaltr.h>
 
 #include <utils/pathchooser.h>
 
@@ -38,9 +19,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace BareMetal {
-namespace Internal {
-namespace Uv {
+namespace BareMetal::Internal::Uv {
 
 // DeviceSelectorToolPanel
 
@@ -49,7 +28,7 @@ DeviceSelectorToolPanel::DeviceSelectorToolPanel(QWidget *parent)
 {
     const auto layout = new QHBoxLayout;
     layout->setContentsMargins(0, 0, 0, 0);
-    const auto button = new QPushButton(tr("Manage..."));
+    const auto button = new QPushButton(Tr::tr("Manage..."));
     layout->addWidget(button);
     setLayout(layout);
     connect(button, &QPushButton::clicked, this, &DeviceSelectorToolPanel::clicked);
@@ -74,24 +53,24 @@ DeviceSelectorDetailsPanel::DeviceSelectorDetailsPanel(DeviceSelection &selectio
     const auto layout = new QFormLayout;
     m_vendorEdit = new QLineEdit;
     m_vendorEdit->setReadOnly(true);
-    layout->addRow(tr("Vendor:"), m_vendorEdit);
+    layout->addRow(Tr::tr("Vendor:"), m_vendorEdit);
     m_packageEdit = new QLineEdit;
     m_packageEdit->setReadOnly(true);
-    layout->addRow(tr("Package:"), m_packageEdit);
+    layout->addRow(Tr::tr("Package:"), m_packageEdit);
     m_descEdit = new QPlainTextEdit;
     m_descEdit->setReadOnly(true);
-    layout->addRow(tr("Description:"), m_descEdit);
+    layout->addRow(Tr::tr("Description:"), m_descEdit);
     m_memoryView = new DeviceSelectionMemoryView(m_selection);
-    layout->addRow(tr("Memory:"), m_memoryView);
+    layout->addRow(Tr::tr("Memory:"), m_memoryView);
     m_algorithmView = new DeviceSelectionAlgorithmView(m_selection);
-    layout->addRow(tr("Flash algorithm:"), m_algorithmView);
+    layout->addRow(Tr::tr("Flash algorithm:"), m_algorithmView);
     m_peripheralDescriptionFileChooser = new Utils::PathChooser(this);
     m_peripheralDescriptionFileChooser->setExpectedKind(Utils::PathChooser::File);
     m_peripheralDescriptionFileChooser->setPromptDialogFilter(
-                tr("Peripheral description files (*.svd)"));
+                Tr::tr("Peripheral description files (*.svd)"));
     m_peripheralDescriptionFileChooser->setPromptDialogTitle(
-                tr("Select Peripheral Description File"));
-    layout->addRow(tr("Peripheral description file:"),
+                Tr::tr("Select Peripheral Description File"));
+    layout->addRow(Tr::tr("Peripheral description file:"),
                    m_peripheralDescriptionFileChooser);
     setLayout(layout);
 
@@ -105,7 +84,7 @@ DeviceSelectorDetailsPanel::DeviceSelectorDetailsPanel(DeviceSelection &selectio
             m_selection.algorithmIndex = index;
         emit selectionChanged();
     });
-    connect(m_peripheralDescriptionFileChooser, &Utils::PathChooser::pathChanged,
+    connect(m_peripheralDescriptionFileChooser, &Utils::PathChooser::textChanged,
             this, &DeviceSelectorDetailsPanel::selectionChanged);
 }
 
@@ -136,7 +115,7 @@ DeviceSelector::DeviceSelector(QWidget *parent)
     const auto detailsPanel = new DeviceSelectorDetailsPanel(m_selection);
     setWidget(detailsPanel);
 
-    connect(toolPanel, &DeviceSelectorToolPanel::clicked, this, [this]() {
+    connect(toolPanel, &DeviceSelectorToolPanel::clicked, this, [this] {
         DeviceSelectionDialog dialog(m_toolsIniFile, this);
         const int result = dialog.exec();
         if (result != QDialog::Accepted)
@@ -164,8 +143,8 @@ Utils::FilePath DeviceSelector::toolsIniFile() const
 void DeviceSelector::setSelection(const DeviceSelection &selection)
 {
     m_selection = selection;
-    const auto summary = m_selection.name.isEmpty()
-            ? tr("Target device not selected.") : m_selection.name;
+    const QString summary = m_selection.name.isEmpty()
+            ? Tr::tr("Target device not selected.") : m_selection.name;
     setSummaryText(summary);
     setExpandable(!m_selection.name.isEmpty());
 
@@ -185,7 +164,7 @@ DeviceSelection DeviceSelector::selection() const
 DeviceSelectionDialog::DeviceSelectionDialog(const Utils::FilePath &toolsIniFile, QWidget *parent)
     : QDialog(parent), m_model(new DeviceSelectionModel(this)), m_view(new DeviceSelectionView(this))
 {
-    setWindowTitle(tr("Available Target Devices"));
+    setWindowTitle(Tr::tr("Available Target Devices"));
 
     const auto layout = new QVBoxLayout;
     layout->setContentsMargins(0, 0, 0, 0);
@@ -216,6 +195,4 @@ DeviceSelection DeviceSelectionDialog::selection() const
     return m_selection;
 }
 
-} // namespace Uv
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal::Uv

@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Lorenz Haas
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Lorenz Haas
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "uncrustifysettings.h"
-
-#include "uncrustifyconstants.h"
 
 #include "../beautifierconstants.h"
 
 #include <coreplugin/icore.h>
-
 #include <utils/qtcprocess.h>
 
 #include <QDateTime>
@@ -39,8 +14,9 @@
 #include <QRegularExpression>
 #include <QXmlStreamWriter>
 
-namespace Beautifier {
-namespace Internal {
+using namespace Utils;
+
+namespace Beautifier::Internal {
 
 const char USE_OTHER_FILES[]               = "useOtherFiles";
 const char USE_HOME_FILE[]                 = "useHomeFile";
@@ -54,9 +30,7 @@ const char SETTINGS_NAME[]                 = "uncrustify";
 UncrustifySettings::UncrustifySettings() :
     AbstractSettings(SETTINGS_NAME, ".cfg")
 {
-    connect(&m_versionProcess, &Utils::QtcProcess::finished,
-            this, &UncrustifySettings::parseVersionProcessResult);
-
+    setVersionRegExp(QRegularExpression("([0-9]{1})\\.([0-9]{2})"));
     setCommand("uncrustify");
     m_settings.insert(USE_OTHER_FILES, QVariant(true));
     m_settings.insert(USE_HOME_FILE, QVariant(false));
@@ -67,6 +41,8 @@ UncrustifySettings::UncrustifySettings() :
     m_settings.insert(SPECIFIC_CONFIG_FILE_PATH, QVariant());
     read();
 }
+
+UncrustifySettings::~UncrustifySettings() = default;
 
 bool UncrustifySettings::useOtherFiles() const
 {
@@ -88,12 +64,12 @@ void UncrustifySettings::setUseHomeFile(bool useHomeFile)
     m_settings.insert(USE_HOME_FILE, QVariant(useHomeFile));
 }
 
-Utils::FilePath UncrustifySettings::specificConfigFile() const
+FilePath UncrustifySettings::specificConfigFile() const
 {
-    return Utils::FilePath::fromString(m_settings.value(SPECIFIC_CONFIG_FILE_PATH).toString());
+    return FilePath::fromString(m_settings.value(SPECIFIC_CONFIG_FILE_PATH).toString());
 }
 
-void UncrustifySettings::setSpecificConfigFile(const Utils::FilePath &filePath)
+void UncrustifySettings::setSpecificConfigFile(const FilePath &filePath)
 {
     m_settings.insert(SPECIFIC_CONFIG_FILE_PATH, QVariant(filePath.toString()));
 }
@@ -141,18 +117,18 @@ void UncrustifySettings::setFormatEntireFileFallback(bool formatEntireFileFallba
 QString UncrustifySettings::documentationFilePath() const
 {
     return (Core::ICore::userResourcePath() / Beautifier::Constants::SETTINGS_DIRNAME
-                / Beautifier::Constants::DOCUMENTATION_DIRNAME / SETTINGS_NAME
-            + ".xml")
+                / Beautifier::Constants::DOCUMENTATION_DIRNAME / SETTINGS_NAME)
+            .stringAppended(".xml")
         .toString();
 }
 
 void UncrustifySettings::createDocumentationFile() const
 {
-    Utils::QtcProcess process;
+    QtcProcess process;
     process.setTimeoutS(2);
     process.setCommand({command(), {"--show-config"}});
     process.runBlocking();
-    if (process.result() != Utils::QtcProcess::FinishedWithSuccess)
+    if (process.result() != ProcessResult::FinishedWithSuccess)
         return;
 
     QFile file(documentationFilePath());
@@ -209,38 +185,4 @@ void UncrustifySettings::createDocumentationFile() const
     }
 }
 
-static bool parseVersion(const QString &text, int &version)
-{
-    // The version in Uncrustify is printed like "uncrustify 0.62"
-    const QRegularExpression rx("([0-9]{1})\\.([0-9]{2})");
-    const QRegularExpressionMatch match = rx.match(text);
-    if (!match.hasMatch())
-        return false;
-
-    const int major = match.captured(1).toInt() * 100;
-    const int minor = match.captured(2).toInt();
-    version = major + minor;
-    return true;
-}
-
-void UncrustifySettings::updateVersion()
-{
-    if (m_versionProcess.state() != QProcess::NotRunning) {
-        m_versionProcess.kill();
-        m_versionProcess.waitForFinished();
-    }
-    m_versionProcess.setCommand({ command(), { "--version" } });
-    m_versionProcess.start();
-}
-
-void UncrustifySettings::parseVersionProcessResult()
-{
-    if (m_versionProcess.exitStatus() != QProcess::NormalExit)
-        return;
-
-    if (!parseVersion(QString::fromUtf8(m_versionProcess.readAllStandardOutput()), m_version))
-        parseVersion(QString::fromUtf8(m_versionProcess.readAllStandardError()), m_version);
-}
-
-} // namespace Internal
-} // namespace Beautifier
+} // Beautifier::Internal

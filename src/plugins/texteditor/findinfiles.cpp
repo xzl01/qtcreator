@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "findinfiles.h"
+
+#include "texteditortr.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/find/findplugin.h>
@@ -40,15 +20,16 @@
 #include <QDebug>
 #include <QDir>
 #include <QFileDialog>
-#include <QHBoxLayout>
+#include <QGridLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QSettings>
 #include <QStackedWidget>
 
 using namespace Core;
-using namespace TextEditor;
 using namespace Utils;
+
+namespace TextEditor {
 
 static FindInFiles *m_instance = nullptr;
 static const char HistoryKey[] = "FindInFiles.Directories.History";
@@ -74,14 +55,14 @@ QString FindInFiles::id() const
 
 QString FindInFiles::displayName() const
 {
-    return tr("Files in File System");
+    return Tr::tr("Files in File System");
 }
 
 FileIterator *FindInFiles::files(const QStringList &nameFilters,
                                  const QStringList &exclusionFilters,
                                  const QVariant &additionalParameters) const
 {
-    return new SubDirFileIterator({additionalParameters.toString()},
+    return new SubDirFileIterator({FilePath::fromVariant(additionalParameters)},
                                   nameFilters,
                                   exclusionFilters,
                                   EditorManager::defaultTextCodec());
@@ -89,7 +70,7 @@ FileIterator *FindInFiles::files(const QStringList &nameFilters,
 
 QVariant FindInFiles::additionalParameters() const
 {
-    return QVariant::fromValue(path().toString());
+    return path().toVariant();
 }
 
 QString FindInFiles::label() const
@@ -99,7 +80,7 @@ QString FindInFiles::label() const
     const QChar slash = QLatin1Char('/');
     const QStringList &nonEmptyComponents = path().toFileInfo().absoluteFilePath()
             .split(slash, Qt::SkipEmptyParts);
-    return tr("%1 \"%2\":")
+    return Tr::tr("%1 \"%2\":")
             .arg(title)
             .arg(nonEmptyComponents.isEmpty() ? QString(slash) : nonEmptyComponents.last());
 }
@@ -107,7 +88,7 @@ QString FindInFiles::label() const
 QString FindInFiles::toolTip() const
 {
     //: the last arg is filled by BaseFileFind::runNewSearch
-    QString tooltip = tr("Path: %1\nFilter: %2\nExcluding: %3\n%4")
+    QString tooltip = Tr::tr("Path: %1\nFilter: %2\nExcluding: %3\n%4")
             .arg(path().toUserOutput())
             .arg(fileNameFilters().join(','))
             .arg(fileExclusionFilters().join(','));
@@ -150,28 +131,29 @@ QWidget *FindInFiles::createConfigWidget()
         m_configWidget->setLayout(gridLayout);
 
         int row = 0;
-        auto searchEngineLabel = new QLabel(tr("Search engine:"));
+        auto searchEngineLabel = new QLabel(Tr::tr("Search engine:"));
         gridLayout->addWidget(searchEngineLabel, row, 0, Qt::AlignRight);
         m_searchEngineCombo = new QComboBox;
-        auto cc = QOverload<int>::of(&QComboBox::currentIndexChanged);
-        connect(m_searchEngineCombo, cc, this, &FindInFiles::searchEnginesSelectionChanged);
+        connect(m_searchEngineCombo, &QComboBox::currentIndexChanged,
+                this, &FindInFiles::searchEnginesSelectionChanged);
         searchEngineLabel->setBuddy(m_searchEngineCombo);
         gridLayout->addWidget(m_searchEngineCombo, row, 1);
 
         m_searchEngineWidget = new QStackedWidget(m_configWidget);
-        foreach (SearchEngine *searchEngine, searchEngines()) {
+        const QVector<SearchEngine *> searchEngineVector = searchEngines();
+        for (const SearchEngine *searchEngine : searchEngineVector) {
             m_searchEngineWidget->addWidget(searchEngine->widget());
             m_searchEngineCombo->addItem(searchEngine->title());
         }
         gridLayout->addWidget(m_searchEngineWidget, row++, 2);
 
-        QLabel *dirLabel = new QLabel(tr("Director&y:"));
+        QLabel *dirLabel = new QLabel(Tr::tr("Director&y:"));
         gridLayout->addWidget(dirLabel, row, 0, Qt::AlignRight);
         m_directory = new PathChooser;
         m_directory->setExpectedKind(PathChooser::ExistingDirectory);
-        m_directory->setPromptDialogTitle(tr("Directory to Search"));
-        connect(m_directory.data(), &PathChooser::filePathChanged,
-                this, &FindInFiles::pathChanged);
+        m_directory->setPromptDialogTitle(Tr::tr("Directory to Search"));
+        connect(m_directory.data(), &PathChooser::textChanged, this,
+                [this] { pathChanged(m_directory->filePath()); });
         m_directory->setHistoryCompleter(QLatin1String(HistoryKey),
                                          /*restoreLastItemFromHistory=*/ true);
         if (!HistoryCompleter::historyExistsFor(QLatin1String(HistoryKey))) {
@@ -193,11 +175,11 @@ QWidget *FindInFiles::createConfigWidget()
         m_configWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
         // validity
-        auto updateValidity = [this]() {
+        auto updateValidity = [this] {
             setValid(currentSearchEngine()->isEnabled() && m_directory->isValid());
         };
         connect(this, &BaseFileFind::currentSearchEngineChanged, this, updateValidity);
-        foreach (SearchEngine *searchEngine, searchEngines())
+        for (const SearchEngine *searchEngine : searchEngineVector)
             connect(searchEngine, &SearchEngine::enabledChanged, this, updateValidity);
         connect(m_directory.data(), &PathChooser::validChanged, this, updateValidity);
         updateValidity();
@@ -252,3 +234,5 @@ FindInFiles *FindInFiles::instance()
 {
     return m_instance;
 }
+
+} // TextEditor

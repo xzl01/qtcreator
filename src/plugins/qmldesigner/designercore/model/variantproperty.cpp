@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "variantproperty.h"
 #include "internalproperty.h"
-#include "invalidmodelnodeexception.h"
-#include "invalidargumentexception.h"
 #include "internalnode_p.h"
 #include "model.h"
 #include "model_p.h"
@@ -50,15 +26,16 @@ VariantProperty::VariantProperty(const PropertyName &propertyName, const Interna
 
 void VariantProperty::setValue(const QVariant &value)
 {
-    Internal::WriteLocker locker(model());
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
+    if (!value.isValid())
+        return;
+
+    Internal::WriteLocker locker(model());
     if (isDynamic())
         qWarning() << "Calling VariantProperty::setValue on dynamic property.";
 
-    if (!value.isValid())
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, name());
 
     if (internalNode()->hasProperty(name())) { //check if oldValue != value
         Internal::InternalProperty::Pointer internalProperty = internalNode()->property(name());
@@ -77,7 +54,7 @@ void VariantProperty::setValue(const QVariant &value)
 
 QVariant VariantProperty::value() const
 {
-    if (internalNode()->hasProperty(name())
+    if (isValid() && internalNode()->hasProperty(name())
         && internalNode()->property(name())->isVariantProperty())
         return internalNode()->variantProperty(name())->value();
 
@@ -101,13 +78,13 @@ bool VariantProperty::holdsEnumeration() const
 
 void VariantProperty::setDynamicTypeNameAndValue(const TypeName &type, const QVariant &value)
 {
-    Internal::WriteLocker locker(model());
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-
+        return;
 
     if (type.isEmpty())
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, name());
+        return;
+
+    Internal::WriteLocker locker(model());
 
     if (internalNode()->hasProperty(name())) { //check if oldValue != value
         Internal::InternalProperty::Pointer internalProperty = internalNode()->property(name());

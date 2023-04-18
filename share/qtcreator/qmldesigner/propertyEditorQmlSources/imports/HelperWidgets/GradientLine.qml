@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 import HelperWidgets 2.0
@@ -34,12 +12,10 @@ Item {
     height: StudioTheme.Values.colorEditorPopupLineHeight
 
     property color currentColor
-    property alias model: repeater.model
+    property GradientModel model
+    property GradientModel gradientModel: root.model
 
-    property bool hasGradient: gradientModel.hasGradient
-
-    property alias gradientPropertyName: gradientModel.gradientPropertyName
-    property alias gradientTypeName: gradientModel.gradientTypeName
+    property bool hasGradient: root.model.hasGradient
 
     signal selectedNodeChanged
     signal invalidated
@@ -49,38 +25,38 @@ Item {
     }
 
     onCurrentColorChanged: {
-        gradientModel.setColor(colorLine.selectedIndex, root.currentColor)
+        root.gradientModel.setColor(colorLine.selectedIndex, root.currentColor)
         colorLine.invalidate()
     }
 
     function addGradient() {
-        gradientModel.addGradient()
+        root.gradientModel.addGradient()
         colorLine.invalidate()
         colorLine.select(0)
     }
 
     function deleteGradient() {
-        gradientModel.deleteGradient()
+        root.gradientModel.deleteGradient()
     }
 
     function setPresetByID(presetID) {
-        gradientModel.setPresetByID(presetID)
+        root.gradientModel.setPresetByID(presetID)
         colorLine.invalidate()
         colorLine.select(0)
     }
 
     function setPresetByStops(stopsPositions, stopsColors, stopsCount) {
-        gradientModel.setPresetByStops(stopsPositions, stopsColors, stopsCount)
+        root.gradientModel.setPresetByStops(stopsPositions, stopsColors, stopsCount)
         colorLine.invalidate()
         colorLine.select(0)
     }
 
     function savePreset() {
-        gradientModel.savePreset()
+        root.gradientModel.savePreset()
     }
 
     function updateGradient() {
-        gradientModel.updateGradient()
+        root.gradientModel.updateGradient()
     }
 
     Connections {
@@ -109,9 +85,9 @@ Item {
             repeater.itemAt(index).item.highlighted = true
             colorLine.selectedIndex = index
 
-            gradientModel.lock()
+            root.gradientModel.lock()
             root.currentColor = repeater.itemAt(index).item.color
-            gradientModel.unlock()
+            root.gradientModel.unlock()
 
             root.selectedNodeChanged()
         }
@@ -119,19 +95,19 @@ Item {
         function invalidate() {
             var gradientString = "import QtQuick 2.15; Gradient { orientation: Gradient.Horizontal;"
 
-            for (var i = 0; i < gradientModel.count; i++) {
+            for (var i = 0; i < root.gradientModel.count; i++) {
                 gradientString += "GradientStop {}"
             }
             gradientString += "}"
 
             var gradientObject = Qt.createQmlObject(gradientString, gradientRectangle, "test")
 
-            for (i = 0; i < gradientModel.count; i++) {
+            for (i = 0; i < root.gradientModel.count; i++) {
                 if (repeater.itemAt(i) !== null)
                     repeater.itemAt(i).item.y = 20 // fixes corner case for dragging overlapped items
 
-                gradientObject.stops[i].color = gradientModel.getColor(i)
-                gradientObject.stops[i].position = gradientModel.getPosition(i)
+                gradientObject.stops[i].color = root.gradientModel.getColor(i)
+                gradientObject.stops[i].position = root.gradientModel.getPosition(i)
             }
 
             gradientRectangle.gradient = gradientObject
@@ -150,7 +126,7 @@ Item {
 
                 onClicked: {
                     var currentPosition = mouseX / colorLine.effectiveWidth
-                    var newIndex = gradientModel.addStop(currentPosition, root.currentColor)
+                    var newIndex = root.gradientModel.addStop(currentPosition, root.currentColor)
 
                     if (newIndex > 0)
                         colorLine.select(newIndex)
@@ -165,11 +141,7 @@ Item {
 
                 Repeater {
                     id: repeater
-                    model: GradientModel {
-                        id: gradientModel
-                        anchorBackendProperty: anchorBackend
-                        gradientPropertyName: "gradient"
-                    }
+                    model: root.gradientModel
 
                     delegate: Loader {
                         id: loader
@@ -364,14 +336,14 @@ Item {
 
                 onReleased: {
                     if (drag.active) {
-                        gradientModel.setPosition(colorLine.selectedIndex,
+                        root.gradientModel.setPosition(colorLine.selectedIndex,
                                                   gradientStopHandle.currentGradiantStopPosition())
                         gradientStopHandle.refreshToolTip(false)
 
                         if (parent.y < 10) {
                             if (!gradientStopHandle.readOnly) {
                                 colorLine.select(index - 1)
-                                gradientModel.removeStop(index)
+                                root.gradientModel.removeStop(index)
                             }
                         }
                         parent.y = 20

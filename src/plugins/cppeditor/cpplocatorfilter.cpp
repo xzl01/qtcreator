@@ -1,32 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cpplocatorfilter.h"
 
 #include "cppeditorconstants.h"
-#include "cppmodelmanager.h"
+#include "cppeditortr.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <utils/algorithm.h>
@@ -42,7 +20,7 @@ CppLocatorFilter::CppLocatorFilter(CppLocatorData *locatorData)
     : m_data(locatorData)
 {
     setId(Constants::LOCATOR_FILTER_ID);
-    setDisplayName(Constants::LOCATOR_FILTER_DISPLAY_NAME);
+    setDisplayName(Tr::tr(Constants::LOCATOR_FILTER_DISPLAY_NAME));
     setDefaultShortcutString(":");
     setDefaultIncludedByDefault(false);
 }
@@ -101,13 +79,12 @@ QList<Core::LocatorFilterEntry> CppLocatorFilter::matchesFor(
                     matchOffset = 0;
                 }
                 filterEntry.highlightInfo = highlightInfo(match);
-                if (matchInParameterList && filterEntry.highlightInfo.starts.isEmpty()) {
+                if (matchInParameterList && filterEntry.highlightInfo.startsDisplay.isEmpty()) {
                     match = regexp.match(filterEntry.extraInfo);
-                    filterEntry.highlightInfo = highlightInfo(match);
-                    filterEntry.highlightInfo.dataType =
-                            Core::LocatorFilterEntry::HighlightInfo::ExtraInfo;
+                    filterEntry.highlightInfo
+                        = highlightInfo(match, Core::LocatorFilterEntry::HighlightInfo::ExtraInfo);
                 } else if (matchOffset > 0) {
-                    for (int &start : filterEntry.highlightInfo.starts)
+                    for (int &start : filterEntry.highlightInfo.startsDisplay)
                         start -= matchOffset;
                 }
 
@@ -143,9 +120,7 @@ void CppLocatorFilter::accept(const Core::LocatorFilterEntry &selection,
     Q_UNUSED(selectionStart)
     Q_UNUSED(selectionLength)
     IndexItem::Ptr info = qvariant_cast<IndexItem::Ptr>(selection.internalData);
-    Core::EditorManager::openEditorAt({Utils::FilePath::fromString(info->fileName()),
-                                       info->line(),
-                                       info->column()},
+    Core::EditorManager::openEditorAt({info->filePath(), info->line(), info->column()},
                                       {},
                                       Core::EditorManager::AllowExternalEditor);
 }
@@ -154,7 +129,7 @@ CppClassesFilter::CppClassesFilter(CppLocatorData *locatorData)
     : CppLocatorFilter(locatorData)
 {
     setId(Constants::CLASSES_FILTER_ID);
-    setDisplayName(Constants::CLASSES_FILTER_DISPLAY_NAME);
+    setDisplayName(Tr::tr(Constants::CLASSES_FILTER_DISPLAY_NAME));
     setDefaultShortcutString("c");
     setDefaultIncludedByDefault(false);
 }
@@ -168,7 +143,7 @@ Core::LocatorFilterEntry CppClassesFilter::filterEntryFromIndexItem(IndexItem::P
     filterEntry.extraInfo = info->symbolScope().isEmpty()
         ? info->shortNativeFilePath()
         : info->symbolScope();
-    filterEntry.filePath = Utils::FilePath::fromString(info->fileName());
+    filterEntry.filePath = info->filePath();
     return filterEntry;
 }
 
@@ -176,7 +151,7 @@ CppFunctionsFilter::CppFunctionsFilter(CppLocatorData *locatorData)
     : CppLocatorFilter(locatorData)
 {
     setId(Constants::FUNCTIONS_FILTER_ID);
-    setDisplayName(Constants::FUNCTIONS_FILTER_DISPLAY_NAME);
+    setDisplayName(Tr::tr(Constants::FUNCTIONS_FILTER_DISPLAY_NAME));
     setDefaultShortcutString("m");
     setDefaultIncludedByDefault(false);
 }
@@ -193,7 +168,7 @@ Core::LocatorFilterEntry CppFunctionsFilter::filterEntryFromIndexItem(IndexItem:
     if (extraInfo.isEmpty()) {
         extraInfo = info->shortNativeFilePath();
     } else {
-        extraInfo.append(" (" + Utils::FilePath::fromString(info->fileName()).fileName() + ')');
+        extraInfo.append(" (" + info->filePath().fileName() + ')');
     }
 
     Core::LocatorFilterEntry filterEntry(this, name + info->symbolType(), id, info->icon());

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "exception.h"
 
@@ -34,10 +12,7 @@
 
 #include <QCoreApplication>
 
-#ifndef QMLDESIGNER_TEST
-#include <coreplugin/messagebox.h>
-#include <qmldesignerplugin.h>
-#endif
+#include <functional>
 
 /*!
 \defgroup CoreExceptions
@@ -88,15 +63,16 @@ bool Exception::shouldAssert()
     return s_shouldAssert;
 }
 
+bool Exception::s_warnAboutException = true;
+
+void Exception::setWarnAboutException(bool warn)
+{
+    s_warnAboutException = warn;
+}
+
 bool Exception::warnAboutException()
 {
-#ifndef QMLDESIGNER_TEST
-    static bool warnException = !QmlDesignerPlugin::instance()->settings().value(
-                DesignerSettingsKey::ENABLE_MODEL_EXCEPTION_OUTPUT).toBool();
-    return warnException;
-#else
-    return true;
-#endif
+    return s_warnAboutException;
 }
 
 #ifdef Q_OS_LINUX
@@ -171,18 +147,22 @@ QString Exception::description() const
 {
     return m_description;
 }
+namespace {
+std::function<void(QStringView title, QStringView description)> showExceptionCallback;
+}
 
 /*!
     Shows message in a message box.
 */
-void Exception::showException(const QString &title) const
+void Exception::showException([[maybe_unused]] const QString &title) const
 {
-    Q_UNUSED(title)
-#ifndef QMLDESIGNER_TEST
-    QString composedTitle = title.isEmpty() ? QCoreApplication::translate("QmlDesigner", "Error")
-                                            : title;
-    Core::AsynchronousMessageBox::warning(composedTitle, description());
-#endif
+    if (showExceptionCallback)
+        showExceptionCallback(title, m_description);
+}
+
+void Exception::setShowExceptionCallback(std::function<void(QStringView, QStringView)> callback)
+{
+    showExceptionCallback = std::move(callback);
 }
 
 /*!

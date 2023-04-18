@@ -1,31 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "testframeworkmanager.h"
 
-#include "autotestconstants.h"
 #include "autotestplugin.h"
 #include "testsettings.h"
 
@@ -49,6 +26,7 @@ TestFrameworkManager::TestFrameworkManager()
 TestFrameworkManager::~TestFrameworkManager()
 {
     qDeleteAll(m_registeredFrameworks);
+    qDeleteAll(m_registeredTestTools);
     s_instance = nullptr;
 }
 
@@ -73,11 +51,11 @@ bool TestFrameworkManager::registerTestTool(ITestTool *testTool)
 void TestFrameworkManager::activateFrameworksAndToolsFromSettings(
         const Internal::TestSettings *settings)
 {
-    for (ITestFramework *framework : qAsConst(s_instance->m_registeredFrameworks)) {
+    for (ITestFramework *framework : std::as_const(s_instance->m_registeredFrameworks)) {
         framework->setActive(settings->frameworks.value(framework->id(), false));
         framework->setGrouping(settings->frameworksGrouping.value(framework->id(), false));
     }
-    for (ITestTool *testTool : qAsConst(s_instance->m_registeredTestTools))
+    for (ITestTool *testTool : std::as_const(s_instance->m_registeredTestTools))
         testTool->setActive(settings->tools.value(testTool->id(), false));
 }
 
@@ -121,11 +99,11 @@ ITestTool *TestFrameworkManager::testToolForBuildSystemId(Id buildSystemId)
 void TestFrameworkManager::synchronizeSettings(QSettings *s)
 {
     Internal::AutotestPlugin::settings()->fromSettings(s);
-    for (ITestFramework *framework : qAsConst(m_registeredFrameworks)) {
+    for (ITestFramework *framework : std::as_const(m_registeredFrameworks)) {
         if (ITestSettings *fSettings = framework->testSettings())
             fSettings->readSettings(s);
     }
-    for (ITestTool *testTool : qAsConst(m_registeredTestTools)) {
+    for (ITestTool *testTool : std::as_const(m_registeredTestTools)) {
         if (ITestSettings *tSettings = testTool->testSettings())
             tSettings->readSettings(s);
     }

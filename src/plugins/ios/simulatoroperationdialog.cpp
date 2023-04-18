@@ -1,82 +1,86 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "simulatoroperationdialog.h"
-#include "ui_simulatoroperationdialog.h"
 
+#include "iostr.h"
+
+#include <utils/layoutbuilder.h>
 #include <utils/outputformatter.h>
 #include <utils/qtcassert.h>
 
+#include <QDialogButtonBox>
 #include <QFutureWatcher>
 #include <QLoggingCategory>
+#include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 
-namespace {
-Q_LOGGING_CATEGORY(iosCommon, "qtc.ios.common", QtWarningMsg)
-}
+namespace Ios::Internal {
 
-namespace Ios {
-namespace Internal {
+static Q_LOGGING_CATEGORY(iosCommon, "qtc.ios.common", QtWarningMsg)
 
 SimulatorOperationDialog::SimulatorOperationDialog(QWidget *parent) :
     // TODO: Maximize buttong only because of QTBUG-41932
-    QDialog(parent,Qt::CustomizeWindowHint | Qt::WindowTitleHint | Qt::WindowMaximizeButtonHint),
-    m_ui(new Ui::SimulatorOperationDialog)
+    QDialog(parent,Qt::CustomizeWindowHint | Qt::WindowTitleHint | Qt::WindowMaximizeButtonHint)
 {
-    m_ui->setupUi(this);
+    resize(580, 320);
+    setModal(true);
+    setWindowTitle(Tr::tr("Simulator Operation Status"));
+
+    auto messageEdit = new QPlainTextEdit;
+    messageEdit->setReadOnly(true);
+
+    m_progressBar = new QProgressBar;
+    m_progressBar->setMaximum(0);
+    m_progressBar->setValue(-1);
+
+    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
 
     m_formatter = new Utils::OutputFormatter;
-    m_formatter->setPlainTextEdit(m_ui->messageEdit);
+    m_formatter->setPlainTextEdit(messageEdit);
+
+    using namespace Utils::Layouting;
+
+    Column {
+        messageEdit,
+        m_progressBar,
+        m_buttonBox
+    }.attachTo(this);
+
+    connect(m_buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(m_buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
 }
 
 SimulatorOperationDialog::~SimulatorOperationDialog()
 {
     // Cancel all pending futures.
-    foreach (auto watcher, m_futureWatchList) {
+    const auto futureWatchList = m_futureWatchList;
+    for (auto watcher : futureWatchList) {
         if (!watcher->isFinished())
             watcher->cancel();
     }
 
     // wait for futures to finish
-    foreach (auto watcher, m_futureWatchList) {
+    for (auto watcher : futureWatchList) {
         if (!watcher->isFinished())
             watcher->waitForFinished();
         delete watcher;
     }
 
     delete m_formatter;
-    delete m_ui;
 }
 
 void SimulatorOperationDialog::addFutures(const QList<QFuture<void> > &futureList)
 {
-    foreach (auto future, futureList) {
+    for (auto future : futureList) {
         if (!future.isFinished() || !future.isCanceled()) {
             auto watcher = new QFutureWatcher<void>;
-            connect(watcher, &QFutureWatcher<void>::finished,
-                    this, &SimulatorOperationDialog::futureFinished);
+            connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+                m_futureWatchList.removeAll(watcher);
+                watcher->deleteLater();
+                updateInputs();
+            });
             watcher->setFuture(future);
             m_futureWatchList << watcher;
         }
@@ -95,36 +99,27 @@ void SimulatorOperationDialog::addMessage(const SimulatorInfo &siminfo,
 {
     QTC_CHECK(siminfo.identifier == response.simUdid);
     if (response.success) {
-        addMessage(tr("%1, %2\nOperation %3 completed successfully.").arg(siminfo.name)
+        addMessage(Tr::tr("%1, %2\nOperation %3 completed successfully.").arg(siminfo.name)
                    .arg(siminfo.runtimeName).arg(context), Utils::StdOutFormat);
     } else {
         QString erroMsg = response.commandOutput.trimmed();
-        QString message = tr("%1, %2\nOperation %3 failed.\nUDID: %4\nError: %5").arg(siminfo.name)
+        QString message = Tr::tr("%1, %2\nOperation %3 failed.\nUDID: %4\nError: %5").arg(siminfo.name)
                 .arg(siminfo.runtimeName).arg(context).arg(siminfo.identifier)
-                .arg(erroMsg.isEmpty() ? tr("Unknown") : erroMsg);
+                .arg(erroMsg.isEmpty() ? Tr::tr("Unknown") : erroMsg);
         addMessage(message, Utils::StdErrFormat);
         qCDebug(iosCommon) << message;
     }
 }
 
-void SimulatorOperationDialog::futureFinished()
-{
-    auto watcher = static_cast<QFutureWatcher<void> *>(sender());
-    m_futureWatchList.removeAll(watcher);
-    watcher->deleteLater();
-    updateInputs();
-}
-
 void SimulatorOperationDialog::updateInputs()
 {
     bool enableOk = m_futureWatchList.isEmpty();
-    m_ui->buttonBox->button(QDialogButtonBox::Cancel)->setEnabled(!enableOk);
-    m_ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(enableOk);
+    m_buttonBox->button(QDialogButtonBox::Cancel)->setEnabled(!enableOk);
+    m_buttonBox->button(QDialogButtonBox::Ok)->setEnabled(enableOk);
     if (enableOk) {
-        addMessage(tr("Done."), Utils::NormalMessageFormat);
-        m_ui->progressBar->setMaximum(1); // Stop progress bar.
+        addMessage(Tr::tr("Done."), Utils::NormalMessageFormat);
+        m_progressBar->setMaximum(1); // Stop progress bar.
     }
 }
 
-} // namespace Internal
-} // namespace Ios
+} // Ios::Internal

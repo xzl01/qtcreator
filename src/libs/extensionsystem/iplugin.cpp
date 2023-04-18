@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "iplugin.h"
-#include "iplugin_p.h"
-#include "pluginmanager.h"
-#include "pluginspec.h"
+
+#include <utils/algorithm.h>
 
 /*!
     \class ExtensionSystem::IPlugin
@@ -75,6 +52,17 @@
 
     Returns whether initialization succeeds. If it does not, \a errorString
     should be set to a user-readable message describing the reason.
+
+    \sa extensionsInitialized()
+    \sa delayedInitialize()
+*/
+
+/*!
+    \fn void ExtensionSystem::IPlugin::initialize()
+    This function is called as the default implementation of
+    \c initialize(const QStringList &arguments, QString *errorString) and can be
+    overwritten instead of the full-args version in cases the parameters
+    are not used by the implementation and there is no error to report.
 
     \sa extensionsInitialized()
     \sa delayedInitialize()
@@ -170,7 +158,16 @@
     \sa aboutToShutdown()
 */
 
-using namespace ExtensionSystem;
+namespace ExtensionSystem {
+namespace Internal {
+
+class IPluginPrivate
+{
+public:
+    QList<TestCreator> testCreators;
+};
+
+} // Internal
 
 /*!
     \internal
@@ -189,24 +186,38 @@ IPlugin::~IPlugin()
     d = nullptr;
 }
 
-/*!
-    Returns objects that are meant to be passed on to \l QTest::qExec().
+bool IPlugin::initialize(const QStringList &arguments, QString *errorString)
+{
+    Q_UNUSED(arguments)
+    Q_UNUSED(errorString)
+    initialize();
+    return true;
+}
 
-    This function will be called if the user starts \QC with
+/*!
+    Registers a function object that creates a test object.
+
+    The created objects are meant to be passed on to \l QTest::qExec().
+
+    The function objects will be called if the user starts \QC with
     \c {-test PluginName} or \c {-test all}.
 
-    The ownership of returned objects is transferred to caller.
+    The ownership of the created object is transferred to the plugin.
+*/
+
+void IPlugin::addTestCreator(const TestCreator &creator)
+{
+    d->testCreators.append(creator);
+}
+
+/*!
+    \deprecated [10.0] Use addTest() instead
+
+    \sa addTest()
 */
 QVector<QObject *> IPlugin::createTestObjects() const
 {
-    return {};
+    return Utils::transform(d->testCreators, &TestCreator::operator());
 }
 
-/*!
-    Returns the PluginSpec corresponding to this plugin.
-    This is not available in the constructor.
-*/
-PluginSpec *IPlugin::pluginSpec() const
-{
-    return d->pluginSpec;
-}
+} // ExtensionSystem

@@ -1,39 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include <qmldesigner/designersettings.h>
+#include "documentmanager.h"
+#include "qmldesigner_global.h"
+#include "shortcutmanager.h"
+
+#include <designersettings.h>
+#include <viewmanager.h>
 #include <qmldesignercorelib_global.h>
 
 #include <extensionsystem/iplugin.h>
 
-#include "documentmanager.h"
-#include "viewmanager.h"
-#include "shortcutmanager.h"
-#include <designeractionmanager.h>
+
+#include <QElapsedTimer>
 
 QT_FORWARD_DECLARE_CLASS(QQmlEngine)
 
@@ -45,10 +26,11 @@ namespace QmlDesigner {
 
 class QmlDesignerPluginPrivate;
 class AsynchronousImageCache;
+class ExternalDependenciesInterface;
 
 namespace Internal { class DesignModeWidget; }
 
-class QMLDESIGNERCORE_EXPORT QmlDesignerPlugin final : public ExtensionSystem::IPlugin
+class QMLDESIGNER_EXPORT QmlDesignerPlugin final : public ExtensionSystem::IPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "QmlDesigner.json")
@@ -67,14 +49,13 @@ public:
     DocumentManager &documentManager();
     const DocumentManager &documentManager() const;
 
-    ViewManager &viewManager();
-    const ViewManager &viewManager() const;
+    static ViewManager &viewManager();
 
     DesignerActionManager &designerActionManager();
     const DesignerActionManager &designerActionManager() const;
 
-    DesignerSettings settings();
-    void setSettings(const DesignerSettings &s);
+    static DesignerSettings &settings();
+    static ExternalDependenciesInterface &externalDependenciesForPluginInitializationOnly(); // if you use it your code smells
 
     DesignDocument *currentDesignDocument() const;
     Internal::DesignModeWidget *mainWidget() const;
@@ -84,7 +65,11 @@ public:
     void switchToTextModeDeferred();
     void emitCurrentTextEditorChanged(Core::IEditor *editor);
 
+    void emitAssetChanged(const QString &assetPath);
+
     static double formEditorDevicePixelRatio();
+
+    static void contextHelp(const Core::IContext::HelpCallback &callback, const QString &id);
 
     static void emitUsageStatistics(const QString &identifier);
     static void emitUsageStatisticsContextAction(const QString &identifier);
@@ -95,10 +80,12 @@ public:
 
     static void registerPreviewImageProvider(QQmlEngine *engine);
 
+    static void trackWidgetFocusTime(QWidget *widget, const QString &identifier);
+
 signals:
     void usageStatisticsNotifier(const QString &identifier);
     void usageStatisticsUsageTimer(const QString &identifier, int elapsed);
-
+    void assetChanged(const QString &assetPath);
 
 private: // functions
     void integrateIntoQtCreator(QWidget *modeWidget);
@@ -116,6 +103,7 @@ private: // functions
 private: // variables
     QmlDesignerPluginPrivate *d = nullptr;
     static QmlDesignerPlugin *m_instance;
+    QElapsedTimer m_usageTimer;
 };
 
 } // namespace QmlDesigner

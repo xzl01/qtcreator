@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "ui_qmljseditingsettingspage.h"
+#include "qmllssettings.h"
 #include <coreplugin/dialogs/ioptionspage.h>
 #include <QPointer>
 #include <QWidget>
@@ -39,7 +17,7 @@ namespace QmlJSEditor {
 class QmlJsEditingSettings
 {
 public:
-    QmlJsEditingSettings();
+    QmlJsEditingSettings() = default;
 
     static QmlJsEditingSettings get();
     void set();
@@ -64,8 +42,21 @@ public:
     bool foldAuxData() const;
     void setFoldAuxData(const bool foldAuxData);
 
-    bool openUiQmlFilesInQDS() const;
-    void setOpenUiQmlFilesInQDS(const bool foldAuxData);
+    QString defaultFormatCommand() const;
+    QString formatCommand() const;
+    void setFormatCommand(const QString &formatCommand);
+
+    QString formatCommandOptions() const;
+    void setFormatCommandOptions(const QString &formatCommandOptions);
+
+    bool useCustomFormatCommand() const;
+    void setUseCustomFormatCommand(bool customCommand);
+
+    QmllsSettings &qmllsSettigs();
+    const QmllsSettings &qmllsSettigs() const;
+
+    const QString uiQmlOpenMode() const;
+    void setUiQmlOpenMode(const QString &mode);
 
     friend bool operator==(const QmlJsEditingSettings &s1, const QmlJsEditingSettings &s2)
     { return s1.equals(s2); }
@@ -73,12 +64,16 @@ public:
     { return !s1.equals(s2); }
 
 private:
-    bool m_enableContextPane;
-    bool m_pinContextPane;
-    bool m_autoFormatOnSave;
-    bool m_autoFormatOnlyCurrentProject;
-    bool m_foldAuxData;
-    bool m_openUiQmlFilesInQDS;
+    bool m_enableContextPane = false;
+    bool m_pinContextPane = false;
+    bool m_autoFormatOnSave = false;
+    bool m_autoFormatOnlyCurrentProject = false;
+    bool m_foldAuxData = true;
+    bool m_useCustomFormatCommand = false;
+    QmllsSettings m_qmllsSettings;
+    QString m_uiQmlOpenMode;
+    QString m_formatCommand;
+    QString m_formatCommandOptions;
 };
 
 namespace Internal {

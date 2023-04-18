@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -83,11 +61,10 @@ class InternalCompletionAssistProvider : public CppCompletionAssistProvider
 public:
     TextEditor::IAssistProcessor *createProcessor(const TextEditor::AssistInterface *) const override;
 
-    TextEditor::AssistInterface *createAssistInterface(
+    std::unique_ptr<TextEditor::AssistInterface> createAssistInterface(
         const Utils::FilePath &filePath,
         const TextEditor::TextEditorWidget *textEditorWidget,
         const CPlusPlus::LanguageFeatures &languageFeatures,
-        int position,
         TextEditor::AssistReason reason) const override;
 };
 
@@ -97,7 +74,7 @@ public:
     InternalCppCompletionAssistProcessor();
     ~InternalCppCompletionAssistProcessor() override;
 
-    TextEditor::IAssistProposal *perform(const TextEditor::AssistInterface *interface) override;
+    TextEditor::IAssistProposal *performAsync() override;
 
 private:
     TextEditor::IAssistProposal *createContentProposal();
@@ -109,7 +86,7 @@ private:
     int startCompletionHelper();
     bool tryObjCCompletion();
     bool objcKeywordsWanted() const;
-    int startCompletionInternal(const QString &fileName,
+    int startCompletionInternal(const Utils::FilePath &filePath,
                                 int line, int positionInBlock,
                                 const QString &expression,
                                 int endOfExpression);
@@ -145,10 +122,10 @@ private:
     void addCompletionItem(CPlusPlus::Symbol *symbol,
                            int order = 0);
     void addKeywords();
-    void addMacros(const QString &fileName, const CPlusPlus::Snapshot &snapshot);
+    void addMacros(const Utils::FilePath &filePath, const CPlusPlus::Snapshot &snapshot);
     void addMacros_helper(const CPlusPlus::Snapshot &snapshot,
-                          const QString &fileName,
-                          QSet<QString> *processed,
+                          const Utils::FilePath &filePath,
+                          QSet<Utils::FilePath> *processed,
                           QSet<QString> *definedMacros);
 
     enum {
@@ -158,6 +135,7 @@ private:
     };
 
     QScopedPointer<const CppCompletionAssistInterface> m_interface;
+    const CppCompletionAssistInterface *cppInterface() const;
     CppAssistProposalModelPtr m_model;
 };
 
@@ -168,10 +146,9 @@ public:
                                  const TextEditor::TextEditorWidget *textEditorWidget,
                                  BuiltinEditorDocumentParser::Ptr parser,
                                  const CPlusPlus::LanguageFeatures &languageFeatures,
-                                 int position,
                                  TextEditor::AssistReason reason,
                                  const WorkingCopy &workingCopy)
-        : TextEditor::AssistInterface(textEditorWidget->document(), position, filePath, reason)
+        : TextEditor::AssistInterface(textEditorWidget->textCursor(), filePath, reason)
         , m_parser(parser)
         , m_gotCppSpecifics(false)
         , m_workingCopy(workingCopy)
@@ -179,13 +156,12 @@ public:
     {}
 
     CppCompletionAssistInterface(const Utils::FilePath &filePath,
-                                 QTextDocument *textDocument,
-                                 int position,
+                                 const TextEditor::TextEditorWidget *textEditorWidget,
                                  TextEditor::AssistReason reason,
                                  const CPlusPlus::Snapshot &snapshot,
                                  const ProjectExplorer::HeaderPaths &headerPaths,
                                  const CPlusPlus::LanguageFeatures &features)
-        : TextEditor::AssistInterface(textDocument, position, filePath, reason)
+        : TextEditor::AssistInterface(textEditorWidget->textCursor(), filePath, reason)
         , m_gotCppSpecifics(true)
         , m_snapshot(snapshot)
         , m_headerPaths(headerPaths)
@@ -197,6 +173,7 @@ public:
     { getCppSpecifics(); return m_headerPaths; }
     CPlusPlus::LanguageFeatures languageFeatures() const
     { getCppSpecifics(); return m_languageFeatures; }
+    bool isBaseObject() const override { return false; }
 
 private:
     void getCppSpecifics() const;

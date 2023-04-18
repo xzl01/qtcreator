@@ -4,7 +4,6 @@ QtcPlugin {
     name: "Qnx"
 
     Depends { name: "Qt"; submodules: ["widgets", "xml", "network"] }
-    Depends { name: "QtcSsh" }
     Depends { name: "QmlDebug" }
     Depends { name: "Utils" }
 
@@ -17,7 +16,6 @@ QtcPlugin {
     files: [
         "qnxdeployqtlibrariesdialog.cpp",
         "qnxdeployqtlibrariesdialog.h",
-        "qnxdeployqtlibrariesdialog.ui",
         "qnxtoolchain.cpp",
         "qnxtoolchain.h",
         "qnx.qrc",
@@ -36,26 +34,22 @@ QtcPlugin {
         "qnxdeviceprocesslist.h",
         "qnxdeviceprocesssignaloperation.cpp",
         "qnxdeviceprocesssignaloperation.h",
-        "qnxdeviceprocess.cpp",
-        "qnxdeviceprocess.h",
         "qnxdevicetester.cpp",
         "qnxdevicetester.h",
-        "qnxsettingswidget.ui",
         "qnxconfigurationmanager.cpp",
         "qnxconfigurationmanager.h",
         "qnxsettingspage.cpp",
         "qnxsettingspage.h",
+        "qnxtr.h",
         "qnxversionnumber.cpp",
         "qnxversionnumber.h",
         "qnxplugin.cpp",
-        "qnxplugin.h",
         "qnxqtversion.cpp",
         "qnxqtversion.h",
         "qnxrunconfiguration.cpp",
         "qnxrunconfiguration.h",
         "qnxutils.cpp",
         "qnxutils.h",
-        "qnx_export.h",
         "slog2inforunner.cpp",
         "slog2inforunner.h",
     ]

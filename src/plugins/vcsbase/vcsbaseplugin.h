@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -37,12 +15,9 @@
 
 QT_BEGIN_NAMESPACE
 class QAction;
-class QTextCodec;
 QT_END_NAMESPACE
 
-namespace Utils {
-class Environment;
-} // namespace Utils
+namespace Utils { class Environment; }
 
 namespace Core {
 class Context;
@@ -57,7 +32,7 @@ namespace Internal { class State; }
 class VcsBaseSubmitEditor;
 class VcsBasePluginPrivate;
 class VcsBasePluginStateData;
-class VcsBasePluginPrivate;
+class VcsCommand;
 
 // Documentation inside.
 class VCSBASE_EXPORT VcsBasePluginState
@@ -77,7 +52,7 @@ public:
     bool hasTopLevel() const;
 
     // Current file.
-    QString currentFile() const;
+    Utils::FilePath currentFile() const;
     QString currentFileName() const;
     Utils::FilePath currentFileDirectory() const;
     Utils::FilePath currentFileTopLevel() const;
@@ -126,22 +101,15 @@ private:
 VCSBASE_EXPORT Utils::FilePath findRepositoryForFile(const Utils::FilePath &fileOrDir,
                                                      const QString &checkFile);
 
-// Returns SSH prompt configured in settings.
-VCSBASE_EXPORT QString sshPrompt();
-// Returns whether an SSH prompt is configured.
-VCSBASE_EXPORT bool isSshPromptConfigured();
-
 // Set up the environment for a version control command line call.
 // Sets up SSH graphical password prompting (note that the latter
 // requires a terminal-less process) and sets LANG to 'C' to force English
 // (suppress LOCALE warnings/parse commands output) if desired.
-VCSBASE_EXPORT void setProcessEnvironment(Utils::Environment *e,
-                                          bool forceCLocale,
-                                          const QString &sshPasswordPrompt = sshPrompt());
+VCSBASE_EXPORT void setProcessEnvironment(Utils::Environment *e);
 // Sets the source of editor contents, can be directory or file.
-VCSBASE_EXPORT void setSource(Core::IDocument *document, const QString &source);
+VCSBASE_EXPORT void setSource(Core::IDocument *document, const Utils::FilePath &source);
 // Returns the source of editor contents.
-VCSBASE_EXPORT QString source(Core::IDocument *document);
+VCSBASE_EXPORT Utils::FilePath source(Core::IDocument *document);
 
 class VCSBASE_EXPORT VcsBasePluginPrivate : public Core::IVersionControl
 {
@@ -155,10 +123,21 @@ public:
 
     const VcsBasePluginState &currentState() const;
 
+    /*!
+     * Return a VcsCommand capable of checking out \a url into \a baseDirectory, where
+     * a new subdirectory with \a localName will be created.
+     *
+     * \a extraArgs are passed on to the command being run.
+     */
+    virtual VcsCommand *createInitialCheckoutCommand(const QString &url,
+                                                     const Utils::FilePath &baseDirectory,
+                                                     const QString &localName,
+                                                     const QStringList &extraArgs);
     // Display name of the commit action
     virtual QString commitDisplayName() const;
 
-    virtual void commitFromEditor() = 0;
+    void commitFromEditor();
+    virtual bool activateCommit() = 0;
 
 protected:
     // Prompt to save all files before commit:
@@ -185,8 +164,7 @@ protected:
 
     // Implement to enable the plugin menu actions according to state.
     virtual void updateActions(ActionState as) = 0;
-    // Implement to start the submit process, use submitEditor() to get the submit editor instance.
-    virtual bool submitEditorAboutToClose() = 0;
+    virtual void discardCommit();
 
     // A helper to enable the VCS menu action according to state:
     // NoVcsEnabled    -> visible, enabled if repository creation is supported
@@ -196,7 +174,6 @@ protected:
     bool enableMenuAction(ActionState as, QAction *in) const;
 
 private:
-    void slotSubmitEditorAboutToClose(VcsBaseSubmitEditor *submitEditor, bool *result);
     void slotStateChanged(const Internal::State &s, Core::IVersionControl *vc);
 
     bool supportsRepositoryCreation() const;

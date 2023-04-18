@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Thorben Kroeger <thorbenkroeger@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Thorben Kroeger <thorbenkroeger@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -30,8 +8,11 @@
 #include <QBrush> // QGradientStops
 #include <QObject>
 
-QT_FORWARD_DECLARE_CLASS(QSettings)
-QT_FORWARD_DECLARE_CLASS(QPalette)
+QT_BEGIN_NAMESPACE
+class QMenu;
+class QPalette;
+class QSettings;
+QT_END_NAMESPACE
 
 namespace Utils {
 
@@ -436,10 +417,9 @@ public:
         DSgreenLight,
         DSamberLight,
         DSredLight,
-    };
 
-    enum Gradient {
-        DetailsWidgetHeaderGradient,
+        DSstatePanelBackground,
+        DSstateHighlight,
     };
 
     enum ImageFile {
@@ -473,13 +453,11 @@ public:
 
     Q_ENUM(Color)
     Q_ENUM(ImageFile)
-    Q_ENUM(Gradient)
     Q_ENUM(Flag)
 
     Q_INVOKABLE bool flag(Utils::Theme::Flag f) const;
     Q_INVOKABLE QColor color(Utils::Theme::Color role) const;
     QString imageFile(ImageFile imageFile, const QString &fallBack) const;
-    QGradientStops gradient(Gradient role) const;
     QPalette palette() const;
     QStringList preferredStyles() const;
     QString defaultTextEditorColorScheme() const;
@@ -495,6 +473,8 @@ public:
     static QPalette initialPalette();
 
     static void setInitialPalette(Theme *initTheme);
+
+    static void setHelpMenu(QMenu *menu);
 
 protected:
     Theme(Theme *originTheme, QObject *parent = nullptr);

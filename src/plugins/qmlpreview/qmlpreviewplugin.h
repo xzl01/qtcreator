@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -37,15 +15,18 @@
 
 namespace Core { class IEditor; }
 
+namespace ProjectExplorer { class RunControl; }
+
 namespace QmlDebug { class QmlDebugConnection; }
 
 namespace QmlPreview {
 
-typedef bool (*QmlPreviewFileClassifier) (const QString &);
-typedef QByteArray (*QmlPreviewFileLoader)(const QString &, bool *);
-typedef void (*QmlPreviewFpsHandler)(quint16[8]);
-typedef QList<ProjectExplorer::RunControl *> QmlPreviewRunControlList;
-typedef std::function<std::unique_ptr<QmlDebugTranslationClient>(QmlDebug::QmlDebugConnection *)> QmlDebugTranslationClientCreator;
+using QmlPreviewFileClassifier = bool (*)(const QString &);
+using QmlPreviewFileLoader = QByteArray (*)(const QString &, bool *);
+using QmlPreviewFpsHandler = void (*)(quint16[8]);
+using QmlPreviewRunControlList = QList<ProjectExplorer::RunControl *>;
+using QmlDebugTranslationClientCreator =
+    std::function<std::unique_ptr<QmlDebugTranslationClient>(QmlDebug::QmlDebugConnection *)>;
 
 class QMLPREVIEW_EXPORT QmlPreviewPlugin : public ExtensionSystem::IPlugin
 {
@@ -67,9 +48,8 @@ class QMLPREVIEW_EXPORT QmlPreviewPlugin : public ExtensionSystem::IPlugin
 public:
     ~QmlPreviewPlugin() override;
 
-    bool initialize(const QStringList &arguments, QString *errorString) override;
+    void initialize() override;
     ShutdownFlag aboutToShutdown() override;
-    QVector<QObject *> createTestObjects() const override;
 
     QString previewedFile() const;
     void setPreviewedFile(const QString &previewedFile);
@@ -91,6 +71,10 @@ public:
     void setLocaleIsoCode(const QString &localeIsoCode);
 
     void setQmlDebugTranslationClientCreator(QmlDebugTranslationClientCreator creator);
+
+    void previewCurrentFile();
+    void addPreview(ProjectExplorer::RunControl *preview);
+    void removePreview(ProjectExplorer::RunControl *preview);
 
 signals:
     void checkDocument(const QString &name, const QByteArray &contents,

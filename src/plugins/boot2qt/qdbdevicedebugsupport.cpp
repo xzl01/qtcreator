@@ -1,47 +1,26 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdbdevicedebugsupport.h"
 
 #include "qdbconstants.h"
-#include "qdbdevice.h"
-#include "qdbrunconfiguration.h"
+
+#include <projectexplorer/devicesupport/idevice.h>
+#include <projectexplorer/projectexplorerconstants.h>
+
+#include <qmldebug/qmldebugcommandlinearguments.h>
 
 #include <debugger/debuggerruncontrol.h>
 
-#include <ssh/sshconnection.h>
-
 #include <utils/algorithm.h>
+#include <utils/qtcprocess.h>
 #include <utils/url.h>
 
 using namespace Debugger;
 using namespace ProjectExplorer;
 using namespace Utils;
-using namespace Qdb::Internal;
 
-namespace Qdb {
+namespace Qdb::Internal {
 
 class QdbDeviceInferiorRunner : public RunWorker
 {
@@ -55,12 +34,16 @@ public:
     {
         setId("QdbDebuggeeRunner");
 
-        connect(&m_launcher, &ApplicationLauncher::processStarted,
-                this, &RunWorker::reportStarted);
-        connect(&m_launcher, &ApplicationLauncher::processExited,
-                this, &RunWorker::reportStopped);
-        connect(&m_launcher, &ApplicationLauncher::appendMessage,
-                this, &RunWorker::appendMessage);
+        connect(&m_launcher, &QtcProcess::started, this, &RunWorker::reportStarted);
+        connect(&m_launcher, &QtcProcess::done, this, &RunWorker::reportStopped);
+
+        connect(&m_launcher, &QtcProcess::readyReadStandardOutput, this, [this] {
+                appendMessage(m_launcher.readAllStandardOutput(), StdOutFormat);
+        });
+        connect(&m_launcher, &QtcProcess::readyReadStandardError, this, [this] {
+                appendMessage(m_launcher.readAllStandardError(), StdErrFormat);
+        });
+
         m_portsGatherer = new DebugServerPortsGatherer(runControl);
         m_portsGatherer->setUseGdbServer(useGdbServer || usePerf);
         m_portsGatherer->setUseQmlServer(useQmlServer);
@@ -80,16 +63,17 @@ public:
         int lowerPort = 0;
         int upperPort = 0;
 
-        Runnable r = runnable();
+        CommandLine cmd;
+        cmd.setExecutable(device()->filePath(Constants::AppcontrollerFilepath));
 
-        QString args;
         if (m_useGdbServer) {
-            args.append(" --debug-gdb");
+            cmd.addArg("--debug-gdb");
             lowerPort = upperPort = gdbServerPort;
         }
         if (m_useQmlServer) {
-            args.append(" --debug-qml --qml-debug-services ");
-            args.append(QmlDebug::qmlDebugServices(m_qmlServices));
+            cmd.addArg("--debug-qml");
+            cmd.addArg("--qml-debug-services");
+            cmd.addArg(QmlDebug::qmlDebugServices(m_qmlServices));
             lowerPort = upperPort = qmlServerPort;
         }
         if (m_useGdbServer && m_useQmlServer) {
@@ -106,22 +90,21 @@ public:
             QString args =  Utils::transform(perfRecordArgs.toStringList(), [](QString arg) {
                                     return arg.replace(',', ",,");
                             }).join(',');
-            args.append(QString(" --profile-perf %1").arg(args));
+            cmd.addArg("--profile-perf");
+            cmd.addArg(args);
             lowerPort = upperPort = perfPort;
         }
-        args.append(QString(" --port-range %1-%2 ").arg(lowerPort).arg(upperPort));
-        // FIXME: Breaks with spaces!
-        args.append(r.command.executable().toString());
-        args.append(" ");
-        args.append(r.command.arguments());
+        cmd.addArg("--port-range");
+        cmd.addArg(QString("%1-%2").arg(lowerPort).arg(upperPort));
+        cmd.addCommandLineAsArgs(runControl()->commandLine());
 
-        r.command.setArguments(args);
-        r.command.setExecutable(FilePath::fromString(Constants::AppcontrollerFilepath));
-
-        m_launcher.start(r, device());
+        m_launcher.setCommand(cmd);
+        m_launcher.setWorkingDirectory(runControl()->workingDirectory());
+        m_launcher.setEnvironment(runControl()->environment());
+        m_launcher.start();
     }
 
-    void stop() override { m_launcher.stop(); }
+    void stop() override { m_launcher.close(); }
 
 private:
     Debugger::DebugServerPortsGatherer *m_portsGatherer = nullptr;
@@ -129,11 +112,42 @@ private:
     bool m_useGdbServer;
     bool m_useQmlServer;
     QmlDebug::QmlDebugServicesPreset m_qmlServices;
-    ApplicationLauncher m_launcher;
+    QtcProcess m_launcher;
+};
+
+// QdbDeviceRunSupport
+
+class QdbDeviceRunSupport : public SimpleTargetRunner
+{
+public:
+    QdbDeviceRunSupport(RunControl *runControl)
+        : SimpleTargetRunner(runControl)
+    {
+        setStartModifier([this] {
+            const CommandLine remoteCommand = commandLine();
+            const FilePath remoteExe = remoteCommand.executable();
+            CommandLine cmd{remoteExe.withNewPath(Constants::AppcontrollerFilepath)};
+            cmd.addArg(remoteExe.nativePath());
+            cmd.addArgs(remoteCommand.arguments(), CommandLine::Raw);
+            setCommandLine(cmd);
+        });
+    }
 };
 
 
 // QdbDeviceDebugSupport
+
+class QdbDeviceDebugSupport final : public Debugger::DebuggerRunTool
+{
+public:
+    explicit QdbDeviceDebugSupport(RunControl *runControl);
+
+private:
+    void start() override;
+    void stop() override;
+
+    QdbDeviceInferiorRunner *m_debuggee = nullptr;
+};
 
 QdbDeviceDebugSupport::QdbDeviceDebugSupport(RunControl *runControl)
     : Debugger::DebuggerRunTool(runControl)
@@ -169,6 +183,18 @@ void QdbDeviceDebugSupport::stop()
 
 // QdbDeviceQmlProfilerSupport
 
+class QdbDeviceQmlToolingSupport final : public RunWorker
+{
+public:
+    explicit QdbDeviceQmlToolingSupport(RunControl *runControl);
+
+private:
+    void start() override;
+
+    QdbDeviceInferiorRunner *m_runner = nullptr;
+    RunWorker *m_worker = nullptr;
+};
+
 QdbDeviceQmlToolingSupport::QdbDeviceQmlToolingSupport(RunControl *runControl)
     : RunWorker(runControl)
 {
@@ -192,6 +218,17 @@ void QdbDeviceQmlToolingSupport::start()
 
 // QdbDevicePerfProfilerSupport
 
+class QdbDevicePerfProfilerSupport final : public RunWorker
+{
+public:
+    explicit QdbDevicePerfProfilerSupport(RunControl *runControl);
+
+private:
+    void start() override;
+
+    QdbDeviceInferiorRunner *m_profilee = nullptr;
+};
+
 QdbDevicePerfProfilerSupport::QdbDevicePerfProfilerSupport(RunControl *runControl)
     : RunWorker(runControl)
 {
@@ -209,4 +246,38 @@ void QdbDevicePerfProfilerSupport::start()
     reportStarted();
 }
 
-} // namespace Qdb
+// Factories
+
+QdbRunWorkerFactory::QdbRunWorkerFactory(const QList<Id> &runConfigs)
+{
+    setProduct<QdbDeviceRunSupport>();
+    addSupportedRunMode(ProjectExplorer::Constants::NORMAL_RUN_MODE);
+    setSupportedRunConfigs(runConfigs);
+    addSupportedDeviceType(Qdb::Constants::QdbLinuxOsType);
+}
+
+QdbDebugWorkerFactory::QdbDebugWorkerFactory(const QList<Id> &runConfigs)
+{
+    setProduct<QdbDeviceDebugSupport>();
+    addSupportedRunMode(ProjectExplorer::Constants::DEBUG_RUN_MODE);
+    setSupportedRunConfigs(runConfigs);
+    addSupportedDeviceType(Qdb::Constants::QdbLinuxOsType);
+}
+
+QdbQmlToolingWorkerFactory::QdbQmlToolingWorkerFactory(const QList<Id> &runConfigs)
+{
+    setProduct<QdbDeviceQmlToolingSupport>();
+    addSupportedRunMode(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
+    addSupportedRunMode(ProjectExplorer::Constants::QML_PREVIEW_RUN_MODE);
+    setSupportedRunConfigs(runConfigs);
+    addSupportedDeviceType(Qdb::Constants::QdbLinuxOsType);
+}
+
+QdbPerfProfilerWorkerFactory::QdbPerfProfilerWorkerFactory()
+{
+    setProduct<QdbDevicePerfProfilerSupport>();
+    addSupportedRunMode("PerfRecorder");
+    addSupportedDeviceType(Qdb::Constants::QdbLinuxOsType);
+}
+
+} // Qdb::Internal

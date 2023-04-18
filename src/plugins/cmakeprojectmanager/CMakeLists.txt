@@ -1,9 +1,11 @@
 add_qtc_plugin(CMakeProjectManager
+  PLUGIN_CLASS CMakeProjectPlugin
   DEPENDS QmlJS
   PLUGIN_DEPENDS Core CppEditor ProjectExplorer TextEditor QtSupport
   SOURCES
     builddirparameters.cpp builddirparameters.h
     cmake_global.h
+    cmakeabstractprocessstep.cpp cmakeabstractprocessstep.h
     cmakeautocompleter.cpp cmakeautocompleter.h
     cmakebuildconfiguration.cpp cmakebuildconfiguration.h
     cmakebuildsystem.cpp cmakebuildsystem.h
@@ -12,7 +14,11 @@ add_qtc_plugin(CMakeProjectManager
     cmakeconfigitem.cpp cmakeconfigitem.h
     cmakeeditor.cpp cmakeeditor.h
     cmakefilecompletionassist.cpp cmakefilecompletionassist.h
+    cmakeformatter.cpp cmakeformatter.h
+    cmakeformatteroptionspage.cpp cmakeformatteroptionspage.h
+    cmakeformattersettings.cpp cmakeformattersettings.h
     cmakeindenter.cpp cmakeindenter.h
+    cmakeinstallstep.cpp cmakeinstallstep.h
     cmakekitinformation.cpp cmakekitinformation.h
     cmakelocatorfilter.cpp cmakelocatorfilter.h
     cmakeparser.cpp cmakeparser.h
@@ -34,5 +40,7 @@ add_qtc_plugin(CMakeProjectManager
     fileapidataextractor.cpp fileapidataextractor.h
     fileapiparser.cpp fileapiparser.h
     fileapireader.cpp fileapireader.h
+    presetsparser.cpp presetsparser.h
+    presetsmacros.cpp presetsmacros.h
     projecttreehelper.cpp projecttreehelper.h
 )

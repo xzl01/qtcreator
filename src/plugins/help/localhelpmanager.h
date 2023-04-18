@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,14 +9,11 @@
 #include <QMutex>
 #include <QObject>
 #include <QUrl>
-#ifndef HELP_NEW_FILTER_ENGINE
-#include <QStandardItemModel>
-#include <functional>
-#else
-QT_FORWARD_DECLARE_CLASS(QHelpFilterEngine)
-#endif
 
-QT_FORWARD_DECLARE_CLASS(QHelpEngine)
+QT_BEGIN_NAMESPACE
+class QHelpFilterEngine;
+class QHelpEngine;
+QT_END_NAMESPACE
 
 class BookmarkManager;
 
@@ -119,23 +94,14 @@ public:
     static QByteArray loadErrorMessage(const QUrl &url, const QString &errorString);
     Q_INVOKABLE static Help::Internal::LocalHelpManager::HelpData helpData(const QUrl &url);
 
-#ifndef HELP_NEW_FILTER_ENGINE
-    static QAbstractItemModel *filterModel();
-    static void setFilterIndex(int index);
-    static int filterIndex();
-
-    static void updateFilterModel();
-#else
     static QHelpFilterEngine *filterEngine();
-#endif
 
     static bool canOpenOnlineHelp(const QUrl &url);
     static bool openOnlineHelp(const QUrl &url);
 
+    static QMultiMap<QString, QUrl> linksForKeyword(const QString &keyword);
+
 signals:
-#ifndef HELP_NEW_FILTER_ENGINE
-    void filterIndexChanged(int index);
-#endif
     void fallbackFontChanged(const QFont &font);
     void fontZoomChanged(int percentage);
     void returnOnCloseChanged();
@@ -145,12 +111,6 @@ signals:
 private:
     static bool m_guiNeedsSetup;
     static bool m_needsCollectionFile;
-
-#ifndef HELP_NEW_FILTER_ENGINE
-    static QStandardItemModel *m_filterModel;
-    static QString m_currentFilter;
-    static int m_currentFilterIndex;
-#endif
 
     static QMutex m_guiMutex;
     static QHelpEngine *m_guiEngine;

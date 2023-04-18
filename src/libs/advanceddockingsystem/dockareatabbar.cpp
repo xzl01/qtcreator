@@ -1,47 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Uwe Kindler
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Uwe Kindler
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "dockareatabbar.h"
 
 #include "dockareawidget.h"
-#include "dockmanager.h"
-#include "dockoverlay.h"
 #include "dockwidget.h"
 #include "dockwidgettab.h"
-#include "floatingdockcontainer.h"
-#include "floatingdragpreview.h"
 
 #include <QApplication>
 #include <QBoxLayout>
@@ -172,20 +136,18 @@ namespace ADS
     void DockAreaTabBar::insertTab(int index, DockWidgetTab *dockWidgetTab)
     {
         d->m_tabsLayout->insertWidget(index, dockWidgetTab);
-        connect(dockWidgetTab, &DockWidgetTab::clicked, this, &DockAreaTabBar::onTabClicked);
-        connect(dockWidgetTab,
-                &DockWidgetTab::closeRequested,
-                this,
-                &DockAreaTabBar::onTabCloseRequested);
-        connect(dockWidgetTab,
-                &DockWidgetTab::closeOtherTabsRequested,
-                this,
-                &DockAreaTabBar::onCloseOtherTabsRequested);
-        connect(dockWidgetTab, &DockWidgetTab::moved, this, &DockAreaTabBar::onTabWidgetMoved);
-        connect(dockWidgetTab,
-                &DockWidgetTab::elidedChanged,
-                this,
-                &DockAreaTabBar::elidedChanged);
+        connect(dockWidgetTab, &DockWidgetTab::clicked,
+                this, [this, dockWidgetTab] { onTabClicked(dockWidgetTab); });
+        connect(dockWidgetTab, &DockWidgetTab::closeRequested,
+                this, [this, dockWidgetTab] { onTabCloseRequested(dockWidgetTab); });
+        connect(dockWidgetTab, &DockWidgetTab::closeOtherTabsRequested,
+                this, [this, dockWidgetTab] { onCloseOtherTabsRequested(dockWidgetTab); });
+        connect(dockWidgetTab, &DockWidgetTab::moved,
+                this, [this, dockWidgetTab](const QPoint &globalPosition) {
+            onTabWidgetMoved(dockWidgetTab, globalPosition);
+        });
+        connect(dockWidgetTab, &DockWidgetTab::elidedChanged,
+                this, &DockAreaTabBar::elidedChanged);
         dockWidgetTab->installEventFilter(this);
         emit tabInserted(index);
         if (index <= d->m_currentIndex)
@@ -255,13 +217,9 @@ namespace ADS
                 d->m_tabsLayout->itemAt(d->m_currentIndex)->widget());
     }
 
-    void DockAreaTabBar::onTabClicked()
+    void DockAreaTabBar::onTabClicked(DockWidgetTab *sourceTab)
     {
-        DockWidgetTab *tab = qobject_cast<DockWidgetTab *>(sender());
-        if (!tab)
-            return;
-
-        int index = d->m_tabsLayout->indexOf(tab);
+        const int index = d->m_tabsLayout->indexOf(sourceTab);
         if (index < 0)
             return;
 
@@ -269,19 +227,17 @@ namespace ADS
         emit tabBarClicked(index);
     }
 
-    void DockAreaTabBar::onTabCloseRequested()
+    void DockAreaTabBar::onTabCloseRequested(DockWidgetTab *sourceTab)
     {
-        DockWidgetTab *tab = qobject_cast<DockWidgetTab *>(sender());
-        int index = d->m_tabsLayout->indexOf(tab);
+        const int index = d->m_tabsLayout->indexOf(sourceTab);
         closeTab(index);
     }
 
-    void DockAreaTabBar::onCloseOtherTabsRequested()
+    void DockAreaTabBar::onCloseOtherTabsRequested(DockWidgetTab *sourceTab)
     {
-        auto senderTab = qobject_cast<DockWidgetTab *>(sender());
         for (int i = 0; i < count(); ++i) {
             auto currentTab = tab(i);
-            if (currentTab->isClosable() && !currentTab->isHidden() && currentTab != senderTab) {
+            if (currentTab->isClosable() && !currentTab->isHidden() && currentTab != sourceTab) {
                 // If the dock widget is deleted with the closeTab() call, its tab it will no longer
                 // be in the layout, and thus the index needs to be updated to not skip any tabs
                 int offset = currentTab->dockWidget()->features().testFlag(
@@ -306,13 +262,9 @@ namespace ADS
         return qobject_cast<DockWidgetTab *>(d->m_tabsLayout->itemAt(index)->widget());
     }
 
-    void DockAreaTabBar::onTabWidgetMoved(const QPoint &globalPosition)
+    void DockAreaTabBar::onTabWidgetMoved(DockWidgetTab *sourceTab, const QPoint &globalPosition)
     {
-        DockWidgetTab *movingTab = qobject_cast<DockWidgetTab *>(sender());
-        if (!movingTab)
-            return;
-
-        int fromIndex = d->m_tabsLayout->indexOf(movingTab);
+        const int fromIndex = d->m_tabsLayout->indexOf(sourceTab);
         auto mousePos = mapFromGlobal(globalPosition);
         mousePos.rx() = qMax(d->firstTab()->geometry().left(), mousePos.x());
         mousePos.rx() = qMin(d->lastTab()->geometry().right(), mousePos.x());
@@ -320,7 +272,7 @@ namespace ADS
         // Find tab under mouse
         for (int i = 0; i < count(); ++i) {
             DockWidgetTab *dropTab = tab(i);
-            if (dropTab == movingTab || !dropTab->isVisibleTo(this)
+            if (dropTab == sourceTab || !dropTab->isVisibleTo(this)
                 || !dropTab->geometry().contains(mousePos))
                 continue;
 
@@ -332,8 +284,8 @@ namespace ADS
         }
 
         if (toIndex > -1) {
-            d->m_tabsLayout->removeWidget(movingTab);
-            d->m_tabsLayout->insertWidget(toIndex, movingTab);
+            d->m_tabsLayout->removeWidget(sourceTab);
+            d->m_tabsLayout->insertWidget(toIndex, sourceTab);
             qCInfo(adsLog) << "tabMoved from" << fromIndex << "to" << toIndex;
             emit tabMoved(fromIndex, toIndex);
             setCurrentIndex(toIndex);

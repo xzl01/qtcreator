@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -34,12 +12,12 @@
 #include <rewritertransaction.h>
 #include <commondefines.h>
 
-#include <coreplugin/icontext.h>
-
 #include <QObject>
 #include <QPointer>
+#include <QVector3D>
 
 #include <functional>
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 class QStyle;
@@ -50,8 +28,8 @@ QT_END_NAMESPACE
 
 namespace QmlDesigner {
     namespace Internal {
-        class InternalNode;
-        using InternalNodePointer = QSharedPointer<InternalNode>;
+    class InternalNode;
+    using InternalNodePointer = std::shared_ptr<InternalNode>;
     }
 }
 
@@ -61,6 +39,7 @@ class NodeInstanceView;
 class RewriterView;
 class QmlModelState;
 class QmlTimeline;
+class ExternalDependenciesInterface;
 
 enum DesignerWidgetFlags {
     DisableOnError,
@@ -70,30 +49,6 @@ enum DesignerWidgetFlags {
 class WidgetInfo {
 
 public:
-    class ToolBarWidgetFactoryInterface {
-    public:
-        ToolBarWidgetFactoryInterface() = default;
-
-        virtual QList<QToolButton*> createToolBarWidgets() = 0;
-
-        virtual ~ToolBarWidgetFactoryInterface() = default;
-    };
-
-    template <class T>
-    class ToolBarWidgetDefaultFactory : public ToolBarWidgetFactoryInterface {
-    public:
-        ToolBarWidgetDefaultFactory(T *t ) : m_t(t)
-        {}
-
-        QList<QToolButton*> createToolBarWidgets() override
-        {
-            return m_t->createToolBarWidgets();
-        }
-
-    private:
-        T * m_t;
-    };
-
     enum PlacementHint {
         NoPane,
         LeftPane,
@@ -108,13 +63,13 @@ public:
     QWidget *widget = nullptr;
     int placementPriority;
     PlacementHint placementHint;
-    ToolBarWidgetFactoryInterface *toolBarWidgetFactory = nullptr;
     DesignerWidgetFlags widgetFlags = DesignerWidgetFlags::DisableOnError;
 };
 
 class QMLDESIGNERCORE_EXPORT AbstractView : public QObject
 {
     Q_OBJECT
+
 public:
     Q_FLAGS(PropertyChangeFlag PropertyChangeFlags)
 
@@ -124,8 +79,9 @@ public:
       EmptyPropertiesRemoved = 0x2
     };
     Q_DECLARE_FLAGS(PropertyChangeFlags, PropertyChangeFlag)
-    AbstractView(QObject *parent = nullptr)
-            : QObject(parent) {}
+    AbstractView(ExternalDependenciesInterface &externalDependencies)
+        : m_externalDependencies{externalDependencies}
+    {}
 
     ~AbstractView() override;
 
@@ -134,13 +90,16 @@ public:
 
     RewriterTransaction beginRewriterTransaction(const QByteArray &identifier);
 
+    ModelNode createModelNode(const TypeName &typeName);
+
     ModelNode createModelNode(const TypeName &typeName,
-                         int majorVersion,
-                         int minorVersion,
-                         const PropertyListType &propertyList = PropertyListType(),
-                         const PropertyListType &auxPropertyList = PropertyListType(),
-                         const QString &nodeSource = QString(),
-                         ModelNode::NodeSourceType nodeSourceType = ModelNode::NodeWithoutSource);
+                              int majorVersion,
+                              int minorVersion,
+                              const PropertyListType &propertyList = PropertyListType(),
+                              const AuxiliaryDatas &auxPropertyList = {},
+                              const QString &nodeSource = {},
+                              ModelNode::NodeSourceType nodeSourceType = ModelNode::NodeWithoutSource,
+                              const QString &behaviorPropertyName = {});
 
     ModelNode rootModelNode() const;
     ModelNode rootModelNode();
@@ -166,7 +125,7 @@ public:
     bool hasModelNodeForInternalId(qint32 internalId) const;
 
     QList<ModelNode> allModelNodes() const;
-    QList<ModelNode> allModelNodesOfType(const TypeName &typeName) const;
+    QList<ModelNode> allModelNodesOfType(const NodeMetaInfo &typeName) const;
 
     void emitDocumentMessage(const QList<DocumentMessage> &errors, const QList<DocumentMessage> &warnings = QList<DocumentMessage>());
     void emitDocumentMessage(const QString &error);
@@ -188,8 +147,8 @@ public:
     void emitUpdateActiveScene3D(const QVariantMap &sceneState);
     void emitModelNodelPreviewPixmapChanged(const ModelNode &node, const QPixmap &pixmap);
     void emitImport3DSupportChanged(const QVariantMap &supportMap);
-
-    void sendTokenToInstances(const QString &token, int number, const QVector<ModelNode> &nodeVector);
+    void emitNodeAtPosResult(const ModelNode &modelNode, const QVector3D &pos3d);
+    void emitView3DAction(View3DActionType type, const QVariant &value);
 
     virtual void modelAttached(Model *model);
     virtual void modelAboutToBeDetached(Model *model);
@@ -206,6 +165,7 @@ public:
     virtual void bindingPropertiesAboutToBeChanged(const QList<BindingProperty> &propertyList);
     virtual void bindingPropertiesChanged(const QList<BindingProperty>& propertyList, PropertyChangeFlags propertyChange);
     virtual void signalHandlerPropertiesChanged(const QVector<SignalHandlerProperty>& propertyList, PropertyChangeFlags propertyChange);
+    virtual void signalDeclarationPropertiesChanged(const QVector<SignalDeclarationProperty>& propertyList, PropertyChangeFlags propertyChange);
     virtual void rootNodeTypeChanged(const QString &type, int majorVersion, int minorVersion);
     virtual void nodeTypeChanged(const ModelNode& node, const TypeName &type, int majorVersion, int minorVersion);
 
@@ -239,7 +199,9 @@ public:
     virtual void possibleImportsChanged(const QList<Import> &possibleImports);
     virtual void usedImportsChanged(const QList<Import> &usedImports);
 
-    virtual void auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &data);
+    virtual void auxiliaryDataChanged(const ModelNode &node,
+                                      AuxiliaryDataKeyView type,
+                                      const QVariant &data);
 
     virtual void customNotification(const AbstractView *view, const QString &identifier, const QList<ModelNode> &nodeList, const QList<QVariant> &data);
 
@@ -252,11 +214,25 @@ public:
     virtual void renderImage3DChanged(const QImage &image);
     virtual void updateActiveScene3D(const QVariantMap &sceneState);
     virtual void updateImport3DSupport(const QVariantMap &supportMap);
+    virtual void nodeAtPosReady(const ModelNode &modelNode, const QVector3D &pos3d);
     virtual void modelNodePreviewPixmapChanged(const ModelNode &node, const QPixmap &pixmap);
+
+    virtual void view3DAction(View3DActionType type, const QVariant &value);
+
+    virtual void active3DSceneChanged(qint32 sceneId);
+
+    virtual void dragStarted(QMimeData *mimeData);
+    virtual void dragEnded();
 
     void changeRootNodeType(const TypeName &type, int majorVersion, int minorVersion);
 
-    NodeInstanceView *nodeInstanceView() const;
+    void ensureMaterialLibraryNode();
+    ModelNode materialLibraryNode();
+    ModelNode active3DSceneNode();
+    void assignMaterialTo3dModel(const ModelNode &modelNode, const ModelNode &materialNode = {});
+    ModelNode getTextureDefaultInstance(const QString &source);
+
+    const NodeInstanceView *nodeInstanceView() const;
     RewriterView *rewriterView() const;
 
     void setCurrentStateNode(const ModelNode &node);
@@ -276,7 +252,7 @@ public:
     virtual void disableWidget();
     virtual void enableWidget();
 
-    virtual void contextHelp(const Core::IContext::HelpCallback &callback) const;
+    QString contextHelpId() const;
 
     void setCurrentTimeline(const ModelNode &timeline);
     void activateTimelineRecording(const ModelNode &timeline);
@@ -287,6 +263,8 @@ public:
 
     bool isEnabled() const;
     void setEnabled(bool b);
+
+    ExternalDependenciesInterface &externalDependencies() const { return m_externalDependencies; }
 
     bool isBlockingNotifications() const { return m_isBlockingNotifications; }
 
@@ -306,10 +284,9 @@ public:
     };
 
 protected:
-    void setModel(Model * model);
+    void setModel(Model *model);
     void removeModel();
     static WidgetInfo createWidgetInfo(QWidget *widget = nullptr,
-                                       WidgetInfo::ToolBarWidgetFactoryInterface *toolBarWidgetFactory = nullptr,
                                        const QString &uniqueId = QString(),
                                        WidgetInfo::PlacementHint placementHint = WidgetInfo::NoPane,
                                        int placementPriority = 0,
@@ -320,6 +297,7 @@ private: //functions
 
 private:
     QPointer<Model> m_model;
+    ExternalDependenciesInterface &m_externalDependencies;
     bool m_enabled = true;
     bool m_isBlockingNotifications = false;
 };

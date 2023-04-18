@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "jsonwizardgeneratorfactory.h"
 
@@ -32,8 +10,10 @@
 #include "../editorconfiguration.h"
 #include "../project.h"
 #include "../projectexplorerconstants.h"
+#include "../projectexplorertr.h"
 
 #include <coreplugin/dialogs/promptoverwritedialog.h>
+
 #include <texteditor/icodestylepreferences.h>
 #include <texteditor/icodestylepreferencesfactory.h>
 #include <texteditor/storagesettings.h>
@@ -42,11 +22,11 @@
 #include <texteditor/textindenter.h>
 
 #include <utils/algorithm.h>
-#include <utils/mimetypes/mimedatabase.h>
-#include <utils/stringutils.h>
+#include <utils/fileutils.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 
-#include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -86,7 +66,7 @@ bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *fi
     if (file->isBinary() || file->contents().isEmpty())
         return true; // nothing to do
 
-    Id languageId = TextEditorSettings::languageId(Utils::mimeTypeForFile(file->path()).name());
+    Id languageId = TextEditorSettings::languageId(Utils::mimeTypeForFile(file->filePath()).name());
 
     if (!languageId.isValid())
         return true; // don't modify files like *.ui, *.pro
@@ -99,7 +79,7 @@ bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *fi
     Indenter *indenter = nullptr;
     if (factory) {
         indenter = factory->createIndenter(&doc);
-        indenter->setFileName(Utils::FilePath::fromString(file->path()));
+        indenter->setFileName(file->filePath());
     }
     if (!indenter)
         indenter = new TextIndenter(&doc);
@@ -158,15 +138,14 @@ bool JsonWizardGenerator::allDone(const JsonWizard *wizard, GeneratedFile *file,
 JsonWizardGenerator::OverwriteResult JsonWizardGenerator::promptForOverwrite(JsonWizard::GeneratorFiles *files,
                                                                              QString *errorMessage)
 {
-    QStringList existingFiles;
+    FilePaths existingFiles;
     bool oddStuffFound = false;
 
-    foreach (const JsonWizard::GeneratorFile &f, *files) {
-        const QFileInfo fi(f.file.path());
-        if (fi.exists()
+    for (const JsonWizard::GeneratorFile &f : std::as_const(*files)) {
+        if (f.file.filePath().exists()
                 && !(f.file.attributes() & GeneratedFile::ForceOverwrite)
                 && !(f.file.attributes() & GeneratedFile::KeepExistingFileAttribute))
-            existingFiles.append(f.file.path());
+            existingFiles.append(f.file.filePath());
     }
     if (existingFiles.isEmpty())
         return OverwriteOk;
@@ -174,34 +153,30 @@ JsonWizardGenerator::OverwriteResult JsonWizardGenerator::promptForOverwrite(Jso
     // Before prompting to overwrite existing files, loop over files and check
     // if there is anything blocking overwriting them (like them being links or folders).
     // Format a file list message as ( "<file1> [readonly], <file2> [folder]").
-    const QString commonExistingPath = Utils::commonPath(existingFiles);
+    const QString commonExistingPath = FileUtils::commonPath(existingFiles).toUserOutput();
+    const int commonPathSize = commonExistingPath.size();
     QString fileNamesMsgPart;
-    foreach (const QString &fileName, existingFiles) {
-        const QFileInfo fi(fileName);
-        if (fi.exists()) {
+    for (const FilePath &filePath : std::as_const(existingFiles)) {
+        if (filePath.exists()) {
             if (!fileNamesMsgPart.isEmpty())
                 fileNamesMsgPart += QLatin1String(", ");
-            const QString namePart = QDir::toNativeSeparators(fileName.mid(commonExistingPath.size() + 1));
-            if (fi.isDir()) {
+            const QString namePart = filePath.toUserOutput().mid(commonPathSize);
+            if (filePath.isDir()) {
                 oddStuffFound = true;
-                fileNamesMsgPart += QCoreApplication::translate("ProjectExplorer::JsonWizardGenerator", "%1 [folder]")
-                        .arg(namePart);
-            } else if (fi.isSymLink()) {
+                fileNamesMsgPart += Tr::tr("%1 [folder]").arg(namePart);
+            } else if (filePath.isSymLink()) {
                 oddStuffFound = true;
-                fileNamesMsgPart += QCoreApplication::translate("ProjectExplorer::JsonWizardGenerator", "%1 [symbolic link]")
-                        .arg(namePart);
-            } else if (!fi.isWritable()) {
+                fileNamesMsgPart += Tr::tr("%1 [symbolic link]").arg(namePart);
+            } else if (!filePath.isWritableDir() && !filePath.isWritableFile()) {
                 oddStuffFound = true;
-                fileNamesMsgPart += QCoreApplication::translate("ProjectExplorer::JsonWizardGenerator", "%1 [read only]")
-                        .arg(namePart);
+                fileNamesMsgPart += Tr::tr("%1 [read only]").arg(namePart);
             }
         }
     }
 
     if (oddStuffFound) {
-        *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizardGenerator",
-                                                    "The directory %1 contains files which cannot be overwritten:\n%2.")
-                .arg(QDir::toNativeSeparators(commonExistingPath)).arg(fileNamesMsgPart);
+        *errorMessage = Tr::tr("The directory %1 contains files which cannot be overwritten:\n%2.")
+                .arg(commonExistingPath).arg(fileNamesMsgPart);
         return OverwriteError;
     }
 
@@ -210,19 +185,19 @@ JsonWizardGenerator::OverwriteResult JsonWizardGenerator::promptForOverwrite(Jso
 
     // Scripts cannot handle overwrite
     overwriteDialog.setFiles(existingFiles);
-    foreach (const JsonWizard::GeneratorFile &file, *files)
+    for (const JsonWizard::GeneratorFile &file : std::as_const(*files))
         if (!file.generator->canKeepExistingFiles())
-            overwriteDialog.setFileEnabled(file.file.path(), false);
+            overwriteDialog.setFileEnabled(file.file.filePath(), false);
     if (overwriteDialog.exec() != QDialog::Accepted)
         return OverwriteCanceled;
 
-    const QSet<QString> existingFilesToKeep = Utils::toSet(overwriteDialog.uncheckedFiles());
+    const QSet<FilePath> existingFilesToKeep = Utils::toSet(overwriteDialog.uncheckedFiles());
     if (existingFilesToKeep.size() == files->size()) // All exist & all unchecked->Cancel.
         return OverwriteCanceled;
 
     // Set 'keep' attribute in files
     for (JsonWizard::GeneratorFile &file : *files) {
-        if (!existingFilesToKeep.contains(file.file.path()))
+        if (!existingFilesToKeep.contains(file.file.filePath()))
             continue;
 
         file.file.setAttributes(file.file.attributes() | GeneratedFile::KeepExistingFileAttribute);

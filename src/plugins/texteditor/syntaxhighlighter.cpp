@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "syntaxhighlighter.h"
 #include "textdocument.h"
@@ -500,8 +478,7 @@ void SyntaxHighlighter::setFormatWithSpaces(const QString &text, int start, int 
                                             const QTextCharFormat &format)
 {
     Q_D(const SyntaxHighlighter);
-    QTextCharFormat visualSpaceFormat = d->whitespaceFormat;
-    visualSpaceFormat.setBackground(format.background());
+    const QTextCharFormat visualSpaceFormat = whitespacified(format);
 
     const int end = std::min(start + count, int(text.length()));
     int index = start;
@@ -831,6 +808,14 @@ QTextCharFormat SyntaxHighlighter::formatForCategory(int category) const
     return d->formats.at(category);
 }
 
+QTextCharFormat SyntaxHighlighter::whitespacified(const QTextCharFormat &fmt)
+{
+    Q_D(SyntaxHighlighter);
+    QTextCharFormat format = d->whitespaceFormat;
+    format.setBackground(fmt.background());
+    return format;
+}
+
 void SyntaxHighlighter::highlightBlock(const QString &text)
 {
     formatSpaces(text);
@@ -841,7 +826,7 @@ void SyntaxHighlighterPrivate::updateFormats(const FontSettings &fontSettings)
     this->fontSettings = fontSettings;
     // C_TEXT is handled by text editor's foreground and background color,
     // so use empty format for that
-    for (const auto &pair : qAsConst(formatCategories)) {
+    for (const auto &pair : std::as_const(formatCategories)) {
         formats[pair.first] = pair.second == C_TEXT ? QTextCharFormat()
                                                     : fontSettings.toTextCharFormat(pair.second);
     }

@@ -1,39 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mainwidget.h"
+
 #include "actionhandler.h"
 #include "colorthemes.h"
 #include "colortoolbutton.h"
 #include "errorwidget.h"
 #include "graphicsscene.h"
+#include "graphicsview.h"
 #include "magnifier.h"
 #include "navigator.h"
 #include "outputtabwidget.h"
-#include "scxmltagutils.h"
 #include "scxmleditorconstants.h"
+#include "scxmleditortr.h"
+#include "scxmltagutils.h"
+#include "scxmluifactory.h"
 #include "search.h"
 #include "shapestoolbox.h"
 #include "stateitem.h"
@@ -47,20 +29,21 @@
 
 #include <QAction>
 #include <QClipboard>
-#include <QGuiApplication>
-#include <QMenu>
-#include <QMimeData>
-
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QImage>
 #include <QImageWriter>
 #include <QItemEditorFactory>
+#include <QLayout>
+#include <QMenu>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QPainter>
 #include <QProgressBar>
 #include <QProgressDialog>
@@ -68,16 +51,16 @@
 #include <QStandardPaths>
 #include <QXmlStreamWriter>
 
-#include "scxmluifactory.h"
-
-#include <QCoreApplication>
 #include <app/app_version.h>
-#include <iostream>
 
 #include <coreplugin/icore.h>
 #include <coreplugin/minisplitter.h>
+
 #include <utils/algorithm.h>
+#include <utils/fileutils.h>
 #include <utils/icon.h>
+
+#include <iostream>
 
 using namespace ScxmlEditor::PluginInterface;
 using namespace ScxmlEditor::Common;
@@ -227,25 +210,25 @@ void MainWidget::init()
     if (provider)
         provider->init(m_errorPane->warningModel());
 
-    connect(m_errorPane, &ErrorWidget::mouseExited, this, [this]() {
+    connect(m_errorPane, &ErrorWidget::mouseExited, this, [this] {
         StateView *view = m_views.last();
         if (view)
             view->scene()->unhighlightAll();
     });
 
-    connect(m_errorPane, &ErrorWidget::warningEntered, [this](Warning *w) {
+    connect(m_errorPane, &ErrorWidget::warningEntered, this, [this](Warning *w) {
         StateView *view = m_views.last();
         if (view)
             view->scene()->highlightWarningItem(w);
     });
 
-    connect(m_errorPane, &ErrorWidget::warningSelected, [this](Warning *w) {
+    connect(m_errorPane, &ErrorWidget::warningSelected, this, [this](Warning *w) {
         StateView *view = m_views.last();
         if (view)
             view->scene()->selectWarningItem(w);
     });
 
-    connect(m_errorPane, &ErrorWidget::warningDoubleClicked, [this](Warning *w) {
+    connect(m_errorPane, &ErrorWidget::warningDoubleClicked, this, [this](Warning *w) {
         StateView *view = m_views.last();
         if (view)
             view->view()->zoomToItem(view->scene()->findItem(view->scene()->tagByWarning(w)));
@@ -264,12 +247,12 @@ void MainWidget::init()
     m_actionHandler = new ActionHandler(this);
 
     // Connect actions
-    connect(m_actionHandler->action(ActionZoomIn), &QAction::triggered, this, [this]() {
+    connect(m_actionHandler->action(ActionZoomIn), &QAction::triggered, this, [this] {
         StateView *view = m_views.last();
         if (view)
             view->view()->zoomIn();
     });
-    connect(m_actionHandler->action(ActionZoomOut), &QAction::triggered, this, [this]() {
+    connect(m_actionHandler->action(ActionZoomOut), &QAction::triggered, this, [this] {
         StateView *view = m_views.last();
         if (view)
             view->view()->zoomOut();
@@ -282,69 +265,82 @@ void MainWidget::init()
     });
     connect(m_actionHandler->action(ActionMagnifier), &QAction::toggled, this, &MainWidget::setMagnifier);
 
-    connect(m_navigator, &Navigator::hideFrame, this, [this]() { m_actionHandler->action(ActionNavigator)->setChecked(false); });
+    connect(m_navigator, &Navigator::hideFrame, this,
+            [this] { m_actionHandler->action(ActionNavigator)->setChecked(false); });
     connect(m_actionHandler->action(ActionNavigator), &QAction::toggled, m_navigator, &Navigator::setVisible);
 
-    connect(m_actionHandler->action(ActionCopy), &QAction::triggered, this, [this]() {
+    connect(m_actionHandler->action(ActionCopy), &QAction::triggered, this, [this] {
         StateView *view = m_views.last();
         if (view)
             view->scene()->copy();
     });
 
-    connect(m_actionHandler->action(ActionCut), &QAction::triggered, this, [this]() {
+    connect(m_actionHandler->action(ActionCut), &QAction::triggered, this, [this] {
         StateView *view = m_views.last();
         if (view)
             view->scene()->cut();
     });
 
-    connect(m_actionHandler->action(ActionPaste), &QAction::triggered, this, [this]() {
+    connect(m_actionHandler->action(ActionPaste), &QAction::triggered, this, [this] {
         StateView *view = m_views.last();
         if (view)
             view->scene()->paste(view->view()->mapToScene(QPoint(30, 30)));
     });
 
-    connect(m_actionHandler->action(ActionExportToImage), &QAction::triggered, this, &MainWidget::exportToImage);
-    connect(m_actionHandler->action(ActionScreenshot), &QAction::triggered, this, &MainWidget::saveScreenShot);
+    connect(m_actionHandler->action(ActionExportToImage), &QAction::triggered,
+            this, &MainWidget::exportToImage);
+    connect(m_actionHandler->action(ActionScreenshot), &QAction::triggered,
+            this, &MainWidget::saveScreenShot);
 
-    connect(m_errorPane->warningModel(), &WarningModel::warningsChanged, this, [this]() {
-        m_actionHandler->action(ActionFullNamespace)->setEnabled(m_errorPane->warningModel()->count(Warning::ErrorType) <= 0);
+    connect(m_errorPane->warningModel(), &WarningModel::warningsChanged, this, [this] {
+        m_actionHandler->action(ActionFullNamespace)->setEnabled(
+                    m_errorPane->warningModel()->count(Warning::ErrorType) <= 0);
     });
 
     connect(m_actionHandler->action(ActionFullNamespace), &QAction::triggered, this, [this](bool checked) {
         m_document->setUseFullNameSpace(checked);
     });
 
-    connect(m_actionHandler->action(ActionAlignLeft), &QAction::triggered, this, [this]() { alignButtonClicked(ActionAlignLeft); });
-    connect(m_actionHandler->action(ActionAlignRight), &QAction::triggered, this, [this]() { alignButtonClicked(ActionAlignRight); });
-    connect(m_actionHandler->action(ActionAlignTop), &QAction::triggered, this, [this]() { alignButtonClicked(ActionAlignTop); });
-    connect(m_actionHandler->action(ActionAlignBottom), &QAction::triggered, this, [this]() { alignButtonClicked(ActionAlignBottom); });
-    connect(m_actionHandler->action(ActionAlignHorizontal), &QAction::triggered, this, [this]() { alignButtonClicked(ActionAlignHorizontal); });
-    connect(m_actionHandler->action(ActionAlignVertical), &QAction::triggered, this, [this]() { alignButtonClicked(ActionAlignVertical); });
-    connect(m_actionHandler->action(ActionAdjustWidth), &QAction::triggered, this, [this]() { adjustButtonClicked(ActionAdjustWidth); });
-    connect(m_actionHandler->action(ActionAdjustHeight), &QAction::triggered, this, [this]() { adjustButtonClicked(ActionAdjustHeight); });
-    connect(m_actionHandler->action(ActionAdjustSize), &QAction::triggered, this, [this]() { adjustButtonClicked(ActionAdjustSize); });
-
-    connect(m_actionHandler->action(ActionStatistics), &QAction::triggered, this, [this]() {
+    connect(m_actionHandler->action(ActionAlignLeft), &QAction::triggered,
+            this, [this] { alignButtonClicked(ActionAlignLeft); });
+    connect(m_actionHandler->action(ActionAlignRight), &QAction::triggered,
+            this, [this] { alignButtonClicked(ActionAlignRight); });
+    connect(m_actionHandler->action(ActionAlignTop), &QAction::triggered,
+            this, [this] { alignButtonClicked(ActionAlignTop); });
+    connect(m_actionHandler->action(ActionAlignBottom), &QAction::triggered,
+            this, [this] { alignButtonClicked(ActionAlignBottom); });
+    connect(m_actionHandler->action(ActionAlignHorizontal), &QAction::triggered,
+            this, [this] { alignButtonClicked(ActionAlignHorizontal); });
+    connect(m_actionHandler->action(ActionAlignVertical), &QAction::triggered,
+            this, [this] { alignButtonClicked(ActionAlignVertical); });
+    connect(m_actionHandler->action(ActionAdjustWidth), &QAction::triggered,
+            this, [this] { adjustButtonClicked(ActionAdjustWidth); });
+    connect(m_actionHandler->action(ActionAdjustHeight), &QAction::triggered,
+            this, [this] { adjustButtonClicked(ActionAdjustHeight); });
+    connect(m_actionHandler->action(ActionAdjustSize), &QAction::triggered,
+            this, [this] { adjustButtonClicked(ActionAdjustSize); });
+    connect(m_actionHandler->action(ActionStatistics), &QAction::triggered,
+            this, [this] {
         StatisticsDialog dialog;
         dialog.setDocument(m_document);
         dialog.exec();
     });
 
     // Init ToolButtons
-    auto stateColorButton = new ColorToolButton("StateColor", ":/scxmleditor/images/state_color.png", tr("State Color"));
-    auto fontColorButton = new ColorToolButton("FontColor", ":/scxmleditor/images/font_color.png", tr("Font Color"));
-    QToolButton *alignToolButton = createToolButton(toolButtonIcon(ActionAlignLeft), tr("Align Left"), QToolButton::MenuButtonPopup);
-    QToolButton *adjustToolButton = createToolButton(toolButtonIcon(ActionAdjustWidth), tr("Adjust Width"), QToolButton::MenuButtonPopup);
+    auto stateColorButton = new ColorToolButton("StateColor", ":/scxmleditor/images/state_color.png", Tr::tr("State Color"));
+    auto fontColorButton = new ColorToolButton("FontColor", ":/scxmleditor/images/font_color.png", Tr::tr("Font Color"));
+    QToolButton *alignToolButton = createToolButton(toolButtonIcon(ActionAlignLeft), Tr::tr("Align Left"), QToolButton::MenuButtonPopup);
+    QToolButton *adjustToolButton = createToolButton(toolButtonIcon(ActionAdjustWidth), Tr::tr("Adjust Width"), QToolButton::MenuButtonPopup);
 
     // Connect state color change
-    connect(stateColorButton, &ColorToolButton::colorSelected, [this](const QString &color) {
+    connect(stateColorButton, &ColorToolButton::colorSelected, this, [this](const QString &color) {
         StateView *view = m_views.last();
         if (view)
             view->scene()->setEditorInfo(Constants::C_SCXML_EDITORINFO_STATECOLOR, color);
     });
 
     // Connect font color change
-    connect(fontColorButton, &ColorToolButton::colorSelected, [this](const QString &color) {
+    connect(fontColorButton, &ColorToolButton::colorSelected, this, [this](const QString &color) {
         StateView *view = m_views.last();
         if (view)
             view->scene()->setEditorInfo(Constants::C_SCXML_EDITORINFO_FONTCOLOR, color);
@@ -366,12 +362,12 @@ void MainWidget::init()
             view->scene()->adjustStates(adjustToolButton->property("currentAdjustment").toInt());
     });
 
-    auto alignmentMenu = new QMenu(tr("Alignment"), this);
+    auto alignmentMenu = new QMenu(Tr::tr("Alignment"), this);
     for (int i = ActionAlignLeft; i <= ActionAlignVertical; ++i)
         alignmentMenu->addAction(m_actionHandler->action(ActionType(i)));
     alignToolButton->setMenu(alignmentMenu);
 
-    auto adjustmentMenu = new QMenu(tr("Adjustment"), this);
+    auto adjustmentMenu = new QMenu(Tr::tr("Adjustment"), this);
     for (int i = ActionAdjustWidth; i <= ActionAdjustSize; ++i)
         adjustmentMenu->addAction(m_actionHandler->action(ActionType(i)));
     adjustToolButton->setMenu(adjustmentMenu);
@@ -405,7 +401,7 @@ QString saveImageFileFilter()
     const auto imageFormats = QImageWriter::supportedImageFormats();
     const QByteArrayList supportedFormats = Utils::transform(imageFormats, [](const QByteArray &in)
         { return QByteArray{"*." + in}; });
-    return MainWidget::tr("Images (%1)").arg(QString::fromUtf8(supportedFormats.join(' ')));
+    return ScxmlEditor::Tr::tr("Images (%1)").arg(QString::fromUtf8(supportedFormats.join(' ')));
 }
 
 void MainWidget::exportToImage()
@@ -416,7 +412,7 @@ void MainWidget::exportToImage()
 
     QString suggestedFileName = QFileInfo(m_document->fileName()).baseName();
     if (suggestedFileName.isEmpty())
-        suggestedFileName = tr("Untitled");
+        suggestedFileName = Tr::tr("Untitled");
 
     QSettings *s = Core::ICore::settings();
     const QString documentsLocation = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
@@ -427,7 +423,7 @@ void MainWidget::exportToImage()
             .arg(suggestedFileName)
             .arg(QDateTime::currentDateTime().toString("yyyyMMddhhmmss"));
     const FilePath filePath = FileUtils::getSaveFilePath(this,
-                                                         tr("Export Canvas to Image"),
+                                                         Tr::tr("Export Canvas to Image"),
                                                          FilePath::fromString(suggestedFileName),
                                                          saveImageFileFilter());
     if (!filePath.isEmpty()) {
@@ -441,7 +437,7 @@ void MainWidget::exportToImage()
         if (image.save(filePath.toString())) {
             s->setValue(Constants::C_SETTINGS_LASTEXPORTFOLDER, filePath.parentDir().toString());
         } else {
-            QMessageBox::warning(this, tr("Export Failed"), tr("Could not export to image."));
+            QMessageBox::warning(this, Tr::tr("Export Failed"), Tr::tr("Could not export to image."));
         }
     }
 }
@@ -454,19 +450,19 @@ void MainWidget::saveScreenShot()
 
     QSettings *s = Core::ICore::settings();
     const QString documentsLocation = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    const FilePath lastFolder = FilePath::fromVariant(
+    const FilePath lastFolder = FilePath::fromSettings(
             s->value(Constants::C_SETTINGS_LASTSAVESCREENSHOTFOLDER, documentsLocation));
     const FilePath filePath = FileUtils::getSaveFilePath(this,
-                                                         tr("Save Screenshot"),
+                                                         Tr::tr("Save Screenshot"),
                                                          lastFolder / "scxml_screenshot.png",
                                                          saveImageFileFilter());
     if (!filePath.isEmpty()) {
         const QImage image = view->view()->grabView();
 
         if (image.save(filePath.toString())) {
-            s->setValue(Constants::C_SETTINGS_LASTSAVESCREENSHOTFOLDER, filePath.parentDir().toVariant());
+            s->setValue(Constants::C_SETTINGS_LASTSAVESCREENSHOTFOLDER, filePath.parentDir().toSettings());
         } else {
-            QMessageBox::warning(this, tr("Saving Failed"), tr("Could not save the screenshot."));
+            QMessageBox::warning(this, Tr::tr("Saving Failed"), Tr::tr("Could not save the screenshot."));
         }
     }
 }
@@ -513,10 +509,10 @@ void MainWidget::addStateView(BaseItem *item)
     });
     connect(view->view(), &GraphicsView::panningChanged, m_actionHandler->action(ActionPan), &QAction::setChecked);
     connect(view->view(), &GraphicsView::magnifierChanged, m_actionHandler->action(ActionMagnifier), &QAction::setChecked);
-    connect(m_magnifier, &Magnifier::visibilityChanged, m_actionHandler->action(ActionMagnifier), &QAction::setChecked);
-    connect(view->scene(), &GraphicsScene::openStateView, this, &MainWidget::addStateView, Qt::QueuedConnection);
-    connect(view->scene(), &GraphicsScene::selectedStateCountChanged, this, [this](int count) {
-        bool currentView = sender() == m_views.last()->scene();
+    GraphicsScene *scene = view->scene();
+    connect(scene, &GraphicsScene::openStateView, this, &MainWidget::addStateView, Qt::QueuedConnection);
+    connect(scene, &GraphicsScene::selectedStateCountChanged, this, [this, scene](int count) {
+        bool currentView = scene == m_views.last()->scene();
 
         // Enable/disable alignments
         for (int i = ActionAlignLeft; i <= ActionAdjustSize; ++i)
@@ -526,13 +522,13 @@ void MainWidget::addStateView(BaseItem *item)
     });
 
     // Enable/disable color buttons
-    connect(view->scene(), &GraphicsScene::selectedBaseItemCountChanged, this, [this](int count) {
+    connect(scene, &GraphicsScene::selectedBaseItemCountChanged, this, [this](int count) {
         m_toolButtons[ToolButtonStateColor]->setEnabled(count > 0);
         m_toolButtons[ToolButtonFontColor]->setEnabled(count > 0);
     });
 
-    connect(view->scene(), &GraphicsScene::pasteAvailable, this, [this](bool para) {
-        bool currentView = sender() == m_views.last()->scene();
+    connect(scene, &GraphicsScene::pasteAvailable, this, [this, scene](bool para) {
+        bool currentView = scene == m_views.last()->scene();
         m_actionHandler->action(ActionPaste)->setEnabled(currentView && para);
     });
 

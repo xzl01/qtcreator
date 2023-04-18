@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "sidebar.h"
 #include "sidebarwidget.h"
@@ -85,13 +63,13 @@ SideBar::SideBar(QList<SideBarItem*> itemList,
     d(new SideBarPrivate)
 {
     setOrientation(Qt::Vertical);
-    foreach (SideBarItem *item, itemList) {
+    for (SideBarItem *item : std::as_const(itemList)) {
         d->m_itemMap.insert(item->id(), item);
         d->m_availableItemIds.append(item->id());
         d->m_availableItemTitles.append(item->title());
     }
 
-    foreach (SideBarItem *item, defaultVisible) {
+    for (SideBarItem *item : std::as_const(defaultVisible)) {
         if (!itemList.contains(item))
             continue;
         d->m_defaultVisible.append(item->id());
@@ -100,7 +78,7 @@ SideBar::SideBar(QList<SideBarItem*> itemList,
 
 SideBar::~SideBar()
 {
-    foreach (const QPointer<SideBarItem> &i, d->m_itemMap)
+    for (const QPointer<SideBarItem> &i : std::as_const(d->m_itemMap))
         if (!i.isNull())
             delete i.data();
     delete d;
@@ -160,14 +138,14 @@ void SideBar::makeItemAvailable(SideBarItem *item)
 void SideBar::setUnavailableItemIds(const QStringList &itemIds)
 {
     // re-enable previous items
-    foreach (const QString &id, d->m_unavailableItemIds) {
+    for (const QString &id : std::as_const(d->m_unavailableItemIds)) {
         d->m_availableItemIds.append(id);
         d->m_availableItemTitles.append(d->m_itemMap.value(id).data()->title());
     }
 
     d->m_unavailableItemIds.clear();
 
-    foreach (const QString &id, itemIds) {
+    for (const QString &id : itemIds) {
         if (!d->m_unavailableItemIds.contains(id))
             d->m_unavailableItemIds.append(id);
         d->m_availableItemIds.removeAll(id);
@@ -198,8 +176,8 @@ Internal::SideBarWidget *SideBar::insertSideBarWidget(int position, const QStrin
         d->m_widgets.at(0)->setCloseIcon(Utils::Icons::CLOSE_SPLIT_BOTTOM.icon());
 
     auto item = new Internal::SideBarWidget(this, id);
-    connect(item, &Internal::SideBarWidget::splitMe, this, &SideBar::splitSubWidget);
-    connect(item, &Internal::SideBarWidget::closeMe, this, &SideBar::closeSubWidget);
+    connect(item, &Internal::SideBarWidget::splitMe, this, [this, item] { splitSubWidget(item); });
+    connect(item, &Internal::SideBarWidget::closeMe, this, [this, item] { closeSubWidget(item); });
     connect(item, &Internal::SideBarWidget::currentWidgetChanged, this, &SideBar::updateWidgets);
     insertWidget(position, item);
     d->m_widgets.insert(position, item);
@@ -219,20 +197,16 @@ void SideBar::removeSideBarWidget(Internal::SideBarWidget *widget)
     widget->deleteLater();
 }
 
-void SideBar::splitSubWidget()
+void SideBar::splitSubWidget(Internal::SideBarWidget *widget)
 {
-    auto original = qobject_cast<Internal::SideBarWidget*>(sender());
-    int pos = indexOf(original) + 1;
+    int pos = indexOf(widget) + 1;
     insertSideBarWidget(pos);
     updateWidgets();
 }
 
-void SideBar::closeSubWidget()
+void SideBar::closeSubWidget(Internal::SideBarWidget *widget)
 {
     if (d->m_widgets.count() != 1) {
-        auto widget = qobject_cast<Internal::SideBarWidget*>(sender());
-        if (!widget)
-            return;
         removeSideBarWidget(widget);
         // update close button of top item
         if (d->m_widgets.size() == 1)
@@ -250,7 +224,7 @@ void SideBar::closeSubWidget()
 
 void SideBar::updateWidgets()
 {
-    foreach (Internal::SideBarWidget *i, d->m_widgets)
+    for (Internal::SideBarWidget *i : std::as_const(d->m_widgets))
         i->updateAvailableItems();
 }
 
@@ -276,7 +250,7 @@ void SideBar::saveSettings(QSettings *settings, const QString &name)
 
 void SideBar::closeAllWidgets()
 {
-    foreach (Internal::SideBarWidget *widget, d->m_widgets)
+    for (Internal::SideBarWidget *widget : std::as_const(d->m_widgets))
         removeSideBarWidget(widget);
 }
 
@@ -288,9 +262,9 @@ void SideBar::readSettings(QSettings *settings, const QString &name)
 
     const QString viewsKey = prefix + QLatin1String("Views");
     if (settings->contains(viewsKey)) {
-        QStringList views = settings->value(viewsKey).toStringList();
+        const QStringList views = settings->value(viewsKey).toStringList();
         if (!views.isEmpty()) {
-            foreach (const QString &id, views)
+            for (const QString &id : views)
                 if (availableItemIds().contains(id))
                     insertSideBarWidget(d->m_widgets.count(), id);
 
@@ -299,7 +273,7 @@ void SideBar::readSettings(QSettings *settings, const QString &name)
         }
     }
     if (d->m_widgets.size() == 0) {
-        foreach (const QString &id, d->m_defaultVisible)
+        for (const QString &id : std::as_const(d->m_defaultVisible))
             insertSideBarWidget(d->m_widgets.count(), id);
     }
 

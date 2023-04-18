@@ -1,41 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "findinopenfiles.h"
-#include "textdocument.h"
-#include "texteditor.h"
 
-#include <utils/filesearch.h>
+#include "textdocument.h"
+#include "texteditortr.h"
+
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/editormanager/documentmodel.h>
 
+#include <utils/filesearch.h>
+
 #include <QSettings>
 
-using namespace TextEditor;
-using namespace TextEditor::Internal;
+namespace TextEditor::Internal {
 
 FindInOpenFiles::FindInOpenFiles()
 {
@@ -52,7 +31,7 @@ QString FindInOpenFiles::id() const
 
 QString FindInOpenFiles::displayName() const
 {
-    return tr("Open Documents");
+    return Tr::tr("Open Documents");
 }
 
 Utils::FileIterator *FindInOpenFiles::files(const QStringList &nameFilters,
@@ -62,13 +41,13 @@ Utils::FileIterator *FindInOpenFiles::files(const QStringList &nameFilters,
     Q_UNUSED(nameFilters)
     Q_UNUSED(exclusionFilters)
     Q_UNUSED(additionalParameters)
-    QMap<QString, QTextCodec *> openEditorEncodings
-            = TextDocument::openedTextDocumentEncodings();
-    QStringList fileNames;
+    QMap<Utils::FilePath, QTextCodec *> openEditorEncodings
+        = TextDocument::openedTextDocumentEncodings();
+    Utils::FilePaths fileNames;
     QList<QTextCodec *> codecs;
-    foreach (Core::DocumentModel::Entry *entry,
-             Core::DocumentModel::entries()) {
-        QString fileName = entry->fileName().toString();
+    const QList<Core::DocumentModel::Entry *> entries = Core::DocumentModel::entries();
+    for (Core::DocumentModel::Entry *entry : entries) {
+        const Utils::FilePath fileName = entry->filePath();
         if (!fileName.isEmpty()) {
             fileNames.append(fileName);
             QTextCodec *codec = openEditorEncodings.value(fileName);
@@ -88,13 +67,13 @@ QVariant FindInOpenFiles::additionalParameters() const
 
 QString FindInOpenFiles::label() const
 {
-    return tr("Open documents:");
+    return Tr::tr("Open documents:");
 }
 
 QString FindInOpenFiles::toolTip() const
 {
     // %1 is filled by BaseFileFind::runNewSearch
-    return tr("Open Documents\n%1");
+    return Tr::tr("Open Documents\n%1");
 }
 
 bool FindInOpenFiles::isEnabled() const
@@ -120,3 +99,5 @@ void FindInOpenFiles::updateEnabledState()
 {
     emit enabledChanged(isEnabled());
 }
+
+} // TextEditor::Internal

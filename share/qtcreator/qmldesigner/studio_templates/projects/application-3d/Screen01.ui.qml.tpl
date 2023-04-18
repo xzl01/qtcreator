@@ -16,12 +16,6 @@ Rectangle {
 
     color: Constants.backgroundColor
 
-    Text {
-        text: qsTr("Hello %{ProjectName}")
-        anchors.centerIn: parent
-        font.family: Constants.font.family
-    }
-
     View3D {
         id: view3D
         anchors.fill: parent
@@ -49,13 +43,26 @@ Rectangle {
                 id: cubeModel
                 eulerRotation.y: 45
                 eulerRotation.x: 30
-                materials: cubeMaterial
+                materials: defaultMaterial
                 source: "#Cube"
-                DefaultMaterial {
-                    id: cubeMaterial
-                    diffuseColor: "#4aee45"
-                }
             }
         }
+    }
+
+    Item {
+        id: __materialLibrary__
+        DefaultMaterial {
+            id: defaultMaterial
+            objectName: "Default Material"
+            diffuseColor: "#4aee45"
+        }
+    }
+
+    Text {
+        text: qsTr("Hello %{ProjectName}")
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: 100
+        font.family: Constants.font.family
     }
 }

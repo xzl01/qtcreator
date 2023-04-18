@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "baseeditordocumentprocessor.h"
 #include "cppcompletionassistprovider.h"
-#include "cppminimizableinfobars.h"
-#include "cppmodelmanager.h"
+#include "cppoutlinemodel.h"
 #include "cppparsecontext.h"
 #include "cppsemanticinfo.h"
 #include "editordocumenthandle.h"
@@ -52,9 +29,7 @@ public:
 
     bool isObjCEnabled() const;
     void setCompletionAssistProvider(TextEditor::CompletionAssistProvider *provider) override;
-    void setFunctionHintAssistProvider(TextEditor::CompletionAssistProvider *provider) override;
     TextEditor::CompletionAssistProvider *completionAssistProvider() const override;
-    TextEditor::CompletionAssistProvider *functionHintAssistProvider() const override;
     TextEditor::IAssistProvider *quickFixAssistProvider() const override;
 
     void recalculateSemanticInfoDetached();
@@ -65,8 +40,9 @@ public:
 
     void scheduleProcessDocument();
 
-    const MinimizableInfoBars &minimizableInfoBars() const;
     ParseContextModel &parseContextModel();
+    OutlineModel &outlineModel();
+    void updateOutline();
 
     QFuture<CursorInfo> cursorInfo(const CursorInfoParams &params);
     TextEditor::TabSettings tabSettings() const override;
@@ -74,6 +50,8 @@ public:
     bool save(QString *errorString,
               const Utils::FilePath &filePath = Utils::FilePath(),
               bool autoSave = false) override;
+
+    bool usesClangd() const;
 
 signals:
     void codeWarningsUpdated(unsigned contentsRevision,
@@ -98,6 +76,8 @@ private:
 
     void onAboutToReload();
     void onReloadFinished();
+    void onDiagnosticsChanged(const QString &fileName, const QString &kind);
+
 
     void reparseWithPreferredParseContext(const QString &id);
 
@@ -130,13 +110,12 @@ private:
     QScopedPointer<BaseEditorDocumentProcessor> m_processor;
 
     CppCompletionAssistProvider *m_completionAssistProvider = nullptr;
-    CppCompletionAssistProvider *m_functionHintAssistProvider = nullptr;
 
     // (Un)Registration in CppModelManager
     QScopedPointer<CppEditorDocumentHandle> m_editorDocumentHandle;
 
-    MinimizableInfoBars m_minimizableInfoBars;
     ParseContextModel m_parseContextModel;
+    OutlineModel m_overviewModel;
 };
 
 } // namespace Internal

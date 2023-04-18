@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "itemlibraryassetimportdialog.h"
 #include "ui_itemlibraryassetimportdialog.h"
 
@@ -61,8 +39,11 @@ namespace QmlDesigner {
 
 namespace {
 
-static void addFormattedMessage(Utils::OutputFormatter *formatter, const QString &str,
-                                const QString &srcPath, Utils::OutputFormat format) {
+void addFormattedMessage(Utils::OutputFormatter *formatter,
+                         const QString &str,
+                         const QString &srcPath,
+                         Utils::OutputFormat format)
+{
     if (!formatter)
         return;
     QString msg = str;
@@ -74,13 +55,13 @@ static void addFormattedMessage(Utils::OutputFormatter *formatter, const QString
                 formatter->plainTextEdit()->verticalScrollBar()->maximum());
 }
 
-static const int rowHeight = 28;
-static const int checkBoxColWidth = 18;
-static const int labelMinWidth = 130;
-static const int controlMinWidth = 65;
-static const int columnSpacing = 16;
+const int rowHeight = 32;
+const int checkBoxColWidth = 18;
+const int labelMinWidth = 130;
+const int controlMinWidth = 65;
+const int columnSpacing = 16;
 
-}
+} // namespace
 
 ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(
         const QStringList &importFiles, const QString &defaulTargetDirectory,
@@ -154,7 +135,7 @@ ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(
     QString candidatePath = targetDir + defaultAssetFolder + quick3DFolder;
     int candidatePriority = 5;
 
-    for (const auto &importPath : qAsConst(importPaths)) {
+    for (const auto &importPath : std::as_const(importPaths)) {
         if (importPath.startsWith(targetDir)) {
             const bool isDefaultFolder = importPath.endsWith(defaultAssetFolder);
             const QString assetFolder = importPath + quick3DFolder;
@@ -216,7 +197,7 @@ ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(
 
         // Create tab for each supported extension group that also has files included in the import
         QMap<QString, int> tabMap; // QMap used for alphabetical order
-        for (const auto &file : qAsConst(m_quick3DFiles)) {
+        for (const auto &file : std::as_const(m_quick3DFiles)) {
             auto extIt = supportedExts.constBegin();
             QString ext = QFileInfo(file).suffix().toLower();
             while (extIt != supportedExts.constEnd()) {
@@ -271,15 +252,13 @@ ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(
             this, &ItemLibraryAssetImportDialog::setImportProgress);
 
     addInfo(tr("Select import options and press \"Import\" to import the following files:"));
-    for (const auto &file : qAsConst(m_quick3DFiles))
+    for (const auto &file : std::as_const(m_quick3DFiles))
         addInfo(file);
 
     connect(ui->advancedSettingsButton, &QPushButton::clicked,
             this, &ItemLibraryAssetImportDialog::toggleAdvanced);
 
-    QTimer::singleShot(0, this, [this]() {
-        updateUi();
-    });
+    QTimer::singleShot(0, this, &ItemLibraryAssetImportDialog::updateUi);
 }
 
 ItemLibraryAssetImportDialog::~ItemLibraryAssetImportDialog()
@@ -293,7 +272,7 @@ void ItemLibraryAssetImportDialog::updateImport(const ModelNode &updateNode,
 {
     QString errorMsg;
     const ModelNode &node = updateNode;
-    if (node.isValid() && node.hasMetaInfo()) {
+    if (node.hasMetaInfo()) {
         QString compFileName = node.metaInfo().componentFileName(); // absolute path
         bool preselectNodeSource = false;
         if (compFileName.isEmpty()) {
@@ -373,7 +352,7 @@ void ItemLibraryAssetImportDialog::updateImport(const ModelNode &updateNode,
                                         {sourceInfo.absoluteFilePath()},
                                         node.model()->fileUrl().toLocalFile(),
                                         supportedExts, supportedOpts, options,
-                                        preselectedFiles, Core::ICore::mainWindow());
+                                        preselectedFiles, Core::ICore::dialogParent());
                             importDlg->show();
 
                         } else {
@@ -565,8 +544,8 @@ QGridLayout *ItemLibraryAssetImportDialog::createOptionsGrid(
             optSpin->setMinimumWidth(controlMinWidth);
             optControl = optSpin;
             if (advanced) {
-                QObject::connect(optSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-                                 [this, optSpin, optKey, optionsIndex]() {
+                QObject::connect(optSpin, &QDoubleSpinBox::valueChanged, this,
+                                 [this, optSpin, optKey, optionsIndex] {
                     QJsonObject optObj = m_importOptions[optionsIndex].value(optKey).toObject();
                     QJsonValue value(optSpin->value());
                     optObj.insert("value", value);
@@ -577,13 +556,13 @@ QGridLayout *ItemLibraryAssetImportDialog::createOptionsGrid(
                             m_labelToControlWidgetMaps[optionsIndex].value(optKey));
                 if (advSpin) {
                     // Connect corresponding advanced control
-                    QObject::connect(optSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-                                     this, [optSpin, advSpin]() {
+                    QObject::connect(optSpin, &QDoubleSpinBox::valueChanged,
+                                     this, [optSpin, advSpin] {
                         if (advSpin->value() != optSpin->value())
                             advSpin->setValue(optSpin->value());
                     });
-                    QObject::connect(advSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-                                     this, [optSpin, advSpin]() {
+                    QObject::connect(advSpin, &QDoubleSpinBox::valueChanged,
+                                     this, [optSpin, advSpin] {
                         if (advSpin->value() != optSpin->value())
                             optSpin->setValue(advSpin->value());
                     });
@@ -675,9 +654,8 @@ QGridLayout *ItemLibraryAssetImportDialog::createOptionsGrid(
                         w2->setEnabled(enable);
                     };
                     enableConditionally(optSpin, conLabel, conControl, mode);
-                    QObject::connect(
-                                optSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-                                optSpin, [optSpin, conLabel, conControl, mode, enableConditionally]() {
+                    QObject::connect(optSpin, &QDoubleSpinBox::valueChanged, optSpin,
+                                     [optSpin, conLabel, conControl, mode, enableConditionally] {
                         enableConditionally(optSpin, conLabel, conControl, mode);
                     });
                 }
@@ -771,7 +749,7 @@ QGridLayout *ItemLibraryAssetImportDialog::createOptionsGrid(
 
     // Ungrouped options are spread evenly under the groups
     int totalRowCount = (rowIndex[0] + rowIndex[1] + widgets[0].size() + 1) / 2;
-    for (const auto &rowWidgets : qAsConst(widgets[0])) {
+    for (const auto &rowWidgets : std::as_const(widgets[0])) {
         int col = rowIndex[0] < totalRowCount ? 0 : 1;
         insertOptionToLayout(col, rowWidgets);
     }
@@ -781,7 +759,7 @@ QGridLayout *ItemLibraryAssetImportDialog::createOptionsGrid(
     int &globalOptionsHeight = advanced ? m_advancedData.optionsHeight : m_simpleData.optionsHeight;
     globalOptionRows = qMax(globalOptionRows, optionRows);
     globalOptionsHeight = qMax(rowHeight * optionRows + 20, globalOptionsHeight);
-    layout->setContentsMargins(8, 8, 8, 0);
+    layout->setContentsMargins(8, 6, 8, 0);
 
     return layout;
 }
@@ -918,11 +896,11 @@ void ItemLibraryAssetImportDialog::onClose()
 void ItemLibraryAssetImportDialog::toggleAdvanced()
 {
     m_advancedMode = !m_advancedMode;
-    for (const auto &widget : qAsConst(m_simpleData.contentWidgets)) {
+    for (const auto &widget : std::as_const(m_simpleData.contentWidgets)) {
         if (widget)
             widget->setVisible(!m_advancedMode);
     }
-    for (const auto &widget : qAsConst(m_advancedData.contentWidgets)) {
+    for (const auto &widget : std::as_const(m_advancedData.contentWidgets)) {
         if (widget)
             widget->setVisible(m_advancedMode);
     }

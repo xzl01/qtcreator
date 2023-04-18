@@ -7,6 +7,7 @@ QtcPlugin {
     Depends { name: "Qt.widgets" }
     Depends { name: "Qt.testlib"; condition: qtc.testsEnabled }
     Depends { name: "Utils" }
+    Depends { name: "app_version_header" }
 
     Depends { name: "Core" }
     Depends { name: "BareMetal" }
@@ -23,8 +24,12 @@ QtcPlugin {
         "mcupackage.h",
         "mcutarget.cpp",
         "mcutarget.h",
+        "mcutargetfactory.cpp",
+        "mcutargetfactory.h",
+        "mcutargetfactorylegacy.cpp",
+        "mcutargetfactorylegacy.h",
         "mcusupport.qrc",
-        "mcusupport_global.h",
+        "mcusupport_global.h", "mcusupporttr.h",
         "mcusupportconstants.h",
         "mcusupportdevice.cpp",
         "mcusupportdevice.h",
@@ -32,6 +37,8 @@ QtcPlugin {
         "mcusupportoptions.h",
         "mcukitmanager.cpp",
         "mcukitmanager.h",
+        "mcuqmlprojectnode.cpp",
+        "mcuqmlprojectnode.h",
         "mcusupportoptionspage.cpp",
         "mcusupportoptionspage.h",
         "mcusupportplugin.cpp",
@@ -42,11 +49,13 @@ QtcPlugin {
         "mcusupportrunconfiguration.h",
         "mcusupportversiondetection.cpp",
         "mcusupportversiondetection.h",
-        "mcusupportcmakemapper.h",
-        "mcusupportcmakemapper.cpp",
         "mcutargetdescription.h",
         "mcukitinformation.cpp",
-        "mcukitinformation.h"
+        "mcukitinformation.h",
+        "mcuhelpers.cpp",
+        "mcuhelpers.h",
+        "settingshandler.h",
+        "settingshandler.cpp",
     ]
 
     Group {
@@ -55,6 +64,7 @@ QtcPlugin {
         prefix: "test/"
         files: [
             "packagemock.h",
+            "settingshandlermock.h",
             "unittest.cpp", "unittest.h"
         ]
     }

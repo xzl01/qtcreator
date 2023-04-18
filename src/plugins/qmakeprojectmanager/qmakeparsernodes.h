@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,7 +9,7 @@
 
 #include <coreplugin/idocument.h>
 #include <cppeditor/generatedcodemodelsupport.h>
-#include <utils/porting.h>
+#include <projectexplorer/projectnodes.h>
 #include <utils/textfileformat.h>
 
 #include <QFutureWatcher>
@@ -43,12 +21,12 @@
 
 #include <memory>
 
-namespace ProjectExplorer { class BuildConfiguration; }
+namespace ProjectExplorer { class ExtraCompilerFactory; }
 
 namespace Utils {
 class FilePath;
 class FileSystemWatcher;
-} // namespace Utils;
+} // Utils;
 
 namespace QtSupport { class ProFileReader; }
 
@@ -103,6 +81,7 @@ enum class Variable {
     AndroidPackageSourceDir,
     AndroidExtraLibs,
     AndroidApplicationArgs,
+    IosDeploymentTarget,
     AppmanPackageDir,
     AppmanManifest,
     IsoIcons,
@@ -110,7 +89,7 @@ enum class Variable {
     QmakeCc,
     QmakeCxx
 };
-Utils::QHashValueType qHash(Variable key, uint seed = 0);
+size_t qHash(Variable key, uint seed = 0);
 
 namespace Internal {
 Q_DECLARE_LOGGING_CATEGORY(qmakeNodesLog)
@@ -123,7 +102,7 @@ class QmakePriFileEvalResult;
 class InstallsList;
 
 enum class FileOrigin { ExactParse, CumulativeParse };
-Utils::QHashValueType qHash(FileOrigin fo);
+size_t qHash(FileOrigin fo);
 using SourceFile = QPair<Utils::FilePath, FileOrigin>;
 using SourceFiles = QSet<SourceFile>;
 
@@ -136,13 +115,15 @@ public:
     virtual ~QmakePriFile();
 
     void finishInitialization(QmakeBuildSystem *buildSystem, QmakeProFile *qmakeProFile);
-    Utils::FilePath filePath() const;
+
+    const Utils::FilePath &filePath() const { return m_filePath; }
     Utils::FilePath directoryPath() const;
+    QString deviceRoot() const;
     virtual QString displayName() const;
 
     QmakePriFile *parent() const;
     QmakeProject *project() const;
-    QVector<QmakePriFile *> children() const;
+    const QVector<QmakePriFile *> children() const;
 
     QmakePriFile *findPriFile(const Utils::FilePath &fileName);
     const QmakePriFile *findPriFile(const Utils::FilePath &fileName) const;
@@ -226,13 +207,6 @@ private:
     Utils::FilePaths formResources(const Utils::FilePath &formFile) const;
     static QStringList baseVPaths(QtSupport::ProFileReader *reader, const QString &projectDir, const QString &buildDir);
     static QStringList fullVPaths(const QStringList &baseVPaths, QtSupport::ProFileReader *reader, const QString &qmakeVariable, const QString &projectDir);
-    static void extractSources(QHash<int, Internal::QmakePriFileEvalResult *> proToResult,
-            Internal::QmakePriFileEvalResult *fallback,
-            QVector<ProFileEvaluator::SourceFile> sourceFiles, ProjectExplorer::FileType type, bool cumulative);
-    static void extractInstalls(
-            QHash<int, Internal::QmakePriFileEvalResult *> proToResult,
-            Internal::QmakePriFileEvalResult *fallback,
-            const InstallsList &installList);
     static void processValues(Internal::QmakePriFileEvalResult &result);
     void watchFolders(const QSet<Utils::FilePath> &folders);
 
@@ -277,7 +251,6 @@ public:
     }
 
     TargetInformation() = default;
-    TargetInformation(const TargetInformation &other) = default;
 };
 
 class QMAKEPROJECTMANAGER_EXPORT InstallsItem {
@@ -328,6 +301,8 @@ public:
                                        const Utils::FilePath &sourceFile,
                                        const ProjectExplorer::FileType &sourceFileType) const;
     QList<ProjectExplorer::ExtraCompiler *> extraCompilers() const;
+    ProjectExplorer::ExtraCompiler *findExtraCompiler(
+            const std::function<bool(ProjectExplorer::ExtraCompiler *)> &filter);
 
     TargetInformation targetInformation() const;
     InstallsList installsList() const;

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -31,17 +9,12 @@
 #include "compileroptionsbuilder.h"
 #include "projectpart.h"
 
+#include <texteditor/quickfix.h>
 #include <texteditor/texteditor.h>
 
 #include <cplusplus/ASTVisitor.h>
 #include <cplusplus/CppDocument.h>
 #include <cplusplus/Token.h>
-
-QT_BEGIN_NAMESPACE
-class QChar;
-class QFileInfo;
-class QTextCursor;
-QT_END_NAMESPACE
 
 namespace CPlusPlus {
 class Macro;
@@ -52,8 +25,10 @@ class LookupContext;
 namespace TextEditor { class AssistInterface; }
 
 namespace CppEditor {
+
 class CppRefactoringFile;
 class ProjectInfo;
+class CppCompletionAssistProcessor;
 
 void CPPEDITOR_EXPORT moveCursorToEndOfIdentifier(QTextCursor *tc);
 void CPPEDITOR_EXPORT moveCursorToStartOfIdentifier(QTextCursor *tc);
@@ -76,20 +51,28 @@ const CPlusPlus::Macro CPPEDITOR_EXPORT *findCanonicalMacro(const QTextCursor &c
 
 bool CPPEDITOR_EXPORT isInCommentOrString(const TextEditor::AssistInterface *interface,
                                           CPlusPlus::LanguageFeatures features);
+TextEditor::QuickFixOperations CPPEDITOR_EXPORT
+quickFixOperations(const TextEditor::AssistInterface *interface);
+
+CppCompletionAssistProcessor CPPEDITOR_EXPORT *getCppCompletionAssistProcessor();
 
 enum class CacheUsage { ReadWrite, ReadOnly };
 
-QString CPPEDITOR_EXPORT correspondingHeaderOrSource(const QString &fileName, bool *wasHeader = nullptr,
-                                                    CacheUsage cacheUsage = CacheUsage::ReadWrite);
-void CPPEDITOR_EXPORT switchHeaderSource();
+Utils::FilePath CPPEDITOR_EXPORT correspondingHeaderOrSource(
+     const Utils::FilePath &filePath, bool *wasHeader = nullptr,
+     CacheUsage cacheUsage = CacheUsage::ReadWrite);
 
+void CPPEDITOR_EXPORT openEditor(const Utils::FilePath &filePath, bool inNextSplit,
+                                 Utils::Id editorId = {});
 class CppCodeModelSettings;
 CppCodeModelSettings CPPEDITOR_EXPORT *codeModelSettings();
+
+bool CPPEDITOR_EXPORT preferLowerCaseFileNames();
 
 UsePrecompiledHeaders CPPEDITOR_EXPORT getPchUsage();
 
 int indexerFileSizeLimitInMb();
-bool fileSizeExceedsLimit(const QFileInfo &fileInfo, int sizeLimitInMb);
+bool fileSizeExceedsLimit(const Utils::FilePath &filePath, int sizeLimitInMb);
 
 ProjectExplorer::Project CPPEDITOR_EXPORT *projectForProjectInfo(const ProjectInfo &info);
 ProjectExplorer::Project CPPEDITOR_EXPORT *projectForProjectPart(const ProjectPart &part);

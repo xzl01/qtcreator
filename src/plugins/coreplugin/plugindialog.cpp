@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "plugindialog.h"
 
-#include "icore.h"
-
+#include "coreplugintr.h"
 #include "dialogs/restartdialog.h"
+#include "icore.h"
 #include "plugininstallwizard.h"
 
 #include <app/app_version.h>
@@ -41,7 +19,6 @@
 #include <utils/fancylineedit.h>
 
 #include <QCheckBox>
-#include <QDebug>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
@@ -53,8 +30,6 @@ using namespace Utils;
 
 namespace Core {
 namespace Internal {
-
-static bool s_isRestartRequired = false;
 
 PluginDialog::PluginDialog(QWidget *parent)
     : QDialog(parent),
@@ -72,54 +47,45 @@ PluginDialog::PluginDialog(QWidget *parent)
 
     vl->addWidget(m_view);
 
-    m_detailsButton = new QPushButton(tr("Details"), this);
-    m_errorDetailsButton = new QPushButton(tr("Error Details"), this);
-    m_closeButton = new QPushButton(tr("Close"), this);
-    m_installButton = new QPushButton(tr("Install Plugin..."), this);
+    m_detailsButton = new QPushButton(Tr::tr("Details"), this);
+    m_errorDetailsButton = new QPushButton(Tr::tr("Error Details"), this);
+    m_installButton = new QPushButton(Tr::tr("Install Plugin..."), this);
     m_detailsButton->setEnabled(false);
     m_errorDetailsButton->setEnabled(false);
-    m_closeButton->setEnabled(true);
-    m_closeButton->setDefault(true);
 
-    m_restartRequired = new QLabel(tr("Restart required."), this);
-    if (!s_isRestartRequired)
-        m_restartRequired->setVisible(false);
-
-    auto hl = new QHBoxLayout;
-    hl->addWidget(m_detailsButton);
-    hl->addWidget(m_errorDetailsButton);
-    hl->addWidget(m_installButton);
-    hl->addSpacing(10);
-    hl->addWidget(m_restartRequired);
-    hl->addStretch(5);
-    hl->addWidget(m_closeButton);
-
-    vl->addLayout(hl);
+    auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttonBox->addButton(m_detailsButton, QDialogButtonBox::ActionRole);
+    buttonBox->addButton(m_errorDetailsButton, QDialogButtonBox::ActionRole);
+    buttonBox->addButton(m_installButton, QDialogButtonBox::ActionRole);
+    vl->addWidget(buttonBox);
 
     resize(650, 400);
-    setWindowTitle(tr("Installed Plugins"));
+    setWindowTitle(Tr::tr("Installed Plugins"));
 
     connect(m_view, &ExtensionSystem::PluginView::currentPluginChanged,
             this, &PluginDialog::updateButtons);
     connect(m_view, &ExtensionSystem::PluginView::pluginActivated,
             this, &PluginDialog::openDetails);
-    connect(m_view, &ExtensionSystem::PluginView::pluginSettingsChanged,
-            this, &PluginDialog::updateRestartRequired);
-    connect(m_detailsButton, &QAbstractButton::clicked,
+    connect(m_view, &ExtensionSystem::PluginView::pluginSettingsChanged, this, [this] {
+        m_isRestartRequired = true;
+    });
+    connect(m_detailsButton, &QAbstractButton::clicked, this,
             [this]  { openDetails(m_view->currentPlugin()); });
     connect(m_errorDetailsButton, &QAbstractButton::clicked,
             this, &PluginDialog::openErrorDetails);
     connect(m_installButton, &QAbstractButton::clicked, this, &PluginDialog::showInstallWizard);
-    connect(m_closeButton, &QAbstractButton::clicked, this, &PluginDialog::closeDialog);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &PluginDialog::closeDialog);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(this, &QDialog::rejected, m_view, &ExtensionSystem::PluginView::cancelChanges);
     updateButtons();
 }
 
 void PluginDialog::closeDialog()
 {
     ExtensionSystem::PluginManager::writeSettings();
-    if (s_isRestartRequired) {
+    if (m_isRestartRequired) {
         RestartDialog restartDialog(ICore::dialogParent(),
-                                    tr("Plugin changes will take effect after restart."));
+                                    Tr::tr("Plugin changes will take effect after restart."));
         restartDialog.exec();
     }
     accept();
@@ -128,14 +94,7 @@ void PluginDialog::closeDialog()
 void PluginDialog::showInstallWizard()
 {
     if (PluginInstallWizard::exec())
-        updateRestartRequired();
-}
-
-void PluginDialog::updateRestartRequired()
-{
-    // just display the notice all the time after once changing something
-    s_isRestartRequired = true;
-    m_restartRequired->setVisible(true);
+        m_isRestartRequired = true;
 }
 
 void PluginDialog::updateButtons()
@@ -155,7 +114,7 @@ void PluginDialog::openDetails(ExtensionSystem::PluginSpec *spec)
     if (!spec)
         return;
     QDialog dialog(this);
-    dialog.setWindowTitle(tr("Plugin Details of %1").arg(spec->name()));
+    dialog.setWindowTitle(Tr::tr("Plugin Details of %1").arg(spec->name()));
     auto layout = new QVBoxLayout;
     dialog.setLayout(layout);
     auto details = new ExtensionSystem::PluginDetailsView(&dialog);
@@ -175,7 +134,7 @@ void PluginDialog::openErrorDetails()
     if (!spec)
         return;
     QDialog dialog(this);
-    dialog.setWindowTitle(tr("Plugin Errors of %1").arg(spec->name()));
+    dialog.setWindowTitle(Tr::tr("Plugin Errors of %1").arg(spec->name()));
     auto layout = new QVBoxLayout;
     dialog.setLayout(layout);
     auto errors = new ExtensionSystem::PluginErrorView(&dialog);

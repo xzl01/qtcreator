@@ -1,47 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "makeinstallstep.h"
 
 #include "remotelinux_constants.h"
+#include "remotelinuxtr.h"
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/deployconfiguration.h>
+#include <projectexplorer/devicesupport/idevice.h>
+#include <projectexplorer/kitinformation.h>
 #include <projectexplorer/processparameters.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/runconfigurationaspects.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/task.h>
+
+#include <utils/algorithm.h>
 #include <utils/fileutils.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 
 #include <QDirIterator>
 #include <QFileInfo>
-#include <QFormLayout>
 #include <QSet>
 #include <QTemporaryDir>
 
@@ -56,7 +39,7 @@ const char CleanInstallRootAspectId[] = "RemoteLinux.MakeInstall.CleanInstallRoo
 const char FullCommandLineAspectId[] = "RemoteLinux.MakeInstall.FullCommandLine";
 const char CustomCommandLineAspectId[] = "RemoteLinux.MakeInstall.CustomCommandLine";
 
-MakeInstallStep::MakeInstallStep(BuildStepList *parent, Utils::Id id) : MakeStep(parent, id)
+MakeInstallStep::MakeInstallStep(BuildStepList *parent, Id id) : MakeStep(parent, id)
 {
     makeCommandAspect()->setVisible(false);
     buildTargetsAspect()->setVisible(false);
@@ -66,11 +49,24 @@ MakeInstallStep::MakeInstallStep(BuildStepList *parent, Utils::Id id) : MakeStep
     jobCountAspect()->setVisible(false);
     disabledForSubdirsAspect()->setVisible(false);
 
-    const auto makeAspect = addAspect<ExecutableAspect>();
+    // FIXME: Hack, Part#1: If the build device is not local, start with a temp dir
+    // inside the build dir. On Docker that's typically shared with the host.
+    const IDevice::ConstPtr device = BuildDeviceKitAspect::device(target()->kit());
+    const bool hack = device && device->type() != ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE;
+    FilePath rootPath;
+    if (hack) {
+        rootPath = buildDirectory().pathAppended(".tmp-root");
+    } else {
+        QTemporaryDir tmpDir;
+        rootPath = FilePath::fromString(tmpDir.path());
+    }
+
+    const auto makeAspect = addAspect<ExecutableAspect>(parent->target(),
+                                                        ExecutableAspect::BuildDevice);
     makeAspect->setId(MakeAspectId);
     makeAspect->setSettingsKey(MakeAspectId);
     makeAspect->setDisplayStyle(StringAspect::PathChooserDisplay);
-    makeAspect->setLabelText(tr("Command:"));
+    makeAspect->setLabelText(Tr::tr("Command:"));
     connect(makeAspect, &ExecutableAspect::changed,
             this, &MakeInstallStep::updateCommandFromAspect);
 
@@ -79,46 +75,53 @@ MakeInstallStep::MakeInstallStep(BuildStepList *parent, Utils::Id id) : MakeStep
     installRootAspect->setSettingsKey(InstallRootAspectId);
     installRootAspect->setDisplayStyle(StringAspect::PathChooserDisplay);
     installRootAspect->setExpectedKind(PathChooser::Directory);
-    installRootAspect->setLabelText(tr("Install root:"));
+    installRootAspect->setLabelText(Tr::tr("Install root:"));
+    installRootAspect->setFilePath(rootPath);
     connect(installRootAspect, &StringAspect::changed,
             this, &MakeInstallStep::updateArgsFromAspect);
 
     const auto cleanInstallRootAspect = addAspect<BoolAspect>();
     cleanInstallRootAspect->setId(CleanInstallRootAspectId);
     cleanInstallRootAspect->setSettingsKey(CleanInstallRootAspectId);
-    cleanInstallRootAspect->setLabel(tr("Clean install root first:"),
+    cleanInstallRootAspect->setLabel(Tr::tr("Clean install root first:"),
                                      BoolAspect::LabelPlacement::InExtraLabel);
-    cleanInstallRootAspect->setValue(false);
+    cleanInstallRootAspect->setValue(true);
 
     const auto commandLineAspect = addAspect<StringAspect>();
     commandLineAspect->setId(FullCommandLineAspectId);
     commandLineAspect->setDisplayStyle(StringAspect::LabelDisplay);
-    commandLineAspect->setLabelText(tr("Full command line:"));
+    commandLineAspect->setLabelText(Tr::tr("Full command line:"));
 
     const auto customCommandLineAspect = addAspect<StringAspect>();
     customCommandLineAspect->setId(CustomCommandLineAspectId);
     customCommandLineAspect->setSettingsKey(CustomCommandLineAspectId);
     customCommandLineAspect->setDisplayStyle(StringAspect::LineEditDisplay);
-    customCommandLineAspect->setLabelText(tr("Custom command line:"));
+    customCommandLineAspect->setLabelText(Tr::tr("Custom command line:"));
     customCommandLineAspect->makeCheckable(StringAspect::CheckBoxPlacement::Top,
-                                           tr("Use custom command line instead:"),
+                                           Tr::tr("Use custom command line instead:"),
                                            "RemoteLinux.MakeInstall.EnableCustomCommandLine");
     const auto updateCommand = [this] {
         updateCommandFromAspect();
         updateArgsFromAspect();
         updateFromCustomCommandLineAspect();
     };
+
     connect(customCommandLineAspect, &StringAspect::checkedChanged, this, updateCommand);
     connect(customCommandLineAspect, &StringAspect::changed,
             this, &MakeInstallStep::updateFromCustomCommandLineAspect);
 
     connect(target(), &Target::buildSystemUpdated, this, updateCommand);
 
-    QTemporaryDir tmpDir;
-    installRootAspect->setFilePath(FilePath::fromString(tmpDir.path()));
-    const MakeInstallCommand cmd = target()->makeInstallCommand(tmpDir.path());
+    const MakeInstallCommand cmd = buildSystem()->makeInstallCommand(rootPath);
     QTC_ASSERT(!cmd.command.isEmpty(), return);
-    makeAspect->setExecutable(cmd.command);
+    makeAspect->setExecutable(cmd.command.executable());
+
+    connect(this, &BuildStep::addOutput, this, [this](const QString &string, OutputFormat format) {
+        // When using Makefiles: "No rule to make target 'install'"
+        // When using ninja: "ninja: error: unknown target 'install'"
+        if (format == OutputFormat::Stderr && string.contains("target 'install'"))
+            m_noInstallTarget = true;
+    });
 }
 
 Utils::Id MakeInstallStep::stepId()
@@ -128,7 +131,7 @@ Utils::Id MakeInstallStep::stepId()
 
 QString MakeInstallStep::displayName()
 {
-    return tr("Install into temporary host directory");
+    return Tr::tr("Install into temporary host directory");
 }
 
 QWidget *MakeInstallStep::createConfigWidget()
@@ -141,32 +144,33 @@ bool MakeInstallStep::init()
 {
     if (!MakeStep::init())
         return false;
-    const QString rootDirPath = installRoot().toString();
-    if (rootDirPath.isEmpty()) {
-        emit addTask(BuildSystemTask(Task::Error, tr("You must provide an install root.")));
+
+    const FilePath rootDir = installRoot().onDevice(makeCommand());
+    if (rootDir.isEmpty()) {
+        emit addTask(BuildSystemTask(Task::Error, Tr::tr("You must provide an install root.")));
         return false;
     }
-    QDir rootDir(rootDirPath);
     if (cleanInstallRoot() && !rootDir.removeRecursively()) {
         emit addTask(BuildSystemTask(Task::Error,
-                                        tr("The install root \"%1\" could not be cleaned.")
-                                            .arg(installRoot().toUserOutput())));
+                                        Tr::tr("The install root \"%1\" could not be cleaned.")
+                                            .arg(rootDir.displayName())));
         return false;
     }
-    if (!rootDir.exists() && !QDir::root().mkpath(rootDirPath)) {
+    if (!rootDir.exists() && !rootDir.createDir()) {
         emit addTask(BuildSystemTask(Task::Error,
-                                        tr("The install root \"%1\" could not be created.")
-                                            .arg(installRoot().toUserOutput())));
+                                        Tr::tr("The install root \"%1\" could not be created.")
+                                            .arg(rootDir.displayName())));
         return false;
     }
     if (this == deployConfiguration()->stepList()->steps().last()) {
         emit addTask(BuildSystemTask(Task::Warning,
-                                        tr("The \"make install\" step should probably not be "
+                                        Tr::tr("The \"make install\" step should probably not be "
                                             "last in the list of deploy steps. "
                                             "Consider moving it up.")));
     }
-    const MakeInstallCommand cmd = target()->makeInstallCommand(installRoot().toString());
-    if (cmd.environment.size() > 0) {
+
+    const MakeInstallCommand cmd = buildSystem()->makeInstallCommand(rootDir);
+    if (cmd.environment.hasChanges()) {
         Environment env = processParameters()->environment();
         for (auto it = cmd.environment.constBegin(); it != cmd.environment.constEnd(); ++it) {
             if (cmd.environment.isEnabled(it)) {
@@ -186,39 +190,36 @@ bool MakeInstallStep::init()
     return true;
 }
 
-void MakeInstallStep::finish(bool success)
+void MakeInstallStep::finish(ProcessResult result)
 {
-    if (success) {
+    if (isSuccess(result)) {
+        const FilePath rootDir = installRoot().onDevice(makeCommand());
+
         m_deploymentData = DeploymentData();
-        m_deploymentData.setLocalInstallRoot(installRoot());
-        QDirIterator dit(installRoot().toString(), QDir::Files | QDir::Hidden,
-                         QDirIterator::Subdirectories);
+        m_deploymentData.setLocalInstallRoot(rootDir);
+
+        const int startPos = rootDir.path().length();
+
         const auto appFileNames = transform<QSet<QString>>(buildSystem()->applicationTargets(),
             [](const BuildTargetInfo &appTarget) { return appTarget.targetFilePath.fileName(); });
-        while (dit.hasNext()) {
-            dit.next();
-            const QFileInfo fi = dit.fileInfo();
-            const DeployableFile::Type type = appFileNames.contains(fi.fileName())
+
+        auto handleFile = [this, &appFileNames, startPos](const FilePath &filePath) {
+            const DeployableFile::Type type = appFileNames.contains(filePath.fileName())
                 ? DeployableFile::TypeExecutable
                 : DeployableFile::TypeNormal;
-            m_deploymentData.addFile(FilePath::fromString(fi.filePath()),
-                                     fi.dir().path().mid(installRoot().toString().length()), type);
-        }
+            const QString targetDir = filePath.parentDir().path().mid(startPos);
+            m_deploymentData.addFile(filePath, targetDir, type);
+            return IterationPolicy::Continue;
+        };
+        rootDir.iterateDirectory(handleFile,
+                                 {{}, QDir::Files | QDir::Hidden, QDirIterator::Subdirectories});
+
         buildSystem()->setDeploymentData(m_deploymentData);
     } else if (m_noInstallTarget && m_isCmakeProject) {
-        emit addTask(DeploymentTask(Task::Warning, tr("You need to add an install statement "
+        emit addTask(DeploymentTask(Task::Warning, Tr::tr("You need to add an install statement "
                    "to your CMakeLists.txt file for deployment to work.")));
     }
-    MakeStep::finish(success);
-}
-
-void MakeInstallStep::stdError(const QString &line)
-{
-    // When using Makefiles: "No rule to make target 'install'"
-    // When using ninja: "ninja: error: unknown target 'install'"
-    if (line.contains("target 'install'"))
-        m_noInstallTarget = true;
-    MakeStep::stdError(line);
+    MakeStep::finish(result);
 }
 
 FilePath MakeInstallStep::installRoot() const
@@ -243,9 +244,8 @@ void MakeInstallStep::updateArgsFromAspect()
 {
     if (customCommandLineAspect()->isChecked())
         return;
-    setUserArguments(ProcessArgs::joinArgs(target()->makeInstallCommand(
-        static_cast<StringAspect *>(aspect(InstallRootAspectId))->filePath().toString())
-                                          .arguments));
+    const CommandLine cmd = buildSystem()->makeInstallCommand(installRoot()).command;
+    setUserArguments(cmd.arguments());
     updateFullCommandLine();
 }
 

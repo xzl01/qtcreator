@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "uvproject.h" // for targetUVisionPath()
 #include "uvtargetdrivermodel.h"
 #include "uvtargetdriverviewer.h"
+
+#include <baremetal/baremetaltr.h>
 
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -36,9 +15,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace BareMetal {
-namespace Internal {
-namespace Uv {
+namespace BareMetal::Internal::Uv {
 
 // DriverSelectorToolPanel
 
@@ -47,7 +24,7 @@ DriverSelectorToolPanel::DriverSelectorToolPanel(QWidget *parent)
 {
     const auto layout = new QHBoxLayout;
     layout->setContentsMargins(0, 0, 0, 0);
-    const auto button = new QPushButton(tr("Manage..."));
+    const auto button = new QPushButton(Tr::tr("Manage..."));
     layout->addWidget(button);
     setLayout(layout);
     connect(button, &QPushButton::clicked, this, &DriverSelectorToolPanel::clicked);
@@ -71,10 +48,10 @@ DriverSelectorDetailsPanel::DriverSelectorDetailsPanel(DriverSelection &selectio
     const auto layout = new QFormLayout;
     m_dllEdit = new QLineEdit;;
     m_dllEdit->setReadOnly(true);
-    m_dllEdit->setToolTip(tr("Debugger driver library."));
-    layout->addRow(tr("Driver library:"), m_dllEdit);
+    m_dllEdit->setToolTip(Tr::tr("Debugger driver library."));
+    layout->addRow(Tr::tr("Driver library:"), m_dllEdit);
     m_cpuDllView = new DriverSelectionCpuDllView(m_selection);
-    layout->addRow(tr("CPU library:"), m_cpuDllView);
+    layout->addRow(Tr::tr("CPU library:"), m_cpuDllView);
     setLayout(layout);
 
     refresh();
@@ -133,7 +110,7 @@ void DriverSelector::setSelection(const DriverSelection &selection)
 {
     m_selection = selection;
     const auto summary = m_selection.name.isEmpty()
-            ? tr("Target driver not selected.") : m_selection.name;
+            ? Tr::tr("Target driver not selected.") : m_selection.name;
     setSummaryText(summary);
     setExpandable(!m_selection.name.isEmpty());
 
@@ -156,7 +133,7 @@ DriverSelectionDialog::DriverSelectionDialog(const Utils::FilePath &toolsIniFile
     : QDialog(parent), m_model(new DriverSelectionModel(this)),
       m_view(new DriverSelectionView(this))
 {
-    setWindowTitle(tr("Available Target Drivers"));
+    setWindowTitle(Tr::tr("Available Target Drivers"));
 
     const auto layout = new QVBoxLayout;
     layout->setContentsMargins(0, 0, 0, 0);
@@ -187,6 +164,4 @@ DriverSelection DriverSelectionDialog::selection() const
     return m_selection;
 }
 
-} // namespace Uv
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal::Uv

@@ -1,37 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cmakeproject.h"
 
-#include "cmakebuildconfiguration.h"
-#include "cmakebuildstep.h"
-#include "cmakebuildsystem.h"
 #include "cmakekitinformation.h"
 #include "cmakeprojectconstants.h"
 #include "cmakeprojectimporter.h"
-#include "cmakeprojectnodes.h"
+#include "cmakeprojectmanagertr.h"
 #include "cmaketool.h"
 
 #include <coreplugin/icontext.h>
@@ -39,14 +14,15 @@
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/projectnodes.h>
 #include <projectexplorer/target.h>
+#include <projectexplorer/taskhub.h>
 
 using namespace ProjectExplorer;
 using namespace Utils;
+using namespace CMakeProjectManager::Internal;
 
 namespace CMakeProjectManager {
-
-using namespace Internal;
 
 /*!
   \class CMakeProject
@@ -59,6 +35,8 @@ CMakeProject::CMakeProject(const FilePath &fileName)
     setDisplayName(projectDirectory().fileName());
     setCanBuildProducts();
     setHasMakeInstallEquivalent(true);
+
+    readPresets();
 }
 
 CMakeProject::~CMakeProject()
@@ -71,9 +49,9 @@ Tasks CMakeProject::projectIssues(const Kit *k) const
     Tasks result = Project::projectIssues(k);
 
     if (!CMakeKitAspect::cmakeTool(k))
-        result.append(createProjectTask(Task::TaskType::Error, tr("No cmake tool set.")));
+        result.append(createProjectTask(Task::TaskType::Error, Tr::tr("No cmake tool set.")));
     if (ToolChainKitAspect::toolChains(k).isEmpty())
-        result.append(createProjectTask(Task::TaskType::Warning, tr("No compilers set in kit.")));
+        result.append(createProjectTask(Task::TaskType::Warning, Tr::tr("No compilers set in kit.")));
 
     result.append(m_issues);
 
@@ -84,7 +62,7 @@ Tasks CMakeProject::projectIssues(const Kit *k) const
 ProjectImporter *CMakeProject::projectImporter() const
 {
     if (!m_projectImporter)
-        m_projectImporter = new CMakeProjectImporter(projectFilePath());
+        m_projectImporter = new CMakeProjectImporter(projectFilePath(), m_presetsData);
     return m_projectImporter;
 }
 
@@ -96,6 +74,187 @@ void CMakeProject::addIssue(IssueType type, const QString &text)
 void CMakeProject::clearIssues()
 {
     m_issues.clear();
+}
+
+PresetsData CMakeProject::presetsData() const
+{
+    return m_presetsData;
+}
+
+Internal::PresetsData CMakeProject::combinePresets(Internal::PresetsData &cmakePresetsData,
+                                                   Internal::PresetsData &cmakeUserPresetsData)
+{
+    Internal::PresetsData result;
+    result.version = cmakePresetsData.version;
+    result.cmakeMinimimRequired = cmakePresetsData.cmakeMinimimRequired;
+
+    auto combinePresetsInternal = [](auto &presetsHash,
+                                     auto &presets,
+                                     auto &userPresets,
+                                     const QString &presetType) {
+        // Populate the hash map with the CMakePresets
+        for (const auto &p : presets)
+            presetsHash.insert(p.name, p);
+
+        auto resolveInherits = [](auto &presetsHash, auto &presetsList) {
+            Utils::sort(presetsList, [](const auto &left, const auto &right) {
+                if (!left.inherits || left.inherits.value().contains(right.name))
+                    return false;
+                return true;
+            });
+            for (auto &p : presetsList) {
+                if (!p.inherits)
+                    continue;
+
+                for (const QString &inheritFromName : p.inherits.value()) {
+                    if (presetsHash.contains(inheritFromName)) {
+                        p.inheritFrom(presetsHash[inheritFromName]);
+                        presetsHash[p.name] = p;
+                    }
+                }
+            }
+        };
+
+        // First resolve the CMakePresets
+        resolveInherits(presetsHash, presets);
+
+        // Add the CMakeUserPresets to the resolve hash map
+        for (const auto &p : userPresets) {
+            if (presetsHash.contains(p.name)) {
+                TaskHub::addTask(
+                    BuildSystemTask(Task::TaskType::Error,
+                                    Tr::tr("CMakeUserPresets.json cannot re-define the %1 preset: %2")
+                                        .arg(presetType)
+                                        .arg(p.name),
+                                    "CMakeUserPresets.json"));
+                TaskHub::requestPopup();
+            } else {
+                presetsHash.insert(p.name, p);
+            }
+        }
+
+        // Then resolve the CMakeUserPresets
+        resolveInherits(presetsHash, userPresets);
+
+        // Get both CMakePresets and CMakeUserPresets into the result
+        auto result = presets;
+
+        // std::vector doesn't have append
+        std::copy(userPresets.begin(), userPresets.end(), std::back_inserter(result));
+        return result;
+    };
+
+    QHash<QString, PresetsDetails::ConfigurePreset> configurePresetsHash;
+    QHash<QString, PresetsDetails::BuildPreset> buildPresetsHash;
+
+    result.configurePresets = combinePresetsInternal(configurePresetsHash,
+                                                     cmakePresetsData.configurePresets,
+                                                     cmakeUserPresetsData.configurePresets,
+                                                     "configure");
+    result.buildPresets = combinePresetsInternal(buildPresetsHash,
+                                                 cmakePresetsData.buildPresets,
+                                                 cmakeUserPresetsData.buildPresets,
+                                                 "build");
+
+    return result;
+}
+
+void CMakeProject::setupBuildPresets(Internal::PresetsData &presetsData)
+{
+    for (auto &buildPreset : presetsData.buildPresets) {
+        if (buildPreset.inheritConfigureEnvironment) {
+            if (!buildPreset.configurePreset) {
+                TaskHub::addTask(BuildSystemTask(
+                    Task::TaskType::Error,
+                    Tr::tr("Build preset %1 is missing a corresponding configure preset.")
+                        .arg(buildPreset.name)));
+                TaskHub::requestPopup();
+            }
+
+            const QString &configurePresetName = buildPreset.configurePreset.value_or(QString());
+            buildPreset.environment
+                = Utils::findOrDefault(presetsData.configurePresets,
+                                       [configurePresetName](
+                                           const PresetsDetails::ConfigurePreset &configurePreset) {
+                                           return configurePresetName == configurePreset.name;
+                                       })
+                      .environment;
+        }
+    }
+}
+
+void CMakeProject::readPresets()
+{
+    auto parsePreset = [](const Utils::FilePath &presetFile) -> Internal::PresetsData {
+        Internal::PresetsData data;
+        Internal::PresetsParser parser;
+
+        QString errorMessage;
+        int errorLine = -1;
+
+        if (presetFile.exists()) {
+            if (parser.parse(presetFile, errorMessage, errorLine)) {
+                data = parser.presetsData();
+            } else {
+                TaskHub::addTask(BuildSystemTask(Task::TaskType::Error,
+                                                 Tr::tr("Failed to load %1: %2")
+                                                     .arg(presetFile.fileName())
+                                                     .arg(errorMessage),
+                                                 presetFile,
+                                                 errorLine));
+                TaskHub::requestPopup();
+            }
+        }
+        return data;
+    };
+
+    std::function<void(Internal::PresetsData & presetData, Utils::FilePaths & inclueStack)>
+        resolveIncludes = [&](Internal::PresetsData &presetData, Utils::FilePaths &includeStack) {
+            if (presetData.include) {
+                for (const QString &path : presetData.include.value()) {
+                    Utils::FilePath includePath = Utils::FilePath::fromUserInput(path);
+                    if (!includePath.isAbsolutePath())
+                        includePath = presetData.fileDir.resolvePath(path);
+
+                    Internal::PresetsData includeData = parsePreset(includePath);
+                    if (includeData.include) {
+                        if (includeStack.contains(includePath)) {
+                            TaskHub::addTask(BuildSystemTask(
+                                Task::TaskType::Warning,
+                                Tr::tr("Attempt to include %1 which was already parsed.")
+                                    .arg(includePath.path()),
+                                Utils::FilePath(),
+                                -1));
+                            TaskHub::requestPopup();
+                        } else {
+                            resolveIncludes(includeData, includeStack);
+                        }
+                    }
+
+                    presetData.configurePresets = includeData.configurePresets
+                                                  + presetData.configurePresets;
+                    presetData.buildPresets = includeData.buildPresets + presetData.buildPresets;
+
+                    includeStack << includePath;
+                }
+            }
+        };
+
+    const Utils::FilePath cmakePresetsJson = projectDirectory().pathAppended("CMakePresets.json");
+    const Utils::FilePath cmakeUserPresetsJson = projectDirectory().pathAppended("CMakeUserPresets.json");
+
+    Internal::PresetsData cmakePresetsData = parsePreset(cmakePresetsJson);
+    Internal::PresetsData cmakeUserPresetsData = parsePreset(cmakeUserPresetsJson);
+
+    // resolve the include
+    Utils::FilePaths includeStack = {cmakePresetsJson};
+    resolveIncludes(cmakePresetsData, includeStack);
+
+    includeStack = {cmakeUserPresetsJson};
+    resolveIncludes(cmakeUserPresetsData, includeStack);
+
+    m_presetsData = combinePresets(cmakePresetsData, cmakeUserPresetsData);
+    setupBuildPresets(m_presetsData);
 }
 
 bool CMakeProject::setupTarget(Target *t)
@@ -115,40 +274,6 @@ ProjectExplorer::DeploymentKnowledge CMakeProject::deploymentKnowledge() const
                    .isEmpty()
                ? DeploymentKnowledge::Approximative
                : DeploymentKnowledge::Bad;
-}
-
-MakeInstallCommand CMakeProject::makeInstallCommand(const Target *target,
-                                                    const QString &installRoot)
-{
-    MakeInstallCommand cmd;
-    if (const BuildConfiguration * const bc = target->activeBuildConfiguration()) {
-        if (const auto cmakeStep = bc->buildSteps()->firstOfType<CMakeBuildStep>()) {
-            if (CMakeTool *tool = CMakeKitAspect::cmakeTool(target->kit()))
-                cmd.command = tool->cmakeExecutable();
-        }
-    }
-
-    QString installTarget = "install";
-    QStringList config;
-
-    auto bs = qobject_cast<CMakeBuildSystem*>(target->buildSystem());
-    auto bc = qobject_cast<CMakeBuildConfiguration*>(target->activeBuildConfiguration());
-    if (bs && bc) {
-        if (bs->usesAllCapsTargets())
-            installTarget = "INSTALL";
-        if (bs->isMultiConfig())
-            config << "--config" << bc->cmakeBuildType();
-    }
-
-    FilePath buildDirectory = ".";
-    if (bc)
-        buildDirectory = bc->buildDirectory();
-
-    cmd.arguments << "--build" << buildDirectory.onDevice(cmd.command).path()
-                  << "--target" << installTarget << config;
-
-    cmd.environment.set("DESTDIR", QDir::toNativeSeparators(installRoot));
-    return cmd;
 }
 
 } // namespace CMakeProjectManager

@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljseditingsettingspage.h"
 #include "qmljseditor.h"
 #include "qmljseditorconstants.h"
 #include "qmljseditordocument.h"
 #include "qmljseditorplugin.h"
+#include "qmljseditortr.h"
 #include "qmljshighlighter.h"
 #include "qmljsoutline.h"
 #include "qmljsquickfixassist.h"
@@ -38,23 +17,29 @@
 #include <qmljs/qmljsmodelmanagerinterface.h>
 #include <qmljs/qmljsreformatter.h>
 #include <qmljstools/qmljstoolsconstants.h>
+#include <qmljstools/qmljstoolssettings.h>
+#include <qmljstools/qmljscodestylepreferences.h>
 
-#include <coreplugin/coreconstants.h>
-#include <coreplugin/icore.h>
-#include <coreplugin/fileiconprovider.h>
-#include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/actioncontainer.h>
+#include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/command.h>
+#include <coreplugin/coreconstants.h>
 #include <coreplugin/editormanager/editormanager.h>
-#include <projectexplorer/taskhub.h>
+#include <coreplugin/icore.h>
 #include <projectexplorer/project.h>
-#include <projectexplorer/projecttree.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/projecttree.h>
+#include <projectexplorer/taskhub.h>
+#include <texteditor/command.h>
+#include <texteditor/formattexteditor.h>
 #include <texteditor/snippets/snippetprovider.h>
-#include <texteditor/texteditorconstants.h>
 #include <texteditor/tabsettings.h>
-#include <utils/qtcassert.h>
+#include <texteditor/texteditor.h>
+#include <texteditor/texteditorconstants.h>
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/json.h>
+#include <utils/macroexpander.h>
+#include <utils/qtcassert.h>
 
 #include <QTextDocument>
 #include <QMenu>
@@ -116,23 +101,19 @@ QmlJSEditorPlugin::~QmlJSEditorPlugin()
     m_instance = nullptr;
 }
 
-bool QmlJSEditorPlugin::initialize(const QStringList &arguments, QString *errorMessage)
+void QmlJSEditorPlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorMessage)
-
     d = new QmlJSEditorPluginPrivate;
-
-    return true;
 }
 
 QmlJSEditorPluginPrivate::QmlJSEditorPluginPrivate()
 {
     TextEditor::SnippetProvider::registerGroup(Constants::QML_SNIPPETS_GROUP_ID,
-                                               QmlJSEditorPlugin::tr("QML", "SnippetProvider"),
+                                               Tr::tr("QML", "SnippetProvider"),
                                                &QmlJSEditorFactory::decorateEditor);
 
     QmlJS::ModelManagerInterface *modelManager = QmlJS::ModelManagerInterface::instance();
+    QmllsSettingsManager::instance();
 
     // QML task updating manager
     connect(modelManager, &QmlJS::ModelManagerInterface::documentChangedOnDisk,
@@ -168,20 +149,20 @@ QmlJSEditorPluginPrivate::QmlJSEditorPluginPrivate()
     contextMenu->addAction(cmd);
     qmlToolsMenu->addAction(cmd);
 
-    QAction *semanticScan = new QAction(QmlJSEditorPlugin::tr("Run Checks"), this);
+    QAction *semanticScan = new QAction(Tr::tr("Run Checks"), this);
     cmd = ActionManager::registerAction(semanticScan, Id("QmlJSEditor.RunSemanticScan"));
-    cmd->setDefaultKeySequence(QKeySequence(QmlJSEditorPlugin::tr("Ctrl+Shift+C")));
+    cmd->setDefaultKeySequence(QKeySequence(Tr::tr("Ctrl+Shift+C")));
     connect(semanticScan, &QAction::triggered, this, &QmlJSEditorPluginPrivate::runSemanticScan);
     qmlToolsMenu->addAction(cmd);
 
-    m_reformatFileAction = new QAction(QmlJSEditorPlugin::tr("Reformat File"), this);
+    m_reformatFileAction = new QAction(Tr::tr("Reformat File"), this);
     cmd = ActionManager::registerAction(m_reformatFileAction,
                                         Id("QmlJSEditor.ReformatFile"),
                                         context);
     connect(m_reformatFileAction, &QAction::triggered, this, &QmlJSEditorPluginPrivate::reformatFile);
     qmlToolsMenu->addAction(cmd);
 
-    QAction *inspectElementAction = new QAction(QmlJSEditorPlugin::tr("Inspect API for Element Under Cursor"), this);
+    QAction *inspectElementAction = new QAction(Tr::tr("Inspect API for Element Under Cursor"), this);
     cmd = ActionManager::registerAction(inspectElementAction,
                                         Id("QmlJSEditor.InspectElementUnderCursor"),
                                         context);
@@ -191,7 +172,7 @@ QmlJSEditorPluginPrivate::QmlJSEditorPluginPrivate()
     });
     qmlToolsMenu->addAction(cmd);
 
-    QAction *showQuickToolbar = new QAction(QmlJSEditorPlugin::tr("Show Qt Quick Toolbar"), this);
+    QAction *showQuickToolbar = new QAction(Tr::tr("Show Qt Quick Toolbar"), this);
     cmd = ActionManager::registerAction(showQuickToolbar, Constants::SHOW_QT_QUICK_HELPER, context);
     cmd->setDefaultKeySequence(useMacShortcuts ? QKeySequence(Qt::META | Qt::ALT | Qt::Key_Space)
                                                : QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_Space));
@@ -224,8 +205,9 @@ void QmlJSEditorPlugin::extensionsInitialized()
     FileIconProvider::registerIconOverlayForMimeType(ProjectExplorer::Constants::FILEOVERLAY_UI,
                                                      "application/x-qt.ui+qml");
 
-    TaskHub::addCategory(Constants::TASK_CATEGORY_QML, tr("QML"));
-    TaskHub::addCategory(Constants::TASK_CATEGORY_QML_ANALYSIS, tr("QML Analysis"), false);
+    TaskHub::addCategory(Constants::TASK_CATEGORY_QML, Tr::tr("QML"));
+    TaskHub::addCategory(Constants::TASK_CATEGORY_QML_ANALYSIS, Tr::tr("QML Analysis"), false);
+    QmllsSettingsManager::instance()->setupAutoupdate();
 }
 
 ExtensionSystem::IPlugin::ShutdownFlag QmlJSEditorPlugin::aboutToShutdown()
@@ -253,13 +235,42 @@ void QmlJSEditorPluginPrivate::renameUsages()
 void QmlJSEditorPluginPrivate::reformatFile()
 {
     if (m_currentDocument) {
+        if (QmlJsEditingSettings::get().useCustomFormatCommand()) {
+            QString formatCommand = QmlJsEditingSettings::get().formatCommand();
+            if (formatCommand.isEmpty())
+                formatCommand = QmlJsEditingSettings::get().defaultFormatCommand();
+            const auto exe = FilePath::fromUserInput(globalMacroExpander()->expand(formatCommand));
+            const QString args = globalMacroExpander()->expand(
+                QmlJsEditingSettings::get().formatCommandOptions());
+            const CommandLine commandLine(exe, args, CommandLine::Raw);
+            TextEditor::Command command;
+            command.setExecutable(commandLine.executable());
+            command.setProcessing(TextEditor::Command::FileProcessing);
+            command.addOptions(commandLine.splitArguments());
+            command.addOption("--inplace");
+            command.addOption("%file");
+
+            if (!command.isValid())
+                return;
+
+            const QList<Core::IEditor *> editors = Core::DocumentModel::editorsForDocument(m_currentDocument);
+            if (editors.isEmpty())
+                return;
+            IEditor *currentEditor = EditorManager::currentEditor();
+            IEditor *editor = editors.contains(currentEditor) ? currentEditor : editors.first();
+            if (auto widget = TextEditor::TextEditorWidget::fromEditor(editor))
+                TextEditor::formatEditor(widget, command);
+
+            return;
+        }
+
         QmlJS::Document::Ptr document = m_currentDocument->semanticInfo().document;
         QmlJS::Snapshot snapshot = QmlJS::ModelManagerInterface::instance()->snapshot();
 
         if (m_currentDocument->isSemanticInfoOutdated()) {
             QmlJS::Document::MutablePtr latestDocument;
 
-            const QString fileName = m_currentDocument->filePath().toString();
+            const Utils::FilePath fileName = m_currentDocument->filePath();
             latestDocument = snapshot.documentFromSource(QString::fromUtf8(m_currentDocument->contents()),
                                                          fileName,
                                                          QmlJS::ModelManagerInterface::guessLanguageOfFile(fileName));
@@ -274,24 +285,17 @@ void QmlJSEditorPluginPrivate::reformatFile()
         TextEditor::TabSettings tabSettings = m_currentDocument->tabSettings();
         const QString &newText = QmlJS::reformat(document,
                                                  tabSettings.m_indentSize,
-                                                 tabSettings.m_tabSize);
+                                                 tabSettings.m_tabSize,
+                                                 QmlJSTools::QmlJSToolsSettings::globalCodeStyle()->currentCodeStyleSettings().lineLength);
 
-        //  QTextDocument::setPlainText cannot be used, as it would reset undo/redo history
-        const auto setNewText = [this, &newText]() {
+        auto ed = qobject_cast<TextEditor::BaseTextEditor *>(EditorManager::currentEditor());
+        if (ed) {
+            TextEditor::updateEditorText(ed->editorWidget(), newText);
+        } else {
             QTextCursor tc(m_currentDocument->document());
             tc.movePosition(QTextCursor::Start);
             tc.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
             tc.insertText(newText);
-        };
-
-        IEditor *ed = EditorManager::currentEditor();
-        if (ed) {
-            int line = ed->currentLine();
-            int column = ed->currentColumn();
-            setNewText();
-            ed->gotoLine(line, column);
-        } else {
-            setNewText();
         }
     }
 }

@@ -1,45 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "iostoolhandler.h"
+
 #include "iosconfigurations.h"
-#include "iosconstants.h"
 #include "iossimulator.h"
+#include "iostr.h"
 #include "simulatorcontrol.h"
 
 #include <coreplugin/icore.h>
 
 #include <debugger/debuggerconstants.h>
 
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 #include <utils/futuresynchronizer.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 #include <utils/runextensions.h>
+#include <utils/temporarydirectory.h>
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -93,14 +72,12 @@ public:
         // The future is canceled when app on simulator is stoped.
         QEventLoop loop;
         QFutureWatcher<void> watcher;
-        connect(&watcher, &QFutureWatcher<void>::canceled, [&](){
-            loop.quit();
-        });
+        connect(&watcher, &QFutureWatcher<void>::canceled, &loop, [&] { loop.quit(); });
         watcher.setFuture(fi.future());
 
         // Process to print the console output while app is running.
-        auto logProcess = [this, fi](QProcess *tailProcess, std::shared_ptr<QTemporaryFile> file) {
-            QObject::connect(tailProcess, &QProcess::readyReadStandardOutput, [=]() {
+        auto logProcess = [&](QProcess *tailProcess, std::shared_ptr<QTemporaryFile> file) {
+            QObject::connect(tailProcess, &QProcess::readyReadStandardOutput, &loop, [=] {
                 if (!fi.isCanceled())
                     emit logMessage(QString::fromLocal8Bit(tailProcess->readAll()));
             });
@@ -394,7 +371,7 @@ void IosToolHandlerPrivate::toolExited(int code)
 void IosDeviceToolHandlerPrivate::subprocessError(QProcess::ProcessError error)
 {
     if (state != Stopped)
-        errorMsg(IosToolHandler::tr("iOS tool error %1").arg(error));
+        errorMsg(Tr::tr("iOS tool error %1").arg(error));
     stop(-1);
     if (error == QProcess::FailedToStart) {
         qCDebug(toolHandlerLog) << "IosToolHandler::finished(" << this << ")";
@@ -654,7 +631,8 @@ IosDeviceToolHandlerPrivate::IosDeviceToolHandlerPrivate(const IosDeviceType &de
 
     // Prepare & set process Environment.
     QProcessEnvironment env(QProcessEnvironment::systemEnvironment());
-    foreach (const QString &k, env.keys())
+    const QStringList keys = env.keys();
+    for (const QString &k : keys)
         if (k.startsWith(QLatin1String("DYLD_")))
             env.remove(k);
     QStringList frameworkPaths;
@@ -673,7 +651,7 @@ IosDeviceToolHandlerPrivate::IosDeviceToolHandlerPrivate(const IosDeviceType &de
     QObject::connect(process.get(), &QProcess::readyReadStandardOutput,
                      std::bind(&IosDeviceToolHandlerPrivate::subprocessHasData,this));
 
-    QObject::connect(process.get(), QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+    QObject::connect(process.get(), &QProcess::finished,
                      std::bind(&IosDeviceToolHandlerPrivate::subprocessFinished,this, _1,_2));
 
     QObject::connect(process.get(), &QProcess::errorOccurred,
@@ -701,10 +679,14 @@ void IosDeviceToolHandlerPrivate::requestTransferApp(const QString &bundlePath,
 {
     m_bundlePath = bundlePath;
     m_deviceId = deviceId;
+    QString tmpDeltaPath = Utils::TemporaryDirectory::masterDirectoryFilePath().pathAppended("ios").toString();
     QStringList args;
     args << QLatin1String("--id") << deviceId << QLatin1String("--bundle")
          << bundlePath << QLatin1String("--timeout") << QString::number(timeout)
-         << QLatin1String("--install");
+         << QLatin1String("--install")
+         << QLatin1String("--delta-path")
+         << tmpDeltaPath;
+
     start(IosToolHandler::iosDeviceToolPath(), args);
 }
 
@@ -727,7 +709,7 @@ void IosDeviceToolHandlerPrivate::requestRunApp(const QString &bundlePath,
         args << QLatin1String("--debug");
         break;
     }
-    args << QLatin1String("--args") << extraArgs;
+    args << QLatin1String("--") << extraArgs;
     op = OpAppRun;
     start(IosToolHandler::iosDeviceToolPath(), args);
 }
@@ -823,7 +805,7 @@ void IosSimulatorToolHandlerPrivate::requestTransferApp(const QString &appBundle
         if (response.success) {
             installAppOnSimulator();
         } else {
-            errorMsg(IosToolHandler::tr("Application install on simulator failed. Simulator not running."));
+            errorMsg(Tr::tr("Application install on simulator failed. Simulator not running."));
             didTransferApp(m_bundlePath, m_deviceId, IosToolHandler::Failure);
             emit q->finished(q);
         }
@@ -849,19 +831,19 @@ void IosSimulatorToolHandlerPrivate::requestRunApp(const QString &appBundlePath,
 
     Utils::FilePath appBundle = Utils::FilePath::fromString(m_bundlePath);
     if (!appBundle.exists()) {
-        errorMsg(IosToolHandler::tr("Application launch on simulator failed. Invalid bundle path %1")
+        errorMsg(Tr::tr("Application launch on simulator failed. Invalid bundle path %1")
                  .arg(m_bundlePath));
         didStartApp(m_bundlePath, m_deviceId, Ios::IosToolHandler::Failure);
         return;
     }
 
-    auto onSimulatorStart = [this, extraArgs] (const SimulatorControl::ResponseData &response) {
+    auto onSimulatorStart = [this, extraArgs](const SimulatorControl::ResponseData &response) {
         if (!isResponseValid(response))
             return;
         if (response.success) {
             launchAppOnSimulator(extraArgs);
         } else {
-            errorMsg(IosToolHandler::tr("Application launch on simulator failed. Simulator not running."));
+            errorMsg(Tr::tr("Application launch on simulator failed. Simulator not running."));
             didStartApp(m_bundlePath, m_deviceId, Ios::IosToolHandler::Failure);
         }
     };
@@ -912,7 +894,7 @@ void IosSimulatorToolHandlerPrivate::installAppOnSimulator()
             isTransferringApp(m_bundlePath, m_deviceId, 100, 100, "");
             didTransferApp(m_bundlePath, m_deviceId, IosToolHandler::Success);
         } else {
-            errorMsg(IosToolHandler::tr("Application install on simulator failed. %1")
+            errorMsg(Tr::tr("Application install on simulator failed. %1")
                      .arg(response.commandOutput));
             didTransferApp(m_bundlePath, m_deviceId, IosToolHandler::Failure);
         }
@@ -941,12 +923,12 @@ void IosSimulatorToolHandlerPrivate::launchAppOnSimulator(const QStringList &ext
 
         captureConsole = stdoutFile->open() && stderrFile->open();
         if (!captureConsole)
-            errorMsg(IosToolHandler::tr("Cannot capture console output from %1. "
-                                        "Error redirecting output to %2.*")
+            errorMsg(Tr::tr("Cannot capture console output from %1. "
+                            "Error redirecting output to %2.*")
                      .arg(bundleId).arg(fileTemplate));
     } else {
-        errorMsg(IosToolHandler::tr("Cannot capture console output from %1. "
-                    "Install Xcode 8 or later.").arg(bundleId));
+        errorMsg(Tr::tr("Cannot capture console output from %1. "
+                        "Install Xcode 8 or later.").arg(bundleId));
     }
 
     auto monitorPid = [this](QFutureInterface<void> &fi, qint64 pid) {
@@ -977,8 +959,8 @@ void IosSimulatorToolHandlerPrivate::launchAppOnSimulator(const QStringList &ext
                                                              stdoutFile, stderrFile));
         } else {
             m_pid = -1;
-            errorMsg(IosToolHandler::tr("Application launch on simulator failed. %1")
-                     .arg(response.commandOutput));
+            errorMsg(Tr::tr("Application launch on simulator failed. %1")
+                         .arg(response.commandOutput));
             didStartApp(m_bundlePath, m_deviceId, Ios::IosToolHandler::Failure);
             stop(-1);
             emit q->finished(q);
@@ -1000,8 +982,8 @@ void IosSimulatorToolHandlerPrivate::launchAppOnSimulator(const QStringList &ext
 bool IosSimulatorToolHandlerPrivate::isResponseValid(const SimulatorControl::ResponseData &responseData)
 {
     if (responseData.simUdid.compare(m_deviceId) != 0) {
-        errorMsg(IosToolHandler::tr("Invalid simulator response. Device Id mismatch. "
-                                    "Device Id = %1 Response Id = %2")
+        errorMsg(Tr::tr("Invalid simulator response. Device Id mismatch. "
+                        "Device Id = %1 Response Id = %2")
                  .arg(responseData.simUdid)
                  .arg(m_deviceId));
         emit q->finished(q);

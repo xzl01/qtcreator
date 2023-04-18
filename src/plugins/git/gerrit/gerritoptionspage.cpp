@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gerritoptionspage.h"
 #include "gerritparameters.h"
 #include "gerritserver.h"
+#include "../gittr.h"
 
 #include <coreplugin/icore.h>
 #include <utils/pathchooser.h>
@@ -46,7 +25,7 @@ GerritOptionsPage::GerritOptionsPage(const QSharedPointer<GerritParameters> &p,
     , m_parameters(p)
 {
     setId("Gerrit");
-    setDisplayName(tr("Gerrit"));
+    setDisplayName(Git::Tr::tr("Gerrit"));
     setCategory(VcsBase::Constants::VCS_SETTINGS_CATEGORY);
 }
 
@@ -92,24 +71,24 @@ GerritOptionsWidget::GerritOptionsWidget(QWidget *parent)
     , m_sshChooser(new Utils::PathChooser)
     , m_curlChooser(new Utils::PathChooser)
     , m_portSpinBox(new QSpinBox(this))
-    , m_httpsCheckBox(new QCheckBox(tr("HTTPS")))
+    , m_httpsCheckBox(new QCheckBox(Git::Tr::tr("HTTPS")))
 {
     auto formLayout = new QFormLayout(this);
     formLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    formLayout->addRow(tr("&Host:"), m_hostLineEdit);
-    formLayout->addRow(tr("&User:"), m_userLineEdit);
+    formLayout->addRow(Git::Tr::tr("&Host:"), m_hostLineEdit);
+    formLayout->addRow(Git::Tr::tr("&User:"), m_userLineEdit);
     m_sshChooser->setExpectedKind(Utils::PathChooser::ExistingCommand);
     m_sshChooser->setCommandVersionArguments({"-V"});
     m_sshChooser->setHistoryCompleter("Git.SshCommand.History");
-    formLayout->addRow(tr("&ssh:"), m_sshChooser);
+    formLayout->addRow(Git::Tr::tr("&ssh:"), m_sshChooser);
     m_curlChooser->setExpectedKind(Utils::PathChooser::ExistingCommand);
     m_curlChooser->setCommandVersionArguments({"-V"});
-    formLayout->addRow(tr("cur&l:"), m_curlChooser);
+    formLayout->addRow(Git::Tr::tr("cur&l:"), m_curlChooser);
     m_portSpinBox->setMinimum(1);
     m_portSpinBox->setMaximum(65535);
-    formLayout->addRow(tr("SSH &Port:"), m_portSpinBox);
-    formLayout->addRow(tr("P&rotocol:"), m_httpsCheckBox);
-    m_httpsCheckBox->setToolTip(tr(
+    formLayout->addRow(Git::Tr::tr("SSH &Port:"), m_portSpinBox);
+    formLayout->addRow(Git::Tr::tr("P&rotocol:"), m_httpsCheckBox);
+    m_httpsCheckBox->setToolTip(Git::Tr::tr(
     "Determines the protocol used to form a URL in case\n"
     "\"canonicalWebUrl\" is not configured in the file\n"
     "\"gerrit.config\"."));

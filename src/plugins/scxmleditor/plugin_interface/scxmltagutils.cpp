@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "scxmltagutils.h"
 #include "scxmldocument.h"
 #include "scxmleditorconstants.h"
+#include "scxmleditortr.h"
+#include "scxmltagutils.h"
 #include "serializer.h"
 
 #include <utils/qtcassert.h>
@@ -57,7 +36,7 @@ bool checkPaste(const QString &copiedTagTypes, const ScxmlTag *currentTag)
         return false;
 
     QVector<TagType> childTags = allowedChildTypes(currentTag->tagType());
-    foreach (const TagType &type, tagTypes) {
+    for (const TagType &type : std::as_const(tagTypes)) {
         if (!childTags.contains(type))
             return false;
     }
@@ -77,20 +56,20 @@ void createChildMenu(const ScxmlTag *tag, QMenu *menu, bool addRemove)
 
     if (tag->tagType() == UnknownTag) {
         data[Constants::C_SCXMLTAG_TAGTYPE] = UnknownTag;
-        menu->addAction(ScxmlTag::tr("New Tag"))->setData(data);
+        menu->addAction(Tr::tr("New Tag"))->setData(data);
     } else if (tag->tagType() == Metadata) {
         data[Constants::C_SCXMLTAG_TAGTYPE] = MetadataItem;
-        menu->addAction(ScxmlTag::tr("Item"))->setData(data);
+        menu->addAction(Tr::tr("Item"))->setData(data);
     } else {
         data[Constants::C_SCXMLTAG_PARENTTAG] = Metadata;
         data[Constants::C_SCXMLTAG_TAGTYPE] = MetadataItem;
-        menu->addAction(ScxmlTag::tr("Metadata"))->setData(data);
+        menu->addAction(Tr::tr("Metadata"))->setData(data);
     }
 
     if (addRemove) {
         menu->addSeparator();
         data[Constants::C_SCXMLTAG_ACTIONTYPE] = Remove;
-        QAction *act = menu->addAction(ScxmlTag::tr("Remove"));
+        QAction *act = menu->addAction(Tr::tr("Remove"));
         act->setData(data);
         act->setEnabled(!tag->isRootTag());
     }

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "fancytabwidget.h"
 
@@ -97,7 +75,7 @@ QSize FancyTabBar::tabSizeHint(bool minimum) const
     const int spacing = 8;
     const int width = 60 + spacing + 2;
     int maxLabelwidth = 0;
-    for (auto tab : qAsConst(m_tabs)) {
+    for (auto tab : std::as_const(m_tabs)) {
         const int width = fm.horizontalAdvance(tab->text);
         if (width > maxLabelwidth)
             maxLabelwidth = width;
@@ -164,7 +142,7 @@ bool FancyTabBar::event(QEvent *event)
 }
 
 // Resets hover animation on mouse enter
-void FancyTabBar::enterEvent(EnterEvent *event)
+void FancyTabBar::enterEvent(QEnterEvent *event)
 {
     Q_UNUSED(event)
     m_hoverRect = QRect();
@@ -177,7 +155,7 @@ void FancyTabBar::leaveEvent(QEvent *event)
     Q_UNUSED(event)
     m_hoverIndex = -1;
     m_hoverRect = QRect();
-    for (auto tab : qAsConst(m_tabs))
+    for (auto tab : std::as_const(m_tabs))
         tab->fadeOut();
 }
 
@@ -221,7 +199,7 @@ void FancyTabBar::mousePressEvent(QMouseEvent *event)
                         m_currentIndex = index;
                         update();
                         // update tab bar before showing widget
-                        QMetaObject::invokeMethod(this, [this]() {
+                        QMetaObject::invokeMethod(this, [this] {
                             emit currentChanged(m_currentIndex);
                         }, Qt::QueuedConnection);
                     }

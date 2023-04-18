@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "qmlprofilertraceview.h"
-#include "qmlprofilertool.h"
-#include "qmlprofilerstatemanager.h"
+#include "qmlprofileranimationsmodel.h"
 #include "qmlprofilermodelmanager.h"
 #include "qmlprofilernotesmodel.h"
-#include "qmlprofileranimationsmodel.h"
-#include "qmlprofilerrangemodel.h"
 #include "qmlprofilerplugin.h"
+#include "qmlprofilerrangemodel.h"
+#include "qmlprofilerstatemanager.h"
+#include "qmlprofilertool.h"
+#include "qmlprofilertr.h"
+#include "qmlprofilertraceview.h"
 
 #include "quick3dmodel.h"
 #include "inputeventsmodel.h"
@@ -65,6 +44,7 @@
 #include <QScrollBar>
 #include <QSlider>
 #include <QMenu>
+#include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWidget>
 #include <QApplication>
@@ -91,7 +71,7 @@ QmlProfilerTraceView::QmlProfilerTraceView(QWidget *parent, QmlProfilerViewManag
                                            QmlProfilerModelManager *modelManager)
     : QWidget(parent), d(new QmlProfilerTraceViewPrivate(this))
 {
-    setWindowTitle(tr("Timeline"));
+    setWindowTitle(Tr::tr("Timeline"));
     setObjectName("QmlProfiler.Timeline.Dock");
 
     d->m_zoomControl = new Timeline::TimelineZoomControl(this);
@@ -122,15 +102,6 @@ QmlProfilerTraceView::QmlProfilerTraceView(QWidget *parent, QmlProfilerViewManag
     auto groupLayout = new QVBoxLayout;
     groupLayout->setContentsMargins(0, 0, 0, 0);
     groupLayout->setSpacing(0);
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
-    qmlRegisterType<Timeline::TimelineRenderer>("QtCreator.Tracing", 1, 0, "TimelineRenderer");
-    qmlRegisterType<Timeline::TimelineOverviewRenderer>("QtCreator.Tracing", 1, 0,
-                                                        "TimelineOverviewRenderer");
-    qmlRegisterAnonymousType<Timeline::TimelineZoomControl>("QtCreator.Tracing", 1);
-    qmlRegisterAnonymousType<Timeline::TimelineModel>("QtCreator.Tracing", 1);
-    qmlRegisterAnonymousType<Timeline::TimelineNotesModel>("QtCreator.Tracing", 1);
-#endif // Qt < 6.2
 
     d->m_mainView = new QQuickWidget(this);
     d->m_mainView->setResizeMode(QQuickWidget::SizeRootObjectToView);
@@ -168,14 +139,14 @@ QmlProfilerTraceView::QmlProfilerTraceView(QWidget *parent, QmlProfilerViewManag
     // Minimum height: 5 rows of 20 pixels + scrollbar of 50 pixels + 20 pixels margin
     setMinimumHeight(170);
 
+    d->m_mainView->engine()->addImportPath(":/qt/qml/");
     Timeline::TimelineTheme::setupTheme(d->m_mainView->engine());
-    Timeline::TimeFormatter::setupTimeFormatter();
 
     d->m_mainView->rootContext()->setContextProperty(QLatin1String("timelineModelAggregator"),
                                                      d->m_modelProxy);
     d->m_mainView->rootContext()->setContextProperty(QLatin1String("zoomControl"),
                                                      d->m_zoomControl);
-    d->m_mainView->setSource(QUrl(QLatin1String("qrc:/QtCreator/Tracing/MainView.qml")));
+    d->m_mainView->setSource(QUrl(QLatin1String("qrc:/qt/qml/QtCreator/Tracing/MainView.qml")));
 
     connect(d->m_modelProxy, &Timeline::TimelineModelAggregator::updateCursorPosition,
             this, &QmlProfilerTraceView::updateCursorPosition);
@@ -268,17 +239,17 @@ void QmlProfilerTraceView::showContextMenu(QPoint position)
     menu.addActions(QmlProfilerTool::profilerContextMenuActions());
     menu.addSeparator();
 
-    QAction *getLocalStatsAction = menu.addAction(tr("Analyze Current Range"));
+    QAction *getLocalStatsAction = menu.addAction(Tr::tr("Analyze Current Range"));
     if (!hasValidSelection())
         getLocalStatsAction->setEnabled(false);
 
-    QAction *getGlobalStatsAction = menu.addAction(tr("Analyze Full Range"));
+    QAction *getGlobalStatsAction = menu.addAction(Tr::tr("Analyze Full Range"));
     if (!d->m_modelManager->isRestrictedToRange())
         getGlobalStatsAction->setEnabled(false);
 
     if (d->m_zoomControl->traceDuration() > 0) {
         menu.addSeparator();
-        viewAllAction = menu.addAction(tr("Reset Zoom"));
+        viewAllAction = menu.addAction(Tr::tr("Reset Zoom"));
     }
 
     QAction *selectedAction = menu.exec(position);
@@ -298,12 +269,9 @@ void QmlProfilerTraceView::showContextMenu(QPoint position)
 
 bool QmlProfilerTraceView::isUsable() const
 {
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    return d->m_mainView->quickWindow()->rendererInterface()->graphicsApi()
-            == QSGRendererInterface::OpenGL;
-#else
-    return QSGRendererInterface::isApiRhiBased(d->m_mainView->quickWindow()->rendererInterface()->graphicsApi());
-#endif
+    const QSGRendererInterface::GraphicsApi api =
+            d->m_mainView->quickWindow()->rendererInterface()->graphicsApi();
+    return QSGRendererInterface::isApiRhiBased(api);
 }
 
 bool QmlProfilerTraceView::isSuspended() const

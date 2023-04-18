@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 //
 // ATTENTION:
@@ -58,7 +36,6 @@
 #include "fakevimactions.h"
 #include "fakevimtr.h"
 
-#include <utils/optional.h>
 #include <utils/qtcprocess.h>
 
 #include <QDebug>
@@ -89,6 +66,7 @@
 #include <climits>
 #include <ctype.h>
 #include <functional>
+#include <optional>
 
 //#define DEBUG_KEY  1
 #if DEBUG_KEY
@@ -864,15 +842,6 @@ static QByteArray toLocalEncoding(const QString &text)
 #endif
 }
 
-static QString fromLocalEncoding(const QByteArray &data)
-{
-#if defined(Q_OS_WIN)
-    return QString::fromLocal8Bit(data).replace("\n", "\r\n");
-#else
-    return QString::fromLocal8Bit(data);
-#endif
-}
-
 static QString getProcessOutput(const QString &command, const QString &input)
 {
     Utils::QtcProcess proc;
@@ -884,7 +853,7 @@ static QString getProcessOutput(const QString &command, const QString &input)
     //        Solution is to create a QObject for each process and emit finished state.
     proc.waitForFinished();
 
-    return fromLocalEncoding(proc.readAllStandardOutput());
+    return proc.cleanedStdOut();
 }
 
 static const QMap<QString, int> &vimKeyNames()
@@ -1033,7 +1002,7 @@ QDebug operator<<(QDebug ts, const ExCommand &cmd)
 
 QDebug operator<<(QDebug ts, const QList<QTextEdit::ExtraSelection> &sels)
 {
-    foreach (const QTextEdit::ExtraSelection &sel, sels)
+    for (const QTextEdit::ExtraSelection &sel : sels)
         ts << "SEL: " << sel.cursor.anchor() << sel.cursor.position();
     return ts;
 }
@@ -1246,7 +1215,7 @@ public:
             return '\n';
         if (m_key == Key_Escape)
             return QChar(27);
-        return QChar(m_xkey);
+        return QChar(m_xkey & 0xffff); // FIXME
     }
 
     QString toString() const
@@ -1263,7 +1232,7 @@ public:
             else if (m_xkey == '>')
                 key = "<GT>";
             else
-                key = QChar(m_xkey);
+                key = QChar(m_xkey & 0xffff);  // FIXME
         }
 
         bool shift = isShift();
@@ -2279,6 +2248,7 @@ public:
     bool handleExHistoryCommand(const ExCommand &cmd);
     bool handleExRegisterCommand(const ExCommand &cmd);
     bool handleExMapCommand(const ExCommand &cmd);
+    bool handleExMultiRepeatCommand(const ExCommand &cmd);
     bool handleExNohlsearchCommand(const ExCommand &cmd);
     bool handleExNormalCommand(const ExCommand &cmd);
     bool handleExReadCommand(const ExCommand &cmd);
@@ -2430,7 +2400,7 @@ public:
 
         // If empty, cx{motion} will store the range defined by {motion} here.
         // If non-empty, cx{motion} replaces the {motion} with selectText(*exchangeData)
-        Utils::optional<Range> exchangeRange;
+        std::optional<Range> exchangeRange;
 
         bool surroundUpperCaseS; // True for yS and cS, false otherwise
         QString surroundFunction; // Used for storing the function name provided to ys{motion}f
@@ -3079,7 +3049,7 @@ void FakeVimHandler::Private::clearPendingInput()
 void FakeVimHandler::Private::waitForMapping()
 {
     g.currentCommand.clear();
-    foreach (const Input &input, g.currentMap.currentInputs())
+    for (const Input &input : g.currentMap.currentInputs())
         g.currentCommand.append(input.toString());
 
     // wait for user to press any key or trigger complete mapping after interval
@@ -5916,7 +5886,7 @@ void FakeVimHandler::Private::handleCommand(const QString &cmd)
 
 bool FakeVimHandler::Private::handleExSubstituteCommand(const ExCommand &cmd)
 {
-    // :substitute
+    // :[range]s[ubstitute]/{pattern}/{string}/[flags] [count]
     if (!cmd.matches("s", "substitute")
         && !(cmd.cmd.isEmpty() && !cmd.args.isEmpty() && QString("&~").contains(cmd.args[0]))) {
         return false;
@@ -6100,13 +6070,13 @@ bool FakeVimHandler::Private::handleExMapCommand(const ExCommand &cmd0) // :map
     //qDebug() << "MAPPING: " << modes << lhs << rhs;
     switch (type) {
         case Unmap:
-            foreach (char c, modes)
+            for (char c : std::as_const(modes))
                 MappingsIterator(&g.mappings, c, key).remove();
             break;
         case Map: Q_FALLTHROUGH();
         case Noremap: {
-            Inputs inputs(rhs, type == Noremap, silent);
-            foreach (char c, modes)
+            const Inputs inputs(rhs, type == Noremap, silent);
+            for (char c : std::as_const(modes))
                 MappingsIterator(&g.mappings, c).setInputs(key, inputs, unique);
             break;
         }
@@ -6124,7 +6094,7 @@ bool FakeVimHandler::Private::handleExHistoryCommand(const ExCommand &cmd)
         QString info;
         info += "#  command history\n";
         int i = 0;
-        foreach (const QString &item, g.commandBuffer.historyItems()) {
+        for (const QString &item : g.commandBuffer.historyItems()) {
             ++i;
             info += QString("%1 %2\n").arg(i, -8).arg(item);
         }
@@ -6152,7 +6122,7 @@ bool FakeVimHandler::Private::handleExRegisterCommand(const ExCommand &cmd)
     }
     QString info;
     info += "--- Registers ---\n";
-    for (char reg : qAsConst(regs)) {
+    for (char reg : std::as_const(regs)) {
         QString value = quoteUnprintable(registerContents(reg));
         info += QString("\"%1   %2\n").arg(reg).arg(value);
     }
@@ -6513,6 +6483,61 @@ bool FakeVimHandler::Private::handleExShiftCommand(const ExCommand &cmd)
     return true;
 }
 
+bool FakeVimHandler::Private::handleExMultiRepeatCommand(const ExCommand &cmd)
+{
+    // :[range]g[lobal]/{pattern}/[cmd]
+    // :[range]g[lobal]!/{pattern}/[cmd]
+    // :[range]v[globa]!/{pattern}/[cmd]
+    const bool hasG = cmd.matches("g", "global");
+    const bool hasV = cmd.matches("v", "vglobal");
+    if (!hasG && !hasV)
+        return false;
+
+    // Force operation on full lines, and full document if only
+    // one line (the current one...) is specified
+    int beginLine = lineForPosition(cmd.range.beginPos);
+    int endLine = lineForPosition(cmd.range.endPos);
+    if (beginLine == endLine) {
+        beginLine = 0;
+        endLine = lineForPosition(lastPositionInDocument());
+    }
+
+    const bool negates = hasV || cmd.hasBang;
+
+    const QChar delim = cmd.args.front();
+    const QString pattern = cmd.args.section(delim, 1, 1);
+    const QRegularExpression re(pattern);
+
+    QString innerCmd = cmd.args.section(delim, 2, 2);
+    if (innerCmd.isEmpty())
+        innerCmd = "p";
+
+    QList<QTextCursor> matches;
+
+    for (int line = beginLine; line <= endLine; ++line) {
+        const int pos = firstPositionInLine(line);
+        const Range range(pos, pos, RangeLineMode);
+        const QString lineContents = selectText(range);
+        const QRegularExpressionMatch match = re.match(lineContents);
+        if (match.hasMatch() != negates) {
+            QTextCursor tc(document());
+            tc.setPosition(pos);
+            matches.append(tc);
+        }
+    }
+
+    beginEditBlock();
+
+    for (const QTextCursor &tc : std::as_const(matches)) {
+        setPosition(tc.position());
+        handleExCommand(innerCmd);
+    }
+
+    endEditBlock();
+
+    return true;
+}
+
 bool FakeVimHandler::Private::handleExSortCommand(const ExCommand &cmd)
 {
     // :[range]sor[t][!] [b][f][i][n][o][r][u][x] [/{pattern}/]
@@ -6692,6 +6717,7 @@ bool FakeVimHandler::Private::handleExCommandHelper(ExCommand &cmd)
         || handleExMoveCommand(cmd)
         || handleExJoinCommand(cmd)
         || handleExMapCommand(cmd)
+        || handleExMultiRepeatCommand(cmd)
         || handleExNohlsearchCommand(cmd)
         || handleExNormalCommand(cmd)
         || handleExReadCommand(cmd)

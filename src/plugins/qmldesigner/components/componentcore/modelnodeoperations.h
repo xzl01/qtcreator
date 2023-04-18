@@ -1,35 +1,56 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "selectioncontext.h"
 
+#include <utils/fileutils.h>
+
 namespace QmlDesigner {
 
-enum class AddFilesResult { Succeeded, Failed, Cancelled };
+class AddFilesResult
+{
+public:
+    enum Status { Succeeded, Failed, Cancelled, Delayed };
+    static constexpr char directoryPropName[] = "directory";
+
+    static AddFilesResult cancelled(const QString &directory = {})
+    {
+        return AddFilesResult{Cancelled, directory};
+    }
+
+    static AddFilesResult failed(const QString &directory = {})
+    {
+        return AddFilesResult{Failed, directory};
+    }
+
+    static AddFilesResult succeeded(const QString &directory = {})
+    {
+        return AddFilesResult{Succeeded, directory};
+    }
+
+    static AddFilesResult delayed(QObject *delayedResult)
+    {
+        return AddFilesResult{Delayed, {}, delayedResult};
+    }
+
+    Status status() const { return m_status; }
+    QString directory() const { return m_directory; }
+    bool haveDelayedResult() const { return m_delayedResult != nullptr; }
+    QObject *delayedResult() const { return m_delayedResult; }
+
+private:
+    AddFilesResult(Status status, const QString &directory, QObject *delayedResult = nullptr)
+        : m_status{status}
+        , m_directory{directory}
+        , m_delayedResult{delayedResult}
+    {}
+
+    Status m_status;
+    QString m_directory;
+    QObject *m_delayedResult = nullptr;
+};
 
 namespace ModelNodeOperations {
 
@@ -67,6 +88,7 @@ void layoutColumnLayout(const SelectionContext &selectionState);
 void layoutGridLayout(const SelectionContext &selectionState);
 void goImplementation(const SelectionContext &selectionState);
 void addNewSignalHandler(const SelectionContext &selectionState);
+void editMaterial(const SelectionContext &selectionContext);
 void addSignalHandlerOrGotoImplementation(const SelectionContext &selectionState, bool addAlwaysNewSlot);
 void removeLayout(const SelectionContext &selectionContext);
 void removePositioner(const SelectionContext &selectionContext);
@@ -76,12 +98,12 @@ void addItemToStackedContainer(const SelectionContext &selectionContext);
 void increaseIndexOfStackedContainer(const SelectionContext &selectionContext);
 void decreaseIndexOfStackedContainer(const SelectionContext &selectionContext);
 void addTabBarToStackedContainer(const SelectionContext &selectionContext);
-AddFilesResult addFilesToProject(const QStringList &fileNames, const QString &defaultDirectory);
-AddFilesResult addImageToProject(const QStringList &fileNames, const QString &directory);
-AddFilesResult addFontToProject(const QStringList &fileNames, const QString &directory);
-AddFilesResult addSoundToProject(const QStringList &fileNames, const QString &directory);
-AddFilesResult addShaderToProject(const QStringList &fileNames, const QString &directory);
-AddFilesResult addVideoToProject(const QStringList &fileNames, const QString &directory);
+QMLDESIGNERCORE_EXPORT AddFilesResult addFilesToProject(const QStringList &fileNames, const QString &defaultDir, bool showDialog = true);
+AddFilesResult addImageToProject(const QStringList &fileNames, const QString &directory, bool showDialog = true);
+AddFilesResult addFontToProject(const QStringList &fileNames, const QString &directory, bool showDialog = true);
+AddFilesResult addSoundToProject(const QStringList &fileNames, const QString &directory, bool showDialog = true);
+AddFilesResult addShaderToProject(const QStringList &fileNames, const QString &directory, bool showDialog = true);
+AddFilesResult addVideoToProject(const QStringList &fileNames, const QString &directory, bool showDialog = true);
 void createFlowActionArea(const SelectionContext &selectionContext);
 void addTransition(const SelectionContext &selectionState);
 void addFlowEffect(const SelectionContext &selectionState, const TypeName &typeName);
@@ -89,16 +111,26 @@ void addCustomFlowEffect(const SelectionContext &selectionState);
 void setFlowStartItem(const SelectionContext &selectionContext);
 void addToGroupItem(const SelectionContext &selectionContext);
 void selectFlowEffect(const SelectionContext &selectionContext);
-void mergeWithTemplate(const SelectionContext &selectionContext);
+void mergeWithTemplate(const SelectionContext &selectionContext, ExternalDependenciesInterface &externalDependencies);
 void removeGroup(const SelectionContext &selectionContext);
 void editAnnotation(const SelectionContext &selectionContext);
+void addMouseAreaFill(const SelectionContext &selectionContext);
 
 void openSignalDialog(const SelectionContext &selectionContext);
 void updateImported3DAsset(const SelectionContext &selectionContext);
+
+QMLDESIGNERCORE_EXPORT Utils::FilePath getEffectsImportDirectory();
+QMLDESIGNERCORE_EXPORT QString getEffectsDefaultDirectory(const QString &defaultDir);
+void openEffectMaker(const QString &filePath);
+QString getEffectIcon(const QString &effectPath);
+bool useLayerEffect();
+bool validateEffect(const QString &effectPath);
+
+Utils::FilePath getImagesDefaultDirectory();
 
 // ModelNodePreviewImageOperations
 QVariant previewImageDataForGenericNode(const ModelNode &modelNode);
 QVariant previewImageDataForImageNode(const ModelNode &modelNode);
 
-} // namespace ModelNodeOperationso
+} // namespace ModelNodeOperations
 } //QmlDesigner

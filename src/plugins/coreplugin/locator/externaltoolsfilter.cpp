@@ -1,44 +1,25 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "externaltoolsfilter.h"
 
-#include <coreplugin/externaltool.h>
-#include <coreplugin/externaltoolmanager.h>
-#include <coreplugin/messagemanager.h>
+#include "../coreconstants.h"
+#include "../coreplugintr.h"
+#include "../externaltool.h"
+#include "../externaltoolmanager.h"
+#include "../icore.h"
+#include "../messagemanager.h"
+
 #include <utils/qtcassert.h>
 
-using namespace Core;
-using namespace Core::Internal;
+namespace Core::Internal {
 
 ExternalToolsFilter::ExternalToolsFilter()
 {
     setId("Run external tool");
-    setDisplayName(tr("Run External Tool"));
-    setDescription(tr("Runs an external tool that you have set up in the options (Environment > "
-                      "External Tools)."));
+    setDisplayName(Tr::tr("Run External Tool"));
+    setDescription(Tr::tr("Runs an external tool that you have set up in the preferences "
+                          "(Environment > External Tools)."));
     setDefaultShortcutString("x");
     setPriority(Medium);
 }
@@ -55,6 +36,12 @@ void ExternalToolsFilter::accept(const LocatorFilterEntry &selection,
     Q_UNUSED(newText)
     Q_UNUSED(selectionStart)
     Q_UNUSED(selectionLength)
+
+    if (!selection.internalData.isValid()) {
+        ICore::showOptionsDialog(Constants::SETTINGS_ID_TOOLS);
+        return;
+    }
+
     auto tool = selection.internalData.value<ExternalTool *>();
     QTC_ASSERT(tool, return);
 
@@ -91,5 +78,10 @@ void ExternalToolsFilter::prepareSearch(const QString &entry)
                 goodEntries.append(filterEntry);
         }
     }
-    m_results = bestEntries + betterEntries + goodEntries;
+    LocatorFilterEntry configEntry(this, "Configure External Tool...", {});
+    configEntry.extraInfo = "Opens External Tool settings";
+    m_results = {};
+    m_results << bestEntries << betterEntries << goodEntries << configEntry;
 }
+
+} // Core::Internal

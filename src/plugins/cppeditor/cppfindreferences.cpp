@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppfindreferences.h"
 
 #include "cppcodemodelsettings.h"
 #include "cppeditorconstants.h"
-#include "cppfilesettingspage.h"
+#include "cppeditortr.h"
 #include "cppmodelmanager.h"
 #include "cpptoolsreuse.h"
 #include "cppworkingcopy.h"
@@ -60,69 +38,17 @@ using namespace Core;
 using namespace ProjectExplorer;
 using namespace Utils;
 
+using namespace std::placeholders;
+
 namespace CppEditor {
 
-namespace { static bool isAllLowerCase(const QString &text) { return text.toLower() == text; } }
-
-SearchResultColor::Style colorStyleForUsageType(CPlusPlus::Usage::Type type)
+SearchResultColor::Style colorStyleForUsageType(CPlusPlus::Usage::Tags tags)
 {
-    switch (type) {
-    case CPlusPlus::Usage::Type::Read:
+    if (tags.testFlag(CPlusPlus::Usage::Tag::Read))
         return SearchResultColor::Style::Alt1;
-    case CPlusPlus::Usage::Type::Initialization:
-    case CPlusPlus::Usage::Type::Write:
-    case CPlusPlus::Usage::Type::WritableRef:
+    if (tags.testAnyFlags({CPlusPlus::Usage::Tag::Write, CPlusPlus::Usage::Tag::WritableRef}))
         return SearchResultColor::Style::Alt2;
-    case CPlusPlus::Usage::Type::Declaration:
-    case CPlusPlus::Usage::Type::Other:
-        return SearchResultColor::Style::Default;
-    }
-    return SearchResultColor::Style::Default; // For dumb compilers.
-}
-
-void renameFilesForSymbol(const QString &oldSymbolName, const QString &newSymbolName,
-                          const QVector<Node *> &files)
-{
-    Internal::CppFileSettings settings;
-    settings.fromSettings(Core::ICore::settings());
-
-    const QStringList newPaths =
-            Utils::transform<QList>(files,
-                                    [&oldSymbolName, newSymbolName, &settings](const Node *node) -> QString {
-        const QFileInfo fi = node->filePath().toFileInfo();
-        const QString oldBaseName = fi.baseName();
-        QString newBaseName = newSymbolName;
-
-        // 1) new symbol lowercase: new base name lowercase
-        if (isAllLowerCase(newSymbolName)) {
-            newBaseName = newSymbolName;
-
-        // 2) old base name mixed case: new base name is verbatim symbol name
-        } else if (!isAllLowerCase(oldBaseName)) {
-            newBaseName = newSymbolName;
-
-        // 3) old base name lowercase, old symbol mixed case: new base name lowercase
-        } else if (!isAllLowerCase(oldSymbolName)) {
-            newBaseName = newSymbolName.toLower();
-
-        // 4) old base name lowercase, old symbol lowercase, new symbol mixed case:
-        //    use the preferences setting for new base name case
-        } else if (settings.lowerCaseFiles) {
-            newBaseName = newSymbolName.toLower();
-        }
-
-        if (newBaseName == oldBaseName)
-            return QString();
-
-        return fi.absolutePath() + "/" + newBaseName + '.' + fi.completeSuffix();
-    });
-
-    for (int i = 0; i < files.size(); ++i) {
-        if (!newPaths.at(i).isEmpty()) {
-            Node *node = files.at(i);
-            ProjectExplorerPlugin::renameFile(node, newPaths.at(i));
-        }
-    }
+    return SearchResultColor::Style::Default;
 }
 
 QWidget *CppSearchResultFilter::createWidget()
@@ -130,13 +56,13 @@ QWidget *CppSearchResultFilter::createWidget()
     const auto widget = new QWidget;
     const auto layout = new QVBoxLayout(widget);
     layout->setContentsMargins(0, 0, 0, 0);
-    const auto readsCheckBox = new QCheckBox(Internal::CppFindReferences::tr("Reads"));
+    const auto readsCheckBox = new QCheckBox(Tr::tr("Reads"));
     readsCheckBox->setChecked(m_showReads);
-    const auto writesCheckBox = new QCheckBox(Internal::CppFindReferences::tr("Writes"));
+    const auto writesCheckBox = new QCheckBox(Tr::tr("Writes"));
     writesCheckBox->setChecked(m_showWrites);
-    const auto declsCheckBox = new QCheckBox(Internal::CppFindReferences::tr("Declarations"));
+    const auto declsCheckBox = new QCheckBox(Tr::tr("Declarations"));
     declsCheckBox->setChecked(m_showDecls);
-    const auto otherCheckBox = new QCheckBox(Internal::CppFindReferences::tr("Other"));
+    const auto otherCheckBox = new QCheckBox(Tr::tr("Other"));
     otherCheckBox->setChecked(m_showOther);
     layout->addWidget(readsCheckBox);
     layout->addWidget(writesCheckBox);
@@ -155,19 +81,14 @@ QWidget *CppSearchResultFilter::createWidget()
 
 bool CppSearchResultFilter::matches(const SearchResultItem &item) const
 {
-    switch (static_cast<CPlusPlus::Usage::Type>(item.userData().toInt())) {
-    case CPlusPlus::Usage::Type::Read:
+    const auto usageTags = CPlusPlus::Usage::Tags::fromInt(item.userData().toInt());
+    if (usageTags.testFlag(CPlusPlus::Usage::Tag::Read))
         return m_showReads;
-    case CPlusPlus::Usage::Type::Write:
-    case CPlusPlus::Usage::Type::WritableRef:
-    case CPlusPlus::Usage::Type::Initialization:
+    if (usageTags.testAnyFlags({CPlusPlus::Usage::Tag::Write, CPlusPlus::Usage::Tag::WritableRef}))
         return m_showWrites;
-    case CPlusPlus::Usage::Type::Declaration:
+    if (usageTags.testFlag(CPlusPlus::Usage::Tag::Declaration))
         return m_showDecls;
-    case CPlusPlus::Usage::Type::Other:
-        return m_showOther;
-    }
-    return false;
+    return m_showOther;
 }
 
 void CppSearchResultFilter::setValue(bool &member, bool value)
@@ -319,7 +240,7 @@ public:
           categorize(categorize)
     { }
 
-    QList<CPlusPlus::Usage> operator()(const Utils::FilePath &fileName)
+    QList<CPlusPlus::Usage> operator()(const Utils::FilePath &filePath)
     {
         QList<CPlusPlus::Usage> usages;
         if (future->isPaused())
@@ -328,18 +249,18 @@ public:
             return usages;
         const CPlusPlus::Identifier *symbolId = symbol->identifier();
 
-        if (CPlusPlus::Document::Ptr previousDoc = snapshot.document(fileName)) {
+        if (CPlusPlus::Document::Ptr previousDoc = snapshot.document(filePath)) {
             CPlusPlus::Control *control = previousDoc->control();
             if (!control->findIdentifier(symbolId->chars(), symbolId->size()))
                 return usages; // skip this document, it's not using symbolId.
         }
         CPlusPlus::Document::Ptr doc;
-        const QByteArray unpreprocessedSource = getSource(fileName, workingCopy);
+        const QByteArray unpreprocessedSource = getSource(filePath, workingCopy);
 
-        if (symbolDocument && fileName == Utils::FilePath::fromString(symbolDocument->fileName())) {
+        if (symbolDocument && filePath == symbolDocument->filePath()) {
             doc = symbolDocument;
         } else {
-            doc = snapshot.preprocessedDocument(unpreprocessedSource, fileName);
+            doc = snapshot.preprocessedDocument(unpreprocessedSource, filePath);
             doc->tokenize();
         }
 
@@ -369,7 +290,7 @@ public:
 
     void operator()(QList<CPlusPlus::Usage> &, const QList<CPlusPlus::Usage> &usages)
     {
-        foreach (const CPlusPlus::Usage &u, usages)
+        for (const CPlusPlus::Usage &u : usages)
             future->reportResult(u);
 
         future->setProgressValue(future->progressValue() + 1);
@@ -409,15 +330,14 @@ static void find_helper(QFutureInterface<CPlusPlus::Usage> &future,
 
     const CPlusPlus::Snapshot snapshot = context.snapshot();
 
-    const Utils::FilePath sourceFile = Utils::FilePath::fromUtf8(symbol->fileName(),
-                                                                 symbol->fileNameLength());
-    Utils::FilePaths files{sourceFile};
+    const FilePath sourceFile = symbol->filePath();
+    FilePaths files{sourceFile};
 
-    if (symbol->isClass()
-        || symbol->isForwardClassDeclaration()
+    if (symbol->asClass()
+        || symbol->asForwardClassDeclaration()
         || (symbol->enclosingScope()
             && !symbol->isStatic()
-            && symbol->enclosingScope()->isNamespace())) {
+            && symbol->enclosingScope()->asNamespace())) {
         const CPlusPlus::Snapshot snapshotFromContext = context.snapshot();
         for (auto i = snapshotFromContext.begin(), ei = snapshotFromContext.end(); i != ei; ++i) {
             if (i.key() == sourceFile)
@@ -448,16 +368,17 @@ static void find_helper(QFutureInterface<CPlusPlus::Usage> &future,
 void CppFindReferences::findUsages(CPlusPlus::Symbol *symbol,
                                    const CPlusPlus::LookupContext &context)
 {
-    findUsages(symbol, context, QString(), false);
+    findUsages(symbol, context, QString(), {}, false);
 }
 
 void CppFindReferences::findUsages(CPlusPlus::Symbol *symbol,
                                    const CPlusPlus::LookupContext &context,
                                    const QString &replacement,
+                                   const std::function<void()> &callback,
                                    bool replace)
 {
     CPlusPlus::Overview overview;
-    SearchResult *search = SearchResultWindow::instance()->startNewSearch(tr("C++ Usages:"),
+    SearchResult *search = SearchResultWindow::instance()->startNewSearch(Tr::tr("C++ Usages:"),
                                                 QString(),
                                                 overview.prettyName(CPlusPlus::LookupContext::fullyQualifiedName(symbol)),
                                                 replace ? SearchResultWindow::SearchAndReplace
@@ -465,21 +386,20 @@ void CppFindReferences::findUsages(CPlusPlus::Symbol *symbol,
                                                 SearchResultWindow::PreserveCaseDisabled,
                                                 QLatin1String("CppEditor"));
     search->setTextToReplace(replacement);
+    if (callback)
+        search->makeNonInteractive(callback);
     if (codeModelSettings()->categorizeFindReferences())
         search->setFilter(new CppSearchResultFilter);
-    auto renameFilesCheckBox = new QCheckBox();
-    renameFilesCheckBox->setVisible(false);
-    search->setAdditionalReplaceWidget(renameFilesCheckBox);
-    connect(search, &SearchResult::replaceButtonClicked,
-            this, &CppFindReferences::onReplaceButtonClicked);
+    setupSearch(search);
     search->setSearchAgainSupported(true);
-    connect(search, &SearchResult::searchAgainRequested, this, &CppFindReferences::searchAgain);
+    connect(search, &SearchResult::searchAgainRequested, this,
+            std::bind(&CppFindReferences::searchAgain, this, search));
     CppFindReferencesParameters parameters;
     parameters.symbolId = fullIdForSymbol(symbol);
-    parameters.symbolFileName = QByteArray(symbol->fileName());
+    parameters.symbolFilePath = symbol->filePath();
     parameters.categorize = codeModelSettings()->categorizeFindReferences();
 
-    if (symbol->isClass() || symbol->isForwardClassDeclaration()) {
+    if (symbol->asClass() || symbol->asForwardClassDeclaration()) {
         CPlusPlus::Overview overview;
         parameters.prettySymbolName =
                 overview.prettyName(CPlusPlus::LookupContext::path(symbol).constLast());
@@ -491,12 +411,13 @@ void CppFindReferences::findUsages(CPlusPlus::Symbol *symbol,
 
 void CppFindReferences::renameUsages(CPlusPlus::Symbol *symbol,
                                      const CPlusPlus::LookupContext &context,
-                                     const QString &replacement)
+                                     const QString &replacement,
+                                     const std::function<void()> &callback)
 {
     if (const CPlusPlus::Identifier *id = symbol->identifier()) {
         const QString textToReplace = replacement.isEmpty()
                 ? QString::fromUtf8(id->chars(), id->size()) : replacement;
-        findUsages(symbol, context, textToReplace, true);
+        findUsages(symbol, context, textToReplace, callback, true);
     }
 }
 
@@ -512,32 +433,39 @@ void CppFindReferences::findAll_helper(SearchResult *search, CPlusPlus::Symbol *
                 Core::EditorManager::openEditorAtSearchResult(item);
             });
 
-    SearchResultWindow::instance()->popup(IOutputPane::ModeSwitch | IOutputPane::WithFocus);
+    if (search->isInteractive())
+        SearchResultWindow::instance()->popup(IOutputPane::ModeSwitch | IOutputPane::WithFocus);
     const WorkingCopy workingCopy = m_modelManager->workingCopy();
     QFuture<CPlusPlus::Usage> result;
     result = Utils::runAsync(m_modelManager->sharedThreadPool(), find_helper,
                              workingCopy, context, symbol, categorize);
     createWatcher(result, search);
 
-    FutureProgress *progress = ProgressManager::addTask(result, tr("Searching for Usages"),
-                                                              CppEditor::Constants::TASK_SEARCH);
+    FutureProgress *progress = ProgressManager::addTask(result, Tr::tr("Searching for Usages"),
+                                                        CppEditor::Constants::TASK_SEARCH);
 
     connect(progress, &FutureProgress::clicked, search, &SearchResult::popup);
 }
 
-void CppFindReferences::onReplaceButtonClicked(const QString &text,
+void CppFindReferences::setupSearch(Core::SearchResult *search)
+{
+    auto renameFilesCheckBox = new QCheckBox();
+    renameFilesCheckBox->setVisible(false);
+    search->setAdditionalReplaceWidget(renameFilesCheckBox);
+    connect(search, &SearchResult::replaceButtonClicked, this,
+            std::bind(&CppFindReferences::onReplaceButtonClicked, this, search, _1, _2, _3));
+}
+
+void CppFindReferences::onReplaceButtonClicked(Core::SearchResult *search,
+                                               const QString &text,
                                                const QList<SearchResultItem> &items,
                                                bool preserveCase)
 {
     const Utils::FilePaths filePaths = TextEditor::BaseFileFind::replaceAll(text, items, preserveCase);
     if (!filePaths.isEmpty()) {
-        m_modelManager->updateSourceFiles(
-            Utils::transform<QSet>(filePaths, &Utils::FilePath::toString));
+        m_modelManager->updateSourceFiles(Utils::toSet(filePaths));
         SearchResultWindow::instance()->hide();
     }
-
-    auto search = qobject_cast<SearchResult *>(sender());
-    QTC_ASSERT(search, return);
 
     CppFindReferencesParameters parameters = search->userData().value<CppFindReferencesParameters>();
     if (parameters.filesToRename.isEmpty())
@@ -547,12 +475,13 @@ void CppFindReferences::onReplaceButtonClicked(const QString &text,
     if (!renameFilesCheckBox || !renameFilesCheckBox->isChecked())
         return;
 
-    renameFilesForSymbol(parameters.prettySymbolName, text, parameters.filesToRename);
+    ProjectExplorerPlugin::renameFilesForSymbol(
+                parameters.prettySymbolName, text, parameters.filesToRename,
+                preferLowerCaseFileNames());
 }
 
-void CppFindReferences::searchAgain()
+void CppFindReferences::searchAgain(SearchResult *search)
 {
-    auto search = qobject_cast<SearchResult *>(sender());
     CppFindReferencesParameters parameters = search->userData().value<CppFindReferencesParameters>();
     parameters.filesToRename.clear();
     CPlusPlus::Snapshot snapshot = CppModelManager::instance()->snapshot();
@@ -610,16 +539,14 @@ CPlusPlus::Symbol *CppFindReferences::findSymbol(const CppFindReferencesParamete
                                                  CPlusPlus::LookupContext *context)
 {
     QTC_ASSERT(context, return nullptr);
-    QString symbolFile = QLatin1String(parameters.symbolFileName);
-    if (!snapshot.contains(symbolFile))
+    if (!snapshot.contains(parameters.symbolFilePath))
         return nullptr;
 
-    CPlusPlus::Document::Ptr newSymbolDocument = snapshot.document(symbolFile);
+    CPlusPlus::Document::Ptr newSymbolDocument = snapshot.document(parameters.symbolFilePath);
     // document is not parsed and has no bindings yet, do it
-    QByteArray source = getSource(Utils::FilePath::fromString(newSymbolDocument->fileName()),
-                                  m_modelManager->workingCopy());
+    QByteArray source = getSource(newSymbolDocument->filePath(), m_modelManager->workingCopy());
     CPlusPlus::Document::Ptr doc =
-            snapshot.preprocessedDocument(source, FilePath::fromString(newSymbolDocument->fileName()));
+            snapshot.preprocessedDocument(source, newSymbolDocument->filePath());
     doc->check();
 
     // find matching symbol in new document and return the new parameters
@@ -632,8 +559,10 @@ CPlusPlus::Symbol *CppFindReferences::findSymbol(const CppFindReferencesParamete
     return nullptr;
 }
 
-static void displayResults(SearchResult *search, QFutureWatcher<CPlusPlus::Usage> *watcher,
-                           int first, int last)
+static void displayResults(SearchResult *search,
+                           QFutureWatcher<CPlusPlus::Usage> *watcher,
+                           int first,
+                           int last)
 {
     CppFindReferencesParameters parameters = search->userData().value<CppFindReferencesParameters>();
 
@@ -643,8 +572,9 @@ static void displayResults(SearchResult *search, QFutureWatcher<CPlusPlus::Usage
         item.setFilePath(result.path);
         item.setMainRange(result.line, result.col, result.len);
         item.setLineText(result.lineText);
-        item.setUserData(int(result.type));
-        item.setStyle(colorStyleForUsageType(result.type));
+        item.setUserData(result.tags.toInt());
+        item.setContainingFunctionName(result.containingFunction);
+        item.setStyle(colorStyleForUsageType(result.tags));
         item.setUseTextEditorFont(true);
         if (search->supportsReplace())
             item.setSelectForReplacement(SessionManager::projectForFile(result.path));
@@ -653,16 +583,14 @@ static void displayResults(SearchResult *search, QFutureWatcher<CPlusPlus::Usage
         if (parameters.prettySymbolName.isEmpty())
             continue;
 
-        if (Utils::contains(parameters.filesToRename, Utils::equal(&Node::filePath, result.path)))
+        if (parameters.filesToRename.contains(result.path))
             continue;
 
-        Node *node = ProjectTree::nodeForFile(result.path);
-        if (!node) // Not part of any project
+        if (!SessionManager::projectForFile(result.path))
             continue;
 
-        const QFileInfo fi = node->filePath().toFileInfo();
-        if (fi.baseName().compare(parameters.prettySymbolName, Qt::CaseInsensitive) == 0)
-            parameters.filesToRename.append(node);
+        if (result.path.baseName().compare(parameters.prettySymbolName, Qt::CaseInsensitive) == 0)
+            parameters.filesToRename.append(result.path);
     }
 
     search->setUserData(QVariant::fromValue(parameters));
@@ -675,14 +603,12 @@ static void searchFinished(SearchResult *search, QFutureWatcher<CPlusPlus::Usage
     CppFindReferencesParameters parameters = search->userData().value<CppFindReferencesParameters>();
     if (!parameters.filesToRename.isEmpty()) {
         const QStringList filesToRename
-                = Utils::transform<QList>(parameters.filesToRename, [](const Node *node) {
-            return node->filePath().toUserOutput();
-        });
+                = Utils::transform<QList>(parameters.filesToRename, &FilePath::toUserOutput);
 
         auto renameCheckBox = qobject_cast<QCheckBox *>(search->additionalReplaceWidget());
         if (renameCheckBox) {
-            renameCheckBox->setText(CppFindReferences::tr("Re&name %n files", nullptr, filesToRename.size()));
-            renameCheckBox->setToolTip(CppFindReferences::tr("Files:\n%1").arg(filesToRename.join('\n')));
+            renameCheckBox->setText(Tr::tr("Re&name %n files", nullptr, filesToRename.size()));
+            renameCheckBox->setToolTip(Tr::tr("Files:\n%1").arg(filesToRename.join('\n')));
             renameCheckBox->setVisible(true);
         }
     }
@@ -724,10 +650,10 @@ restart_search:
             return usages;
 
         usages.clear();
-        foreach (const CPlusPlus::Document::MacroUse &use, doc->macroUses()) {
+        for (const CPlusPlus::Document::MacroUse &use : doc->macroUses()) {
             const CPlusPlus::Macro &useMacro = use.macro();
 
-            if (useMacro.fileName() == macro.fileName()) { // Check if this is a match, but possibly against an outdated document.
+            if (useMacro.filePath() == macro.filePath()) { // Check if this is a match, but possibly against an outdated document.
                 if (source.isEmpty())
                     source = getSource(fileName, workingCopy);
 
@@ -741,8 +667,8 @@ restart_search:
                 if (macro.name() == useMacro.name()) {
                     unsigned column;
                     const QString &lineSource = matchingLine(use.bytesBegin(), source, &column);
-                    usages.append(CPlusPlus::Usage(fileName, lineSource,
-                                                   CPlusPlus::Usage::Type::Other, use.beginLine(),
+                    usages.append(CPlusPlus::Usage(fileName, lineSource, {},
+                                                   {}, use.beginLine(),
                                                    column, useMacro.nameToQString().size()));
                 }
             }
@@ -783,8 +709,8 @@ static void findMacroUses_helper(QFutureInterface<CPlusPlus::Usage> &future,
                                  const CPlusPlus::Snapshot snapshot,
                                  const CPlusPlus::Macro macro)
 {
-    const Utils::FilePath sourceFile = Utils::FilePath::fromString(macro.fileName());
-    Utils::FilePaths files{sourceFile};
+    const FilePath sourceFile = macro.filePath();
+    FilePaths files{sourceFile};
     files = Utils::filteredUnique(files + snapshot.filesDependingOn(sourceFile));
 
     future.setProgressRange(0, files.size());
@@ -807,7 +733,7 @@ void CppFindReferences::findMacroUses(const CPlusPlus::Macro &macro, const QStri
                                       bool replace)
 {
     SearchResult *search = SearchResultWindow::instance()->startNewSearch(
-                tr("C++ Macro Usages:"),
+                Tr::tr("C++ Macro Usages:"),
                 QString(),
                 macro.nameToQString(),
                 replace ? SearchResultWindow::SearchAndReplace
@@ -816,12 +742,7 @@ void CppFindReferences::findMacroUses(const CPlusPlus::Macro &macro, const QStri
                 QLatin1String("CppEditor"));
 
     search->setTextToReplace(replacement);
-    auto renameFilesCheckBox = new QCheckBox();
-    renameFilesCheckBox->setVisible(false);
-    search->setAdditionalReplaceWidget(renameFilesCheckBox);
-    connect(search, &SearchResult::replaceButtonClicked,
-            this, &CppFindReferences::onReplaceButtonClicked);
-
+    setupSearch(search);
     SearchResultWindow::instance()->popup(IOutputPane::ModeSwitch | IOutputPane::WithFocus);
 
     connect(search, &SearchResult::activated,
@@ -834,13 +755,12 @@ void CppFindReferences::findMacroUses(const CPlusPlus::Macro &macro, const QStri
 
     // add the macro definition itself
     {
-        const QByteArray &source = getSource(Utils::FilePath::fromString(macro.fileName()),
-                                             workingCopy);
+        const QByteArray &source = getSource(macro.filePath(), workingCopy);
         unsigned column;
         const QString line = FindMacroUsesInFile::matchingLine(macro.bytesOffset(), source,
                                                                &column);
         SearchResultItem item;
-        const Utils::FilePath filePath = Utils::FilePath::fromString(macro.fileName());
+        const FilePath filePath = macro.filePath();
         item.setFilePath(filePath);
         item.setLineText(line);
         item.setMainRange(macro.line(), column, macro.nameToQString().length());
@@ -855,8 +775,8 @@ void CppFindReferences::findMacroUses(const CPlusPlus::Macro &macro, const QStri
                              workingCopy, snapshot, macro);
     createWatcher(result, search);
 
-    FutureProgress *progress = ProgressManager::addTask(result, tr("Searching for Usages"),
-                                                              CppEditor::Constants::TASK_SEARCH);
+    FutureProgress *progress = ProgressManager::addTask(result, Tr::tr("Searching for Usages"),
+                                                        CppEditor::Constants::TASK_SEARCH);
     connect(progress, &FutureProgress::clicked, search, &SearchResult::popup);
 }
 
@@ -864,6 +784,56 @@ void CppFindReferences::renameMacroUses(const CPlusPlus::Macro &macro, const QSt
 {
     const QString textToReplace = replacement.isEmpty() ? macro.nameToQString() : replacement;
     findMacroUses(macro, textToReplace, true);
+}
+
+void CppFindReferences::checkUnused(Core::SearchResult *search, const Link &link,
+                                    CPlusPlus::Symbol *symbol,
+                                    const CPlusPlus::LookupContext &context,
+                                    const LinkHandler &callback)
+{
+    const auto isProperUsage = [symbol](const CPlusPlus::Usage &usage) {
+        if (!usage.tags.testFlag(CPlusPlus::Usage::Tag::Declaration))
+            return usage.containingFunctionSymbol != symbol;
+        return usage.tags.testAnyFlags({CPlusPlus::Usage::Tag::Override,
+                                        CPlusPlus::Usage::Tag::MocInvokable,
+                                        CPlusPlus::Usage::Tag::Template,
+                                        CPlusPlus::Usage::Tag::Operator,
+                                        CPlusPlus::Usage::Tag::ConstructorDestructor});
+    };
+    const auto watcher = new QFutureWatcher<CPlusPlus::Usage>();
+    connect(watcher, &QFutureWatcherBase::finished, watcher,
+            [watcher, link, callback, search, isProperUsage] {
+        watcher->deleteLater();
+        if (watcher->isCanceled())
+            return callback(link);
+        for (int i = 0; i < watcher->future().resultCount(); ++i) {
+            if (isProperUsage(watcher->resultAt(i)))
+                return callback(link);
+        }
+        for (int i = 0; i < watcher->future().resultCount(); ++i) {
+            const CPlusPlus::Usage usage = watcher->resultAt(i);
+            SearchResultItem item;
+            item.setFilePath(usage.path);
+            item.setLineText(usage.lineText);
+            item.setMainRange(usage.line, usage.col, usage.len);
+            item.setUseTextEditorFont(true);
+            search->addResult(item);
+        }
+        callback(link);
+    });
+    connect(watcher, &QFutureWatcherBase::resultsReadyAt, search,
+            [watcher, isProperUsage](int first, int end) {
+        for (int i = first; i < end; ++i) {
+            if (isProperUsage(watcher->resultAt(i))) {
+                watcher->cancel();
+                break;
+            }
+        }
+    });
+    connect(search, &SearchResult::canceled, watcher, [watcher] { watcher->cancel(); });
+    connect(search, &SearchResult::destroyed, watcher, [watcher] { watcher->cancel(); });
+    watcher->setFuture(Utils::runAsync(m_modelManager->sharedThreadPool(), find_helper,
+                                       m_modelManager->workingCopy(), context, symbol, true));
 }
 
 void CppFindReferences::createWatcher(const QFuture<CPlusPlus::Usage> &future, SearchResult *search)
@@ -881,7 +851,7 @@ void CppFindReferences::createWatcher(const QFuture<CPlusPlus::Usage> &future, S
     connect(watcher, &QFutureWatcherBase::finished, search, [search, watcher]() {
         search->finishSearch(watcher->isCanceled());
     });
-    connect(search, &SearchResult::cancelled, watcher, [watcher]() { watcher->cancel(); });
+    connect(search, &SearchResult::canceled, watcher, [watcher]() { watcher->cancel(); });
     connect(search, &SearchResult::paused, watcher, [watcher](bool paused) {
         if (!paused || watcher->isRunning()) // guard against pausing when the search is finished
             watcher->setPaused(paused);

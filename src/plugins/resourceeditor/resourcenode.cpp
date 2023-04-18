@@ -1,40 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "resourcenode.h"
+
 #include "resourceeditorconstants.h"
+#include "resourceeditortr.h"
 #include "qrceditor/resourcefile_p.h"
 
 #include <coreplugin/documentmanager.h>
-#include <coreplugin/fileiconprovider.h>
 
 #include <qmljstools/qmljstoolsconstants.h>
 
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
-#include <utils/mimetypes/mimedatabase.h>
+#include <utils/fsengine/fileiconprovider.h>
+#include <utils/mimeutils.h>
 #include <utils/qtcassert.h>
 #include <utils/threadutils.h>
 
@@ -343,7 +323,7 @@ void ResourceTopLevelNode::addInternalNodes()
             QString parentFolderName;
             PrefixFolderLang folderId(prefix, QString(), lang);
             QStringList currentPathList;
-            foreach (const QString &pathElement, pathList) {
+            for (const QString &pathElement : std::as_const(pathList)) {
                 currentPathList << pathElement;
                 const QString folderName = currentPathList.join(QLatin1Char('/'));
                 folderId = PrefixFolderLang(prefix, folderName, lang);
@@ -455,9 +435,7 @@ bool ResourceTopLevelNode::removeNonExistingFiles()
 
 FolderNode::AddNewInformation ResourceTopLevelNode::addNewInformation(const FilePaths &files, Node *context) const
 {
-    QString name = QCoreApplication::translate("ResourceTopLevelNode", "%1 Prefix: %2")
-            .arg(filePath().fileName())
-            .arg(QLatin1Char('/'));
+    const QString name = Tr::tr("%1 Prefix: %2").arg(filePath().fileName()).arg(QLatin1Char('/'));
 
     int p = getPriorityFromContextNode(this, context);
     if (p == -1 && hasPriority(files)) { // images/* and qml/js mimetypes
@@ -596,8 +574,7 @@ bool ResourceFolderNode::renamePrefix(const QString &prefix, const QString &lang
 
 FolderNode::AddNewInformation ResourceFolderNode::addNewInformation(const FilePaths &files, Node *context) const
 {
-    QString name = QCoreApplication::translate("ResourceTopLevelNode", "%1 Prefix: %2")
-            .arg(m_topLevelNode->filePath().fileName())
+    const QString name = Tr::tr("%1 Prefix: %2").arg(m_topLevelNode->filePath().fileName())
             .arg(displayName());
 
     int p = getPriorityFromContextNode(this, context);
@@ -635,30 +612,6 @@ QString ResourceFolderNode::lang() const
 ResourceTopLevelNode *ResourceFolderNode::resourceNode() const
 {
     return m_topLevelNode;
-}
-
-ResourceFileNode::ResourceFileNode(const FilePath &filePath, const QString &qrcPath, const QString &displayName)
-    : FileNode(filePath, FileNode::fileTypeForFileName(filePath))
-    , m_qrcPath(qrcPath)
-    , m_displayName(displayName)
-{
-}
-
-QString ResourceFileNode::displayName() const
-{
-    return m_displayName;
-}
-
-QString ResourceFileNode::qrcPath() const
-{
-    return m_qrcPath;
-}
-
-bool ResourceFileNode::supportsAction(ProjectAction action, const Node *node) const
-{
-    if (action == HidePathActions)
-        return false;
-    return parentFolderNode()->supportsAction(action, node);
 }
 
 } // ResourceEditor

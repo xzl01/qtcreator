@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectimporter.h"
 
@@ -29,8 +7,8 @@
 #include "kit.h"
 #include "kitinformation.h"
 #include "kitmanager.h"
-#include "project.h"
 #include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "target.h"
 #include "toolchain.h"
 #include "toolchainmanager.h"
@@ -82,7 +60,8 @@ ProjectImporter::ProjectImporter(const Utils::FilePath &path) : m_projectPath(pa
 
 ProjectImporter::~ProjectImporter()
 {
-    foreach (Kit *k, KitManager::kits())
+    const QList<Kit *> kits = KitManager::kits();
+    for (Kit *k : kits)
         removeProject(k);
 }
 
@@ -105,8 +84,8 @@ const QList<BuildInfo> ProjectImporter::import(const Utils::FilePath &importPath
         if (silent)
             return;
         QMessageBox::critical(Core::ICore::dialogParent(),
-                              tr("No Build Found"),
-                              tr("No build found in %1 matching project %2.")
+                              Tr::tr("No Build Found"),
+                              Tr::tr("No build found in %1 matching project %2.")
                                   .arg(importPath.toUserOutput(), projectFilePath().toUserOutput()));
     };
     qCDebug(log) << "Examining directory" << absoluteImportPath.toString();
@@ -123,10 +102,10 @@ const QList<BuildInfo> ProjectImporter::import(const Utils::FilePath &importPath
         if (silent)
             return result;
         QMessageBox dialog(Core::ICore::dialogParent());
-        dialog.setWindowTitle(tr("Import Warning"));
+        dialog.setWindowTitle(Tr::tr("Import Warning"));
         dialog.setText(warningMessage);
         dialog.setIcon(QMessageBox::Warning);
-        QPushButton *acceptButton = dialog.addButton(tr("Import Build"), QMessageBox::AcceptRole);
+        QPushButton *acceptButton = dialog.addButton(Tr::tr("Import Build"), QMessageBox::AcceptRole);
         dialog.addButton(QMessageBox::Cancel);
         dialog.exec();
         if (dialog.clickedButton() != acceptButton)
@@ -134,7 +113,7 @@ const QList<BuildInfo> ProjectImporter::import(const Utils::FilePath &importPath
     }
 
     qCDebug(log) << "Looking for kits";
-    foreach (void *data, dataList) {
+    for (void *data : std::as_const(dataList)) {
         QTC_ASSERT(data, continue);
         QList<Kit *> kitList;
         const QList<Kit *> tmp
@@ -149,7 +128,7 @@ const QList<BuildInfo> ProjectImporter::import(const Utils::FilePath &importPath
             qCDebug(log) << "  " << tmp.count() << "matching kits found.";
         }
 
-        foreach (Kit *k, kitList) {
+        for (Kit *k : std::as_const(kitList)) {
             qCDebug(log) << "Creating buildinfos for kit" << k->displayName();
             const QList<BuildInfo> infoList = buildInfoList(data);
             if (infoList.isEmpty()) {
@@ -167,7 +146,7 @@ const QList<BuildInfo> ProjectImporter::import(const Utils::FilePath &importPath
         }
     }
 
-    foreach (auto *dd, dataList)
+    for (void *dd : std::as_const(dataList))
         deleteDirectoryData(dd);
     dataList.clear();
 
@@ -189,7 +168,7 @@ Target *ProjectImporter::preferredTarget(const QList<Target *> &possibleTargets)
 
     activeTarget = possibleTargets.at(0);
     bool pickedFallback = false;
-    foreach (Target *t, possibleTargets) {
+    for (Target *t : possibleTargets) {
         if (t->kit() == KitManager::defaultKit())
             return t;
         if (pickedFallback)
@@ -209,8 +188,7 @@ void ProjectImporter::markKitAsTemporary(Kit *k) const
     UpdateGuard guard(*this);
 
     const QString name = k->displayName();
-    k->setUnexpandedDisplayName(QCoreApplication::translate("ProjectExplorer::ProjectImporter",
-                                                  "%1 - temporary").arg(name));
+    k->setUnexpandedDisplayName(Tr::tr("%1 - temporary").arg(name));
 
     k->setValue(KIT_TEMPORARY_NAME, k->displayName());
     k->setValue(KIT_FINAL_NAME, name);
@@ -234,12 +212,13 @@ void ProjectImporter::makePersistent(Kit *k) const
     k->removeKey(KIT_TEMPORARY_NAME);
     k->removeKey(KIT_FINAL_NAME);
 
-    foreach (const TemporaryInformationHandler &tih, m_temporaryHandlers) {
+    for (const TemporaryInformationHandler &tih : std::as_const(m_temporaryHandlers)) {
         const Utils::Id fid = fullId(tih.id);
         const QVariantList temporaryValues = k->value(fid).toList();
 
         // Mark permanent in all other kits:
-        foreach (Kit *ok, KitManager::kits()) {
+        const QList<Kit *> kits = KitManager::kits();
+        for (Kit *ok : kits) {
             if (ok == k || !ok->hasValue(fid))
                 continue;
             const QVariantList otherTemporaryValues
@@ -258,7 +237,7 @@ void ProjectImporter::makePersistent(Kit *k) const
 void ProjectImporter::cleanupKit(Kit *k) const
 {
     QTC_ASSERT(k, return);
-    foreach (const TemporaryInformationHandler &tih, m_temporaryHandlers) {
+    for (const TemporaryInformationHandler &tih : std::as_const(m_temporaryHandlers)) {
         const Utils::Id fid = fullId(tih.id);
         const QVariantList temporaryValues
                 = Utils::filtered(k->value(fid).toList(), [fid, k](const QVariant &v) {
@@ -316,8 +295,7 @@ Kit *ProjectImporter::createTemporaryKit(const KitSetupFunction &setup) const
     UpdateGuard guard(*this);
     const auto init = [&](Kit *k) {
         KitGuard kitGuard(k);
-        k->setUnexpandedDisplayName(QCoreApplication::translate("ProjectExplorer::ProjectImporter",
-                                                                "Imported Kit"));
+        k->setUnexpandedDisplayName(Tr::tr("Imported Kit"));
         k->setup();
         setup(k);
         k->fix();
@@ -397,7 +375,7 @@ static ProjectImporter::ToolChainData createToolChains(const ToolChainDescriptio
         if (data.tcs.isEmpty())
             continue;
 
-        for (ToolChain *tc : qAsConst(data.tcs))
+        for (ToolChain *tc : std::as_const(data.tcs))
             ToolChainManager::registerToolChain(tc);
 
         data.areTemporary = true;
@@ -412,11 +390,9 @@ ProjectImporter::findOrCreateToolChains(const ToolChainDescription &tcd) const
 {
     ToolChainData result;
     result.tcs = ToolChainManager::toolchains([&tcd](const ToolChain *tc) {
-        return tc->language() == tcd.language &&
-               Utils::Environment::systemEnvironment().isSameExecutable(
-                    tc->compilerCommand().toString(), tcd.compilerPath.toString());
+        return tc->language() == tcd.language && tc->matchesCompilerCommand(tcd.compilerPath);
     });
-    for (const ToolChain *tc : qAsConst(result.tcs)) {
+    for (const ToolChain *tc : std::as_const(result.tcs)) {
         const QByteArray tcId = tc->id();
         result.areTemporary = result.areTemporary ? true : hasKitWithTemporaryData(ToolChainKitAspect::id(), tcId);
     }

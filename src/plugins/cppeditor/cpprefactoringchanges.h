@@ -1,31 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "cppeditor_global.h"
+
+#include "cppmodelmanager.h"
+#include "cppworkingcopy.h"
 
 #include <cplusplus/CppDocument.h>
 
@@ -77,6 +58,26 @@ protected:
     mutable CPlusPlus::Document::Ptr m_cppDocument;
 
     friend class CppRefactoringChanges; // for access to constructor
+};
+
+class CPPEDITOR_EXPORT CppRefactoringChangesData : public TextEditor::RefactoringChangesData
+{
+public:
+    explicit CppRefactoringChangesData(const CPlusPlus::Snapshot &snapshot);
+
+    void indentSelection(const QTextCursor &selection,
+                         const Utils::FilePath &filePath,
+                         const TextEditor::TextDocument *textDocument) const override;
+
+    void reindentSelection(const QTextCursor &selection,
+                           const Utils::FilePath &filePath,
+                           const TextEditor::TextDocument *textDocument) const override;
+
+    void fileChanged(const Utils::FilePath &filePath) override;
+
+    CPlusPlus::Snapshot m_snapshot;
+    CppModelManager *m_modelManager;
+    WorkingCopy m_workingCopy;
 };
 
 class CPPEDITOR_EXPORT CppRefactoringChanges: public TextEditor::RefactoringChanges

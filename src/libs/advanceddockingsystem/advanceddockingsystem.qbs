@@ -14,6 +14,7 @@ QtcLibrary {
         name: "General"
         files: [
             "ads_globals.cpp", "ads_globals.h",
+            "advanceddockingsystemtr.h",
             "dockareatabbar.cpp", "dockareatabbar.h",
             "dockareatitlebar.cpp", "dockareatitlebar.h",
             "dockareawidget.cpp", "dockareawidget.h",
@@ -33,7 +34,6 @@ QtcLibrary {
             "workspacedialog.cpp", "workspacedialog.h",
             "workspacemodel.cpp", "workspacemodel.h",
             "workspaceview.cpp", "workspaceview.h",
-            "workspacedialog.ui"
         ]
     }
 

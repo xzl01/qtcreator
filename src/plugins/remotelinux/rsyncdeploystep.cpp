@@ -1,210 +1,145 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rsyncdeploystep.h"
 
-#include "abstractremotelinuxdeployservice.h"
+#include "abstractremotelinuxdeploystep.h"
 #include "remotelinux_constants.h"
+#include "remotelinuxtr.h"
 
 #include <projectexplorer/deploymentdata.h>
+#include <projectexplorer/devicesupport/filetransfer.h>
+#include <projectexplorer/devicesupport/idevice.h>
+#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/runconfigurationaspects.h>
 #include <projectexplorer/target.h>
-#include <ssh/sshconnection.h>
-#include <ssh/sshremoteprocess.h>
-#include <ssh/sshsettings.h>
+
 #include <utils/algorithm.h>
+#include <utils/processinterface.h>
 #include <utils/qtcprocess.h>
 
 using namespace ProjectExplorer;
-using namespace QSsh;
 using namespace Utils;
+using namespace Utils::Tasking;
 
 namespace RemoteLinux {
-namespace Internal {
 
 class RsyncDeployService : public AbstractRemoteLinuxDeployService
 {
-    Q_OBJECT
 public:
-    RsyncDeployService(QObject *parent = nullptr) : AbstractRemoteLinuxDeployService(parent) {}
-
-    void setDeployableFiles(const QList<DeployableFile> &files) { m_deployableFiles = files; }
+    void setDeployableFiles(const QList<DeployableFile> &files);
     void setIgnoreMissingFiles(bool ignore) { m_ignoreMissingFiles = ignore; }
     void setFlags(const QString &flags) { m_flags = flags; }
 
 private:
-    bool isDeploymentNecessary() const override;
+    bool isDeploymentNecessary() const final;
+    Group deployRecipe() final;
+    TaskItem mkdirTask();
+    TaskItem transferTask();
 
-    void doDeploy() override;
-    void stopDeployment() override { setFinished(); };
-
-    void filterDeployableFiles() const;
-    void createRemoteDirectories();
-    void deployFiles();
-    void deployNextFile();
-    void setFinished();
-
-    mutable QList<DeployableFile> m_deployableFiles;
+    mutable FilesToTransfer m_files;
     bool m_ignoreMissingFiles = false;
     QString m_flags;
-    SshProcess m_rsync;
-    SshRemoteProcessPtr m_mkdir;
 };
+
+void RsyncDeployService::setDeployableFiles(const QList<DeployableFile> &files)
+{
+    m_files.clear();
+    for (const DeployableFile &f : files)
+        m_files.append({f.localFilePath(), deviceConfiguration()->filePath(f.remoteFilePath())});
+}
 
 bool RsyncDeployService::isDeploymentNecessary() const
 {
-    filterDeployableFiles();
-    return !m_deployableFiles.empty();
+    if (m_ignoreMissingFiles)
+        Utils::erase(m_files, [](const FileToTransfer &file) { return !file.m_source.exists(); });
+    return !m_files.empty();
 }
 
-void RsyncDeployService::doDeploy()
+TaskItem RsyncDeployService::mkdirTask()
 {
-    createRemoteDirectories();
-}
-
-void RsyncDeployService::filterDeployableFiles() const
-{
-    if (m_ignoreMissingFiles) {
-        Utils::erase(m_deployableFiles, [](const DeployableFile &f) {
-            return !f.localFilePath().exists();
+    const auto setupHandler = [this](QtcProcess &process) {
+        QStringList remoteDirs;
+        for (const FileToTransfer &file : std::as_const(m_files))
+            remoteDirs << file.m_target.parentDir().path();
+        remoteDirs.sort();
+        remoteDirs.removeDuplicates();
+        process.setCommand({deviceConfiguration()->filePath("mkdir"),
+                            QStringList("-p") + remoteDirs});
+        connect(&process, &QtcProcess::readyReadStandardError, this, [this, proc = &process] {
+            emit stdErrData(QString::fromLocal8Bit(proc->readAllRawStandardError()));
         });
-    }
+    };
+    const auto errorHandler = [this](const QtcProcess &process) {
+        QString finalMessage = process.errorString();
+        const QString stdErr = process.cleanedStdErr();
+        if (!stdErr.isEmpty()) {
+            if (!finalMessage.isEmpty())
+                finalMessage += '\n';
+            finalMessage += stdErr;
+        }
+        emit errorMessage(Tr::tr("Deploy via rsync: failed to create remote directories:")
+                          + '\n' + finalMessage);
+    };
+    return Process(setupHandler, {}, errorHandler);
 }
 
-void RsyncDeployService::createRemoteDirectories()
+TaskItem RsyncDeployService::transferTask()
 {
-    QStringList remoteDirs;
-    for (const DeployableFile &f : qAsConst(m_deployableFiles))
-        remoteDirs << f.remoteDirectory();
-    remoteDirs.sort();
-    remoteDirs.removeDuplicates();
-    m_mkdir = connection()->createRemoteProcess("mkdir -p " +
-                                                ProcessArgs::createUnixArgs(remoteDirs).toString());
-    connect(m_mkdir.get(), &SshRemoteProcess::done, this, [this](const QString &error) {
-        QString userError;
-        if (!error.isEmpty())
-            userError = error;
-        if (m_mkdir->exitCode() != 0)
-            userError = QString::fromUtf8(m_mkdir->readAllStandardError());
-        if (!userError.isEmpty()) {
-            emit errorMessage(tr("Failed to create remote directories: %1").arg(userError));
-            setFinished();
-            return;
+    const auto setupHandler = [this](FileTransfer &transfer) {
+        transfer.setTransferMethod(FileTransferMethod::Rsync);
+        transfer.setRsyncFlags(m_flags);
+        transfer.setFilesToTransfer(m_files);
+        connect(&transfer, &FileTransfer::progress,
+                this, &AbstractRemoteLinuxDeployService::stdOutData);
+    };
+    const auto errorHandler = [this](const FileTransfer &transfer) {
+        const ProcessResultData result = transfer.resultData();
+        if (result.m_error == QProcess::FailedToStart) {
+            emit errorMessage(Tr::tr("rsync failed to start: %1").arg(result.m_errorString));
+        } else if (result.m_exitStatus == QProcess::CrashExit) {
+            emit errorMessage(Tr::tr("rsync crashed."));
+        } else if (result.m_exitCode != 0) {
+            emit errorMessage(Tr::tr("rsync failed with exit code %1.").arg(result.m_exitCode)
+                + "\n" + result.m_errorString);
         }
-        deployFiles();
-    });
-    m_mkdir->start();
+    };
+    return Transfer(setupHandler, {}, errorHandler);
 }
 
-void RsyncDeployService::deployFiles()
+Group RsyncDeployService::deployRecipe()
 {
-    connect(&m_rsync, &QtcProcess::readyReadStandardOutput, this, [this] {
-        emit progressMessage(QString::fromLocal8Bit(m_rsync.readAllStandardOutput()));
-    });
-    connect(&m_rsync, &QtcProcess::readyReadStandardError, this, [this] {
-        emit warningMessage(QString::fromLocal8Bit(m_rsync.readAllStandardError()));
-    });
-    connect(&m_rsync, &QtcProcess::errorOccurred, this, [this] {
-        if (m_rsync.error() == QProcess::FailedToStart) {
-            emit errorMessage(tr("rsync failed to start: %1").arg(m_rsync.errorString()));
-            setFinished();
-        }
-    });
-    connect(&m_rsync, &QtcProcess::finished, this, [this] {
-        if (m_rsync.exitStatus() == QProcess::CrashExit) {
-            emit errorMessage(tr("rsync crashed."));
-            setFinished();
-            return;
-        }
-        if (m_rsync.exitCode() != 0) {
-            emit errorMessage(tr("rsync failed with exit code %1.").arg(m_rsync.exitCode()));
-            setFinished();
-            return;
-        }
-        deployNextFile();
-    });
-    deployNextFile();
+    return Group { mkdirTask(), transferTask() };
 }
 
-void RsyncDeployService::deployNextFile()
+// RsyncDeployStep
+
+RsyncDeployStep::RsyncDeployStep(BuildStepList *bsl, Id id)
+        : AbstractRemoteLinuxDeployStep(bsl, id)
 {
-    if (m_deployableFiles.empty()) {
-        setFinished();
-        return;
-    }
-    const DeployableFile file = m_deployableFiles.takeFirst();
-    const RsyncCommandLine cmdLine = RsyncDeployStep::rsyncCommand(*connection(), m_flags);
-    QString localFilePath = file.localFilePath().toString();
-
-    // On Windows, rsync is either from msys or cygwin. Neither work with the other's ssh.exe.
-    if (HostOsInfo::isWindowsHost()) {
-        localFilePath = '/' + localFilePath.at(0) + localFilePath.mid(2);
-        if (anyOf(cmdLine.options, [](const QString &opt) {
-                return opt.contains("cygwin", Qt::CaseInsensitive); })) {
-            localFilePath.prepend("/cygdrive");
-        }
-    }
-
-    const QStringList args = QStringList(cmdLine.options)
-            << (localFilePath + (file.localFilePath().isDir() ? "/" : QString()))
-            << (cmdLine.remoteHostSpec + ':' + file.remoteFilePath());
-    m_rsync.setCommand(CommandLine("rsync", args));
-    m_rsync.start(); // TODO: Get rsync location from settings?
-}
-
-void RsyncDeployService::setFinished()
-{
-    if (m_mkdir) {
-        m_mkdir->disconnect();
-        m_mkdir->kill();
-    }
-    m_rsync.disconnect();
-    m_rsync.kill();
-    handleDeploymentDone();
-}
-
-} // namespace Internal
-
-RsyncDeployStep::RsyncDeployStep(BuildStepList *bsl, Utils::Id id)
-    : AbstractRemoteLinuxDeployStep(bsl, id)
-{
-    auto service = createDeployService<Internal::RsyncDeployService>();
+    auto service = new RsyncDeployService;
+    setDeployService(service);
 
     auto flags = addAspect<StringAspect>();
     flags->setDisplayStyle(StringAspect::LineEditDisplay);
     flags->setSettingsKey("RemoteLinux.RsyncDeployStep.Flags");
-    flags->setLabelText(tr("Flags:"));
-    flags->setValue(defaultFlags());
+    flags->setLabelText(Tr::tr("Flags:"));
+    flags->setValue(FileTransferSetupData::defaultRsyncFlags());
 
     auto ignoreMissingFiles = addAspect<BoolAspect>();
     ignoreMissingFiles->setSettingsKey("RemoteLinux.RsyncDeployStep.IgnoreMissingFiles");
-    ignoreMissingFiles->setLabel(tr("Ignore missing files:"),
+    ignoreMissingFiles->setLabel(Tr::tr("Ignore missing files:"),
                                  BoolAspect::LabelPlacement::InExtraLabel);
     ignoreMissingFiles->setValue(false);
 
-    setInternalInitializer([service, flags, ignoreMissingFiles] {
+    setInternalInitializer([this, service, flags, ignoreMissingFiles] {
+        if (BuildDeviceKitAspect::device(kit()) == DeviceKitAspect::device(kit())) {
+            // rsync transfer on the same device currently not implemented
+            // and typically not wanted.
+            return CheckResult::failure(
+                Tr::tr("rsync is only supported for transfers between different devices."));
+        }
         service->setIgnoreMissingFiles(ignoreMissingFiles->value());
         service->setFlags(flags->value());
         return service->isDeploymentPossible();
@@ -224,25 +159,7 @@ Utils::Id RsyncDeployStep::stepId()
 
 QString RsyncDeployStep::displayName()
 {
-    return tr("Deploy files via rsync");
+    return Tr::tr("Deploy files via rsync");
 }
 
-QString RsyncDeployStep::defaultFlags()
-{
-    return QString("-av");
-}
-
-RsyncCommandLine RsyncDeployStep::rsyncCommand(const SshConnection &sshConnection,
-                                               const QString &flags)
-{
-    const QString sshCmdLine = ProcessArgs::joinArgs(
-                QStringList{SshSettings::sshFilePath().toUserOutput()}
-                << sshConnection.connectionOptions(SshSettings::sshFilePath()), OsTypeLinux);
-    const SshConnectionParameters sshParams = sshConnection.connectionParameters();
-    return RsyncCommandLine(QStringList{"-e", sshCmdLine, flags},
-                            sshParams.userName() + '@' + sshParams.host());
-}
-
-} //namespace RemoteLinux
-
-#include <rsyncdeploystep.moc>
+} // RemoteLinux

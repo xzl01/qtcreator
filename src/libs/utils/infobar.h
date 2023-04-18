@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "id.h"
 #include "utils_global.h"
 
-#include <QFrame>
+#include "id.h"
+
 #include <QObject>
 #include <QSet>
+#include <QVariant>
 
 #include <functional>
 
@@ -54,14 +33,24 @@ public:
         Enabled
     };
 
+    InfoBarEntry() = default;
     InfoBarEntry(Id _id, const QString &_infoText, GlobalSuppression _globalSuppression = GlobalSuppression::Disabled);
 
+    Id id() const;
+    QString text() const;
+
     using CallBack = std::function<void()>;
-    void addCustomButton(const QString &_buttonText, CallBack callBack);
+    void addCustomButton(const QString &_buttonText, CallBack callBack, const QString &tooltip = {});
     void setCancelButtonInfo(CallBack callBack);
     void setCancelButtonInfo(const QString &_cancelButtonText, CallBack callBack);
-    using ComboCallBack = std::function<void(const QString &)>;
-    void setComboInfo(const QStringList &list, ComboCallBack callBack);
+    struct ComboInfo
+    {
+        QString displayText;
+        QVariant data;
+    };
+    using ComboCallBack = std::function<void(const ComboInfo &)>;
+    void setComboInfo(const QStringList &list, ComboCallBack callBack, const QString &tooltip = {}, int currentIndex = -1);
+    void setComboInfo(const QList<ComboInfo> &infos, ComboCallBack callBack, const QString &tooltip = {}, int currentIndex = -1);
     void removeCancelButton();
 
     using DetailsWidgetCreator = std::function<QWidget*()>;
@@ -72,6 +61,15 @@ private:
     {
         QString text;
         CallBack callback;
+        QString tooltip;
+    };
+
+    struct Combo
+    {
+        ComboCallBack callback;
+        QList<ComboInfo> entries;
+        QString tooltip;
+        int currentIndex = -1;
     };
 
     Id m_id;
@@ -79,11 +77,10 @@ private:
     QList<Button> m_buttons;
     QString m_cancelButtonText;
     CallBack m_cancelButtonCallBack;
-    GlobalSuppression m_globalSuppression;
+    GlobalSuppression m_globalSuppression = GlobalSuppression::Disabled;
     DetailsWidgetCreator m_detailsWidgetCreator;
     bool m_useCancelButton = true;
-    ComboCallBack m_comboCallBack;
-    QStringList m_comboInfo;
+    Combo m_combo;
     friend class InfoBar;
     friend class InfoBarDisplay;
 };
@@ -106,6 +103,7 @@ public:
     static bool anyGloballySuppressed();
 
     static void initialize(QSettings *settings);
+    static QSettings *settings();
 
 signals:
     void changed();
@@ -138,7 +136,6 @@ public:
 private:
     void update();
     void infoBarDestroyed();
-    void widgetDestroyed();
 
     QList<QWidget *> m_infoWidgets;
     InfoBar *m_infoBar = nullptr;

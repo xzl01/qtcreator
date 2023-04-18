@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -32,8 +10,7 @@
 
 #include <utils/aspects.h>
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 class SourcePathMapAspectPrivate;
 
@@ -53,7 +30,7 @@ public:
     void fromMap(const QVariantMap &map) override;
     void toMap(QVariantMap &map) const override;
 
-    void addToLayout(Utils::LayoutBuilder &builder) override;
+    void addToLayout(Utils::Layouting::LayoutBuilder &builder) override;
 
     QVariant volatileValue() const override;
     void setVolatileValue(const QVariant &val) override;
@@ -75,8 +52,6 @@ class GeneralSettings
 
 class DebuggerSettings
 {
-    Q_DECLARE_TR_FUNCTIONS(Debugger::Internal::DebuggerSettings)
-
 public:
     explicit DebuggerSettings();
     ~DebuggerSettings();
@@ -188,7 +163,6 @@ public:
     Utils::AspectContainer all; // All
     Utils::AspectContainer page1; // General
     Utils::AspectContainer page2; // GDB
-    Utils::AspectContainer page3; // GDB Extended
     Utils::AspectContainer page4; // Locals & Expressions
     Utils::AspectContainer page5; // CDB
     Utils::AspectContainer page6; // CDB Paths
@@ -203,9 +177,6 @@ private:
 
 DebuggerSettings *debuggerSettings();
 
-///////////////////////////////////////////////////////////
-
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal
 
 Q_DECLARE_METATYPE(Debugger::Internal::SourcePathMap)

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jochen Becher
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Jochen Becher
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "classviewcontroller.h"
 
@@ -30,6 +8,7 @@
 #include <cplusplus/Overview.h>
 #include <cplusplus/LookupContext.h>
 
+using namespace Utils;
 namespace ModelEditor {
 namespace Internal {
 
@@ -38,7 +17,7 @@ ClassViewController::ClassViewController(QObject *parent)
 {
 }
 
-QSet<QString> ClassViewController::findClassDeclarations(const QString &fileName, int line, int column)
+QSet<QString> ClassViewController::findClassDeclarations(const FilePath &filePath, int line, int column)
 {
     QSet<QString> classNames;
 
@@ -46,15 +25,15 @@ QSet<QString> ClassViewController::findClassDeclarations(const QString &fileName
     CPlusPlus::Snapshot snapshot = cppModelManager->snapshot();
 
     // scan original file
-    CPlusPlus::Document::Ptr document = snapshot.document(fileName);
+    CPlusPlus::Document::Ptr document = snapshot.document(filePath);
     if (!document.isNull())
         appendClassDeclarationsFromDocument(document, line, column, &classNames);
 
     if (line <= 0) {
-        QString otherFileName = CppEditor::correspondingHeaderOrSource(fileName);
+        const FilePath otherFilePath = CppEditor::correspondingHeaderOrSource(filePath);
 
         // scan other file
-        document = snapshot.document(otherFileName);
+        document = snapshot.document(otherFilePath);
         if (!document.isNull())
             appendClassDeclarationsFromDocument(document, -1, -1, &classNames);
     }
@@ -76,7 +55,7 @@ void ClassViewController::appendClassDeclarationsFromSymbol(CPlusPlus::Symbol *s
                                                             int line, int column,
                                                             QSet<QString> *classNames)
 {
-    if (symbol->isClass()
+    if (symbol->asClass()
             && (line <= 0 || (symbol->line() == line && symbol->column() == column + 1)))
     {
         CPlusPlus::Overview overview;
@@ -87,7 +66,7 @@ void ClassViewController::appendClassDeclarationsFromSymbol(CPlusPlus::Symbol *s
             classNames->insert(className);
     }
 
-    if (symbol->isScope()) {
+    if (symbol->asScope()) {
         CPlusPlus::Scope *scope = symbol->asScope();
         int total = scope->memberCount();
         for (int i = 0; i < total; ++i) {

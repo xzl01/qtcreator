@@ -1,34 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "iosconfigurations.h"
+
 #include "iosconstants.h"
 #include "iosdevice.h"
-#include "iossimulator.h"
-#include "simulatorcontrol.h"
 #include "iosprobe.h"
+#include "iossimulator.h"
+#include "iostr.h"
+#include "simulatorcontrol.h"
 
 #include <coreplugin/icore.h>
 
@@ -100,7 +80,7 @@ const char profileTeamIdTag[] = "TeamIdentifier";
 static const QString xcodePlistPath = QDir::homePath() + "/Library/Preferences/com.apple.dt.Xcode.plist";
 static const QString provisioningProfileDirPath = QDir::homePath() + "/Library/MobileDevice/Provisioning Profiles";
 
-static Utils::Id deviceId(const QString &sdkName)
+static Id deviceId(const QString &sdkName)
 {
     if (sdkName.startsWith("iphoneos", Qt::CaseInsensitive))
         return Constants::IOS_DEVICE_TYPE;
@@ -109,7 +89,7 @@ static Utils::Id deviceId(const QString &sdkName)
     return {};
 }
 
-static bool isSimulatorDeviceId(const Utils::Id &id)
+static bool isSimulatorDeviceId(const Id &id)
 {
     return id == Constants::IOS_SIMULATOR_TYPE;
 }
@@ -126,7 +106,7 @@ static QList<ClangToolChain *> clangToolChains(const Toolchains &toolChains)
 static QList<ClangToolChain *> autoDetectedIosToolChains()
 {
     const QList<ClangToolChain *> toolChains = clangToolChains(ToolChainManager::toolchains());
-    return Utils::filtered(toolChains, [](ClangToolChain *toolChain) {
+    return filtered(toolChains, [](ClangToolChain *toolChain) {
         return toolChain->isAutoDetected()
                && (toolChain->displayName().startsWith("iphone")
                    || toolChain->displayName().startsWith("Apple Clang")); // TODO tool chains should be marked directly
@@ -138,15 +118,15 @@ static ToolChainPair findToolChainForPlatform(const XcodePlatform &platform,
                                               const QList<ClangToolChain *> &toolChains)
 {
     ToolChainPair platformToolChains;
-    auto toolchainMatch = [](ClangToolChain *toolChain, const Utils::FilePath &compilerPath, const QStringList &flags) {
+    auto toolchainMatch = [](ClangToolChain *toolChain, const FilePath &compilerPath, const QStringList &flags) {
         return compilerPath == toolChain->compilerCommand()
                 && flags == toolChain->platformCodeGenFlags()
                 && flags == toolChain->platformLinkerFlags();
     };
-    platformToolChains.first = Utils::findOrDefault(toolChains, std::bind(toolchainMatch, std::placeholders::_1,
+    platformToolChains.first = findOrDefault(toolChains, std::bind(toolchainMatch, std::placeholders::_1,
                                                                   platform.cCompilerPath,
                                                                   target.backendFlags));
-    platformToolChains.second = Utils::findOrDefault(toolChains, std::bind(toolchainMatch, std::placeholders::_1,
+    platformToolChains.second = findOrDefault(toolChains, std::bind(toolchainMatch, std::placeholders::_1,
                                                                    platform.cxxCompilerPath,
                                                                    target.backendFlags));
     return platformToolChains;
@@ -169,8 +149,8 @@ static QHash<XcodePlatform::ToolchainTarget, ToolChainPair> findToolChains(const
 
 static QSet<Kit *> existingAutoDetectedIosKits()
 {
-    return Utils::toSet(Utils::filtered(KitManager::kits(), [](Kit *kit) -> bool {
-        Utils::Id deviceKind = DeviceTypeKitAspect::deviceTypeId(kit);
+    return toSet(filtered(KitManager::kits(), [](Kit *kit) -> bool {
+        Id deviceKind = DeviceTypeKitAspect::deviceTypeId(kit);
         return kit->isAutoDetected() && (deviceKind == Constants::IOS_DEVICE_TYPE
                                          || deviceKind == Constants::IOS_SIMULATOR_TYPE);
     }));
@@ -178,12 +158,12 @@ static QSet<Kit *> existingAutoDetectedIosKits()
 
 static void printKits(const QSet<Kit *> &kits)
 {
-    foreach (const Kit *kit, kits)
+    for (const Kit *kit : kits)
         qCDebug(kitSetupLog) << "  -" << kit->displayName();
 }
 
-static void setupKit(Kit *kit, Utils::Id pDeviceType, const ToolChainPair& toolChains,
-                     const QVariant &debuggerId, const Utils::FilePath &sdkPath, QtVersion *qtVersion)
+static void setupKit(Kit *kit, Id pDeviceType, const ToolChainPair& toolChains,
+                     const QVariant &debuggerId, const FilePath &sdkPath, QtVersion *qtVersion)
 {
     DeviceTypeKitAspect::setDeviceTypeId(kit, pDeviceType);
     if (toolChains.first)
@@ -214,7 +194,7 @@ static void setupKit(Kit *kit, Utils::Id pDeviceType, const ToolChainPair& toolC
     SysRootKitAspect::setSysRoot(kit, sdkPath);
 }
 
-static QVersionNumber findXcodeVersion(const Utils::FilePath &developerPath)
+static QVersionNumber findXcodeVersion(const FilePath &developerPath)
 {
     const FilePath xcodeInfo = developerPath.parentDir().pathAppended("Info.plist");
     if (xcodeInfo.exists()) {
@@ -231,14 +211,14 @@ static QByteArray decodeProvisioningProfile(const QString &path)
 {
     QTC_ASSERT(!path.isEmpty(), return QByteArray());
 
-    Utils::QtcProcess p;
+    QtcProcess p;
     p.setTimeoutS(3);
     // path is assumed to be valid file path to .mobileprovision
     p.setCommand({"openssl", {"smime", "-inform", "der", "-verify", "-in", path}});
     p.runBlocking();
-    if (p.result() != Utils::QtcProcess::FinishedWithSuccess)
+    if (p.result() != ProcessResult::FinishedWithSuccess)
         qCDebug(iosCommonLog) << "Reading signed provisioning file failed" << path;
-    return p.stdOut().toLatin1();
+    return p.cleanedStdOut().toLatin1();
 }
 
 void IosConfigurations::updateAutomaticKitList()
@@ -251,7 +231,7 @@ void IosConfigurations::updateAutomaticKitList()
     // target -> tool chain
     const auto targetToolChainHash = findToolChains(platforms);
 
-    const auto qtVersions = Utils::toSet(QtVersionManager::versions([](const QtVersion *v) {
+    const auto qtVersions = toSet(QtVersionManager::versions([](const QtVersion *v) {
         return v->isValid() && v->type() == Constants::IOSQT;
     }));
 
@@ -264,8 +244,8 @@ void IosConfigurations::updateAutomaticKitList()
     QSet<Kit *> resultingKits;
     for (const XcodePlatform &platform : platforms) {
         for (const auto &sdk : platform.sdks) {
-            const auto targets = Utils::filtered(platform.targets,
-                                           [&sdk](const XcodePlatform::ToolchainTarget &target) {
+            const auto targets = filtered(platform.targets,
+                                          [&sdk](const XcodePlatform::ToolchainTarget &target) {
                  return sdk.architectures.first() == target.architecture;
             });
             if (targets.empty())
@@ -278,7 +258,7 @@ void IosConfigurations::updateAutomaticKitList()
                 qCDebug(kitSetupLog) << "  - No tool chain found";
                 continue;
             }
-            Utils::Id pDeviceType = deviceId(sdk.directoryName);
+            Id pDeviceType = deviceId(sdk.directoryName);
             if (!pDeviceType.isValid()) {
                 qCDebug(kitSetupLog) << "Unsupported/Invalid device type" << sdk.directoryName;
                 continue;
@@ -286,7 +266,7 @@ void IosConfigurations::updateAutomaticKitList()
 
             for (QtVersion *qtVersion : qtVersions) {
                 qCDebug(kitSetupLog) << "  - Qt version:" << qtVersion->displayName();
-                Kit *kit = Utils::findOrDefault(existingKits, [&pDeviceType, &platformToolchains, &qtVersion](const Kit *kit) {
+                Kit *kit = findOrDefault(existingKits, [&pDeviceType, &platformToolchains, &qtVersion](const Kit *kit) {
                     // we do not compare the sdk (thus automatically upgrading it in place if a
                     // new Xcode is used). Change?
                     return DeviceTypeKitAspect::deviceTypeId(kit) == pDeviceType
@@ -305,7 +285,7 @@ void IosConfigurations::updateAutomaticKitList()
                     const auto init = [&](Kit *k) {
                         k->setAutoDetected(true);
                         const QString baseDisplayName = isSimulatorDeviceId(pDeviceType)
-                                ? tr("%1 Simulator").arg(qtVersion->unexpandedDisplayName())
+                                ? Tr::tr("%1 Simulator").arg(qtVersion->unexpandedDisplayName())
                                 : qtVersion->unexpandedDisplayName();
                         k->setUnexpandedDisplayName(baseDisplayName);
                         setupKit(k, pDeviceType, platformToolchains, debuggerId, sdk.path, qtVersion);
@@ -320,7 +300,7 @@ void IosConfigurations::updateAutomaticKitList()
     existingKits.subtract(resultingKits);
     qCDebug(kitSetupLog) << "Removing unused kits:";
     printKits(existingKits);
-    foreach (Kit *kit, existingKits)
+    for (Kit *kit : std::as_const(existingKits))
         KitManager::deregisterKit(kit);
 }
 
@@ -418,7 +398,7 @@ void IosConfigurations::updateSimulators()
 {
     // currently we have just one simulator
     DeviceManager *devManager = DeviceManager::instance();
-    Utils::Id devId = Constants::IOS_SIMULATOR_DEVICE_ID;
+    Id devId = Constants::IOS_SIMULATOR_DEVICE_ID;
     IDevice::ConstPtr dev = devManager->find(devId);
     if (dev.isNull()) {
         dev = IDevice::ConstPtr(new IosSimulator(devId));
@@ -492,11 +472,11 @@ void IosConfigurations::loadProvisioningData(bool notify)
     }
 
     // Sort team id's to move the free provisioning teams at last of the list.
-    Utils::sort(teams, [](const QVariantMap &teamInfo1, const QVariantMap &teamInfo2) {
+    sort(teams, [](const QVariantMap &teamInfo1, const QVariantMap &teamInfo2) {
         return teamInfo1.value(freeTeamTag).toInt() < teamInfo2.value(freeTeamTag).toInt();
     });
 
-    foreach (auto teamInfo, teams) {
+    for (auto teamInfo : std::as_const(teams)) {
         auto team = std::make_shared<DevelopmentTeam>();
         team->m_name = teamInfo.value(teamNameTag).toString();
         team->m_email = teamInfo.value(emailTag).toString();
@@ -507,7 +487,10 @@ void IosConfigurations::loadProvisioningData(bool notify)
 
     const QDir provisioningProflesDir(provisioningProfileDirPath);
     const QStringList filters = {"*.mobileprovision"};
-    foreach (QFileInfo fileInfo, provisioningProflesDir.entryInfoList(filters, QDir::NoDotAndDotDot | QDir::Files)) {
+    const QList<QFileInfo> fileInfos = provisioningProflesDir.entryInfoList(filters,
+                                                                            QDir::NoDotAndDotDot
+                                                                                | QDir::Files);
+    for (const QFileInfo &fileInfo : fileInfos) {
         QDomDocument provisioningDoc;
         auto profile = std::make_shared<ProvisioningProfile>();
         QString teamID;
@@ -564,7 +547,7 @@ DevelopmentTeamPtr IosConfigurations::developmentTeam(const QString &teamID)
     QTC_CHECK(m_instance);
     m_instance->initializeProvisioningData();
     return findOrDefault(m_instance->m_developerTeams,
-                         Utils::equal(&DevelopmentTeam::identifier, teamID));
+                         equal(&DevelopmentTeam::identifier, teamID));
 }
 
 const ProvisioningProfiles &IosConfigurations::provisioningProfiles()
@@ -578,8 +561,8 @@ ProvisioningProfilePtr IosConfigurations::provisioningProfile(const QString &pro
 {
     QTC_CHECK(m_instance);
     m_instance->initializeProvisioningData();
-    return Utils::findOrDefault(m_instance->m_provisioningProfiles,
-                                Utils::equal(&ProvisioningProfile::identifier, profileID));
+    return findOrDefault(m_instance->m_provisioningProfiles,
+                                equal(&ProvisioningProfile::identifier, profileID));
 }
 
 IosToolChainFactory::IosToolChainFactory()
@@ -590,6 +573,9 @@ IosToolChainFactory::IosToolChainFactory()
 
 Toolchains IosToolChainFactory::autoDetect(const ToolchainDetector &detector) const
 {
+    if (detector.device)
+        return {};
+
     QList<ClangToolChain *> existingClangToolChains = clangToolChains(detector.alreadyKnown);
     const QList<XcodePlatform> platforms = XcodeProbe::detectPlatforms().values();
     Toolchains toolChains;
@@ -598,9 +584,10 @@ Toolchains IosToolChainFactory::autoDetect(const ToolchainDetector &detector) co
         for (const XcodePlatform::ToolchainTarget &target : platform.targets) {
             ToolChainPair platformToolchains = findToolChainForPlatform(platform, target,
                                                                         existingClangToolChains);
-            auto createOrAdd = [&](ClangToolChain *toolChain, Utils::Id l) {
+            auto createOrAdd = [&](ClangToolChain *toolChain, Id l) {
                 if (!toolChain) {
                     toolChain = new ClangToolChain;
+                    toolChain->setPriority(ToolChain::PriorityHigh);
                     toolChain->setDetection(ToolChain::AutoDetection);
                     toolChain->setLanguage(l);
                     toolChain->setDisplayName(target.name);
@@ -632,15 +619,15 @@ QString DevelopmentTeam::displayName() const
 
 QString DevelopmentTeam::details() const
 {
-    return tr("%1 - Free Provisioning Team : %2")
-            .arg(m_identifier).arg(m_freeTeam ? tr("Yes") : tr("No"));
+    return Tr::tr("%1 - Free Provisioning Team : %2")
+            .arg(m_identifier).arg(m_freeTeam ? Tr::tr("Yes") : Tr::tr("No"));
 }
 
 QDebug &operator<<(QDebug &stream, DevelopmentTeamPtr team)
 {
     QTC_ASSERT(team, return stream);
     stream << team->displayName() << team->identifier() << team->isFreeProfile();
-    foreach (auto profile, team->m_profiles)
+    for (const auto &profile : std::as_const(team->m_profiles))
         stream << "Profile:" << profile;
     return stream;
 }
@@ -657,7 +644,7 @@ QString ProvisioningProfile::displayName() const
 
 QString ProvisioningProfile::details() const
 {
-    return tr("Team: %1\nApp ID: %2\nExpiration date: %3").arg(m_team->identifier()).arg(m_appID)
+    return Tr::tr("Team: %1\nApp ID: %2\nExpiration date: %3").arg(m_team->identifier()).arg(m_appID)
             .arg(QLocale::system().toString(m_expirationDate.toLocalTime(), QLocale::ShortFormat));
 }
 

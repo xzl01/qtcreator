@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "protocol.h"
+
+#include "cpastertr.h"
 
 #include <utils/networkaccessmanager.h>
 
@@ -35,18 +15,18 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/dialogs/ioptionspage.h>
 
+#include <QApplication>
+#include <QDebug>
+#include <QMessageBox>
 #include <QNetworkCookie>
 #include <QNetworkCookieJar>
-#include <QNetworkRequest>
 #include <QNetworkReply>
-
+#include <QNetworkRequest>
+#include <QPushButton>
 #include <QUrl>
-#include <QDebug>
 #include <QVariant>
 
-#include <QMessageBox>
-#include <QApplication>
-#include <QPushButton>
+#include <memory>
 
 namespace CodePaster {
 
@@ -160,7 +140,7 @@ bool Protocol::showConfigurationError(const Protocol *p,
 
     if (!parent)
         parent = Core::ICore::dialogParent();
-    const QString title = tr("%1 - Configuration Error").arg(p->name());
+    const QString title = Tr::tr("%1 - Configuration Error").arg(p->name());
     QMessageBox mb(QMessageBox::Warning, title, message, QMessageBox::Cancel, parent);
     QPushButton *settingsButton = nullptr;
     if (showConfig)
@@ -215,19 +195,19 @@ bool NetworkProtocol::httpStatus(QString url, QString *errorMessage, bool useHtt
         url.prepend(useHttps ? httpsPrefix : httpPrefix);
         url.append(QLatin1Char('/'));
     }
-    QScopedPointer<QNetworkReply> reply(httpGet(url));
+    std::unique_ptr<QNetworkReply> reply(httpGet(url));
     QMessageBox box(QMessageBox::Information,
-                    tr("Checking connection"),
-                    tr("Connecting to %1...").arg(url),
+                    Tr::tr("Checking connection"),
+                    Tr::tr("Connecting to %1...").arg(url),
                     QMessageBox::Cancel,
                     Core::ICore::dialogParent());
-    connect(reply.data(), &QNetworkReply::finished, &box, &QWidget::close);
+    connect(reply.get(), &QNetworkReply::finished, &box, &QWidget::close);
     QApplication::setOverrideCursor(Qt::WaitCursor);
     box.exec();
     QApplication::restoreOverrideCursor();
     // User canceled, discard and be happy.
     if (!reply->isFinished()) {
-        QNetworkReply *replyPtr = reply.take();
+        QNetworkReply *replyPtr = reply.release();
         connect(replyPtr, &QNetworkReply::finished, replyPtr, &QNetworkReply::deleteLater);
         return false;
     }
@@ -239,4 +219,4 @@ bool NetworkProtocol::httpStatus(QString url, QString *errorMessage, bool useHtt
     return false;
 }
 
-} //namespace CodePaster
+} // CodePaster

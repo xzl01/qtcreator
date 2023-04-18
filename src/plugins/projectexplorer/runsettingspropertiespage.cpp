@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "runsettingspropertiespage.h"
 
@@ -30,6 +8,7 @@
 #include "buildstepspage.h"
 #include "deployconfiguration.h"
 #include "projectconfigurationmodel.h"
+#include "projectexplorertr.h"
 #include "runconfiguration.h"
 #include "session.h"
 #include "target.h"
@@ -61,9 +40,9 @@ RunSettingsWidget::RunSettingsWidget(Target *target) :
     Q_ASSERT(m_target);
 
     m_deployConfigurationCombo = new QComboBox(this);
-    m_addDeployToolButton = new QPushButton(tr("Add"), this);
-    m_removeDeployToolButton = new QPushButton(tr("Remove"), this);
-    m_renameDeployButton = new QPushButton(tr("Rename..."), this);
+    m_addDeployToolButton = new QPushButton(Tr::tr("Add"), this);
+    m_removeDeployToolButton = new QPushButton(Tr::tr("Remove"), this);
+    m_renameDeployButton = new QPushButton(Tr::tr("Rename..."), this);
 
     auto deployWidget = new QWidget(this);
 
@@ -71,20 +50,20 @@ RunSettingsWidget::RunSettingsWidget(Target *target) :
     m_runConfigurationCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_runConfigurationCombo->setMinimumContentsLength(15);
 
-    m_addRunToolButton = new QPushButton(tr("Add..."), this);
-    m_removeRunToolButton = new QPushButton(tr("Remove"), this);
-    m_renameRunButton = new QPushButton(tr("Rename..."), this);
-    m_cloneRunButton = new QPushButton(tr("Clone..."), this);
+    m_addRunToolButton = new QPushButton(Tr::tr("Add..."), this);
+    m_removeRunToolButton = new QPushButton(Tr::tr("Remove"), this);
+    m_renameRunButton = new QPushButton(Tr::tr("Rename..."), this);
+    m_cloneRunButton = new QPushButton(Tr::tr("Clone..."), this);
 
     auto spacer1 = new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto spacer2 = new QSpacerItem(10, 10, QSizePolicy::Minimum, QSizePolicy::Expanding);
 
     auto runWidget = new QWidget(this);
 
-    auto deployTitle = new QLabel(tr("Deployment"), this);
-    auto deployLabel = new QLabel(tr("Method:"), this);
-    auto runTitle = new QLabel(tr("Run"), this);
-    auto runLabel = new QLabel(tr("Run configuration:"), this);
+    auto deployTitle = new QLabel(Tr::tr("Deployment"), this);
+    auto deployLabel = new QLabel(Tr::tr("Method:"), this);
+    auto runTitle = new QLabel(Tr::tr("Run"), this);
+    auto runLabel = new QLabel(Tr::tr("Run configuration:"), this);
 
     runLabel->setBuddy(m_runConfigurationCombo);
 
@@ -140,7 +119,7 @@ RunSettingsWidget::RunSettingsWidget(Target *target) :
 
     connect(m_addDeployMenu, &QMenu::aboutToShow,
             this, &RunSettingsWidget::aboutToShowDeployMenu);
-    connect(m_deployConfigurationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_deployConfigurationCombo, &QComboBox::currentIndexChanged,
             this, &RunSettingsWidget::currentDeployConfigurationChanged);
     connect(m_removeDeployToolButton, &QAbstractButton::clicked,
             this, &RunSettingsWidget::removeDeployConfiguration);
@@ -172,7 +151,7 @@ RunSettingsWidget::RunSettingsWidget(Target *target) :
 
     connect(m_addRunToolButton, &QAbstractButton::clicked,
             this, &RunSettingsWidget::showAddRunConfigDialog);
-    connect(m_runConfigurationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_runConfigurationCombo, &QComboBox::currentIndexChanged,
             this, &RunSettingsWidget::currentRunConfigurationChanged);
     connect(m_removeRunToolButton, &QAbstractButton::clicked,
             this, &RunSettingsWidget::removeRunConfiguration);
@@ -218,8 +197,8 @@ void RunSettingsWidget::cloneRunConfiguration()
     //: Title of a the cloned RunConfiguration window, text of the window
     QString name = uniqueRCName(
                         QInputDialog::getText(this,
-                                              tr("Clone Configuration"),
-                                              tr("New configuration name:"),
+                                              Tr::tr("Clone Configuration"),
+                                              Tr::tr("New configuration name:"),
                                               QLineEdit::Normal,
                                               activeRunConfiguration->displayName()));
     if (name.isEmpty())
@@ -237,8 +216,8 @@ void RunSettingsWidget::cloneRunConfiguration()
 void RunSettingsWidget::removeRunConfiguration()
 {
     RunConfiguration *rc = m_target->activeRunConfiguration();
-    QMessageBox msgBox(QMessageBox::Question, tr("Remove Run Configuration?"),
-                       tr("Do you really want to delete the run configuration <b>%1</b>?").arg(rc->displayName()),
+    QMessageBox msgBox(QMessageBox::Question, Tr::tr("Remove Run Configuration?"),
+                       Tr::tr("Do you really want to delete the run configuration <b>%1</b>?").arg(rc->displayName()),
                        QMessageBox::Yes|QMessageBox::No, this);
     msgBox.setDefaultButton(QMessageBox::No);
     msgBox.setEscapeButton(QMessageBox::No);
@@ -253,15 +232,16 @@ void RunSettingsWidget::removeRunConfiguration()
 
 void RunSettingsWidget::activeRunConfigurationChanged()
 {
-    if (m_ignoreChange)
+    if (m_ignoreChanges.isLocked())
         return;
 
     ProjectConfigurationModel *model = m_target->runConfigurationModel();
     int index = model->indexFor(m_target->activeRunConfiguration());
-    m_ignoreChange = true;
-    m_runConfigurationCombo->setCurrentIndex(index);
-    setConfigurationWidget(qobject_cast<RunConfiguration *>(model->projectConfigurationAt(index)));
-    m_ignoreChange = false;
+    {
+        const Utils::GuardLocker locker(m_ignoreChanges);
+        m_runConfigurationCombo->setCurrentIndex(index);
+        setConfigurationWidget(qobject_cast<RunConfiguration *>(model->projectConfigurationAt(index)));
+    }
     m_renameRunButton->setEnabled(m_target->activeRunConfiguration());
     m_cloneRunButton->setEnabled(m_target->activeRunConfiguration());
 }
@@ -269,8 +249,8 @@ void RunSettingsWidget::activeRunConfigurationChanged()
 void RunSettingsWidget::renameRunConfiguration()
 {
     bool ok;
-    QString name = QInputDialog::getText(this, tr("Rename..."),
-                                         tr("New name for run configuration <b>%1</b>:").
+    QString name = QInputDialog::getText(this, Tr::tr("Rename..."),
+                                         Tr::tr("New name for run configuration <b>%1</b>:").
                                             arg(m_target->activeRunConfiguration()->displayName()),
                                          QLineEdit::Normal,
                                          m_target->activeRunConfiguration()->displayName(), &ok);
@@ -286,7 +266,7 @@ void RunSettingsWidget::renameRunConfiguration()
 
 void RunSettingsWidget::currentRunConfigurationChanged(int index)
 {
-    if (m_ignoreChange)
+    if (m_ignoreChanges.isLocked())
         return;
 
     RunConfiguration *selectedRunConfiguration = nullptr;
@@ -297,9 +277,10 @@ void RunSettingsWidget::currentRunConfigurationChanged(int index)
     if (selectedRunConfiguration == m_runConfiguration)
         return;
 
-    m_ignoreChange = true;
-    m_target->setActiveRunConfiguration(selectedRunConfiguration);
-    m_ignoreChange = false;
+    {
+        const Utils::GuardLocker locker(m_ignoreChanges);
+        m_target->setActiveRunConfiguration(selectedRunConfiguration);
+    }
 
     // Update the run configuration configuration widget
     setConfigurationWidget(selectedRunConfiguration);
@@ -307,7 +288,7 @@ void RunSettingsWidget::currentRunConfigurationChanged(int index)
 
 void RunSettingsWidget::currentDeployConfigurationChanged(int index)
 {
-    if (m_ignoreChange)
+    if (m_ignoreChanges.isLocked())
         return;
     if (index == -1)
         SessionManager::setActiveDeployConfiguration(m_target, nullptr, SetActive::Cascade);
@@ -339,19 +320,19 @@ void RunSettingsWidget::removeDeployConfiguration()
     DeployConfiguration *dc = m_target->activeDeployConfiguration();
     if (BuildManager::isBuilding(dc)) {
         QMessageBox box;
-        QPushButton *closeAnyway = box.addButton(tr("Cancel Build && Remove Deploy Configuration"), QMessageBox::AcceptRole);
-        QPushButton *cancelClose = box.addButton(tr("Do Not Remove"), QMessageBox::RejectRole);
+        QPushButton *closeAnyway = box.addButton(Tr::tr("Cancel Build && Remove Deploy Configuration"), QMessageBox::AcceptRole);
+        QPushButton *cancelClose = box.addButton(Tr::tr("Do Not Remove"), QMessageBox::RejectRole);
         box.setDefaultButton(cancelClose);
-        box.setWindowTitle(tr("Remove Deploy Configuration %1?").arg(dc->displayName()));
-        box.setText(tr("The deploy configuration <b>%1</b> is currently being built.").arg(dc->displayName()));
-        box.setInformativeText(tr("Do you want to cancel the build process and remove the Deploy Configuration anyway?"));
+        box.setWindowTitle(Tr::tr("Remove Deploy Configuration %1?").arg(dc->displayName()));
+        box.setText(Tr::tr("The deploy configuration <b>%1</b> is currently being built.").arg(dc->displayName()));
+        box.setInformativeText(Tr::tr("Do you want to cancel the build process and remove the Deploy Configuration anyway?"));
         box.exec();
         if (box.clickedButton() != closeAnyway)
             return;
         BuildManager::cancel();
     } else {
-        QMessageBox msgBox(QMessageBox::Question, tr("Remove Deploy Configuration?"),
-                           tr("Do you really want to delete deploy configuration <b>%1</b>?").arg(dc->displayName()),
+        QMessageBox msgBox(QMessageBox::Question, Tr::tr("Remove Deploy Configuration?"),
+                           Tr::tr("Do you really want to delete deploy configuration <b>%1</b>?").arg(dc->displayName()),
                            QMessageBox::Yes|QMessageBox::No, this);
         msgBox.setDefaultButton(QMessageBox::No);
         msgBox.setEscapeButton(QMessageBox::No);
@@ -372,8 +353,8 @@ void RunSettingsWidget::activeDeployConfigurationChanged()
 void RunSettingsWidget::renameDeployConfiguration()
 {
     bool ok;
-    QString name = QInputDialog::getText(this, tr("Rename..."),
-                                         tr("New name for deploy configuration <b>%1</b>:").
+    QString name = QInputDialog::getText(this, Tr::tr("Rename..."),
+                                         Tr::tr("New name for deploy configuration <b>%1</b>:").
                                             arg(m_target->activeDeployConfiguration()->displayName()),
                                          QLineEdit::Normal,
                                          m_target->activeDeployConfiguration()->displayName(), &ok);
@@ -399,9 +380,10 @@ void RunSettingsWidget::updateDeployConfiguration(DeployConfiguration *dc)
     delete m_deploySteps;
     m_deploySteps = nullptr;
 
-    m_ignoreChange = true;
-    m_deployConfigurationCombo->setCurrentIndex(-1);
-    m_ignoreChange = false;
+    {
+        const Utils::GuardLocker locker(m_ignoreChanges);
+        m_deployConfigurationCombo->setCurrentIndex(-1);
+    }
 
     m_renameDeployButton->setEnabled(dc);
 
@@ -409,9 +391,11 @@ void RunSettingsWidget::updateDeployConfiguration(DeployConfiguration *dc)
         return;
 
     int index = m_target->deployConfigurationModel()->indexFor(dc);
-    m_ignoreChange = true;
-    m_deployConfigurationCombo->setCurrentIndex(index);
-    m_ignoreChange = false;
+
+    {
+        const Utils::GuardLocker locker(m_ignoreChanges);
+        m_deployConfigurationCombo->setCurrentIndex(index);
+    }
 
     m_deployConfigurationWidget = dc->createConfigWidget();
     if (m_deployConfigurationWidget)
@@ -437,7 +421,7 @@ void RunSettingsWidget::setConfigurationWidget(RunConfiguration *rc)
         m_runLayout->addWidget(m_runConfigurationWidget);
         updateEnabledState();
         connect(m_runConfiguration, &RunConfiguration::enabledChanged,
-                m_runConfigurationWidget, [this]() { updateEnabledState(); });
+                m_runConfigurationWidget, [this] { updateEnabledState(); });
     }
     addRunControlWidgets();
 }
@@ -447,7 +431,8 @@ QString RunSettingsWidget::uniqueDCName(const QString &name)
     QString result = name.trimmed();
     if (!result.isEmpty()) {
         QStringList dcNames;
-        foreach (DeployConfiguration *dc, m_target->deployConfigurations()) {
+        const QList<DeployConfiguration *> configurations = m_target->deployConfigurations();
+        for (DeployConfiguration *dc : configurations) {
             if (dc == m_target->activeDeployConfiguration())
                 continue;
             dcNames.append(dc->displayName());
@@ -462,7 +447,8 @@ QString RunSettingsWidget::uniqueRCName(const QString &name)
     QString result = name.trimmed();
     if (!result.isEmpty()) {
         QStringList rcNames;
-        foreach (RunConfiguration *rc, m_target->runConfigurations()) {
+        const QList<RunConfiguration *> configurations = m_target->runConfigurations();
+        for (RunConfiguration *rc : configurations) {
             if (rc == m_target->activeRunConfiguration())
                 continue;
             rcNames.append(rc->displayName());
@@ -488,25 +474,25 @@ void RunSettingsWidget::addRunControlWidgets()
 
 void RunSettingsWidget::addSubWidget(QWidget *widget, QLabel *label)
 {
-    widget->setContentsMargins(0, 10, 0, 0);
+    widget->setContentsMargins(0, 2, 0, 0);
 
     QFont f = label->font();
     f.setBold(true);
     f.setPointSizeF(f.pointSizeF() * 1.2);
     label->setFont(f);
 
-    label->setContentsMargins(0, 10, 0, 0);
+    label->setContentsMargins(0, 18, 0, 0);
 
     QGridLayout *l = m_gridLayout;
     l->addWidget(label, l->rowCount(), 0, 1, -1);
     l->addWidget(widget, l->rowCount(), 0, 1, -1);
 
-    m_subWidgets.append(qMakePair(widget, label));
+    m_subWidgets.push_back({widget, label});
 }
 
 void RunSettingsWidget::removeSubWidgets()
 {
-    for (const RunConfigItem &item : qAsConst(m_subWidgets)) {
+    for (const RunConfigItem &item : std::as_const(m_subWidgets)) {
         delete item.first;
         delete item.second;
     }

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "googletest.h"
 
@@ -37,6 +15,14 @@ using Utils::PathString;
 using Utils::SmallString;
 using Utils::SmallStringLiteral;
 using Utils::SmallStringView;
+
+static_assert(32 == sizeof(Utils::BasicSmallString<31>));
+static_assert(64 == sizeof(Utils::BasicSmallString<63>));
+static_assert(192 == sizeof(Utils::BasicSmallString<190>));
+
+static_assert(16 == alignof(Utils::BasicSmallString<31>));
+static_assert(16 == alignof(Utils::BasicSmallString<63>));
+static_assert(16 == alignof(Utils::BasicSmallString<190>));
 
 TEST(SmallString, BasicStringEqual)
 {
@@ -762,7 +748,7 @@ TEST(SmallString, CapacityShortSmallString)
 
     auto capacity = shortText.capacity();
 
-    ASSERT_THAT(capacity, 30);
+    ASSERT_THAT(capacity, 31);
 }
 
 TEST(SmallString, CapacityLongSmallString)
@@ -799,7 +785,7 @@ TEST(SmallString, FitsInNotShortSmallStringCapacity)
 {
     SmallString text("text", 4);
 
-    ASSERT_TRUE(text.fitsNotInCapacity(31));
+    ASSERT_TRUE(text.fitsNotInCapacity(32));
 }
 
 TEST(SmallString, FitsInLongSmallStringCapacity)
@@ -1296,6 +1282,15 @@ TEST(SmallString, EndsWith)
     ASSERT_FALSE(text.endsWith('x'));
 }
 
+TEST(SmallString, EndsWithStringView)
+{
+    SmallStringView text("/my/path");
+
+    ASSERT_TRUE(text.endsWith("/my/path"));
+    ASSERT_TRUE(text.endsWith("path"));
+    ASSERT_FALSE(text.endsWith("paths"));
+}
+
 TEST(SmallString, EndsWithSmallString)
 {
     SmallString text("/my/path");
@@ -1310,7 +1305,7 @@ TEST(SmallString, ReserveSmallerThanShortStringCapacity)
 
     text.reserve(2);
 
-    ASSERT_THAT(text.capacity(), AnyOf(30, 4));
+    ASSERT_THAT(text.capacity(), 31);
 }
 
 TEST(SmallString, ReserveSmallerThanShortStringCapacityIsShortString)
@@ -1337,7 +1332,7 @@ TEST(SmallString, ReserveBiggerThanShortStringCapacity)
 
     text.reserve(10);
 
-    ASSERT_THAT(text.capacity(), AnyOf(30, 10));
+    ASSERT_THAT(text.capacity(), 31);
 }
 
 TEST(SmallString, ReserveBiggerThanReference)
@@ -1382,7 +1377,7 @@ TEST(SmallString, ReserveSmallerThanShortSmallString)
 
     text.reserve(10);
 
-    ASSERT_THAT(text.capacity(), 30);
+    ASSERT_THAT(text.capacity(), 31);
 }
 
 TEST(SmallString, ReserveBiggerThanShortSmallString)
@@ -1427,11 +1422,11 @@ TEST(SmallString, OptimalCapacityForSize)
     SmallString text;
 
     ASSERT_THAT(text.optimalCapacity(0), 0);
-    ASSERT_THAT(text.optimalCapacity(30), 30);
-    ASSERT_THAT(text.optimalCapacity(31), 63);
-    ASSERT_THAT(text.optimalCapacity(63), 63);
-    ASSERT_THAT(text.optimalCapacity(64), 127);
-    ASSERT_THAT(text.optimalCapacity(128), 191);
+    ASSERT_THAT(text.optimalCapacity(31), 31);
+    ASSERT_THAT(text.optimalCapacity(32), 64);
+    ASSERT_THAT(text.optimalCapacity(64), 64);
+    ASSERT_THAT(text.optimalCapacity(65), 128);
+    ASSERT_THAT(text.optimalCapacity(129), 192);
 }
 
 TEST(SmallString, DataStreamData)
@@ -1501,7 +1496,6 @@ TEST(SmallString, ShortSmallStringMoveConstuctor)
 
     auto copy = std::move(text);
 
-    ASSERT_TRUE(text.isEmpty());
     ASSERT_THAT(copy, SmallString("text"));
 }
 
@@ -1511,8 +1505,79 @@ TEST(SmallString, LongSmallStringMoveConstuctor)
 
     auto copy = std::move(text);
 
-    ASSERT_TRUE(text.isEmpty());
     ASSERT_THAT(copy, SmallString("this is a very very very very long text"));
+}
+
+TEST(SmallString, ShortPathStringMoveConstuctor)
+{
+    PathString text("text");
+
+    auto copy = std::move(text);
+
+    ASSERT_THAT(copy, SmallString("text"));
+}
+
+TEST(SmallString, LongPathStringMoveConstuctor)
+{
+    PathString text(
+        "this is a very very very very very very very very very very very very very very very very "
+        "very very very very very very very very very very very very very very very very very very "
+        "very very very very very very very very very very very very very very long text");
+
+    auto copy = std::move(text);
+
+    ASSERT_THAT(
+        copy,
+        PathString(
+            "this is a very very very very very very very very very very very very very very very "
+            "very very very very very very very very very very very very very very very very very "
+            "very very very very very very very very very very very very very very very very long "
+            "text"));
+}
+
+TEST(SmallString, ShortSmallStringMoveConstuctorToSelf)
+{
+    SmallString text("text");
+
+    text = std::move(text);
+
+    ASSERT_THAT(text, SmallString("text"));
+}
+
+TEST(SmallString, LongSmallStringMoveConstuctorToSelf)
+{
+    SmallString text("this is a very very very very long text");
+
+    text = std::move(text);
+
+    ASSERT_THAT(text, SmallString("this is a very very very very long text"));
+}
+
+TEST(SmallString, ShortPathStringMoveConstuctorToSelf)
+{
+    PathString text("text");
+
+    text = std::move(text);
+
+    ASSERT_THAT(text, SmallString("text"));
+}
+
+TEST(SmallString, LongPathStringMoveConstuctorToSelf)
+{
+    PathString text(
+        "this is a very very very very very very very very very very very very very very very very "
+        "very very very very very very very very very very very very very very very very very very "
+        "very very very very very very very very very very very very very very long text");
+
+    text = std::move(text);
+
+    ASSERT_THAT(
+        text,
+        PathString(
+            "this is a very very very very very very very very very very very very very very very "
+            "very very very very very very very very very very very very very very very very very "
+            "very very very very very very very very very very very very very very very very long "
+            "text"));
 }
 
 TEST(SmallString, ShortSmallStringCopyAssignment)
@@ -1551,7 +1616,6 @@ TEST(SmallString, ShortSmallStringMoveAssignment)
 
     copy = std::move(text);
 
-    ASSERT_THAT(text, IsEmpty());
     ASSERT_THAT(copy, SmallString("text"));
 }
 
@@ -1561,6 +1625,56 @@ TEST(SmallString, LongSmallStringMoveAssignment)
     SmallString copy("more text");
 
     copy = std::move(text);
+
+    ASSERT_THAT(copy, SmallString("this is a very very very very long text"));
+}
+
+TEST(SmallString, ShortPathStringMoveAssignment)
+{
+    PathString text("text");
+    PathString copy("more text");
+
+    copy = std::move(text);
+
+    ASSERT_THAT(copy, SmallString("text"));
+}
+
+TEST(SmallString, LongPathStringMoveAssignment)
+{
+    PathString text(
+        "this is a very very very very very very very very very very very very very very very very "
+        "very very very very very very very very very very very very very very very very very very "
+        "very very very very very very very very very very very very very very long text");
+    PathString copy("more text");
+
+    copy = std::move(text);
+
+    ASSERT_THAT(
+        copy,
+        PathString(
+            "this is a very very very very very very very very very very very very very very very "
+            "very very very very very very very very very very very very very very very very very "
+            "very very very very very very very very very very very very very very very very long "
+            "text"));
+}
+
+TEST(SmallString, ShortSmallStringTake)
+{
+    SmallString text("text");
+    SmallString copy("more text");
+
+    copy = text.take();
+
+    ASSERT_THAT(text, IsEmpty());
+    ASSERT_THAT(copy, SmallString("text"));
+}
+
+TEST(SmallString, LongSmallStringTake)
+{
+    SmallString text("this is a very very very very long text");
+    SmallString copy("more text");
+
+    copy = text.take();
 
     ASSERT_THAT(text, IsEmpty());
     ASSERT_THAT(copy, SmallString("this is a very very very very long text"));
@@ -1656,13 +1770,6 @@ TEST(SmallString, EmptyInitializerListSize)
     ASSERT_THAT(text, SizeIs(0));
 }
 
-TEST(SmallString, EmptyInitializerListNullTerminated)
-{
-    auto end = SmallString::join({})[0];
-
-    ASSERT_THAT(end, '\0');
-}
-
 TEST(SmallString, InitializerListContent)
 {
     auto text = SmallString::join({"some", " ", "text"});
@@ -1675,13 +1782,6 @@ TEST(SmallString, InitializerListSize)
     auto text = SmallString::join({"some", " ", "text"});
 
     ASSERT_THAT(text, SizeIs(9));
-}
-
-TEST(SmallString, InitializerListNullTerminated)
-{
-    auto end = SmallString::join({"some", " ", "text"})[9];
-
-    ASSERT_THAT(end, '\0');
 }
 
 TEST(SmallString, NumberToString)
@@ -1735,8 +1835,8 @@ TEST(SmallString, StringPlusOperatorReverseOrder)
 
 TEST(SmallString, ShortStringCapacity)
 {
-    ASSERT_THAT(SmallString().shortStringCapacity(), 30);
-    ASSERT_THAT(PathString().shortStringCapacity(), 189);
+    ASSERT_THAT(SmallString().shortStringCapacity(), 31);
+    ASSERT_THAT(PathString().shortStringCapacity(), 190);
 }
 
 TEST(SmallString, ToView)

@@ -1,90 +1,91 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: BlackBerry (qt@blackberry.com), KDAB (info@kdab.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "slog2inforunner.h"
 
 #include "qnxdevice.h"
-#include "qnxdeviceprocess.h"
-#include "qnxrunconfiguration.h"
+#include "qnxtr.h"
 
 #include <projectexplorer/runconfigurationaspects.h>
 
 #include <utils/qtcassert.h>
+#include <utils/qtcprocess.h>
 
 #include <QRegularExpression>
 
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Qnx {
-namespace Internal {
+namespace Qnx::Internal {
 
 Slog2InfoRunner::Slog2InfoRunner(RunControl *runControl)
     : RunWorker(runControl)
 {
     setId("Slog2InfoRunner");
-    m_applicationId = runControl->aspect<ExecutableAspect>()->executable().fileName();
+    m_applicationId = runControl->aspect<ExecutableAspect>()->executable.fileName();
 
     // See QTCREATORBUG-10712 for details.
     // We need to limit length of ApplicationId to 63 otherwise it would not match one in slog2info.
     m_applicationId.truncate(63);
-
-    m_testProcess = new QnxDeviceProcess(device(), this);
-    connect(m_testProcess, &DeviceProcess::finished, this, &Slog2InfoRunner::handleTestProcessCompleted);
-
-    m_launchDateTimeProcess = new SshDeviceProcess(device(), this);
-    connect(m_launchDateTimeProcess, &DeviceProcess::finished, this, &Slog2InfoRunner::launchSlog2Info);
-
-    m_logProcess = new QnxDeviceProcess(device(), this);
-    connect(m_logProcess, &DeviceProcess::readyReadStandardOutput, this, &Slog2InfoRunner::readLogStandardOutput);
-    connect(m_logProcess, &DeviceProcess::readyReadStandardError, this, &Slog2InfoRunner::readLogStandardError);
-    connect(m_logProcess, &DeviceProcess::errorOccurred, this, &Slog2InfoRunner::handleLogError);
-}
-
-void Slog2InfoRunner::printMissingWarning()
-{
-    appendMessage(tr("Warning: \"slog2info\" is not found on the device, debug output not available."), ErrorMessageFormat);
 }
 
 void Slog2InfoRunner::start()
 {
-    Runnable r;
-    r.command = {"slog2info", {}};
-    m_testProcess->start(r);
+    using namespace Utils::Tasking;
+    QTC_CHECK(!m_taskTree);
+
+    const auto testStartHandler = [this](QtcProcess &process) {
+        process.setCommand({device()->filePath("slog2info"), {}});
+    };
+    const auto testDoneHandler = [this](const QtcProcess &) {
+        m_found = true;
+    };
+    const auto testErrorHandler = [this](const QtcProcess &) {
+        QnxDevice::ConstPtr qnxDevice = device().dynamicCast<const QnxDevice>();
+        if (qnxDevice && qnxDevice->qnxVersion() > 0x060500) {
+            appendMessage(Tr::tr("Warning: \"slog2info\" is not found on the device, "
+                                 "debug output not available."), ErrorMessageFormat);
+        }
+    };
+
+    const auto launchTimeStartHandler = [this](QtcProcess &process) {
+        process.setCommand({device()->filePath("date"), "+\"%d %H:%M:%S\"", CommandLine::Raw});
+    };
+    const auto launchTimeDoneHandler = [this](const QtcProcess &process) {
+        QTC_CHECK(!m_applicationId.isEmpty());
+        QTC_CHECK(m_found);
+        m_launchDateTime = QDateTime::fromString(process.cleanedStdOut().trimmed(), "dd HH:mm:ss");
+    };
+
+    const auto logStartHandler = [this](QtcProcess &process) {
+        process.setCommand({device()->filePath("slog2info"), {"-w"}});
+        connect(&process, &QtcProcess::readyReadStandardOutput, this, [&] {
+            processLogInput(QString::fromLatin1(process.readAllRawStandardOutput()));
+        });
+        connect(&process, &QtcProcess::readyReadStandardError, this, [&] {
+            appendMessage(QString::fromLatin1(process.readAllRawStandardError()), StdErrFormat);
+        });
+    };
+    const auto logErrorHandler = [this](const QtcProcess &process) {
+        appendMessage(Tr::tr("Cannot show slog2info output. Error: %1").arg(process.errorString()),
+                      StdErrFormat);
+    };
+
+    const Tasking::Group root {
+        Process(testStartHandler, testDoneHandler, testErrorHandler),
+        Process(launchTimeStartHandler, launchTimeDoneHandler),
+        Process(logStartHandler, {}, logErrorHandler)
+    };
+
+    m_taskTree.reset(new TaskTree(root));
+    m_taskTree->start();
     reportStarted();
 }
 
 void Slog2InfoRunner::stop()
 {
-    if (m_testProcess->state() == QProcess::Running)
-        m_testProcess->kill();
-
-    if (m_logProcess->state() == QProcess::Running) {
-        m_logProcess->kill();
-        processLog(true);
-    }
+    m_taskTree.reset();
+    processRemainingLogData();
     reportStopped();
 }
 
@@ -93,59 +94,21 @@ bool Slog2InfoRunner::commandFound() const
     return m_found;
 }
 
-void Slog2InfoRunner::handleTestProcessCompleted()
+void Slog2InfoRunner::processRemainingLogData()
 {
-    m_found = (m_testProcess->exitCode() == 0);
-    if (m_found) {
-        readLaunchTime();
-    } else {
-        QnxDevice::ConstPtr qnxDevice = device().dynamicCast<const QnxDevice>();
-        if (qnxDevice->qnxVersion() > 0x060500) {
-            printMissingWarning();
-        }
-    }
+    if (!m_remainingData.isEmpty())
+        processLogLine(m_remainingData);
+    m_remainingData.clear();
 }
 
-void Slog2InfoRunner::readLaunchTime()
+void Slog2InfoRunner::processLogInput(const QString &input)
 {
-    Runnable r;
-    r.command = CommandLine("date", "+\"%d %H:%M:%S\"", CommandLine::Raw);
-    m_launchDateTimeProcess->start(r);
-}
-
-void Slog2InfoRunner::launchSlog2Info()
-{
-    QTC_CHECK(!m_applicationId.isEmpty());
-    QTC_CHECK(m_found);
-
-    if (m_logProcess->state() == QProcess::Running)
-        return;
-
-    m_launchDateTime = QDateTime::fromString(QString::fromLatin1(m_launchDateTimeProcess->readAllStandardOutput()).trimmed(),
-                                             QString::fromLatin1("dd HH:mm:ss"));
-
-    Runnable r;
-    r.command = {"slog2info", {"-w"}};
-    m_logProcess->start(r);
-}
-
-void Slog2InfoRunner::readLogStandardOutput()
-{
-    processLog(false);
-}
-
-void Slog2InfoRunner::processLog(bool force)
-{
-    QString input = QString::fromLatin1(m_logProcess->readAllStandardOutput());
     QStringList lines = input.split(QLatin1Char('\n'));
     if (lines.isEmpty())
         return;
     lines.first().prepend(m_remainingData);
-    if (force)
-        m_remainingData.clear();
-    else
-        m_remainingData = lines.takeLast();
-    foreach (const QString &line, lines)
+    m_remainingData = lines.takeLast();
+    for (const QString &line : std::as_const(lines))
         processLogLine(line);
 }
 
@@ -185,19 +148,7 @@ void Slog2InfoRunner::processLogLine(const QString &line)
     if (bufferName == QLatin1String("default") && bufferId == 8900)
         return;
 
-    appendMessage(match.captured(6).trimmed() + '\n', Utils::StdOutFormat);
+    appendMessage(match.captured(6).trimmed() + '\n', StdOutFormat);
 }
 
-void Slog2InfoRunner::readLogStandardError()
-{
-    appendMessage(QString::fromLatin1(m_logProcess->readAllStandardError()), Utils::StdErrFormat);
-}
-
-void Slog2InfoRunner::handleLogError()
-{
-    appendMessage(tr("Cannot show slog2info output. Error: %1")
-                  .arg(m_logProcess->errorString()), Utils::StdErrFormat);
-}
-
-} // namespace Internal
-} // namespace Qnx
+} // Qnx::Internal

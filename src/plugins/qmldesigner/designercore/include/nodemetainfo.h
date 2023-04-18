@@ -1,36 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
+
+#include "propertymetainfo.h"
+#include "qmldesignercorelib_global.h"
+
+#include <projectstorage/projectstoragefwd.h>
+#include <projectstorage/projectstoragetypes.h>
+#include <projectstorageids.h>
 
 #include <QList>
 #include <QString>
 #include <QIcon>
 
-#include "qmldesignercorelib_global.h"
-#include "invalidmetainfoexception.h"
+#include <optional>
+#include <vector>
 
 QT_BEGIN_NAMESPACE
 class QDeclarativeContext;
@@ -42,46 +27,36 @@ class MetaInfo;
 class Model;
 class AbstractProperty;
 
-namespace Internal {
-    class MetaInfoPrivate;
-    class MetaInfoReader;
-    class SubComponentManagerPrivate;
-    class ItemLibraryEntryData;
-    class NodeMetaInfoPrivate;
-}
-
 class QMLDESIGNERCORE_EXPORT NodeMetaInfo
 {
 public:
-    NodeMetaInfo();
-    NodeMetaInfo(Model *model, const TypeName &type, int maj, int min);
-
+    NodeMetaInfo() = default;
+    NodeMetaInfo(Model *model, const TypeName &typeName, int majorVersion, int minorVersion);
+    NodeMetaInfo(TypeId typeId, NotNullPointer<const ProjectStorage<Sqlite::Database>> projectStorage)
+        : m_typeId{typeId}
+        , m_projectStorage{projectStorage}
+    {}
+    NodeMetaInfo(NotNullPointer<const ProjectStorage<Sqlite::Database>> projectStorage)
+        : m_projectStorage{projectStorage}
+    {}
     ~NodeMetaInfo();
 
-    NodeMetaInfo(const NodeMetaInfo &other);
-    NodeMetaInfo &operator=(const NodeMetaInfo &other);
-
     bool isValid() const;
+    explicit operator bool() const { return isValid(); }
     bool isFileComponent() const;
-    bool hasProperty(const PropertyName &propertyName) const;
-    PropertyNameList propertyNames() const;
+    bool hasProperty(Utils::SmallStringView propertyName) const;
+    PropertyMetaInfos properties() const;
+    PropertyMetaInfos localProperties() const;
+    PropertyMetaInfo property(const PropertyName &propertyName) const;
     PropertyNameList signalNames() const;
     PropertyNameList slotNames() const;
-    PropertyNameList directPropertyNames() const;
     PropertyName defaultPropertyName() const;
+    PropertyMetaInfo defaultProperty() const;
     bool hasDefaultProperty() const;
-    TypeName propertyTypeName(const PropertyName &propertyName) const;
-    bool propertyIsWritable(const PropertyName &propertyName) const;
-    bool propertyIsListProperty(const PropertyName &propertyName) const;
-    bool propertyIsEnumType(const PropertyName &propertyName) const;
-    bool propertyIsPrivate(const PropertyName &propertyName) const;
-    bool propertyIsPointer(const PropertyName &propertyName) const;
-    QStringList propertyKeysForEnum(const PropertyName &propertyName) const;
-    QVariant propertyCastedValue(const PropertyName &propertyName, const QVariant &value) const;
 
-    QList<NodeMetaInfo> classHierarchy() const;
-    QList<NodeMetaInfo> superClasses() const;
-    NodeMetaInfo directSuperClass() const;
+    std::vector<NodeMetaInfo> classHierarchy() const;
+    std::vector<NodeMetaInfo> superClasses() const;
+    NodeMetaInfo commonBase(const NodeMetaInfo &metaInfo) const;
 
     bool defaultPropertyIsComponent() const;
 
@@ -93,18 +68,141 @@ public:
     QString componentFileName() const;
 
     bool availableInVersion(int majorVersion, int minorVersion) const;
-    bool isSubclassOf(const TypeName &type, int majorVersion = -1, int minorVersion = -1) const;
 
+    bool isBasedOn(const NodeMetaInfo &metaInfo) const;
+    bool isBasedOn(const NodeMetaInfo &metaInfo1, const NodeMetaInfo &metaInfo2) const;
+    bool isBasedOn(const NodeMetaInfo &metaInfo1,
+                   const NodeMetaInfo &metaInfo2,
+                   const NodeMetaInfo &metaInfo3) const;
+    bool isBasedOn(const NodeMetaInfo &metaInfo1,
+                   const NodeMetaInfo &metaInfo2,
+                   const NodeMetaInfo &metaInfo3,
+                   const NodeMetaInfo &metaInfo4) const;
+    bool isBasedOn(const NodeMetaInfo &metaInfo1,
+                   const NodeMetaInfo &metaInfo2,
+                   const NodeMetaInfo &metaInfo3,
+                   const NodeMetaInfo &metaInfo4,
+                   const NodeMetaInfo &metaInfo5) const;
+    bool isBasedOn(const NodeMetaInfo &metaInfo1,
+                   const NodeMetaInfo &metaInfo2,
+                   const NodeMetaInfo &metaInfo3,
+                   const NodeMetaInfo &metaInfo4,
+                   const NodeMetaInfo &metaInfo5,
+                   const NodeMetaInfo &metaInfo6) const;
+    bool isBasedOn(const NodeMetaInfo &metaInfo1,
+                   const NodeMetaInfo &metaInfo2,
+                   const NodeMetaInfo &metaInfo3,
+                   const NodeMetaInfo &metaInfo4,
+                   const NodeMetaInfo &metaInfo5,
+                   const NodeMetaInfo &metaInfo6,
+                   const NodeMetaInfo &metaInfo7) const;
+
+    bool isAlias() const;
+    bool isBool() const;
+    bool isColor() const;
+    bool isEffectMaker() const;
+    bool isFloat() const;
+    bool isFlowViewFlowActionArea() const;
+    bool isFlowViewFlowDecision() const;
+    bool isFlowViewFlowItem() const;
+    bool isFlowViewFlowTransition() const;
+    bool isFlowViewFlowView() const;
+    bool isFlowViewFlowWildcard() const;
+    bool isFlowViewItem() const;
+    bool isFont() const;
     bool isGraphicalItem() const;
-    bool isQmlItem() const;
+    bool isInteger() const;
     bool isLayoutable() const;
+    bool isListOrGridView() const;
+    bool isQmlComponent() const;
+    bool isQtMultimediaSoundEffect() const;
+    bool isQtObject() const;
+    bool isQtQuick3D() const;
+    bool isQtQuick3DBuffer() const;
+    bool isQtQuick3DCamera() const;
+    bool isQtQuick3DCommand() const;
+    bool isQtQuick3DDefaultMaterial() const;
+    bool isQtQuick3DEffect() const;
+    bool isQtQuick3DInstanceList() const;
+    bool isQtQuick3DInstanceListEntry() const;
+    bool isQtQuick3DMaterial() const;
+    bool isQtQuick3DModel() const;
+    bool isQtQuick3DNode() const;
+    bool isQtQuick3DParticles3DAffector3D() const;
+    bool isQtQuick3DParticles3DAttractor3D() const;
+    bool isQtQuick3DParticles3DParticle3D() const;
+    bool isQtQuick3DParticles3DParticleEmitter3D() const;
+    bool isQtQuick3DParticles3DSpriteParticle3D() const;
+    bool isQtQuick3DPass() const;
+    bool isQtQuick3DPrincipledMaterial() const;
+    bool isQtQuick3DSpecularGlossyMaterial() const;
+    bool isQtQuick3DSceneEnvironment() const;
+    bool isQtQuick3DShader() const;
+    bool isQtQuick3DTexture() const;
+    bool isQtQuick3DTextureInput() const;
+    bool isQtQuick3DCubeMapTexture() const;
+    bool isQtQuick3DView3D() const;
+    bool isQtQuickBorderImage() const;
+    bool isQtQuickControlsSwipeView() const;
+    bool isQtQuickControlsTab() const;
+    bool isQtQuickControlsTabBar() const;
+    bool isQtQuickControlsTabView() const;
+    bool isQtQuickExtrasPicture() const;
+    bool isQtQuickImage() const;
+    bool isQtQuickItem() const;
+    bool isQtQuickLayoutsLayout() const;
+    bool isQtQuickLoader() const;
+    bool isQtQuickPath() const;
+    bool isQtQuickPauseAnimation() const;
+    bool isQtQuickPositioner() const;
+    bool isQtQuickPropertyAnimation() const;
+    bool isQtQuickPropertyChanges() const;
+    bool isQtQuickRepeater() const;
+    bool isQtQuickState() const;
+    bool isQtQuickStateOperation() const;
+    bool isQtQuickStudioComponentsGroupItem() const;
+    bool isQtQuickText() const;
+    bool isQtQuickTimelineKeyframe() const;
+    bool isQtQuickTimelineKeyframeGroup() const;
+    bool isQtQuickTimelineTimeline() const;
+    bool isQtQuickTimelineTimelineAnimation() const;
+    bool isQtQuickTransition() const;
+    bool isQtQuickWindowWindow() const;
+    bool isQtSafeRendererSafePicture() const;
+    bool isQtSafeRendererSafeRendererPicture() const;
+    bool isQuick3DParticleAbstractShape() const;
+    bool isQuickStateOperation() const;
+    bool isString() const;
+    bool isSuitableForMouseAreaFill() const;
+    bool isUrl() const;
+    bool isVariant() const;
+    bool isVector2D() const;
+    bool isVector3D() const;
+    bool isVector4D() const;
     bool isView() const;
-    bool isTabView() const;
 
+    bool isEnumeration() const;
     QString importDirectoryPath() const;
 
+    friend bool operator==(const NodeMetaInfo &first, const NodeMetaInfo &second)
+    {
+        if constexpr (useProjectStorage())
+            return first.m_typeId == second.m_typeId;
+        else
+            return first.m_privateData == second.m_privateData;
+    }
+
 private:
-    QSharedPointer<Internal::NodeMetaInfoPrivate> m_privateData;
+    const Storage::Info::Type &typeData() const;
+    bool isSubclassOf(const TypeName &type, int majorVersion = -1, int minorVersion = -1) const;
+
+private:
+    TypeId m_typeId;
+    NotNullPointer<const ProjectStorage<Sqlite::Database>> m_projectStorage = {};
+    mutable std::optional<Storage::Info::Type> m_typeData;
+    QSharedPointer<class NodeMetaInfoPrivate> m_privateData;
 };
+
+using NodeMetaInfos = std::vector<NodeMetaInfo>;
 
 } //QmlDesigner

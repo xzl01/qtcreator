@@ -78,7 +78,6 @@
 #include <QtCore/qjsonobject.h>
 #include <QtCore/qtextstream.h>
 #include <QtCore/qthreadstorage.h>
-#include <QtScript/qscriptvalueiterator.h>
 
 #include <algorithm>
 #include <memory>
@@ -290,6 +289,7 @@ ModuleLoaderResult ModuleLoader::load(const SetupProjectParameters &parameters)
     m_modulePrototypeEnabledInfo.clear();
     m_parameterDeclarations.clear();
     m_disabledItems.clear();
+    m_reader->setDeprecationWarningMode(parameters.deprecationWarningMode());
     m_reader->clearExtraSearchPathsStack();
     m_reader->setEnableTiming(parameters.logElapsedTime());
     m_moduleProviderLoader->setProjectParameters(m_parameters);
@@ -500,28 +500,10 @@ private:
                 continue;
             const PropertyDeclaration decl = item->propertyDeclaration(it.key());
             if (decl.isValid()) {
-                if (!decl.isDeprecated())
-                    continue;
-                const DeprecationInfo &di = decl.deprecationInfo();
-                QString message;
-                bool warningOnly;
-                if (decl.isExpired()) {
-                    message = Tr::tr("The property '%1' can no longer be used. "
-                                     "It was removed in Qbs %2.")
-                            .arg(decl.name(), di.removalVersion().toString());
-                    warningOnly = false;
-                } else {
-                    message = Tr::tr("The property '%1' is deprecated and will be removed "
-                                     "in Qbs %2.").arg(decl.name(), di.removalVersion().toString());
-                    warningOnly = true;
-                }
-                ErrorInfo error(message, it.value()->location());
-                if (!di.additionalUserInfo().isEmpty())
-                    error.append(di.additionalUserInfo());
-                if (warningOnly)
-                    m_logger.printWarning(error);
-                else
-                    handlePropertyError(error, m_params, m_logger);
+                const ErrorInfo deprecationError = decl.checkForDeprecation(
+                            m_params.deprecationWarningMode(), it.value()->location(), m_logger);
+                if (deprecationError.hasError())
+                    handlePropertyError(deprecationError, m_params, m_logger);
                 continue;
             }
             m_currentName = it.key();
@@ -833,7 +815,8 @@ ModuleLoader::MultiplexInfo ModuleLoader::extractMultiplexInfo(Item *productItem
 {
     static const QString mpmKey = QStringLiteral("multiplexMap");
 
-    const QScriptValue multiplexMap = m_evaluator->value(qbsModuleItem, mpmKey);
+    JSContext * const ctx = m_evaluator->engine()->context();
+    const ScopedJsValue multiplexMap(ctx, m_evaluator->value(qbsModuleItem, mpmKey));
     const QStringList multiplexByQbsProperties = m_evaluator->stringListValue(
                 productItem, StringConstants::multiplexByQbsPropertiesProperty());
 
@@ -848,7 +831,7 @@ ModuleLoader::MultiplexInfo ModuleLoader::extractMultiplexInfo(Item *productItem
 
     Set<QString> uniqueMultiplexByQbsProperties;
     for (const QString &key : multiplexByQbsProperties) {
-        const QString mappedKey = multiplexMap.property(key).toString();
+        const QString mappedKey = getJsStringProperty(ctx, multiplexMap, key);
         if (mappedKey.isEmpty())
             throw ErrorInfo(Tr::tr("There is no entry for '%1' in 'qbs.multiplexMap'.").arg(key));
 
@@ -858,13 +841,13 @@ ModuleLoader::MultiplexInfo ModuleLoader::extractMultiplexInfo(Item *productItem
                             productItem->location());
         }
 
-        const QScriptValue arr = m_evaluator->value(qbsModuleItem, key);
-        if (arr.isUndefined())
+        const ScopedJsValue arr(ctx, m_evaluator->value(qbsModuleItem, key));
+        if (JS_IsUndefined(arr))
             continue;
-        if (!arr.isArray())
+        if (!JS_IsArray(ctx, arr))
             throw ErrorInfo(Tr::tr("Property '%1' must be an array.").arg(key));
 
-        const quint32 arrlen = arr.property(StringConstants::lengthProperty()).toUInt32();
+        const quint32 arrlen = getJsIntProperty(ctx, arr, StringConstants::lengthProperty());
         if (arrlen == 0)
             continue;
 
@@ -872,7 +855,8 @@ ModuleLoader::MultiplexInfo ModuleLoader::extractMultiplexInfo(Item *productItem
         mprow.resize(arrlen);
         QVariantList entriesForKey;
         for (quint32 i = 0; i < arrlen; ++i) {
-            const QVariant value = arr.property(i).toVariant();
+            const ScopedJsValue sv(ctx, JS_GetPropertyUint32(ctx, arr, i));
+            const QVariant value = getJsVariant(ctx, sv);
             if (entriesForKey.contains(value)) {
                 throw ErrorInfo(Tr::tr("Duplicate entry '%1' in qbs.%2.")
                                 .arg(value.toString(), key), productItem->location());
@@ -979,7 +963,7 @@ QList<Item *> ModuleLoader::multiplexProductItem(ProductContext *dummyContext, I
             dependsItem->setProperty(StringConstants::profilesProperty(),
                                      VariantValue::create(QStringList()));
             dependsItem->setFile(aggregator->file());
-            dependsItem->setupForBuiltinType(m_logger);
+            dependsItem->setupForBuiltinType(m_parameters.deprecationWarningMode(), m_logger);
             Item::addChild(aggregator, dependsItem);
         }
     }
@@ -1289,13 +1273,13 @@ void ModuleLoader::prepareProduct(ProjectContext *projectContext, Item *productI
     importer->setFile(productItem->file());
     importer->setLocation(productItem->location());
     importer->setScope(projectContext->scope);
-    importer->setupForBuiltinType(m_logger);
+    importer->setupForBuiltinType(m_parameters.deprecationWarningMode(), m_logger);
     Item * const dependsItem = Item::create(productItem->pool(), ItemType::Depends);
     dependsItem->setProperty(QStringLiteral("name"), VariantValue::create(productContext.name));
     dependsItem->setProperty(QStringLiteral("required"), VariantValue::create(false));
     dependsItem->setFile(importer->file());
     dependsItem->setLocation(importer->location());
-    dependsItem->setupForBuiltinType(m_logger);
+    dependsItem->setupForBuiltinType(m_parameters.deprecationWarningMode(), m_logger);
     Item::addChild(importer, dependsItem);
     Item::addChild(productItem, importer);
     prepareProduct(projectContext, importer);
@@ -1939,8 +1923,8 @@ bool ModuleLoader::mergeExportItems(const ProductContext &productContext)
         for (Item * const child : exportItem->children()) {
             if (child->type() == ItemType::Parameters) {
                 adjustParametersScopes(child, child);
-                mergeParameters(pmi.defaultParameters,
-                                m_evaluator->scriptValue(child).toVariant().toMap());
+                mergeParameters(pmi.defaultParameters, getJsVariant(
+                    m_evaluator->engine()->context(), m_evaluator->scriptValue(child)).toMap());
             } else {
                 if (child->type() == ItemType::Depends) {
                     bool productTypesIsSet;
@@ -1973,7 +1957,7 @@ bool ModuleLoader::mergeExportItems(const ProductContext &productContext)
     merged->setLocation(exportItems.empty()
             ? productContext.item->location() : exportItems.back()->location());
     Item::addChild(productContext.item, merged);
-    merged->setupForBuiltinType(m_logger);
+    merged->setupForBuiltinType(m_parameters.deprecationWarningMode(), m_logger);
     pmi.exportItem = merged;
     pmi.multiplexId = productContext.multiplexConfigurationId;
     productContext.project->topLevelProject->productModules.insert(productContext.name, pmi);
@@ -2053,8 +2037,10 @@ void ModuleLoader::evaluateProfileValues(const QualifiedId &namePrefix, Item *it
             item->setType(ItemType::ModulePrefix); // TODO: Introduce new item type
             if (item != profileItem)
                 item->setScope(profileItem);
+            const ScopedJsValue sv(m_evaluator->engine()->context(),
+                                   m_evaluator->value(item, it.key()));
             values.insert(name.join(QLatin1Char('.')),
-                          m_evaluator->value(item, it.key()).toVariant());
+                getJsVariant(m_evaluator->engine()->context(), sv));
             break;
         }
     }
@@ -2727,18 +2713,17 @@ static Item::PropertyMap filterItemProperties(const Item::PropertyMap &propertie
     return result;
 }
 
-static QVariantMap safeToVariant(const QScriptValue &v)
+static QVariantMap safeToVariant(JSContext *ctx, const JSValue &v)
 {
     QVariantMap result;
-    QScriptValueIterator it(v);
-    while (it.hasNext()) {
-        it.next();
-        QScriptValue u = it.value();
-        if (u.isError())
-            throw ErrorInfo(u.toString());
-        result[it.name()] = (u.isObject() && !u.isArray() && !u.isRegExp())
-                ? safeToVariant(u) : it.value().toVariant();
-    }
+    handleJsProperties(ctx, v, [&](const JSAtom &prop, const JSPropertyDescriptor &desc) {
+        const JSValue u = desc.value;
+        if (JS_IsError(ctx, u))
+            throw ErrorInfo(getJsString(ctx, u));
+        const QString name = getJsString(ctx, prop);
+        result[name] = (JS_IsObject(u) && !JS_IsArray(ctx, u) && !JS_IsRegExp(ctx, u))
+                ? safeToVariant(ctx, u) : getJsVariant(ctx, u);
+    });
     return result;
 }
 
@@ -2752,9 +2737,9 @@ QVariantMap ModuleLoader::extractParameters(Item *dependsItem) const
 
     auto origProperties = dependsItem->properties();
     dependsItem->setProperties(itemProperties);
-    QScriptValue sv = m_evaluator->scriptValue(dependsItem);
+    JSValue sv = m_evaluator->scriptValue(dependsItem);
     try {
-        result = safeToVariant(sv);
+        result = safeToVariant(m_evaluator->engine()->context(), sv);
     } catch (const ErrorInfo &exception) {
         auto ei = exception;
         ei.prepend(Tr::tr("Error in dependency parameter."), dependsItem->location());
@@ -3033,7 +3018,7 @@ Item *ModuleLoader::searchAndLoadModuleFile(ProductContext *productContext,
     if (existingPaths.isEmpty()) { // no suitable names found, try to use providers
         AccumulatingTimer providersTimer(
                 m_parameters.logElapsedTime() ? &m_elapsedTimeModuleProviders : nullptr);
-        auto result = m_moduleProviderLoader->executeModuleProvider(
+        auto result = m_moduleProviderLoader->executeModuleProviders(
                     *productContext,
                     dependsItemLocation,
                     moduleName,
@@ -3140,7 +3125,7 @@ std::pair<Item *, bool> ModuleLoader::loadModuleFile(
         return {it.value() ? module : nullptr, triedToLoad};
     }
 
-    // Set the name before evaluating any properties. EvaluatorScriptClass reads the module name.
+    // Set the name before evaluating any properties. Evaluator reads the module name.
     module->setProperty(StringConstants::nameProperty(), VariantValue::create(fullModuleName));
 
     Item *deepestModuleInstance = findDeepestModuleInstance(moduleInstance);
@@ -3501,7 +3486,7 @@ Item *ModuleLoader::wrapInProjectIfNecessary(Item *item)
     Item::addChild(prj, item);
     prj->setFile(item->file());
     prj->setLocation(item->location());
-    prj->setupForBuiltinType(m_logger);
+    prj->setupForBuiltinType(m_parameters.deprecationWarningMode(), m_logger);
     return prj;
 }
 

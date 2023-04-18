@@ -1,0 +1,55 @@
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#pragma once
+
+#include <QAbstractListModel>
+
+namespace QmlDesigner {
+
+class ContentLibraryTexturesCategory;
+
+class ContentLibraryTexturesModel : public QAbstractListModel
+{
+    Q_OBJECT
+
+    Q_PROPERTY(bool texBundleExists READ texBundleExists CONSTANT)
+    Q_PROPERTY(bool isEmpty MEMBER m_isEmpty NOTIFY isEmptyChanged)
+    Q_PROPERTY(bool hasSceneEnv READ hasSceneEnv NOTIFY hasSceneEnvChanged)
+
+public:
+    ContentLibraryTexturesModel(QObject *parent = nullptr);
+
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    bool setData(const QModelIndex &index, const QVariant &value, int role) override;
+    QHash<int, QByteArray> roleNames() const override;
+
+    void setSearchText(const QString &searchText);
+
+    bool texBundleExists() const;
+
+    bool hasSceneEnv() const;
+    void setHasSceneEnv(bool b);
+
+    void resetModel();
+    void loadTextureBundle(const QString &bundlePath);
+
+signals:
+    void isEmptyChanged();
+    void materialVisibleChanged();
+    void hasSceneEnvChanged();
+
+private:
+    bool isValidIndex(int idx) const;
+    void updateIsEmpty();
+
+    QString m_searchText;
+    QList<ContentLibraryTexturesCategory *> m_bundleCategories;
+
+    bool m_isEmpty = true;
+    bool m_hasSceneEnv = false;
+    bool m_hasModelSelection = false;
+};
+
+} // namespace QmlDesigner

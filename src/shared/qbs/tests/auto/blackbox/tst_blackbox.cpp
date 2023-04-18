@@ -53,6 +53,7 @@
 #include <QtCore/qsettings.h>
 #include <QtCore/qtemporarydir.h>
 #include <QtCore/qtemporaryfile.h>
+#include <QtCore/qversionnumber.h>
 
 #include <algorithm>
 #include <functional>
@@ -1055,22 +1056,68 @@ void TestBlackbox::dependencyScanningLoop()
 
 void TestBlackbox::deprecatedProperty()
 {
+    QFETCH(QString, version);
+    QFETCH(QString, mode);
+    QFETCH(bool, expiringWarning);
+    QFETCH(bool, expiringError);
+
     QDir::setCurrent(testDataDir + "/deprecated-property");
     QbsRunParameters params(QStringList("-q"));
     params.expectFailure = true;
+    params.environment.insert("REMOVAL_VERSION", version);
+    if (!mode.isEmpty())
+        params.arguments << "--deprecation-warnings" << mode;
     QVERIFY(runQbs(params) != 0);
     m_qbsStderr = QDir::fromNativeSeparators(QString::fromLocal8Bit(m_qbsStderr)).toLocal8Bit();
-    QVERIFY2(m_qbsStderr.contains("deprecated-property.qbs:6:24 The property 'oldProp' is "
-            "deprecated and will be removed in Qbs 99.9.0."), m_qbsStderr.constData());
-    QVERIFY2(m_qbsStderr.contains("deprecated-property.qbs:7:28 The property 'veryOldProp' can no "
-            "longer be used. It was removed in Qbs 1.3.0."), m_qbsStderr.constData());
+    const bool hasExpiringWarning = m_qbsStderr.contains(QByteArray(
+            "deprecated-property.qbs:6:29 The property 'expiringProp' is "
+            "deprecated and will be removed in Qbs ") + version.toLocal8Bit());
+    QVERIFY2(expiringWarning == hasExpiringWarning, m_qbsStderr.constData());
+    const bool hasRemovedOutput = m_qbsStderr.contains(
+                "deprecated-property.qbs:7:28 The property 'veryOldProp' can no "
+                "longer be used. It was removed in Qbs 1.3.0.");
+    QVERIFY2(hasRemovedOutput == !expiringError, m_qbsStderr.constData());
     QVERIFY2(m_qbsStderr.contains("Property 'forgottenProp' was scheduled for removal in version "
                                   "1.8.0, but is still present."), m_qbsStderr.constData());
     QVERIFY2(m_qbsStderr.contains("themodule/m.qbs:22:5 Removal version for 'forgottenProp' "
                                   "specified here."), m_qbsStderr.constData());
-    QVERIFY2(m_qbsStderr.count("Use newProp instead.") == 2, m_qbsStderr.constData());
-    QVERIFY2(m_qbsStderr.count("is deprecated") == 1, m_qbsStderr.constData());
-    QVERIFY2(m_qbsStderr.count("was removed") == 1, m_qbsStderr.constData());
+    QVERIFY2(m_qbsStderr.count("Use newProp instead.") == 1
+             + int(expiringWarning && !expiringError), m_qbsStderr.constData());
+    QVERIFY2(m_qbsStderr.count("is deprecated") == int(expiringWarning), m_qbsStderr.constData());
+    QVERIFY2(m_qbsStderr.count("was removed") == int(!expiringError), m_qbsStderr.constData());
+}
+
+void TestBlackbox::deprecatedProperty_data()
+{
+    QTest::addColumn<QString>("version");
+    QTest::addColumn<QString>("mode");
+    QTest::addColumn<bool>("expiringWarning");
+    QTest::addColumn<bool>("expiringError");
+
+    const auto current = QVersionNumber::fromString(QBS_VERSION);
+    const QString next = QVersionNumber(current.majorVersion(), current.minorVersion() + 1)
+            .toString();
+    const QString nextNext = QVersionNumber(current.majorVersion(), current.minorVersion() + 2)
+            .toString();
+    const QString nextMajor = QVersionNumber(current.majorVersion() + 1).toString();
+
+    QTest::newRow("default/next") << next << QString() << true << false;
+    QTest::newRow("default/nextnext") << nextNext << QString() << false << false;
+    QTest::newRow("default/nextmajor") << nextMajor << QString() << true << false;
+    QTest::newRow("error/next") << next << QString("error") << true << true;
+    QTest::newRow("error/nextnext") << nextNext << QString("error") << true << true;
+    QTest::newRow("error/nextmajor") << nextMajor << QString("error") << true << true;
+    QTest::newRow("on/next") << next << QString("on") << true << false;
+    QTest::newRow("on/nextnext") << nextNext << QString("on") << true << false;
+    QTest::newRow("on/nextmajor") << nextMajor << QString("on") << true << false;
+    QTest::newRow("before-removal/next") << next << QString("before-removal") << true << false;
+    QTest::newRow("before-removal/nextnext") << nextNext << QString("before-removal")
+                                             << false << false;
+    QTest::newRow("before-removal/nextmajor") << nextMajor << QString("before-removal")
+                                             << true << false;
+    QTest::newRow("off/next") << next << QString("off") << false << false;
+    QTest::newRow("off/nextnext") << nextNext << QString("off") << false << false;
+    QTest::newRow("off/nextmajor") << nextMajor << QString("off") << false << false;
 }
 
 void TestBlackbox::disappearedProfile()
@@ -1177,6 +1224,13 @@ void TestBlackbox::discardUnusedData_data()
     QTest::newRow("discard") << QString("true") << false;
     QTest::newRow("don't discard") << QString("false") << true;
     QTest::newRow("default") << QString() << true;
+}
+
+void TestBlackbox::dotDotPcFile()
+{
+    QDir::setCurrent(testDataDir + "/dot-dot-pc-file");
+
+    QCOMPARE(runQbs(), 0);
 }
 
 void TestBlackbox::driverLinkerFlags()
@@ -1726,13 +1780,6 @@ void TestBlackbox::clean()
     QVERIFY(regularFileExists(depLibFilePath));
     for (const QString &symLink : qAsConst(symlinks))
         QVERIFY2(symlinkExists(symLink), qPrintable(symLink));
-}
-
-void TestBlackbox::concurrentExecutor()
-{
-    QDir::setCurrent(testDataDir + "/concurrent-executor");
-    QCOMPARE(runQbs(QStringList() << "-j" << "2"), 0);
-    QVERIFY2(!m_qbsStderr.contains("ASSERT"), m_qbsStderr.constData());
 }
 
 void TestBlackbox::conditionalExport()
@@ -2451,8 +2498,8 @@ void TestBlackbox::referenceErrorInExport()
     QbsRunParameters params;
     params.expectFailure = true;
     QVERIFY(runQbs(params) != 0);
-    QVERIFY(m_qbsStderr.contains(
-        "referenceErrorInExport.qbs:15:12 ReferenceError: Can't find variable: includePaths"));
+    QVERIFY2(m_qbsStderr.contains("referenceErrorInExport.qbs:5:27 'includePaths' is not defined"),
+             m_qbsStderr.constData());
 }
 
 void TestBlackbox::removeDuplicateLibraries_data()
@@ -2670,10 +2717,10 @@ void TestBlackbox::sanitizer()
     if (m_qbsStdout.contains(QByteArrayLiteral("Compiler does not support sanitizer")))
         QSKIP("Compiler does not support the specified sanitizer");
     if (!sanitizer.isEmpty()) {
-        QVERIFY2(m_qbsStdout.contains(QByteArrayLiteral("-fsanitize=") + sanitizer.toLatin1()),
+        QVERIFY2(m_qbsStdout.contains(QByteArrayLiteral("fsanitize=") + sanitizer.toLatin1()),
                  qPrintable(m_qbsStdout));
     } else {
-        QVERIFY2(!m_qbsStdout.contains(QByteArrayLiteral("-fsanitize=")), qPrintable(m_qbsStdout));
+        QVERIFY2(!m_qbsStdout.contains(QByteArrayLiteral("fsanitize=")), qPrintable(m_qbsStdout));
     }
 }
 
@@ -3054,17 +3101,26 @@ void TestBlackbox::pathProbe()
 void TestBlackbox::pchChangeTracking()
 {
     QDir::setCurrent(testDataDir + "/pch-change-tracking");
-    QCOMPARE(runQbs(), 0);
+    bool success = runQbs() == 0;
+    if (!success && m_qbsStderr.contains("mingw32_gt_pch_use_address"))
+        QSKIP("https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91440");
+    QVERIFY(success);
     QVERIFY(m_qbsStdout.contains("precompiling pch.h (cpp)"));
     WAIT_FOR_NEW_TIMESTAMP();
     touch("header1.h");
-    QCOMPARE(runQbs(), 0);
+    success = runQbs() == 0;
+    if (!success && m_qbsStderr.contains("mingw32_gt_pch_use_address"))
+        QSKIP("https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91440");
+    QVERIFY(success);
     QVERIFY(m_qbsStdout.contains("precompiling pch.h (cpp)"));
     QVERIFY(m_qbsStdout.contains("compiling header2.cpp"));
     QVERIFY(m_qbsStdout.contains("compiling main.cpp"));
     WAIT_FOR_NEW_TIMESTAMP();
     touch("header2.h");
-    QCOMPARE(runQbs(), 0);
+    success = runQbs() == 0;
+    if (!success && m_qbsStderr.contains("mingw32_gt_pch_use_address"))
+        QSKIP("https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91440");
+    QVERIFY(success);
     QVERIFY2(!m_qbsStdout.contains("precompiling pch.h (cpp)"), m_qbsStdout.constData());
 }
 
@@ -3194,13 +3250,19 @@ void TestBlackbox::pluginDependency()
 void TestBlackbox::precompiledAndPrefixHeaders()
 {
     QDir::setCurrent(testDataDir + "/precompiled-and-prefix-headers");
-    QCOMPARE(runQbs(), 0);
+    const bool success = runQbs() == 0;
+    if (!success && m_qbsStderr.contains("mingw32_gt_pch_use_address"))
+        QSKIP("https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91440");
+    QVERIFY(success);
 }
 
 void TestBlackbox::precompiledHeaderAndRedefine()
 {
     QDir::setCurrent(testDataDir + "/precompiled-headers-and-redefine");
-    QCOMPARE(runQbs(), 0);
+    const bool success = runQbs() == 0;
+    if (!success && m_qbsStderr.contains("mingw32_gt_pch_use_address"))
+        QSKIP("https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91440");
+    QVERIFY(success);
 }
 
 void TestBlackbox::preventFloatingPointValues()
@@ -5228,16 +5290,6 @@ void TestBlackbox::require()
     QCOMPARE(runQbs(), 0);
 }
 
-void TestBlackbox::requireDeprecated()
-{
-    QDir::setCurrent(testDataDir + "/require-deprecated");
-    QCOMPARE(runQbs(), 0);
-    QVERIFY2(m_qbsStderr.contains("loadExtension() function is deprecated"),
-             m_qbsStderr.constData());
-    QVERIFY2(m_qbsStderr.contains("loadFile() function is deprecated"),
-             m_qbsStderr.constData());
-}
-
 void TestBlackbox::rescueTransformerData()
 {
     QDir::setCurrent(testDataDir + "/rescue-transformer-data");
@@ -6111,6 +6163,27 @@ void TestBlackbox::qbsConfigAddProfile_data()
                                     << QString("Profile properties must be key/value pairs");
 }
 
+// checks that we can set qbs module properties in providers and provider cache works corectly
+void TestBlackbox::qbsModulePropertiesInProviders()
+{
+    QDir::setCurrent(testDataDir + "/qbs-module-properties-in-providers");
+
+    QbsRunParameters params("resolve");
+
+    QCOMPARE(runQbs(params), 0);
+
+    // We have 2 products in 2 configurations, but second product should use the cached value
+    // so we should have only 2 copies of the module, not 4.
+    QCOMPARE(m_qbsStdout.count("Running setup script for qbsmetatestmodule"), 2);
+
+    // Check that products get correct values from modules
+    QVERIFY2(m_qbsStdout.contains(("product1.qbsmetatestmodule.prop: sysroot1")), m_qbsStdout);
+    QVERIFY2(m_qbsStdout.contains(("product1.qbsmetatestmodule.prop: sysroot2")), m_qbsStdout);
+
+    QVERIFY2(m_qbsStdout.contains(("product2.qbsmetatestmodule.prop: sysroot1")), m_qbsStdout);
+    QVERIFY2(m_qbsStdout.contains(("product2.qbsmetatestmodule.prop: sysroot2")), m_qbsStdout);
+}
+
 // Tests whether it is possible to set qbsModuleProviders in Product and Project items
 // and that the order of providers results in correct priority
 void TestBlackbox::qbsModuleProviders()
@@ -6226,9 +6299,9 @@ void TestBlackbox::qbsModuleProvidersCompatibility_data()
 void TestBlackbox::qbspkgconfigModuleProvider()
 {
     QDir::setCurrent(testDataDir + "/qbspkgconfig-module-provider/libs");
+    rmDirR(relativeBuildDir());
 
     const auto commonParams = QbsRunParameters(QStringLiteral("install"), {
-            QStringLiteral("qbs.installPrefix:/usr/local"),
             QStringLiteral("--install-root"),
             QStringLiteral("install-root")
     });
@@ -6237,11 +6310,12 @@ void TestBlackbox::qbspkgconfigModuleProvider()
     QCOMPARE(runQbs(dynamicParams), 0);
 
     QDir::setCurrent(testDataDir + "/qbspkgconfig-module-provider");
+    rmDirR(relativeBuildDir());
+
+    const auto sysroot = testDataDir + "/qbspkgconfig-module-provider/libs/install-root";
 
     QbsRunParameters params;
-    params.arguments
-            << "moduleProviders.qbspkgconfig.libDirs:libdir"
-            << "moduleProviders.qbspkgconfig.sysroot:" + QDir::currentPath() + "/libs/install-root";
+    params.arguments << "moduleProviders.qbspkgconfig.sysroot:" + sysroot;
     QCOMPARE(runQbs(params), 0);
 }
 
@@ -6325,7 +6399,7 @@ void TestBlackbox::qbsSession()
     // Wait for and verify hello packet.
     QJsonObject receivedMessage = getNextSessionPacket(sessionProc, incomingData);
     QCOMPARE(receivedMessage.value("type"), "hello");
-    QCOMPARE(receivedMessage.value("api-level").toInt(), 2);
+    QCOMPARE(receivedMessage.value("api-level").toInt(), 3);
     QCOMPARE(receivedMessage.value("api-compat-level").toInt(), 2);
 
     // Resolve & verify structure
@@ -7671,6 +7745,11 @@ void TestBlackbox::nodejs()
         QSKIP("nodejs.packageManagerFilePath not set and automatic detection failed");
     }
 
+    if (p.value("nodejs.interpreterFilePath").toString().isEmpty()
+            && status != 0 && m_qbsStderr.contains("interpreterPath")) {
+        QSKIP("nodejs.interpreterFilePath not set and automatic detection failed");
+    }
+
     if (m_qbsStdout.contains("targetPlatform differs from hostPlatform"))
         QSKIP("Cannot run binaries in cross-compiled build");
     QCOMPARE(status, 0);
@@ -7916,14 +7995,18 @@ void TestBlackbox::maximumCLanguageVersion()
     QDir::setCurrent(testDataDir + "/maximum-c-language-version");
     QCOMPARE(runQbs(QbsRunParameters("resolve",
                                      QStringList("products.app.enableNewestModule:true"))), 0);
-    if (m_qbsStdout.contains("is msvc"))
-        QSKIP("MSVC has no support for setting the C language version.");
+    const bool isMsvc = m_qbsStdout.contains("is msvc: true");
+    if (isMsvc && m_qbsStdout.contains("is old msvc: true"))
+        QSKIP("MSVC supports setting the C language version only from version 16.8, and Clang from version 13.");
     QCOMPARE(runQbs(QStringList({"--command-echo-mode", "command-line", "-n"})), 0);
     QVERIFY2(m_qbsStdout.contains("c11") || m_qbsStdout.contains("c1x"), m_qbsStdout.constData());
     QCOMPARE(runQbs(QbsRunParameters("resolve",
                                      QStringList("products.app.enableNewestModule:false"))), 0);
     QCOMPARE(runQbs(QStringList({"--command-echo-mode", "command-line", "-n"})), 0);
-    QVERIFY2(m_qbsStdout.contains("c99"), m_qbsStdout.constData());
+    if (isMsvc)
+        QVERIFY2(!m_qbsStdout.contains("c11"), m_qbsStdout.constData());
+    else
+        QVERIFY2(m_qbsStdout.contains("c99"), m_qbsStdout.constData());
 }
 
 void TestBlackbox::maximumCxxLanguageVersion()
@@ -8443,6 +8526,13 @@ void TestBlackbox::grpc()
 
     rmDirR(relativeBuildDir());
     QbsRunParameters resolveParams("resolve", QStringList{"-f", projectFile});
+    if (QTest::currentDataTag() == QLatin1String("cpp")) {
+        if (const QString extraLibs = qEnvironmentVariable("QBS_EXTRA_GRPC_LIBS");
+                !extraLibs.isEmpty()) {
+            resolveParams.arguments << (QLatin1String("modules.protobuf.cpp._extraGrpcLibs:")
+                                        + extraLibs);
+        }
+    }
     resolveParams.arguments << arguments;
     QCOMPARE(runQbs(resolveParams), 0);
     const bool withGrpc = m_qbsStdout.contains("has grpc: true");

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppfollowsymbolundercursor.h"
 
@@ -47,8 +25,7 @@
 
 using namespace CPlusPlus;
 using namespace TextEditor;
-
-using Link = Utils::Link;
+using namespace Utils;
 
 namespace CppEditor {
 
@@ -117,13 +94,13 @@ bool VirtualFunctionHelper::canLookupVirtualFunctionOverrides(Function *function
     if (!m_document || m_snapshot.isEmpty() || !m_function || !m_scope)
         return false;
 
-    if (m_scope->isClass() && m_function->isPureVirtual()) {
+    if (m_scope->asClass() && m_function->isPureVirtual()) {
         m_staticClassOfFunctionCallExpression = m_scope->asClass();
         return true;
     }
 
     if (!m_baseExpressionAST || !m_expressionDocument
-            || m_scope->isClass() || m_scope->isFunction()) {
+            || m_scope->asClass() || m_scope->asFunction()) {
         return false;
     }
 
@@ -151,7 +128,7 @@ bool VirtualFunctionHelper::canLookupVirtualFunctionOverrides(Function *function
                 if (!items.isEmpty()) {
                     const LookupItem item = items.first();
                     if (Symbol *declaration = item.declaration())
-                        result = declaration->type()->isReferenceType();
+                        result = declaration->type()->asReferenceType();
                 }
             }
         }
@@ -191,7 +168,7 @@ Class *VirtualFunctionHelper::staticClassOfFunctionCallExpression_internal() con
                 const QList<Symbol *> symbols = binding->symbols();
                 if (!symbols.isEmpty()) {
                     Symbol * const first = symbols.first();
-                    if (first->isForwardClassDeclaration())
+                    if (first->asForwardClassDeclaration())
                         result = m_finder->findMatchingClassDeclaration(first, m_snapshot);
                 }
             }
@@ -204,13 +181,13 @@ Class *VirtualFunctionHelper::staticClassOfFunctionCallExpression_internal() con
 Link findMacroLink_helper(const QByteArray &name, Document::Ptr doc, const Snapshot &snapshot,
                           QSet<QString> *processed)
 {
-    if (doc && !name.startsWith('<') && !processed->contains(doc->fileName())) {
-        processed->insert(doc->fileName());
+    if (doc && !name.startsWith('<') && !processed->contains(doc->filePath().path())) {
+        processed->insert(doc->filePath().path());
 
-        foreach (const Macro &macro, doc->definedMacros()) {
+        for (const Macro &macro : doc->definedMacros()) {
             if (macro.name() == name) {
                 Link link;
-                link.targetFilePath = Utils::FilePath::fromString(macro.fileName());
+                link.targetFilePath = macro.filePath();
                 link.targetLine = macro.line();
                 return link;
             }
@@ -248,11 +225,11 @@ static bool isForwardClassDeclaration(Type *type)
     if (!type)
         return false;
 
-    if (type->isForwardClassDeclarationType()) {
+    if (type->asForwardClassDeclarationType()) {
         return true;
     } else if (Template *templ = type->asTemplateType()) {
         if (Symbol *declaration = templ->declaration()) {
-            if (declaration->isForwardClassDeclaration())
+            if (declaration->asForwardClassDeclaration())
                 return true;
         }
     }
@@ -278,22 +255,22 @@ inline LookupItem skipForwardDeclarations(const QList<LookupItem> &resolvedSymbo
         }
     }
 
-    if (ty->isObjCForwardClassDeclarationType()) {
+    if (ty->asObjCForwardClassDeclarationType()) {
         while (!candidates.isEmpty()) {
             LookupItem r = candidates.takeFirst();
 
-            if (!r.type()->isObjCForwardClassDeclarationType()) {
+            if (!r.type()->asObjCForwardClassDeclarationType()) {
                 result = r;
                 break;
             }
         }
     }
 
-    if (ty->isObjCForwardProtocolDeclarationType()) {
+    if (ty->asObjCForwardProtocolDeclarationType()) {
         while (!candidates.isEmpty()) {
             LookupItem r = candidates.takeFirst();
 
-            if (!r.type()->isObjCForwardProtocolDeclarationType()) {
+            if (!r.type()->asObjCForwardProtocolDeclarationType()) {
                 result = r;
                 break;
             }
@@ -383,10 +360,10 @@ Link attemptDeclDef(const QTextCursor &cursor, Snapshot snapshot,
 
 Symbol *findDefinition(Symbol *symbol, const Snapshot &snapshot, SymbolFinder *symbolFinder)
 {
-    if (symbol->isFunction())
+    if (symbol->asFunction())
         return nullptr; // symbol is a function definition.
 
-    if (!symbol->type()->isFunctionType())
+    if (!symbol->type()->asFunctionType())
         return nullptr; // not a function declaration
 
     return symbolFinder->findMatchingDefinition(symbol, snapshot);
@@ -491,7 +468,7 @@ static int skipMatchingParentheses(const Tokens &tokens, int idx, int initialDep
 
 void FollowSymbolUnderCursor::findLink(
         const CursorInEditor &data,
-        Utils::ProcessLinkCallback &&processLinkCallback,
+        const Utils::LinkHandler &processLinkCallback,
         bool resolveTarget,
         const Snapshot &theSnapshot,
         const Document::Ptr &documentFromSemanticInfo,
@@ -644,9 +621,10 @@ void FollowSymbolUnderCursor::findLink(
         // Handle include directives
         if (tk.is(T_STRING_LITERAL) || tk.is(T_ANGLE_STRING_LITERAL)) {
             const int lineno = cursor.blockNumber() + 1;
-            foreach (const Document::Include &incl, doc->resolvedIncludes()) {
+            const QList<Document::Include> includes = doc->resolvedIncludes();
+            for (const Document::Include &incl : includes) {
                 if (incl.line() == lineno) {
-                    link.targetFilePath = Utils::FilePath::fromString(incl.resolvedFileName());
+                    link.targetFilePath = incl.resolvedFileName();
                     link.linkTextStart = beginOfToken + 1;
                     link.linkTextEnd = endOfToken - 1;
                     processLinkCallback(link);
@@ -669,12 +647,12 @@ void FollowSymbolUnderCursor::findLink(
         if (macro->name() == name)
             return processLinkCallback(link); //already on definition!
     } else if (const Document::MacroUse *use = doc->findMacroUseAt(endOfToken - 1)) {
-        const QString fileName = use->macro().fileName();
-        if (fileName == CppModelManager::editorConfigurationFileName()) {
+        const FilePath filePath = use->macro().filePath();
+        if (filePath.path() == CppModelManager::editorConfigurationFileName().path()) {
             editorWidget->showPreProcessorWidget();
-        } else if (fileName != CppModelManager::configurationFileName()) {
+        } else if (filePath.path() != CppModelManager::configurationFileName().path()) {
             const Macro &macro = use->macro();
-            link.targetFilePath = Utils::FilePath::fromString(macro.fileName());
+            link.targetFilePath = macro.filePath();
             link.targetLine = macro.line();
             link.linkTextStart = use->utf16charsBegin();
             link.linkTextEnd = use->utf16charsEnd();
@@ -702,18 +680,17 @@ void FollowSymbolUnderCursor::findLink(
     if (!resolvedSymbols.isEmpty()) {
         LookupItem result = skipForwardDeclarations(resolvedSymbols);
 
-        foreach (const LookupItem &r, resolvedSymbols) {
+        for (const LookupItem &r : resolvedSymbols) {
             if (Symbol *d = r.declaration()) {
-                if (d->isDeclaration() || d->isFunction()) {
-                    const QString fileName = QString::fromUtf8(d->fileName(), d->fileNameLength());
-                    if (data.filePath().toString() == fileName) {
+                if (d->asDeclaration() || d->asFunction()) {
+                    if (data.filePath() == d->filePath()) {
                         if (line == d->line() && positionInBlock >= d->column()) {
                             // TODO: check the end
                             result = r; // take the symbol under cursor.
                             break;
                         }
                     }
-                } else if (d->isUsingDeclaration()) {
+                } else if (d->asUsingDeclaration()) {
                     int tokenBeginLineNumber = 0;
                     int tokenBeginColumnNumber = 0;
                     Utils::Text::convertPosition(document, beginOfToken, &tokenBeginLineNumber,
@@ -766,11 +743,11 @@ void FollowSymbolUnderCursor::findLink(
                 if (def == lastVisibleSymbol)
                     def = nullptr; // jump to declaration then.
 
-                if (symbol->isForwardClassDeclaration()) {
+                if (symbol->asForwardClassDeclaration()) {
                     def = symbolFinder->findMatchingClassDeclaration(symbol, snapshot);
                 } else if (Template *templ = symbol->asTemplate()) {
                     if (Symbol *declaration = templ->declaration()) {
-                        if (declaration->isForwardClassDeclaration())
+                        if (declaration->asForwardClassDeclaration())
                             def = symbolFinder->findMatchingClassDeclaration(declaration, snapshot);
                     }
                 }
@@ -801,7 +778,7 @@ void FollowSymbolUnderCursor::findLink(
 
 void FollowSymbolUnderCursor::switchDeclDef(
         const CursorInEditor &data,
-        Utils::ProcessLinkCallback &&processLinkCallback,
+        const Utils::LinkHandler &processLinkCallback,
         const CPlusPlus::Snapshot &snapshot,
         const CPlusPlus::Document::Ptr &documentFromSemanticInfo,
         SymbolFinder *symbolFinder)
@@ -826,9 +803,9 @@ void FollowSymbolUnderCursor::switchDeclDef(
         } else if (SimpleDeclarationAST *simpleDeclaration = ast->asSimpleDeclaration()) {
             if (List<Symbol *> *symbols = simpleDeclaration->symbols) {
                 if (Symbol *symbol = symbols->value) {
-                    if (symbol->isDeclaration()) {
+                    if (symbol->asDeclaration()) {
                         declarationSymbol = symbol;
-                        if (symbol->type()->isFunctionType()) {
+                        if (symbol->type()->asFunctionType()) {
                             functionDeclarationSymbol = symbol;
                             break; // Function declaration found!
                         }
@@ -856,7 +833,7 @@ void FollowSymbolUnderCursor::switchDeclDef(
                              functionDefinitionSymbol->enclosingScope());
 
         QList<Symbol *> best;
-        foreach (const LookupItem &r, declarations) {
+        for (const LookupItem &r : declarations) {
             if (Symbol *decl = r.declaration()) {
                 if (Function *funTy = decl->type()->asFunctionType()) {
                     if (funTy->match(functionDefinitionSymbol)) {
@@ -887,4 +864,4 @@ void FollowSymbolUnderCursor::setVirtualFunctionAssistProvider(
     m_virtualFunctionAssistProvider = provider;
 }
 
-} // namespace CppEditor
+} // CppEditor

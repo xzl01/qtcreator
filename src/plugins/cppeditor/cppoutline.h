@@ -1,38 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "abstractoverviewmodel.h"
 #include "cppeditorwidget.h"
+#include "cppoutlinemodel.h"
 
 #include <texteditor/ioutlinewidget.h>
 
 #include <utils/navigationtreeview.h>
 
 #include <QSortFilterProxyModel>
+#include <QTimer>
 
 namespace CppEditor {
 namespace Internal {
@@ -50,13 +29,13 @@ class CppOutlineFilterModel : public QSortFilterProxyModel
 {
     Q_OBJECT
 public:
-    CppOutlineFilterModel(AbstractOverviewModel &sourceModel, QObject *parent);
+    CppOutlineFilterModel(OutlineModel &sourceModel, QObject *parent);
     // QSortFilterProxyModel
     bool filterAcceptsRow(int sourceRow,
                           const QModelIndex &sourceParent) const override;
     Qt::DropActions supportedDragActions() const override;
 private:
-    AbstractOverviewModel &m_sourceModel;
+    OutlineModel &m_sourceModel;
 };
 
 class CppOutlineWidget : public TextEditor::IOutlineWidget
@@ -75,7 +54,8 @@ public:
     QVariantMap settings() const override;
 private:
     void modelUpdated();
-    void updateSelectionInTree(const QModelIndex &index);
+    void updateIndex();
+    void updateIndexNow();
     void updateTextCursor(const QModelIndex &index);
     void onItemActivated(const QModelIndex &index);
     bool syncCursor();
@@ -83,7 +63,9 @@ private:
 private:
     CppEditorWidget *m_editor;
     CppOutlineTreeView *m_treeView;
+    OutlineModel * const m_model;
     QSortFilterProxyModel *m_proxyModel;
+    QTimer m_updateIndexTimer;
 
     bool m_enableCursorSync;
     bool m_blockCursorSync;

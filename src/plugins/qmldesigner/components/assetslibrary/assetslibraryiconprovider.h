@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,7 +7,17 @@
 
 #include <QQuickImageProvider>
 
+#include "asset.h"
+
 namespace QmlDesigner {
+
+struct Thumbnail
+{
+    QPixmap pixmap;
+    QSize originalSize;
+    Asset::Type assetType;
+    qint64 fileSize;
+};
 
 class AssetsLibraryIconProvider : public QQuickImageProvider
 {
@@ -37,9 +25,16 @@ public:
     AssetsLibraryIconProvider(SynchronousImageCache &fontImageCache);
 
     QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requestedSize) override;
+    void clearCache();
+    void invalidateThumbnail(const QString &id);
+    QSize imageSize(const QString &id);
+    qint64 fileSize(const QString &id);
+    bool assetIsImage(const QString &id);
 
 private:
     QPixmap generateFontIcons(const QString &filePath, const QSize &requestedSize) const;
+    QPair<QPixmap, qint64> fetchPixmap(const QString &id, const QSize &requestedSize) const;
+    Thumbnail createThumbnail(const QString &id, const QSize &requestedSize);
 
     SynchronousImageCache &m_fontImageCache;
 
@@ -48,6 +43,7 @@ private:
     std::vector<QSize> iconSizes = {{128, 128}, // Drag
                                     {96, 96},   // list @2x
                                     {48, 48}};  // list
+    QHash<QString, Thumbnail> m_thumbnails;
 };
 
 } // namespace QmlDesigner

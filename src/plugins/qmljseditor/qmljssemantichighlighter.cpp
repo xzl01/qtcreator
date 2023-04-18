@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljssemantichighlighter.h"
 
@@ -59,7 +37,7 @@ namespace {
 
 static bool isIdScope(const ObjectValue *scope, const QList<const QmlComponentChain *> &chain)
 {
-    foreach (const QmlComponentChain *c, chain) {
+    for (const QmlComponentChain *c : chain) {
         if (c->idScope() == scope)
             return true;
         if (isIdScope(scope, c->instantiatingComponents()))
@@ -174,9 +152,14 @@ protected:
 class CollectionTask : protected Visitor
 {
 public:
+    enum Flags {
+        AddMessagesHighlights,
+        SkipMessagesHighlights,
+    };
     CollectionTask(QFutureInterface<SemanticHighlighter::Use> &futureInterface,
                    const QmlJSTools::SemanticInfo &semanticInfo,
-                   const TextEditor::FontSettings &fontSettings)
+                   const TextEditor::FontSettings &fontSettings,
+                   Flags flags)
         : m_futureInterface(futureInterface)
         , m_semanticInfo(semanticInfo)
         , m_fontSettings(fontSettings)
@@ -194,9 +177,11 @@ public:
             m_delayedUses.reserve(nMessages);
             m_diagnosticRanges.reserve(nMessages);
             m_extraFormats.reserve(nMessages);
-            addMessages(m_scopeChain.document()->diagnosticMessages(), m_scopeChain.document());
-            addMessages(m_semanticInfo.semanticMessages, m_semanticInfo.document);
-            addMessages(m_semanticInfo.staticAnalysisMessages, m_semanticInfo.document);
+            if (flags == AddMessagesHighlights) {
+                addMessages(m_scopeChain.document()->diagnosticMessages(), m_scopeChain.document());
+                addMessages(m_semanticInfo.semanticMessages, m_semanticInfo.document);
+                addMessages(m_semanticInfo.staticAnalysisMessages, m_semanticInfo.document);
+            }
 
             Utils::sort(m_delayedUses, sortByLinePredicate);
         }
@@ -391,7 +376,7 @@ protected:
     void addMessages(QList<DiagnosticMessage> messages,
             const Document::Ptr &doc)
     {
-        foreach (const DiagnosticMessage &d, messages) {
+        for (const DiagnosticMessage &d : messages) {
             int line = d.loc.startLine;
             int column = qMax(1U, d.loc.startColumn);
             int length = d.loc.length;
@@ -426,7 +411,7 @@ protected:
     void addMessages(const QList<StaticAnalysis::Message> &messages,
                      const Document::Ptr &doc)
     {
-        foreach (const StaticAnalysis::Message &d, messages) {
+        for (const StaticAnalysis::Message &d : messages) {
             int line = d.location.startLine;
             int column = qMax(1U, d.location.startColumn);
             int length = d.location.length;
@@ -585,8 +570,9 @@ void SemanticHighlighter::applyResults(int from, int to)
     if (m_startRevision != m_document->document()->revision())
         return;
 
-    TextEditor::SemanticHighlighter::incrementalApplyExtraAdditionalFormats(
-                m_document->syntaxHighlighter(), m_watcher.future(), from, to, m_extraFormats);
+    if (m_enableHighlighting)
+        TextEditor::SemanticHighlighter::incrementalApplyExtraAdditionalFormats(
+            m_document->syntaxHighlighter(), m_watcher.future(), from, to, m_extraFormats);
 }
 
 void SemanticHighlighter::finished()
@@ -596,17 +582,23 @@ void SemanticHighlighter::finished()
     if (m_startRevision != m_document->document()->revision())
         return;
 
-    m_document->setDiagnosticRanges(m_diagnosticRanges);
+    if (m_enableWarnings)
+        m_document->setDiagnosticRanges(m_diagnosticRanges);
 
-    TextEditor::SemanticHighlighter::clearExtraAdditionalFormatsUntilEnd(
-                m_document->syntaxHighlighter(), m_watcher.future());
+    if (m_enableHighlighting)
+        TextEditor::SemanticHighlighter::clearExtraAdditionalFormatsUntilEnd(
+            m_document->syntaxHighlighter(), m_watcher.future());
 }
 
 void SemanticHighlighter::run(QFutureInterface<SemanticHighlighter::Use> &futureInterface,
                               const QmlJSTools::SemanticInfo &semanticInfo,
                               const TextEditor::FontSettings &fontSettings)
 {
-    CollectionTask task(futureInterface, semanticInfo, fontSettings);
+    CollectionTask task(futureInterface,
+                        semanticInfo,
+                        fontSettings,
+                        (m_enableWarnings ? CollectionTask::AddMessagesHighlights
+                                          : CollectionTask::SkipMessagesHighlights));
     reportMessagesInfo(task.diagnosticRanges(), task.extraFormats());
     task.run();
 }
@@ -642,6 +634,16 @@ void SemanticHighlighter::reportMessagesInfo(const QVector<QTextLayout::FormatRa
 int SemanticHighlighter::startRevision() const
 {
     return m_startRevision;
+}
+
+void SemanticHighlighter::setEnableWarnings(bool e)
+{
+    m_enableWarnings = e;
+}
+
+void SemanticHighlighter::setEnableHighlighting(bool e)
+{
+    m_enableHighlighting = e;
 }
 
 } // namespace QmlJSEditor

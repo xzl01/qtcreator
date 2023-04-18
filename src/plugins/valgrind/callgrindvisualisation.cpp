@@ -1,36 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "callgrindvisualisation.h"
 
 #include "callgrindhelper.h"
+#include "valgrindtr.h"
 
 #include <valgrind/callgrind/callgrindabstractmodel.h>
 #include <valgrind/callgrind/callgrinddatamodel.h>
 #include <valgrind/callgrind/callgrindfunction.h>
 #include <valgrind/callgrind/callgrindproxymodel.h>
+
 #include <utils/qtcassert.h>
 
 #include <QAbstractItemModel>
@@ -236,7 +216,8 @@ void Visualization::Private::handleMousePressEvent(QMouseEvent *event,
 {
     // find the first item that accepts mouse presses under the cursor position
     QGraphicsItem *itemAtPos = nullptr;
-    foreach (QGraphicsItem *item, q->items(event->pos())) {
+    const QList<QGraphicsItem *>items = q->items(event->pos());
+    for (QGraphicsItem *item : items) {
         if (!(item->acceptedMouseButtons() & event->button()))
             continue;
 
@@ -291,7 +272,8 @@ const Function *Visualization::functionForItem(QGraphicsItem *item) const
 
 QGraphicsItem *Visualization::itemForFunction(const Function *function) const
 {
-    foreach (QGraphicsItem *item, items()) {
+    const QList<QGraphicsItem *> itemList = items();
+    for (QGraphicsItem *item : itemList) {
         if (functionForItem(item) == function)
             return item;
     }
@@ -385,7 +367,7 @@ void Visualization::populateScene()
             QString ratioPercentString = QString::number(ratioPercent);
             ratioPercentString.append(QLocale::system().percent());
             const int hiddenFunctions = d->m_model->sourceModel()->rowCount() - d->m_model->rowCount();
-            text = tr("All functions with an inclusive cost ratio higher than %1 (%2 are hidden)")
+            text = Tr::tr("All functions with an inclusive cost ratio higher than %1 (%2 are hidden)")
                     .arg(ratioPercentString, hiddenFunctions);
         }
 
@@ -401,7 +383,7 @@ void Visualization::populateScene()
 
     // add the canvas elements to the scene
     qreal used = sceneHeight * 0.1;
-    for (const Pair &cost : qAsConst(costs)) {
+    for (const Pair &cost : std::as_const(costs)) {
         const QModelIndex &index = cost.first;
         const QString text = index.data().toString();
 

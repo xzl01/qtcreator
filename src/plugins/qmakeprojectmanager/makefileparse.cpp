@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "makefileparse.h"
 
@@ -119,9 +97,8 @@ void MakeFileParse::parseArgs(const QString &args, const QString &project,
 
 void dumpQMakeAssignments(const QList<QMakeAssignment> &list)
 {
-    foreach (const QMakeAssignment &qa, list) {
+    for (const QMakeAssignment &qa : list)
         qCDebug(MakeFileParse::logging()) << "    " << qa.variable << qa.op << qa.value;
-    }
 }
 
 QList<QMakeAssignment> MakeFileParse::parseAssignments(const QList<QMakeAssignment> &assignments)
@@ -129,11 +106,11 @@ QList<QMakeAssignment> MakeFileParse::parseAssignments(const QList<QMakeAssignme
     bool foundSeparateDebugInfo = false;
     bool foundForceDebugInfo = false;
     QList<QMakeAssignment> filteredAssignments;
-    foreach (const QMakeAssignment &qa, assignments) {
+    for (const QMakeAssignment &qa : assignments) {
         if (qa.variable == QLatin1String("CONFIG")) {
-            QStringList values = qa.value.split(QLatin1Char(' '));
+            const QStringList values = qa.value.split(QLatin1Char(' '));
             QStringList newValues;
-            foreach (const QString &value, values) {
+            for (const QString &value : values) {
                 if (value == QLatin1String("debug")) {
                     if (qa.op == QLatin1String("+=")) {
                         m_qmakeBuildConfig.explicitDebug = true;
@@ -367,11 +344,11 @@ void MakeFileParse::parseCommandLine(const QString &command, const QString &proj
     // Create command line of all unfiltered arguments
     const QList<QMakeAssignment> &assignmentsToUse = m_mode == Mode::FilterKnownConfigValues
             ? filteredAssignments : assignments;
-    foreach (const QMakeAssignment &qa, assignmentsToUse)
+    for (const QMakeAssignment &qa : assignmentsToUse)
         ProcessArgs::addArg(&m_unparsedArguments, qa.variable + qa.op + qa.value);
     if (!afterAssignments.isEmpty()) {
         ProcessArgs::addArg(&m_unparsedArguments, QLatin1String("-after"));
-        foreach (const QMakeAssignment &qa, afterAssignments)
+        for (const QMakeAssignment &qa : std::as_const(afterAssignments))
             ProcessArgs::addArg(&m_unparsedArguments, qa.variable + qa.op + qa.value);
     }
 }
@@ -502,8 +479,8 @@ void QmakeProjectManagerPlugin::testMakefileParser()
     MakeFileParse parser("/tmp/something", MakeFileParse::Mode::FilterKnownConfigValues);
     parser.parseCommandLine(command, project);
 
-    QCOMPARE(Utils::ProcessArgs::splitArgs(parser.unparsedArguments()),
-             Utils::ProcessArgs::splitArgs(unparsedArguments));
+    QCOMPARE(ProcessArgs::splitArgs(parser.unparsedArguments()),
+             ProcessArgs::splitArgs(unparsedArguments));
     QCOMPARE(parser.effectiveBuildConfig({}), effectiveBuildConfig);
 
     const QMakeStepConfig qmsc = parser.config();

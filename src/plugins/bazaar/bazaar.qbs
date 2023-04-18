@@ -15,7 +15,6 @@ QtcPlugin {
         "annotationhighlighter.h",
         "bazaarclient.cpp",
         "bazaarclient.h",
-        "bazaarcommitpanel.ui",
         "bazaarcommitwidget.cpp",
         "bazaarcommitwidget.h",
         "bazaareditor.cpp",
@@ -24,6 +23,7 @@ QtcPlugin {
         "bazaarplugin.h",
         "bazaarsettings.cpp",
         "bazaarsettings.h",
+        "bazaartr.h",
         "branchinfo.cpp",
         "branchinfo.h",
         "commiteditor.cpp",
@@ -31,9 +31,6 @@ QtcPlugin {
         "constants.h",
         "pullorpushdialog.cpp",
         "pullorpushdialog.h",
-        "pullorpushdialog.ui",
-        "revertdialog.ui",
-        "uncommitdialog.ui",
     ]
 }
 

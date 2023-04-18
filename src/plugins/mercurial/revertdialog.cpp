@@ -1,49 +1,54 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Brian McGillion
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Brian McGillion
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "revertdialog.h"
 
-namespace Mercurial {
-namespace Internal  {
+#include "mercurialtr.h"
 
-RevertDialog::RevertDialog(QWidget *parent) :
-    QDialog(parent),
-    m_ui(new Ui::RevertDialog)
+#include <utils/layoutbuilder.h>
+
+#include <QDialogButtonBox>
+#include <QGroupBox>
+#include <QLineEdit>
+
+using namespace Utils;
+
+namespace Mercurial::Internal {
+
+RevertDialog::RevertDialog(QWidget *parent)
+    : QDialog(parent)
 {
-    m_ui->setupUi(this);
+    resize(400, 162);
+    setWindowTitle(Tr::tr("Revert"));
+
+    auto groupBox = new QGroupBox(Tr::tr("Specify a revision other than the default?"));
+    groupBox->setCheckable(true);
+    groupBox->setChecked(false);
+
+    m_revisionLineEdit = new QLineEdit;
+
+    auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+
+    using namespace Layouting;
+
+    Form {
+        Tr::tr("Revision:"), m_revisionLineEdit,
+    }.attachTo(groupBox, WithMargins);
+
+    Column {
+        groupBox,
+        buttonBox
+    }.attachTo(this);
+
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
 }
 
-RevertDialog::~RevertDialog()
-{
-    delete m_ui;
-}
+RevertDialog::~RevertDialog() = default;
 
 QString RevertDialog::revision() const
 {
-    return m_ui->revisionLineEdit->text();
+    return m_revisionLineEdit->text();
 }
 
-} // namespace Internal
-} // namespace Mercurial
+} // Mercurial::Internal

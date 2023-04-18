@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "addrunconfigdialog.h"
 
 #include "project.h"
+#include "projectexplorertr.h"
 #include "target.h"
 
 #include <utils/itemviews.h>
@@ -49,7 +28,6 @@ const Qt::ItemDataRole IsCustomRole = Qt::UserRole;
 
 class CandidateTreeItem : public TreeItem
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::AddRunConfigDialog)
 public:
     CandidateTreeItem(const RunConfigurationCreationInfo &rci, const Target *target)
         : m_creationInfo(rci), m_projectRoot(target->project()->projectDirectory()),
@@ -72,7 +50,7 @@ private:
                 displayPath = m_creationInfo.projectFilePath;
                 QTC_CHECK(displayPath.isEmpty());
             }
-            return displayPath.isEmpty() ? tr("[none]") : displayPath.toUserOutput();
+            return displayPath.isEmpty() ? Tr::tr("[none]") : displayPath.toUserOutput();
         }
         return QVariant();
     }
@@ -84,11 +62,10 @@ private:
 
 class CandidatesModel : public TreeModel<TreeItem, CandidateTreeItem>
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::AddRunConfigDialog)
 public:
     CandidatesModel(Target *target, QObject *parent) : TreeModel(parent)
     {
-        setHeader({tr("Name"), tr("Source")});
+        setHeader({Tr::tr("Name"), Tr::tr("Source")});
         for (const RunConfigurationCreationInfo &rci
              : RunConfigurationFactory::creatorsForTarget(target)) {
             rootItem()->appendChild(new CandidateTreeItem(rci, target));
@@ -136,13 +113,14 @@ private:
 AddRunConfigDialog::AddRunConfigDialog(Target *target, QWidget *parent)
     : QDialog(parent), m_view(new CandidatesTreeView(this))
 {
-    setWindowTitle(tr("Create Run Configuration"));
+    setWindowTitle(Tr::tr("Create Run Configuration"));
     const auto model = new CandidatesModel(target, this);
     const auto proxyModel = new ProxyModel(this);
     proxyModel->setSourceModel(model);
     const auto filterEdit = new FancyLineEdit(this);
+    filterEdit->setFocus();
     filterEdit->setFiltering(true);
-    filterEdit->setPlaceholderText(tr("Filter candidates by name"));
+    filterEdit->setPlaceholderText(Tr::tr("Filter candidates by name"));
     m_view->setSelectionMode(TreeView::SingleSelection);
     m_view->setSelectionBehavior(TreeView::SelectRows);
     m_view->setSortingEnabled(true);
@@ -151,7 +129,7 @@ AddRunConfigDialog::AddRunConfigDialog(Target *target, QWidget *parent)
     m_view->resizeColumnToContents(1);
     m_view->sortByColumn(0, Qt::AscendingOrder);
     const auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Create"));
+    buttonBox->button(QDialogButtonBox::Ok)->setText(Tr::tr("Create"));
 
     connect(filterEdit, &FancyLineEdit::textChanged, this, [proxyModel](const QString &text) {
         proxyModel->setFilterRegularExpression(QRegularExpression(text, QRegularExpression::CaseInsensitiveOption));

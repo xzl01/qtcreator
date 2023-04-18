@@ -20,9 +20,7 @@ if (NOT QT_CREATOR_API_DEFINED)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_CXX_EXTENSIONS OFF)
 
-  set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
-  set(IMPLICIT_DEPENDS Qt5::Test)
+  set(IMPLICIT_DEPENDS Qt::Test)
 
   include(QtCreatorIDEBranding)
   include(QtCreatorAPI)
@@ -48,17 +46,19 @@ add_qtc_test(tst_debugger_disassembler
 
 option(WITH_DEBUGGER_DUMPERS "Include tests for debugger pretty printers" ON)
 if (WITH_DEBUGGER_DUMPERS)
-  get_target_property(qmake_binary Qt5::qmake IMPORTED_LOCATION)
+  get_target_property(qmake_binary Qt::qmake IMPORTED_LOCATION)
 
   add_qtc_test(tst_debugger_dumpers
+    EXCLUDE_FROM_PRECHECK
     TIMEOUT 0
-    DEPENDS Qt5::Network Utils
+    DEPENDS Qt::Network Utils
     DEFINES
       DUMPERDIR="${PROJECT_SOURCE_DIR}/share/qtcreator/debugger"
       DEFAULT_QMAKE_BINARY="${qmake_binary}"
     INCLUDES
       "${DEBUGGERDIR}"
     SOURCES
+      "${DEBUGGERDIR}/debuggertr.h"
       "${DEBUGGERDIR}/debuggerprotocol.cpp" "${DEBUGGERDIR}/debuggerprotocol.h"
       "${DEBUGGERDIR}/simplifytype.cpp" "${DEBUGGERDIR}/simplifytype.h"
       "${DEBUGGERDIR}/watchdata.cpp" "${DEBUGGERDIR}/watchdata.h"
@@ -68,24 +68,26 @@ if (WITH_DEBUGGER_DUMPERS)
 endif()
 
 add_qtc_test(tst_debugger_gdb
-  DEPENDS Qt5::Network Utils
+  DEPENDS Qt::Network Utils
   INCLUDES "${DEBUGGERDIR}"
   SOURCES
     tst_gdb.cpp
+    "${DEBUGGERDIR}/debuggertr.h"
     "${DEBUGGERDIR}/debuggerprotocol.cpp" "${DEBUGGERDIR}/debuggerprotocol.h"
 )
 
 add_qtc_test(tst_debugger_protocol
-  DEPENDS Qt5::Network Utils
+  DEPENDS Qt::Network Utils
   INCLUDES
     "${DEBUGGERDIR}"
   SOURCES
+    "${DEBUGGERDIR}/debuggertr.h"
     "${DEBUGGERDIR}/debuggerprotocol.cpp" "${DEBUGGERDIR}/debuggerprotocol.h"
     tst_protocol.cpp
 )
 
 add_qtc_test(tst_debugger_offsets
-  DEPENDS Qt5::CorePrivate
+  DEPENDS Qt::CorePrivate
   INCLUDES "${DEBUGGERDIR}"
   SOURCES tst_offsets.cpp
 )
@@ -96,5 +98,6 @@ add_qtc_test(tst_debugger_simplifytypes
   DEFINES DUMPERDIR="${PROJECT_SOURCE_DIR}/share/qtcreator/debugger"
   SOURCES
     tst_simplifytypes.cpp
+    "${DEBUGGERDIR}/debuggertr.h"
     "${DEBUGGERDIR}/simplifytype.cpp" "${DEBUGGERDIR}/simplifytype.h"
 )

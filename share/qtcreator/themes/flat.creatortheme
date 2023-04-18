@@ -82,8 +82,8 @@ DSsliderHandleHover=ff606060
 DSsliderHandleFocus=ff0492c9
 DSsliderHandleInteraction=ff2aafd3
 
-DSscrollBarTrack=ff404040
-DSscrollBarHandle=ff505050
+DSscrollBarTrack=ff3E3E3E
+DSscrollBarHandle=ff4C4C4C
 
 DSsectionHeadBackground=ff1f1f1f
 
@@ -91,6 +91,9 @@ DSstateDefaultHighlight=ffffe400
 DSstateSeparatorColor=ff7c7b7b
 DSstateBackgroundColor=ff383838
 DSstatePreviewOutline=ffaaaaaa
+
+DSstatePanelBackground=ff252525
+DSstateHighlight=ff727272
 
 DSchangedStateText=ff99ccff
 
@@ -373,8 +376,3 @@ FlatMenuBar=false
 ToolBarIconShadow=true
 WindowColorAsBase=false
 DarkUserInterface=false
-
-[Gradients]
-DetailsWidgetHeaderGradient\1\color=00000000
-DetailsWidgetHeaderGradient\1\pos=1
-DetailsWidgetHeaderGradient\size=1

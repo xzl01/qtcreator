@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <cppeditor/cppselectionchanger.h>
 
@@ -31,11 +9,14 @@
 #include <cplusplus/TranslationUnit.h>
 #include <cplusplus/pp-engine.h>
 
+#include <utils/filepath.h>
+
 #include <QtTest>
 #include <QTextDocument>
 
 using namespace CPlusPlus;
 using namespace CppEditor;
+using namespace Utils;
 
 //TESTED_COMPONENT=src/plugins/cppeditor
 
@@ -197,7 +178,7 @@ inline void tst_CppSelectionChanger::doShrink(QTextCursor& cursor, const QString
 QByteArray tst_CppSelectionChanger::preprocess(const QByteArray &source, const QString &fileName)
 {
     Client *client = 0; // no client.
-    Environment env;
+    CPlusPlus::Environment env;
     Preprocessor preprocess(client, &env);
     preprocess.setKeepComments(true);
     return preprocess.run(fileName, source);
@@ -215,7 +196,7 @@ void tst_CppSelectionChanger::initTestCase()
     textDocument.setPlainText(cppFileString);
 
     // Create the CPP document and preprocess the source, just like how the CppEditor does it.
-    cppDocument = Document::create(fileName);
+    cppDocument = Document::create(FilePath::fromString(fileName));
     const QByteArray preprocessedSource = preprocess(cppFileString.toUtf8(), fileName);
     cppDocument->setUtf8Source(preprocessedSource);
     cppDocument->parse();
@@ -1154,5 +1135,5 @@ void tst_CppSelectionChanger::testWholeDocumentSelection()
     QVERIFY(!result);
 }
 
-QTEST_MAIN(tst_CppSelectionChanger)
+QTEST_GUILESS_MAIN(tst_CppSelectionChanger)
 #include "tst_cppselectionchangertest.moc"

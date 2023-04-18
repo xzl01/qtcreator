@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bindingproperty.h"
 #include "nodeproperty.h"
 #include "internalproperty.h"
-#include "invalidmodelnodeexception.h"
-#include "invalidpropertyexception.h"
-#include "invalidargumentexception.h"
 #include "internalnode_p.h"
 #include "model.h"
 #include "model_p.h"
@@ -61,17 +36,16 @@ void BindingProperty::setExpression(const QString &expression)
 {
     Internal::WriteLocker locker(model());
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (isDynamic())
         qWarning() << "Calling BindingProperty::setExpression on dynamic property.";
 
-    if (name() == "id") { // the ID for a node is independent of the state, so it has to be set with ModelNode::setId
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, name());
-    }
+    if (name() == "id")
+        return;
 
     if (expression.isEmpty())
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, name());
+        return;
 
     if (internalNode()->hasProperty(name())) { //check if oldValue != value
         Internal::InternalProperty::Pointer internalProperty = internalNode()->property(name());
@@ -89,7 +63,7 @@ void BindingProperty::setExpression(const QString &expression)
 
 QString BindingProperty::expression() const
 {
-    if (internalNode()->hasProperty(name())
+    if (isValid() && internalNode()->hasProperty(name())
         && internalNode()->property(name())->isBindingProperty())
         return internalNode()->bindingProperty(name())->expression();
 
@@ -135,16 +109,16 @@ static ModelNode resolveBinding(const QString &binding, ModelNode currentNode, A
 ModelNode BindingProperty::resolveToModelNode() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     return resolveBinding(expression(), parentModelNode(), view());
 }
 
 static inline QStringList commaSeparatedSimplifiedStringList(const QString &string)
 {
-    QStringList stringList = string.split(QStringLiteral(","));
+    const QStringList stringList = string.split(QStringLiteral(","));
     QStringList simpleList;
-    foreach (const QString &simpleString, stringList)
+    for (const QString &simpleString : stringList)
         simpleList.append(simpleString.simplified());
     return simpleList;
 }
@@ -153,7 +127,7 @@ static inline QStringList commaSeparatedSimplifiedStringList(const QString &stri
 AbstractProperty BindingProperty::resolveToProperty() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     QString binding = expression();
     ModelNode node = parentModelNode();
@@ -176,22 +150,23 @@ AbstractProperty BindingProperty::resolveToProperty() const
 bool BindingProperty::isList() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return false;
 
     return expression().startsWith('[') && expression().endsWith(']');
 }
 
 QList<ModelNode> BindingProperty::resolveToModelNodeList() const
 {
-    QList<ModelNode> returnList;
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
+
+    QList<ModelNode> returnList;
     if (isList()) {
         QString string = expression();
         string.chop(1);
         string.remove(0, 1);
-        QStringList simplifiedList = commaSeparatedSimplifiedStringList(string);
-        foreach (const QString &nodeId, simplifiedList) {
+        const QStringList simplifiedList = commaSeparatedSimplifiedStringList(string);
+        for (const QString &nodeId : simplifiedList) {
             if (view()->hasId(nodeId))
                 returnList.append(view()->modelNodeForId(nodeId));
         }
@@ -202,7 +177,7 @@ QList<ModelNode> BindingProperty::resolveToModelNodeList() const
 void BindingProperty::addModelNodeToArray(const ModelNode &modelNode)
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (isBindingProperty()) {
         QStringList simplifiedList;
@@ -220,41 +195,37 @@ void BindingProperty::addModelNodeToArray(const ModelNode &modelNode)
         simplifiedList.append(node.validId());
         setExpression('[' + simplifiedList.join(',') + ']');
     } else if (exists()) {
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, name());
+        return;
     } else {
         ModelNode node = modelNode;
         setExpression('[' + node.validId() + ']');
     }
-
 }
 
 void BindingProperty::removeModelNodeFromArray(const ModelNode &modelNode)
 {
-    if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+    if (!isBindingProperty())
+        return;
 
-     if (!isBindingProperty())
-         throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, name());
-
-     if (isList() && modelNode.hasId()) {
-         QString string = expression();
-         string.chop(1);
-         string.remove(0, 1);
-         QStringList simplifiedList = commaSeparatedSimplifiedStringList(string);
-         if (simplifiedList.contains(modelNode.id())) {
-             simplifiedList.removeAll(modelNode.id());
-             if (simplifiedList.isEmpty())
-                 parentModelNode().removeProperty(name());
-             else
-                 setExpression('[' + simplifiedList.join(',') + ']');
-         }
-     }
+    if (isList() && modelNode.hasId()) {
+        QString string = expression();
+        string.chop(1);
+        string.remove(0, 1);
+        QStringList simplifiedList = commaSeparatedSimplifiedStringList(string);
+        if (simplifiedList.contains(modelNode.id())) {
+            simplifiedList.removeAll(modelNode.id());
+            if (simplifiedList.isEmpty())
+                parentModelNode().removeProperty(name());
+            else
+                setExpression('[' + simplifiedList.join(',') + ']');
+        }
+    }
 }
 
 QList<BindingProperty> BindingProperty::findAllReferencesTo(const ModelNode &modelNode)
 {
     if (!modelNode.isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     QList<BindingProperty> list;
     for (const ModelNode &bindingNode : modelNode.view()->allModelNodes()) {
@@ -280,20 +251,17 @@ void BindingProperty::deleteAllReferencesTo(const ModelNode &modelNode)
 bool BindingProperty::isAlias() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return false;
 
-    return isDynamic()
-            && dynamicTypeName() == "alias"
-            && !expression().isNull()
-            && !expression().isEmpty()
-            && parentModelNode().view()->modelNodeForId(expression()).isValid();
+    return isDynamic() && dynamicTypeName() == "alias" && !expression().isNull()
+           && !expression().isEmpty()
+           && parentModelNode().view()->modelNodeForId(expression()).isValid();
 }
 
 bool BindingProperty::isAliasExport() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-
+        return false;
     return parentModelNode() == parentModelNode().view()->rootModelNode()
             && isDynamic()
             && dynamicTypeName() == "alias"
@@ -301,29 +269,75 @@ bool BindingProperty::isAliasExport() const
             && parentModelNode().view()->modelNodeForId(expression()).isValid();
 }
 
+static bool isTrueFalseLiteral(const QString &expression)
+{
+    return (expression.compare("false", Qt::CaseInsensitive) == 0)
+           || (expression.compare("true", Qt::CaseInsensitive) == 0);
+}
+
+QVariant BindingProperty::convertToLiteral(const TypeName &typeName, const QString &testExpression)
+{
+    if ("QColor" == typeName || "color" == typeName) {
+        QString unquoted = testExpression;
+        unquoted.remove('"');
+        if (QColor(unquoted).isValid())
+            return QColor(unquoted);
+    } else if ("bool" == typeName) {
+        if (isTrueFalseLiteral(testExpression)) {
+            if (testExpression.compare("true", Qt::CaseInsensitive) == 0)
+                return true;
+            else
+                return false;
+        }
+    } else if ("int" == typeName) {
+        bool ok;
+        int intValue = testExpression.toInt(&ok);
+        if (ok)
+            return intValue;
+    } else if ("qreal" == typeName || "real" == typeName) {
+        bool ok;
+        qreal realValue = testExpression.toDouble(&ok);
+        if (ok)
+            return realValue;
+    } else if ("QVariant" == typeName || "variant" == typeName) {
+        bool ok;
+        qreal realValue = testExpression.toDouble(&ok);
+        if (ok) {
+            return realValue;
+        } else if (isTrueFalseLiteral(testExpression)) {
+            if (testExpression.compare("true", Qt::CaseInsensitive) == 0)
+                return true;
+            else
+                return false;
+        }
+    }
+
+    return {};
+}
+
 void BindingProperty::setDynamicTypeNameAndExpression(const TypeName &typeName, const QString &expression)
 {
     Internal::WriteLocker locker(model());
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
-    if (name() == "id") { // the ID for a node is independent of the state, so it has to be set with ModelNode::setId
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, name());
-    }
+    if (name() == "id")
+        return;
 
     if (expression.isEmpty())
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, name());
+        return;
 
     if (typeName.isEmpty())
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, name());
+        return;
 
     if (internalNode()->hasProperty(name())) { //check if oldValue != value
         Internal::InternalProperty::Pointer internalProperty = internalNode()->property(name());
         if (internalProperty->isBindingProperty()
             && internalProperty->toBindingProperty()->expression() == expression
-            && internalProperty->toBindingProperty()->dynamicTypeName() == typeName)
+            && internalProperty->toBindingProperty()->dynamicTypeName() == typeName) {
 
             return;
+        }
     }
 
     if (internalNode()->hasProperty(name()) && !internalNode()->property(name())->isBindingProperty())

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -32,6 +10,7 @@
 #include <utils/dropsupport.h>
 
 #include <QColor>
+#include <QTimer>
 
 #include <functional>
 #include <unordered_map>
@@ -91,7 +70,7 @@ public:
 
     static IDocument *openFiles(const Utils::FilePaths &filePaths,
                                 ICore::OpenFilesFlags flags,
-                                const QString &workingDirectory = QString());
+                                const Utils::FilePath &workingDirectory = {});
 
     inline SettingsDatabase *settingsDatabase() const { return m_settingsDatabase; }
     virtual QPrinter *printer() const;
@@ -116,12 +95,18 @@ public:
 
     void restart();
 
+    void openFileFromDevice();
+
+    void restartTrimmer();
+
 public slots:
     static void openFileWith();
     void exit();
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
 
 private:
     static void openFile();
@@ -129,6 +114,7 @@ private:
     static void setFocusToEditor();
     void aboutQtCreator();
     void aboutPlugins();
+    void changeLog();
     void contact();
     void updateFocusWidget(QWidget *old, QWidget *now);
     NavigationWidget *navigationWidget(Side side) const;
@@ -150,6 +136,7 @@ private:
     void updateModeSelectorStyleMenu();
 
     ICore *m_coreImpl = nullptr;
+    QTimer m_trimTimer;
     QStringList m_aboutInformation;
     Context m_highPrioAdditionalContexts;
     Context m_lowPrioAdditionalContexts;
@@ -185,6 +172,7 @@ private:
     QAction *m_newAction = nullptr;
     QAction *m_openAction = nullptr;
     QAction *m_openWithAction = nullptr;
+    QAction *m_openFromDeviceAction = nullptr;
     QAction *m_saveAllAction = nullptr;
     QAction *m_exitAction = nullptr;
     QAction *m_optionsAction = nullptr;

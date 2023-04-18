@@ -4,7 +4,7 @@ endif()
 configure_file(core_logo.qrc.cmakein core_logo_cmake.qrc)
 
 add_qtc_plugin(Core
-  DEPENDS Qt5::PrintSupport Qt5::Qml Qt5::Sql Qt5::Gui Qt5::GuiPrivate
+  DEPENDS Qt::PrintSupport Qt::Qml Qt::Sql Qt::Gui Qt::GuiPrivate
   PUBLIC_DEPENDS Aggregation ExtensionSystem Utils app_version
   SOURCES
     actionmanager/actioncontainer.cpp actionmanager/actioncontainer.h actionmanager/actioncontainer_p.h
@@ -13,6 +13,7 @@ add_qtc_plugin(Core
     actionmanager/commandbutton.cpp actionmanager/commandbutton.h
     actionmanager/commandmappings.cpp actionmanager/commandmappings.h
     actionmanager/commandsfile.cpp actionmanager/commandsfile.h
+    actionsfilter.cpp actionsfilter.h
     basefilewizard.cpp basefilewizard.h
     basefilewizardfactory.cpp basefilewizardfactory.h
     ${CMAKE_CURRENT_BINARY_DIR}/core_logo_cmake.qrc
@@ -22,19 +23,20 @@ add_qtc_plugin(Core
     coreicons.cpp coreicons.h
     corejsextensions.cpp corejsextensions.h
     coreplugin.cpp coreplugin.h
+    coreplugintr.h
     designmode.cpp designmode.h
-    dialogs/addtovcsdialog.cpp dialogs/addtovcsdialog.h dialogs/addtovcsdialog.ui
+    dialogs/addtovcsdialog.cpp dialogs/addtovcsdialog.h
     dialogs/codecselector.cpp dialogs/codecselector.h
-    dialogs/externaltoolconfig.cpp dialogs/externaltoolconfig.h dialogs/externaltoolconfig.ui
-    dialogs/filepropertiesdialog.cpp dialogs/filepropertiesdialog.h dialogs/filepropertiesdialog.ui
+    dialogs/externaltoolconfig.cpp dialogs/externaltoolconfig.h
+    dialogs/filepropertiesdialog.cpp dialogs/filepropertiesdialog.h
     dialogs/ioptionspage.cpp dialogs/ioptionspage.h
-    dialogs/newdialog.cpp dialogs/newdialog.h dialogs/newdialog.ui
+    dialogs/newdialog.cpp dialogs/newdialog.h
     dialogs/newdialogwidget.cpp dialogs/newdialogwidget.h
-    dialogs/openwithdialog.cpp dialogs/openwithdialog.h dialogs/openwithdialog.ui
+    dialogs/openwithdialog.cpp dialogs/openwithdialog.h
     dialogs/promptoverwritedialog.cpp dialogs/promptoverwritedialog.h
-    dialogs/readonlyfilesdialog.cpp dialogs/readonlyfilesdialog.h dialogs/readonlyfilesdialog.ui
+    dialogs/readonlyfilesdialog.cpp dialogs/readonlyfilesdialog.h
     dialogs/restartdialog.cpp dialogs/restartdialog.h
-    dialogs/saveitemsdialog.cpp dialogs/saveitemsdialog.h dialogs/saveitemsdialog.ui
+    dialogs/saveitemsdialog.cpp dialogs/saveitemsdialog.h
     dialogs/settingsdialog.cpp dialogs/settingsdialog.h
     dialogs/shortcutsettings.cpp dialogs/shortcutsettings.h
     diffservice.cpp diffservice.h
@@ -58,16 +60,13 @@ add_qtc_plugin(Core
     fancyactionbar.qrc
     fancytabwidget.cpp fancytabwidget.h
     featureprovider.cpp featureprovider.h
-    fileiconprovider.cpp fileiconprovider.h
     fileutils.cpp fileutils.h
     find/basetextfind.cpp find/basetextfind.h
     find/currentdocumentfind.cpp find/currentdocumentfind.h
     find/find.qrc
-    find/finddialog.ui
     find/findplugin.cpp find/findplugin.h
     find/findtoolbar.cpp find/findtoolbar.h
     find/findtoolwindow.cpp find/findtoolwindow.h
-    find/findwidget.ui
     find/highlightscrollbarcontroller.cpp find/highlightscrollbarcontroller.h
     find/ifindfilter.cpp find/ifindfilter.h
     find/ifindsupport.cpp find/ifindsupport.h
@@ -86,7 +85,7 @@ add_qtc_plugin(Core
     findplaceholder.cpp findplaceholder.h
     foldernavigationwidget.cpp
     foldernavigationwidget.h
-    generalsettings.cpp generalsettings.h generalsettings.ui
+    generalsettings.cpp generalsettings.h
     generatedfile.cpp generatedfile.h
     helpitem.cpp helpitem.h
     helpmanager.cpp helpmanager.h helpmanager_implementation.h
@@ -104,10 +103,10 @@ add_qtc_plugin(Core
     jsexpander.cpp jsexpander.h
     locator/basefilefilter.cpp locator/basefilefilter.h
     locator/commandlocator.cpp locator/commandlocator.h
-    locator/directoryfilter.cpp locator/directoryfilter.h locator/directoryfilter.ui
+    locator/directoryfilter.cpp locator/directoryfilter.h
     locator/executefilter.cpp locator/executefilter.h
     locator/externaltoolsfilter.cpp locator/externaltoolsfilter.h
-    locator/filesystemfilter.cpp locator/filesystemfilter.h locator/filesystemfilter.ui
+    locator/filesystemfilter.cpp locator/filesystemfilter.h
     locator/ilocatorfilter.cpp locator/ilocatorfilter.h
     locator/javascriptfilter.cpp locator/javascriptfilter.h
     locator/locator.cpp locator/locator.h
@@ -115,22 +114,20 @@ add_qtc_plugin(Core
     locator/locatorfiltersfilter.cpp locator/locatorfiltersfilter.h
     locator/locatormanager.cpp locator/locatormanager.h
     locator/locatorsearchutils.cpp locator/locatorsearchutils.h
-    locator/locatorsettingspage.cpp locator/locatorsettingspage.h locator/locatorsettingspage.ui
+    locator/locatorsettingspage.cpp locator/locatorsettingspage.h
     locator/locatorwidget.cpp locator/locatorwidget.h
     locator/opendocumentsfilter.cpp locator/opendocumentsfilter.h
     locator/spotlightlocatorfilter.h locator/spotlightlocatorfilter.cpp
-    locator/urllocatorfilter.cpp locator/urllocatorfilter.h locator/urllocatorfilter.ui
+    locator/urllocatorfilter.cpp locator/urllocatorfilter.h
     loggingviewer.cpp loggingviewer.h
     loggingmanager.cpp loggingmanager.h
     mainwindow.cpp mainwindow.h
     manhattanstyle.cpp manhattanstyle.h
-    menubarfilter.cpp menubarfilter.h
     messagebox.cpp messagebox.h
     messagemanager.cpp messagemanager.h
     messageoutputwindow.cpp messageoutputwindow.h
-    mimetypemagicdialog.cpp mimetypemagicdialog.h mimetypemagicdialog.ui
+    mimetypemagicdialog.cpp mimetypemagicdialog.h
     mimetypesettings.cpp mimetypesettings.h
-    mimetypesettingspage.ui
     minisplitter.cpp minisplitter.h
     modemanager.cpp modemanager.h
     navigationsubwidget.cpp navigationsubwidget.h
@@ -143,17 +140,18 @@ add_qtc_plugin(Core
     plugindialog.cpp plugindialog.h
     plugininstallwizard.cpp plugininstallwizard.h
     progressmanager/futureprogress.cpp progressmanager/futureprogress.h
+    progressmanager/processprogress.cpp progressmanager/processprogress.h
     progressmanager/progressbar.cpp progressmanager/progressbar.h
     progressmanager/progressmanager.cpp progressmanager/progressmanager.h progressmanager/progressmanager_p.h
     progressmanager/progressview.cpp progressmanager/progressview.h
+    progressmanager/taskprogress.cpp progressmanager/taskprogress.h
     rightpane.cpp rightpane.h
     settingsdatabase.cpp settingsdatabase.h
-    shellcommand.cpp shellcommand.h
     sidebar.cpp sidebar.h
     sidebarwidget.cpp sidebarwidget.h
     statusbarmanager.cpp statusbarmanager.h
     styleanimator.cpp styleanimator.h
-    systemsettings.cpp systemsettings.h systemsettings.ui
+    systemsettings.cpp systemsettings.h
     textdocument.cpp textdocument.h
     themechooser.cpp themechooser.h
     vcsmanager.cpp vcsmanager.h
@@ -209,15 +207,9 @@ if ((NOT WIN32) AND (NOT APPLE))
 endif()
 
 set(FONTS_BASE "${QtCreator_SOURCE_DIR}/src/share/3rdparty/studiofonts/")
-if(${Qt5_VERSION} VERSION_LESS "6")
-extend_qtc_plugin(Core
-  SOURCES "${FONTS_BASE}/studiofonts.qrc"
-)
-else() # < Qt 6
 qt_add_resources(Core
   CoreWelcomeScreenFonts_rcc
   BASE ${FONTS_BASE}
   PREFIX "studiofonts"
   FILES "${FONTS_BASE}/TitilliumWeb-Regular.ttf"
 )
-endif()

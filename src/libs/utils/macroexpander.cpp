@@ -1,38 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "macroexpander.h"
 
 #include "algorithm.h"
-#include "fileutils.h"
 #include "commandline.h"
+#include "environment.h"
 #include "qtcassert.h"
 #include "stringutils.h"
+#include "utilstr.h"
 
-#include <QCoreApplication>
-#include <QDebug>
 #include <QDir>
 #include <QFileInfo>
 #include <QLoggingCategory>
@@ -162,7 +139,7 @@ using namespace Internal;
         [...]
         MacroExpander::registerVariable(
             "MyVariable",
-            tr("The current value of whatever I want."));
+            Tr::tr("The current value of whatever I want."));
             []() -> QString {
                 QString value;
                 // do whatever is necessary to retrieve the value
@@ -289,18 +266,15 @@ QString MacroExpander::expand(const QString &stringWithVariables) const
     --d->m_lockDepth;
 
     if (d->m_lockDepth == 0 && d->m_aborted)
-        return tr("Infinite recursion error") + QLatin1String(": ") + stringWithVariables;
+        return Tr::tr("Infinite recursion error") + QLatin1String(": ") + stringWithVariables;
 
     return res;
 }
 
 FilePath MacroExpander::expand(const FilePath &fileNameWithVariables) const
 {
-    FilePath result = fileNameWithVariables;
-    result.setPath(expand(result.path()));
-    result.setHost(expand(result.host()));
-    result.setScheme(expand(result.scheme()));
-    return result;
+    // We want single variables to expand to fully qualified strings.
+    return FilePath::fromString(expand(fileNameWithVariables.toString()));
 }
 
 QByteArray MacroExpander::expand(const QByteArray &stringWithVariables) const
@@ -387,7 +361,7 @@ void MacroExpander::registerIntVariable(const QByteArray &variable,
 {
     const MacroExpander::IntFunction valuecopy = value; // do not capture a reference in a lambda
     registerVariable(variable, description,
-        [valuecopy]() { return QString::number(valuecopy ? valuecopy() : 0); });
+        [valuecopy] { return QString::number(valuecopy ? valuecopy() : 0); });
 }
 
 /*!
@@ -404,17 +378,17 @@ void MacroExpander::registerFileVariables(const QByteArray &prefix,
     const QString &heading, const FileFunction &base, bool visibleInChooser)
 {
     registerVariable(prefix + kFilePathPostfix,
-         tr("%1: Full path including file name.").arg(heading),
+         Tr::tr("%1: Full path including file name.").arg(heading),
          [base]() -> QString { QString tmp = base().toString(); return tmp.isEmpty() ? QString() : QFileInfo(tmp).filePath(); },
          visibleInChooser);
 
     registerVariable(prefix + kPathPostfix,
-         tr("%1: Full path excluding file name.").arg(heading),
+         Tr::tr("%1: Full path excluding file name.").arg(heading),
          [base]() -> QString { QString tmp = base().toString(); return tmp.isEmpty() ? QString() : QFileInfo(tmp).path(); },
          visibleInChooser);
 
     registerVariable(prefix + kNativeFilePathPostfix,
-         tr("%1: Full path including file name, with native path separator (backslash on Windows).").arg(heading),
+         Tr::tr("%1: Full path including file name, with native path separator (backslash on Windows).").arg(heading),
          [base]() -> QString {
              QString tmp = base().toString();
              return tmp.isEmpty() ? QString() : QDir::toNativeSeparators(QFileInfo(tmp).filePath());
@@ -422,7 +396,7 @@ void MacroExpander::registerFileVariables(const QByteArray &prefix,
          visibleInChooser);
 
     registerVariable(prefix + kNativePathPostfix,
-         tr("%1: Full path excluding file name, with native path separator (backslash on Windows).").arg(heading),
+         Tr::tr("%1: Full path excluding file name, with native path separator (backslash on Windows).").arg(heading),
          [base]() -> QString {
              QString tmp = base().toString();
              return tmp.isEmpty() ? QString() : QDir::toNativeSeparators(QFileInfo(tmp).path());
@@ -430,12 +404,12 @@ void MacroExpander::registerFileVariables(const QByteArray &prefix,
          visibleInChooser);
 
     registerVariable(prefix + kFileNamePostfix,
-         tr("%1: File name without path.").arg(heading),
+         Tr::tr("%1: File name without path.").arg(heading),
          [base]() -> QString { QString tmp = base().toString(); return tmp.isEmpty() ? QString() : FilePath::fromString(tmp).fileName(); },
          visibleInChooser);
 
     registerVariable(prefix + kFileBaseNamePostfix,
-         tr("%1: File base name without path and suffix.").arg(heading),
+         Tr::tr("%1: File base name without path and suffix.").arg(heading),
          [base]() -> QString { QString tmp = base().toString(); return tmp.isEmpty() ? QString() : QFileInfo(tmp).baseName(); },
          visibleInChooser);
 }
@@ -504,9 +478,9 @@ class GlobalMacroExpander : public MacroExpander
 public:
     GlobalMacroExpander()
     {
-        setDisplayName(MacroExpander::tr("Global variables"));
-        registerPrefix("Env", MacroExpander::tr("Access environment variables."),
-           [](const QString &value) { return QString::fromLocal8Bit(qgetenv(value.toLocal8Bit())); });
+        setDisplayName(Tr::tr("Global variables"));
+        registerPrefix("Env", Tr::tr("Access environment variables."),
+                       [](const QString &value) { return qtcEnvironmentVariable(value); });
     }
 };
 

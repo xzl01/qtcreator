@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Hugues Delorme
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Hugues Delorme
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bazaarsettings.h"
 
-#include "bazaarclient.h"
+#include "bazaartr.h"
 #include "constants.h"
 
 #include <coreplugin/icore.h>
@@ -36,8 +14,7 @@
 
 using namespace Utils;
 
-namespace Bazaar {
-namespace Internal {
+namespace Bazaar::Internal {
 
 BazaarSettings::BazaarSettings()
 {
@@ -48,9 +25,9 @@ BazaarSettings::BazaarSettings()
     binaryPath.setDisplayStyle(StringAspect::PathChooserDisplay);
     binaryPath.setExpectedKind(PathChooser::ExistingCommand);
     binaryPath.setDefaultValue(Constants::BAZAARDEFAULT);
-    binaryPath.setDisplayName(tr("Bazaar Command"));
+    binaryPath.setDisplayName(Tr::tr("Bazaar Command"));
     binaryPath.setHistoryCompleter("Bazaar.Command.History");
-    binaryPath.setLabelText(tr("Command:"));
+    binaryPath.setLabelText(Tr::tr("Command:"));
 
     registerAspect(&diffIgnoreWhiteSpace);
     diffIgnoreWhiteSpace.setSettingsKey("diffIgnoreWhiteSpace");
@@ -74,21 +51,21 @@ BazaarSettings::BazaarSettings()
 
     registerAspect(&userName);
     userName.setDisplayStyle(StringAspect::LineEditDisplay);
-    userName.setLabelText(tr("Default username:"));
-    userName.setToolTip(tr("Username to use by default on commit."));
+    userName.setLabelText(Tr::tr("Default username:"));
+    userName.setToolTip(Tr::tr("Username to use by default on commit."));
 
     registerAspect(&userEmail);
     userEmail.setDisplayStyle(StringAspect::LineEditDisplay);
-    userEmail.setLabelText(tr("Default email:"));
-    userEmail.setToolTip(tr("Email to use by default on commit."));
+    userEmail.setLabelText(Tr::tr("Default email:"));
+    userEmail.setToolTip(Tr::tr("Email to use by default on commit."));
 
     registerAspect(&logCount);
-    logCount.setLabelText(tr("Log count:"));
-    logCount.setToolTip(tr("The number of recent commit logs to show. Choose 0 to see all entries."));
+    logCount.setLabelText(Tr::tr("Log count:"));
+    logCount.setToolTip(Tr::tr("The number of recent commit logs to show. Choose 0 to see all entries."));
 
     registerAspect(&logCount);
-    timeout.setLabelText(tr("Timeout:"));
-    timeout.setSuffix(tr("s"));
+    timeout.setLabelText(Tr::tr("Timeout:"));
+    timeout.setSuffix(Tr::tr("s"));
 }
 
 // BazaarSettingsPage
@@ -96,7 +73,7 @@ BazaarSettings::BazaarSettings()
 BazaarSettingsPage::BazaarSettingsPage(BazaarSettings *settings)
 {
     setId(VcsBase::Constants::VCS_ID_BAZAAR);
-    setDisplayName(BazaarSettings::tr("Bazaar"));
+    setDisplayName(Tr::tr("Bazaar"));
     setCategory(VcsBase::Constants::VCS_SETTINGS_CATEGORY);
     setSettings(settings);
 
@@ -106,12 +83,12 @@ BazaarSettingsPage::BazaarSettingsPage(BazaarSettings *settings)
 
         Column {
             Group {
-                Title(BazaarSettings::tr("Configuration")),
+                title(Tr::tr("Configuration")),
                 Row { s.binaryPath }
             },
 
             Group {
-                Title(BazaarSettings::tr("User")),
+                title(Tr::tr("User")),
                 Form {
                     s.userName,
                     s.userEmail
@@ -119,18 +96,16 @@ BazaarSettingsPage::BazaarSettingsPage(BazaarSettings *settings)
             },
 
             Group {
-                Title(BazaarSettings::tr("Miscellaneous")),
+                title(Tr::tr("Miscellaneous")),
                 Row {
                     s.logCount,
                     s.timeout,
-                    Stretch()
+                    st
                 }
             },
-            Stretch()
-
+            st
         }.attachTo(widget);
     });
 }
 
-} // Internal
-} // Bazaar
+} // Bazaar::Internal

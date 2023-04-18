@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Openismus GmbH.
-** Author: Peter Penz (ppenz@openismus.com)
-** Author: Patricia Santana Cruz (patriciasantanacruz@gmail.com)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Openismus GmbH.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "makefileparser.h"
+
+#include "autotoolsprojectmanagertr.h"
 
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
@@ -35,7 +13,7 @@
 #include <QFile>
 #include <QFileInfo>
 
-using namespace AutotoolsProjectManager::Internal;
+namespace AutotoolsProjectManager::Internal {
 
 MakefileParser::MakefileParser(const QString &makefile) : m_makefile(makefile)
 { }
@@ -64,7 +42,7 @@ bool MakefileParser::parse()
     QFileInfo info(m_makefile);
     m_makefiles.append(info.fileName());
 
-    emit status(tr("Parsing %1 in directory %2").arg(info.fileName()).arg(info.absolutePath()));
+    emit status(Tr::tr("Parsing %1 in directory %2").arg(info.fileName()).arg(info.absolutePath()));
 
     m_textStream.setDevice(file);
 
@@ -253,15 +231,15 @@ void MakefileParser::parseSubDirs()
         // Add all sub directories of the current folder
         QDir dir(path);
         dir.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
-        foreach (const QFileInfo& info, dir.entryInfoList()) {
+        const QFileInfoList infoList = dir.entryInfoList();
+        for (const QFileInfo &info : infoList)
             subDirs.append(info.fileName());
-        }
     }
     subDirs.removeDuplicates();
 
     // Delegate the parsing of all sub directories to a local
     // makefile parser and merge the results
-    foreach (const QString& subDir, subDirs) {
+    for (const QString &subDir : std::as_const(subDirs)) {
         const QChar slash = QLatin1Char('/');
         const QString subDirMakefile = path + slash + subDir
                                        + slash + makefileName;
@@ -287,7 +265,8 @@ void MakefileParser::parseSubDirs()
 
         // Append the sources of the sub directory to the
         // current sources
-        foreach (const QString& source, parser.sources())
+        const QStringList sources = parser.sources();
+        for (const QString &source : sources)
             m_sources.append(subDir + slash + source);
 
         // Append the include paths of the sub directory
@@ -298,10 +277,10 @@ void MakefileParser::parseSubDirs()
         m_cxxflags.append(parser.cxxflags());
 
         // Append the macros of the sub directory
-        foreach (const auto& m, parser.macros())
-        {
-            if (!m_macros.contains(m))
-                m_macros.append(m);
+        const Macros macros = parser.macros();
+        for (const auto &macro : macros) {
+            if (!m_macros.contains(macro))
+                m_macros.append(macro);
         }
 
     }
@@ -322,7 +301,7 @@ QStringList MakefileParser::directorySources(const QString &directory,
         return QStringList();
     }
 
-    emit status(tr("Parsing directory %1").arg(directory));
+    emit status(Tr::tr("Parsing directory %1").arg(directory));
 
     QStringList list; // return value
 
@@ -330,17 +309,17 @@ QStringList MakefileParser::directorySources(const QString &directory,
     dir.setFilter(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
 
     const QFileInfoList infos = dir.entryInfoList();
-    foreach (const QFileInfo& info, infos) {
+    for (const QFileInfo &info : infos) {
         if (info.isDir()) {
             // Append recursively sources from the sub directory
             const QStringList subDirSources = directorySources(info.absoluteFilePath(),
                                                                extensions);
             const QString dirPath = info.fileName();
-            foreach (const QString& subDirSource, subDirSources)
+            for (const QString &subDirSource : subDirSources)
                 list.append(dirPath + QLatin1Char('/') + subDirSource);
         } else {
             // Check whether the file matches to an extension
-            foreach (const QString& extension, extensions) {
+            for (const QString &extension : extensions) {
                 if (info.fileName().endsWith(extension)) {
                     list.append(info.fileName());
                     appendHeader(list, dir, info.baseName());
@@ -549,22 +528,23 @@ void MakefileParser::parseIncludePaths()
         if (varName.isEmpty())
             continue;
 
+        const QStringList termList = parseTermsAfterAssign(line);
         if (varName == QLatin1String("DEFS")) {
-            foreach (const QString &term, parseTermsAfterAssign(line))
+            for (const QString &term : termList)
                 maybeParseDefine(term);
         } else if (varName.endsWith(QLatin1String("INCLUDES"))) {
-            foreach (const QString &term, parseTermsAfterAssign(line))
+            for (const QString &term : termList)
                 maybeParseInclude(term, dirName);
         } else if (varName.endsWith(QLatin1String("CFLAGS"))) {
-            foreach (const QString &term, parseTermsAfterAssign(line))
+            for (const QString &term : termList)
                 maybeParseDefine(term) || maybeParseInclude(term, dirName)
                         || maybeParseCFlag(term);
         } else if (varName.endsWith(QLatin1String("CXXFLAGS"))) {
-            foreach (const QString &term, parseTermsAfterAssign(line))
+            for (const QString &term : termList)
                 maybeParseDefine(term) || maybeParseInclude(term, dirName)
                         || maybeParseCXXFlag(term);
         } else if (varName.endsWith(QLatin1String("CPPFLAGS"))) {
-            foreach (const QString &term, parseTermsAfterAssign(line))
+            for (const QString &term : termList)
                 maybeParseDefine(term) || maybeParseInclude(term, dirName)
                         || maybeParseCPPFlag(term);
         }
@@ -574,3 +554,5 @@ void MakefileParser::parseIncludePaths()
     m_cflags.removeDuplicates();
     m_cxxflags.removeDuplicates();
 }
+
+} // AutotoolsProjectManager::Internal

@@ -1,39 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Orgad Shaneh <orgads@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 Orgad Shaneh <orgads@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "authenticationdialog.h"
 #include "gerritparameters.h"
 #include "gerritserver.h"
-#include "../gitplugin.h"
 #include "../gitclient.h"
+#include "../gittr.h"
 
 #include <coreplugin/icore.h>
-#include <coreplugin/shellcommand.h>
 
+#include <utils/commandline.h>
 #include <utils/hostosinfo.h>
-#include <utils/qtcprocess.h>
+
+#include <vcsbase/vcscommand.h>
 
 #include <QFile>
 #include <QJsonDocument>
@@ -42,8 +21,9 @@
 #include <QRegularExpression>
 #include <QSettings>
 
-using namespace Utils;
 using namespace Git::Internal;
+using namespace Utils;
+using namespace VcsBase;
 
 namespace Gerrit {
 namespace Internal {
@@ -96,7 +76,8 @@ bool GerritServer::operator==(const GerritServer &other) const
 {
     if (port && other.port && port != other.port)
         return false;
-    return host == other.host && user.isSameAs(other.user) && type == other.type;
+    return host == other.host && user.isSameAs(other.user) && type == other.type
+            && authenticated == other.authenticated;
 }
 
 QString GerritServer::defaultHost()
@@ -120,7 +101,7 @@ QString GerritServer::url(UrlType urlType) const
         case Https: protocol = "https"; break;
     }
     QString res = protocol + "://";
-    if (type == Ssh || urlType != DefaultUrl)
+    if (type == Ssh || urlType == UrlWithHttpUser)
         res += hostArgument();
     else
         res += host;
@@ -157,8 +138,7 @@ bool GerritServer::fillFromRemote(const QString &remote,
     port = r.port;
     user.userName = r.userName.isEmpty() ? parameters.server.user.userName : r.userName;
     if (type == GerritServer::Ssh) {
-        resolveVersion(parameters, forceReload);
-        return true;
+        return resolveVersion(parameters, forceReload);
     }
     curlBinary = parameters.curl;
     if (curlBinary.isEmpty() || !curlBinary.exists())
@@ -172,7 +152,8 @@ bool GerritServer::fillFromRemote(const QString &remote,
         // (can be http://example.net/review)
         ascendPath();
         if (resolveRoot()) {
-            resolveVersion(parameters, forceReload);
+            if (!resolveVersion(parameters, forceReload))
+                return false;
             saveSettings(Valid);
             return true;
         }
@@ -180,8 +161,7 @@ bool GerritServer::fillFromRemote(const QString &remote,
     case NotGerrit:
         return false;
     case Valid:
-        resolveVersion(parameters, false);
-        return true;
+        return resolveVersion(parameters, false);
     }
     return true;
 }
@@ -244,11 +224,9 @@ int GerritServer::testConnection()
 {
     static GitClient *const client = GitClient::instance();
     const QStringList arguments = curlArguments() << (url(RestUrl) + accountUrlC);
-    QtcProcess proc;
-    client->vcsFullySynchronousExec(proc, {}, {curlBinary, arguments},
-                                    Core::ShellCommand::NoOutput);
-    if (proc.result() == QtcProcess::FinishedWithSuccess) {
-        QString output = proc.stdOut();
+    const CommandResult result = client->vcsSynchronousExec({}, {curlBinary, arguments});
+    if (result.result() == ProcessResult::FinishedWithSuccess) {
+        QString output = result.cleanedStdOut();
         // Gerrit returns an empty response for /p/qt-creator/a/accounts/self
         // so consider this as 404.
         if (output.isEmpty())
@@ -264,10 +242,10 @@ int GerritServer::testConnection()
         }
         return Success;
     }
-    if (proc.exitCode() == CertificateError)
+    if (result.exitCode() == CertificateError)
         return CertificateError;
     const QRegularExpression errorRegexp("returned error: (\\d+)");
-    QRegularExpressionMatch match = errorRegexp.match(proc.stdErr());
+    QRegularExpressionMatch match = errorRegexp.match(result.cleanedStdErr());
     if (match.hasMatch())
         return match.captured(1).toInt();
     return UnknownError;
@@ -304,10 +282,8 @@ bool GerritServer::resolveRoot()
         case CertificateError:
             if (QMessageBox::question(
                         Core::ICore::dialogParent(),
-                        QCoreApplication::translate(
-                            "Gerrit::Internal::GerritDialog", "Certificate Error"),
-                        QCoreApplication::translate(
-                            "Gerrit::Internal::GerritDialog",
+                        ::Git::Tr::tr("Certificate Error"),
+                        ::Git::Tr::tr(
                             "Server certificate for %1 cannot be authenticated.\n"
                             "Do you want to disable SSL verification for this server?\n"
                             "Note: This can expose you to man-in-the-middle attack.")
@@ -332,35 +308,36 @@ bool GerritServer::resolveRoot()
     return false;
 }
 
-void GerritServer::resolveVersion(const GerritParameters &p, bool forceReload)
+bool GerritServer::resolveVersion(const GerritParameters &p, bool forceReload)
 {
     static GitClient *const client = GitClient::instance();
     QSettings *settings = Core::ICore::settings();
     const QString fullVersionKey = "Gerrit/" + host + '/' + versionKey;
     version = settings->value(fullVersionKey).toString();
     if (!version.isEmpty() && !forceReload)
-        return;
+        return true;
     if (type == Ssh) {
-        QtcProcess proc;
         QStringList arguments;
         if (port)
             arguments << p.portFlag << QString::number(port);
         arguments << hostArgument() << "gerrit" << "version";
-        client->vcsFullySynchronousExec(proc, {}, {p.ssh, arguments}, Core::ShellCommand::NoOutput);
-        QString stdOut = proc.stdOut().trimmed();
+        const CommandResult result = client->vcsSynchronousExec({}, {p.ssh, arguments},
+                                                                RunFlags::NoOutput);
+        QString stdOut = result.cleanedStdOut().trimmed();
         stdOut.remove("gerrit version ");
         version = stdOut;
+        if (version.isEmpty())
+            return false;
     } else {
         const QStringList arguments = curlArguments() << (url(RestUrl) + versionUrlC);
-        QtcProcess proc;
-        client->vcsFullySynchronousExec(proc, {}, {curlBinary, arguments},
-                                        Core::ShellCommand::NoOutput);
+        const CommandResult result = client->vcsSynchronousExec({}, {curlBinary, arguments},
+                                                                RunFlags::NoOutput);
         // REST endpoint for version is only available from 2.8 and up. Do not consider invalid
         // if it fails.
-        if (proc.result() == QtcProcess::FinishedWithSuccess) {
-            QString output = proc.stdOut();
+        if (result.result() == ProcessResult::FinishedWithSuccess) {
+            QString output = result.cleanedStdOut();
             if (output.isEmpty())
-                return;
+                return false;
             output.remove(0, output.indexOf('\n')); // Strip first line
             output.remove('\n');
             output.remove('"');
@@ -368,6 +345,7 @@ void GerritServer::resolveVersion(const GerritParameters &p, bool forceReload)
         }
     }
     settings->setValue(fullVersionKey, version);
+    return true;
 }
 
 } // namespace Internal

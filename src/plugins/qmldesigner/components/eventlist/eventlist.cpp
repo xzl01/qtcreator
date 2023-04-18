@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "eventlist.h"
 #include "eventlistpluginview.h"
 #include "eventlistview.h"
@@ -66,12 +44,12 @@ static Utils::FilePath findFile(const Utils::FilePath &path, const QString &file
     return {};
 }
 
-
-NodeListView *EventList::st_nodeView = nullptr;
+static std::unique_ptr<NodeListView> st_nodeView;
 
 void EventList::setNodeProperties(AbstractView *view)
 {
-    st_nodeView = new NodeListView(view);
+    st_nodeView = std::make_unique<NodeListView>(view->externalDependencies());
+    view->model()->attachView(st_nodeView.get());
 }
 
 void EventList::selectNode(int internalId)
@@ -130,7 +108,7 @@ QStandardItemModel *EventList::nodeModel()
 
 NodeListView *EventList::nodeListView()
 {
-    return st_nodeView;
+    return st_nodeView.get();
 }
 
 ModelNode EventList::modelNode(const QString &id)
@@ -175,14 +153,16 @@ EventList::EventList()
 
 {}
 
+EventList::~EventList() = default;
+
 Model *EventList::model() const
 {
-    return m_model;
+    return m_model.get();
 }
 
 EventListView *EventList::view() const
 {
-    return m_eventView;
+    return m_eventView.get();
 }
 
 QString EventList::read() const
@@ -216,8 +196,9 @@ void EventList::initialize(EventListPluginView *parent)
     }
 
     if (!m_eventView) {
-        m_eventView = new EventListView(m_model);
-        m_model->attachView(m_eventView);
+        m_eventView = std::make_unique<EventListView>(parent->externalDependencies());
+
+        m_model->attachView(m_eventView.get());
     }
 }
 

@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "androidpotentialkit.h"
-#include "androidconstants.h"
 #include "androidconfigurations.h"
+#include "androidconstants.h"
+#include "androidpotentialkit.h"
+#include "androidtr.h"
 
 #include <app/app_version.h>
 
@@ -49,7 +28,7 @@ using namespace Android::Internal;
 
 QString AndroidPotentialKit::displayName() const
 {
-    return tr("Configure Android...");
+    return Tr::tr("Configure Android...");
 }
 
 void AndroidPotentialKit::executeFromMenu()
@@ -66,15 +45,15 @@ QWidget *AndroidPotentialKit::createWidget(QWidget *parent) const
 
 bool AndroidPotentialKit::isEnabled() const
 {
-    QList<ProjectExplorer::Kit *> kits = ProjectExplorer::KitManager::kits();
-    foreach (ProjectExplorer::Kit *kit, kits) {
+    const QList<ProjectExplorer::Kit *> kits = ProjectExplorer::KitManager::kits();
+    for (const ProjectExplorer::Kit *kit : kits) {
         if (kit->isAutoDetected() && !kit->isSdkProvided()) {
             return false;
         }
     }
 
     return QtSupport::QtVersionManager::version([](const QtSupport::QtVersion *v) {
-        return v->isValid() && v->type() == QString::fromLatin1(Constants::ANDROID_QT_TYPE);
+        return v->type() == QString::fromLatin1(Constants::ANDROID_QT_TYPE);
     });
 }
 
@@ -90,8 +69,8 @@ AndroidPotentialKitWidget::AndroidPotentialKitWidget(QWidget *parent)
     auto layout = new QGridLayout(mainWidget);
     layout->setContentsMargins(0, 0, 0, 0);
     auto label = new QLabel;
-    label->setText(tr("%1 needs additional settings to enable Android support."
-                      " You can configure those settings in the Options dialog.")
+    label->setText(Tr::tr("%1 needs additional settings to enable Android support."
+                          " You can configure those settings in the Options dialog.")
                    .arg(Core::Constants::IDE_DISPLAY_NAME));
     label->setWordWrap(true);
     layout->addWidget(label, 0, 0, 1, 2);
@@ -115,8 +94,8 @@ void AndroidPotentialKitWidget::openOptions()
 
 void AndroidPotentialKitWidget::recheck()
 {
-    QList<ProjectExplorer::Kit *> kits = ProjectExplorer::KitManager::kits();
-    foreach (ProjectExplorer::Kit *kit, kits) {
+    const QList<ProjectExplorer::Kit *> kits = ProjectExplorer::KitManager::kits();
+    for (const ProjectExplorer::Kit *kit : kits) {
         if (kit->isAutoDetected() && !kit->isSdkProvided()) {
             setVisible(false);
             return;

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "formeditorstack.h"
 #include "formwindoweditor.h"
@@ -84,8 +62,8 @@ void FormEditorStack::add(const EditorData &data)
     connect(data.formWindowEditor, &FormWindowEditor::destroyed,
             this, &FormEditorStack::removeFormWindowEditor);
 
-    connect(data.widgetHost, &SharedTools::WidgetHost::formWindowSizeChanged,
-            this, &FormEditorStack::formSizeChanged);
+    connect(data.widgetHost, &SharedTools::WidgetHost::formWindowSizeChanged, this,
+            [this, wh = data.widgetHost](int w, int h) { formSizeChanged(wh, w, h); });
 
     if (Designer::Constants::Internal::debug)
         qDebug() << "FormEditorStack::add" << data.widgetHost << m_formEditors.size();
@@ -162,22 +140,19 @@ void FormEditorStack::updateFormWindowSelectionHandles()
     if (Designer::Constants::Internal::debug)
         qDebug() << "updateFormWindowSelectionHandles";
     QDesignerFormWindowInterface *activeFormWindow = m_designerCore->formWindowManager()->activeFormWindow();
-    for (const EditorData  &fdm : qAsConst(m_formEditors)) {
+    for (const EditorData  &fdm : std::as_const(m_formEditors)) {
         const bool active = activeFormWindow == fdm.widgetHost->formWindow();
         fdm.widgetHost->updateFormWindowSelectionHandles(active);
     }
 }
 
-void FormEditorStack::formSizeChanged(int w, int h)
+void FormEditorStack::formSizeChanged(const SharedTools::WidgetHost *widgetHost, int w, int h)
 {
     // Handle main container resize.
     if (Designer::Constants::Internal::debug)
         qDebug() << Q_FUNC_INFO << w << h;
-    if (auto wh = qobject_cast<const SharedTools::WidgetHost *>(sender())) {
-        wh->formWindow()->setDirty(true);
-        static const QString geometry = "geometry";
-        m_designerCore->propertyEditor()->setPropertyValue(geometry, QRect(0,0,w,h) );
-    }
+    widgetHost->formWindow()->setDirty(true);
+    m_designerCore->propertyEditor()->setPropertyValue("geometry", QRect(0, 0, w, h));
 }
 
 SharedTools::WidgetHost *FormEditorStack::formWindowEditorForXmlEditor(const Core::IEditor *xmlEditor) const
@@ -193,7 +168,7 @@ void FormEditorStack::modeAboutToChange(Utils::Id mode)
 
     // Sync the editor when entering edit mode
     if (mode == Core::Constants::MODE_EDIT)
-        for (const EditorData &data : qAsConst(m_formEditors))
+        for (const EditorData &data : std::as_const(m_formEditors))
             data.formWindowEditor->formWindowFile()->syncXmlFromFormWindow();
 }
 

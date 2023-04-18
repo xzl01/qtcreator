@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Author: Milian Wolff, KDAB (milian.wolff@kdab.com)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "suppressiondialog.h"
 
 #include "memcheckerrorview.h"
 #include "valgrindsettings.h"
+#include "valgrindtr.h"
 
 #include "xmlprotocol/suppression.h"
 #include "xmlprotocol/errorlistmodel.h"
@@ -121,11 +99,11 @@ SuppressionDialog::SuppressionDialog(MemcheckErrorView *view, const QList<Error>
     m_fileChooser(new PathChooser(this)),
     m_suppressionEdit(new QPlainTextEdit(this))
 {
-    setWindowTitle(tr("Save Suppression"));
+    setWindowTitle(Tr::tr("Save Suppression"));
 
-    auto fileLabel = new QLabel(tr("Suppression File:"), this);
+    auto fileLabel = new QLabel(Tr::tr("Suppression File:"), this);
 
-    auto suppressionsLabel = new QLabel(tr("Suppression:"), this);
+    auto suppressionsLabel = new QLabel(Tr::tr("Suppression:"), this);
     suppressionsLabel->setBuddy(m_suppressionEdit);
 
     QFont font;
@@ -149,10 +127,10 @@ SuppressionDialog::SuppressionDialog(MemcheckErrorView *view, const QList<Error>
     m_fileChooser->setHistoryCompleter("Valgrind.Suppression.History");
     m_fileChooser->setPath(defaultSuppFile.fileName());
     m_fileChooser->setPromptDialogFilter("*.supp");
-    m_fileChooser->setPromptDialogTitle(tr("Select Suppression File"));
+    m_fileChooser->setPromptDialogTitle(Tr::tr("Select Suppression File"));
 
     QString suppressions;
-    for (const Error &error : qAsConst(m_errors))
+    for (const Error &error : std::as_const(m_errors))
         suppressions += suppressionText(error);
 
     m_suppressionEdit->setPlainText(suppressions);
@@ -175,7 +153,7 @@ void SuppressionDialog::maybeShow(MemcheckErrorView *view)
         indices.append(view->selectionModel()->currentIndex());
 
     QList<XmlProtocol::Error> errors;
-    for (const QModelIndex &index : qAsConst(indices)) {
+    for (const QModelIndex &index : std::as_const(indices)) {
         Error error = view->model()->data(index, ErrorListModel::ErrorRole).value<Error>();
         if (!error.suppression().isNull())
             errors.append(error);
@@ -215,12 +193,12 @@ void SuppressionDialog::accept()
 
     m_settings->suppressions.addSuppressionFile(path);
 
-    QModelIndexList indices = m_view->selectionModel()->selectedRows();
-    Utils::sort(indices, [](const QModelIndex &l, const QModelIndex &r) {
+    const QModelIndexList indices = Utils::sorted(m_view->selectionModel()->selectedRows(),
+                                                  [](const QModelIndex &l, const QModelIndex &r) {
         return l.row() > r.row();
     });
     QAbstractItemModel *model = m_view->model();
-    for (const QModelIndex &index : qAsConst(indices)) {
+    for (const QModelIndex &index : indices) {
         bool removed = model->removeRow(index.row());
         QTC_ASSERT(removed, qt_noop());
         Q_UNUSED(removed)
@@ -231,7 +209,7 @@ void SuppressionDialog::accept()
         const Error rowError = model->data(
             model->index(row, 0), ErrorListModel::ErrorRole).value<Error>();
 
-        for (const Error &error : qAsConst(m_errors)) {
+        for (const Error &error : std::as_const(m_errors)) {
             if (equalSuppression(rowError, error)) {
                 bool removed = model->removeRow(row);
                 QTC_CHECK(removed);

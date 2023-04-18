@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "internalproperty.h"
 #include "internalbindingproperty.h"
@@ -62,7 +40,7 @@ void InternalProperty::setInternalWeakPointer(const Pointer &pointer)
 
 bool InternalProperty::isValid() const
 {
-    return m_propertyOwner && !m_name.isEmpty();
+    return !m_propertyOwner.expired() && !m_name.isEmpty();
 }
 
 PropertyName InternalProperty::name() const
@@ -107,6 +85,11 @@ bool InternalProperty::isSignalHandlerProperty() const
     return false;
 }
 
+bool InternalProperty::isSignalDeclarationProperty() const
+{
+    return false;
+}
+
 QSharedPointer<InternalVariantProperty> InternalProperty::toVariantProperty() const
 
 {
@@ -116,7 +99,7 @@ QSharedPointer<InternalVariantProperty> InternalProperty::toVariantProperty() co
 
 InternalNode::Pointer InternalProperty::propertyOwner() const
 {
-    return m_propertyOwner.toStrongRef();
+    return m_propertyOwner.lock();
 }
 
 QSharedPointer<InternalNodeListProperty> InternalProperty::toNodeListProperty() const
@@ -143,10 +126,16 @@ QSharedPointer<InternalSignalHandlerProperty> InternalProperty::toSignalHandlerP
     return internalPointer().staticCast<InternalSignalHandlerProperty>();
 }
 
+QSharedPointer<InternalSignalDeclarationProperty> InternalProperty::toSignalDeclarationProperty() const
+{
+    Q_ASSERT(internalPointer().dynamicCast<InternalSignalDeclarationProperty>());
+    return internalPointer().staticCast<InternalSignalDeclarationProperty>();
+}
+
 void InternalProperty::remove()
 {
     propertyOwner()->removeProperty(name());
-    m_propertyOwner.clear();
+    m_propertyOwner.reset();
 }
 
 TypeName InternalProperty::dynamicTypeName() const

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -41,7 +19,7 @@
 
     \title Keyboard Shortcuts
 
-    \QC provides various keyboard shortcuts to speed up your development
+    \QC has various keyboard shortcuts that speed up your development
     process. You can add more shortcuts if your favorite combination is
     missing. In addition, you can specify your own keyboard shortcuts for some
     functions that can be easily performed with a mouse, and therefore do not
@@ -50,7 +28,7 @@
 
     To view all functions available in \QC and the keyboard shortcuts defined
     for them, select
-    \uicontrol Tools > \uicontrol Options > \uicontrol Environment >
+    \uicontrol Edit > \uicontrol Preferences > \uicontrol Environment >
     \uicontrol Keyboard. The shortcuts are listed by category. To find a keyboard
     shortcut in the list, enter a function name or shortcut in the \uicontrol Filter
     field.
@@ -75,12 +53,12 @@
 
     To override the platform default value that determines whether
     keyboard shortcuts are shown in the labels of context menu items,
-    select \uicontrol Tools > \uicontrol Options > \uicontrol Environment >
+    select \uicontrol Edit > \uicontrol Preferences > \uicontrol Environment >
     \uicontrol Interface. The label of the \uicontrol {Show keyboard shortcuts
     in context menus} check box indicates whether the platform default value
     is \c on or \c off.
 
-    \image qtcreator-options-environment-interface.png "Interface tab in the Environment options"
+    \image qtcreator-options-environment-interface.png "Interface tab in the Environment preferences"
 
     \section1 Configuring Keyboard Shortcuts
 
@@ -88,7 +66,7 @@
 
     \list 1
 
-        \li Select \uicontrol Tools > \uicontrol Options > \uicontrol Environment
+        \li Select \uicontrol Edit > \uicontrol Preferences > \uicontrol Environment
             > \uicontrol Keyboard.
 
         \li Select a command from the list.
@@ -119,7 +97,7 @@
     \list
 
         \li To import a keyboard shortcut mapping scheme, click \uicontrol Import
-            and select the .kms file containing the keyboard shortcut mapping scheme
+            and select the .kms file that has the keyboard shortcut mapping scheme
             you want to import.
 
         \li To export the current keyboard shortcut mapping scheme, click
@@ -227,22 +205,22 @@
             \li  Switch to \uicontrol Help mode
             \li  Ctrl+6
         \row
-            \li  Toggle \uicontrol{Issues} pane
+            \li  Toggle \uicontrol{Issues}
             \li  Alt+1 (Cmd+1 on \macos)
         \row
-            \li  Toggle \uicontrol{Search Results} pane
+            \li  Toggle \uicontrol{Search Results}
             \li  Alt+2 (Cmd+2 on \macos)
         \row
-            \li  Toggle \uicontrol{Application Output} pane
+            \li  Toggle \uicontrol{Application Output}
             \li  Alt+3 (Cmd+3 on \macos)
         \row
-            \li  Toggle \uicontrol{Compile Output} pane
+            \li  Toggle \uicontrol{Compile Output}
             \li  Alt+4 (Cmd+4 on \macos)
         \row
-            \li  Toggle other output panes
+            \li  Toggle other output views
             \li  Alt+number (Cmd+number on \macos)
 
-            Where the number is the number of the output pane.
+            Where the number is the number of the view.
         \if defined(qtcreator)
         \row
             \li  Activate \uicontrol Bookmarks view
@@ -255,13 +233,13 @@
             \li  Activate \uicontrol{Open Documents} view
             \li  Alt+O
         \row
-            \li  Maximize output panes
+            \li  Maximize output views
             \li  Alt+9
         \row
-            \li  Move to next item in output panes
+            \li  Move to next item in output
             \li  F6
         \row
-            \li  Move to previous item in output panes
+            \li  Move to previous item in output
             \li  Shift+F6
         \row
             \li  Activate \uicontrol Projects view
@@ -290,7 +268,7 @@
                  By default, \QC exits without asking for confirmation, unless
                  there are unsaved changes in open files. To always be asked,
                  select the \uicontrol {Ask for confirmation before exiting}
-                 check box in \uicontrol Tools > \uicontrol Options >
+                 check box in \uicontrol Edit > \uicontrol Preferences >
                  \uicontrol Environment > \uicontrol System.
             \li  Ctrl+Q
     \endtable
@@ -388,8 +366,8 @@
             \li  Select the current block
 
                  The second press extends the selection to the parent block. To
-                 enable this behavior, select \uicontrol Tools >
-                 \uicontrol Options > \uicontrol {Text Editor} >
+                 enable this behavior, select \uicontrol Edit >
+                 \uicontrol Preferences > \uicontrol {Text Editor} >
                  \uicontrol Behavior >
                  \uicontrol {Enable smart selection changing}.
             \li  Ctrl+U
@@ -459,7 +437,9 @@
             \li  Follow symbol under cursor
 
                Works with namespaces, classes, functions, variables, include
-               statements and macros
+               statements, and macros. Also, opens URLs in the default browser
+               and Qt resource files (.qrc) in the \l{Creating Resource Files}
+               {resource editor}
             \li  F2
         \row
             \li  Rename symbol under cursor
@@ -476,11 +456,18 @@
             \li  F4
         \endif
         \row
+            \li Add a cursor at the next occurrence of selected text for
+                multi-cursor editing
+            \li  Ctrl+D
+        \row
             \li  Turn selected text into lowercase
             \li  Alt+U
         \row
             \li  Turn selected text into uppercase
             \li  Alt+Shift+U
+        \row
+            \li  Sort selected lines alphabetically
+            \li  Alt+Shift+S
         \row
             \li  Run static checks on JavaScript code to find common problems
             \li  Ctrl+Shift+C
@@ -597,8 +584,8 @@
             \li  Open the QML file that defines the selected component
             \li  F2
         \row
-            \li  Move between \uicontrol {Text Editor} and
-                 \uicontrol {Form Editor}
+            \li  Move between \uicontrol the {Code} and
+                 \uicontrol {2D} views
             \li  F4
         \row
             \li  Toggle left sidebar

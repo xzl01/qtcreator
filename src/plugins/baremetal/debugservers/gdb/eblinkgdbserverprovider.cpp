@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Andrey Sobol <andrey.sobol.nn@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 Andrey Sobol <andrey.sobol.nn@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "eblinkgdbserverprovider.h"
 
 #include <baremetal/baremetalconstants.h>
+#include <baremetal/baremetaltr.h>
 #include <baremetal/debugserverprovidermanager.h>
 
 #include <utils/fileutils.h>
@@ -38,13 +17,10 @@
 #include <QFormLayout>
 #include <QPlainTextEdit>
 #include <QSpinBox>
-#include <QFileInfo>
-#include <QDir>
 
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
+namespace BareMetal::Internal {
 
 const char executableFileKeyC[] = "ExecutableFile";
 const char verboseLevelKeyC[] = "VerboseLevel";
@@ -66,7 +42,7 @@ EBlinkGdbServerProvider::EBlinkGdbServerProvider()
     setInitCommands(defaultInitCommands());
     setResetCommands(defaultResetCommands());
     setChannel("127.0.0.1", 2331);
-    setTypeDisplayName(GdbServerProvider::tr("EBlink"));
+    setTypeDisplayName(Tr::tr("EBlink"));
     setConfigurationWidgetCreator([this] { return new EBlinkGdbServerProviderConfigWidget(this); });
 }
 
@@ -169,10 +145,10 @@ bool EBlinkGdbServerProvider::isValid() const
 QVariantMap EBlinkGdbServerProvider::toMap() const
 {
     QVariantMap data = GdbServerProvider::toMap();
-    data.insert(executableFileKeyC, m_executableFile.toVariant());
+    data.insert(executableFileKeyC, m_executableFile.toSettings());
     data.insert(verboseLevelKeyC, m_verboseLevel);
     data.insert(interfaceTypeC, m_interfaceType);
-    data.insert(deviceScriptC, m_deviceScript.toVariant());
+    data.insert(deviceScriptC, m_deviceScript.toSettings());
     data.insert(interfaceResetOnConnectC, m_interfaceResetOnConnect);
     data.insert(interfaceSpeedC, m_interfaceSpeed);
     data.insert(interfaceExplicidDeviceC, m_interfaceExplicidDevice);
@@ -189,12 +165,12 @@ bool EBlinkGdbServerProvider::fromMap(const QVariantMap &data)
     if (!GdbServerProvider::fromMap(data))
         return false;
 
-    m_executableFile = FilePath::fromVariant(data.value(executableFileKeyC));
+    m_executableFile = FilePath::fromSettings(data.value(executableFileKeyC));
     m_verboseLevel = data.value(verboseLevelKeyC).toInt();
     m_interfaceResetOnConnect = data.value(interfaceResetOnConnectC).toBool();
     m_interfaceType = static_cast<InterfaceType>(
                 data.value(interfaceTypeC).toInt());
-    m_deviceScript = FilePath::fromVariant(data.value(deviceScriptC));
+    m_deviceScript = FilePath::fromSettings(data.value(deviceScriptC));
     m_interfaceResetOnConnect = data.value(interfaceResetOnConnectC).toBool();
     m_interfaceSpeed = data.value(interfaceSpeedC).toInt();
     m_interfaceExplicidDevice = data.value(interfaceExplicidDeviceC).toString();
@@ -230,7 +206,7 @@ bool EBlinkGdbServerProvider::operator==(const IDebugServerProvider &other) cons
 EBlinkGdbServerProviderFactory::EBlinkGdbServerProviderFactory()
 {
     setId(Constants::GDBSERVER_EBLINK_PROVIDER_ID);
-    setDisplayName(GdbServerProvider::tr("EBlink"));
+    setDisplayName(Tr::tr("EBlink"));
     setCreator([] { return new EBlinkGdbServerProvider; });
 }
 
@@ -243,52 +219,52 @@ EBlinkGdbServerProviderConfigWidget::EBlinkGdbServerProviderConfigWidget(
     Q_ASSERT(p);
 
     m_gdbHostWidget = new HostWidget(this);
-    m_mainLayout->addRow(tr("Host:"), m_gdbHostWidget);
+    m_mainLayout->addRow(Tr::tr("Host:"), m_gdbHostWidget);
 
     m_executableFileChooser = new PathChooser;
     m_executableFileChooser->setExpectedKind(Utils::PathChooser::ExistingCommand);
-    m_mainLayout->addRow(tr("Executable file:"), m_executableFileChooser);
+    m_mainLayout->addRow(Tr::tr("Executable file:"), m_executableFileChooser);
 
     m_scriptFileChooser = new Utils::PathChooser;
     m_scriptFileChooser->setExpectedKind(Utils::PathChooser::File);
     m_scriptFileChooser->setPromptDialogFilter("*.script");
-    m_mainLayout->addRow(tr("Script file:"), m_scriptFileChooser);
+    m_mainLayout->addRow(Tr::tr("Script file:"), m_scriptFileChooser);
 
     m_verboseLevelSpinBox = new QSpinBox;
     m_verboseLevelSpinBox->setRange(0, 7);
     m_verboseLevelSpinBox->setMaximumWidth(80);
-    m_verboseLevelSpinBox->setToolTip(tr("Specify the verbosity level (0 to 7)."));
-    m_mainLayout->addRow(tr("Verbosity level:"), m_verboseLevelSpinBox);
+    m_verboseLevelSpinBox->setToolTip(Tr::tr("Specify the verbosity level (0 to 7)."));
+    m_mainLayout->addRow(Tr::tr("Verbosity level:"), m_verboseLevelSpinBox);
 
     m_resetOnConnectCheckBox = new QCheckBox;
-    m_resetOnConnectCheckBox->setToolTip(tr("Connect under reset (hotplug)."));
-    m_mainLayout->addRow(tr("Connect under reset:"), m_resetOnConnectCheckBox);
+    m_resetOnConnectCheckBox->setToolTip(Tr::tr("Connect under reset (hotplug)."));
+    m_mainLayout->addRow(Tr::tr("Connect under reset:"), m_resetOnConnectCheckBox);
 
     m_interfaceTypeComboBox = new QComboBox;
-    m_interfaceTypeComboBox->setToolTip(tr("Interface type."));
-    m_mainLayout->addRow(tr("Type:"), m_interfaceTypeComboBox);
+    m_interfaceTypeComboBox->setToolTip(Tr::tr("Interface type."));
+    m_mainLayout->addRow(Tr::tr("Type:"), m_interfaceTypeComboBox);
 
     m_interfaceSpeedSpinBox = new QSpinBox;
     m_interfaceSpeedSpinBox->setRange(120, 8000);
     m_interfaceSpeedSpinBox->setMaximumWidth(120);
-    m_interfaceSpeedSpinBox->setToolTip(tr("Specify the speed of the interface (120 to 8000) in kilohertz (kHz)."));
-    m_mainLayout->addRow(tr("Speed:"), m_interfaceSpeedSpinBox);
+    m_interfaceSpeedSpinBox->setToolTip(Tr::tr("Specify the speed of the interface (120 to 8000) in kilohertz (kHz)."));
+    m_mainLayout->addRow(Tr::tr("Speed:"), m_interfaceSpeedSpinBox);
 
     m_notUseCacheCheckBox = new QCheckBox;
-    m_notUseCacheCheckBox->setToolTip(tr("Do not use EBlink flash cache."));
-    m_mainLayout->addRow(tr("Disable cache:"), m_notUseCacheCheckBox);
+    m_notUseCacheCheckBox->setToolTip(Tr::tr("Do not use EBlink flash cache."));
+    m_mainLayout->addRow(Tr::tr("Disable cache:"), m_notUseCacheCheckBox);
 
     m_shutDownAfterDisconnectCheckBox = new QCheckBox;
     m_shutDownAfterDisconnectCheckBox->setEnabled(false);
-    m_shutDownAfterDisconnectCheckBox->setToolTip(tr("Shut down EBlink server after disconnect."));
-    m_mainLayout->addRow(tr("Auto shutdown:"), m_shutDownAfterDisconnectCheckBox);
+    m_shutDownAfterDisconnectCheckBox->setToolTip(Tr::tr("Shut down EBlink server after disconnect."));
+    m_mainLayout->addRow(Tr::tr("Auto shutdown:"), m_shutDownAfterDisconnectCheckBox);
 
     m_initCommandsTextEdit = new QPlainTextEdit(this);
     m_initCommandsTextEdit->setToolTip(defaultInitCommandsTooltip());
-    m_mainLayout->addRow(tr("Init commands:"), m_initCommandsTextEdit);
+    m_mainLayout->addRow(Tr::tr("Init commands:"), m_initCommandsTextEdit);
     m_resetCommandsTextEdit = new QPlainTextEdit(this);
     m_resetCommandsTextEdit->setToolTip(defaultResetCommandsTooltip());
-    m_mainLayout->addRow(tr("Reset commands:"), m_resetCommandsTextEdit);
+    m_mainLayout->addRow(Tr::tr("Reset commands:"), m_resetCommandsTextEdit);
 
     populateInterfaceTypes();
     addErrorLabel();
@@ -304,11 +280,9 @@ EBlinkGdbServerProviderConfigWidget::EBlinkGdbServerProviderConfigWidget(
             this, &GdbServerProviderConfigWidget::dirty);
     connect(m_scriptFileChooser, &Utils::PathChooser::rawPathChanged,
             this, &GdbServerProviderConfigWidget::dirty);
-    connect(m_verboseLevelSpinBox,
-            QOverload<int>::of(&QSpinBox::valueChanged),
+    connect(m_verboseLevelSpinBox, &QSpinBox::valueChanged,
             this, &GdbServerProviderConfigWidget::dirty);
-    connect(m_interfaceSpeedSpinBox,
-            QOverload<int>::of(&QSpinBox::valueChanged),
+    connect(m_interfaceSpeedSpinBox, &QSpinBox::valueChanged,
             this, &GdbServerProviderConfigWidget::dirty);
     connect(m_notUseCacheCheckBox, &QAbstractButton::clicked,
             this, &GdbServerProviderConfigWidget::dirty);
@@ -316,8 +290,7 @@ EBlinkGdbServerProviderConfigWidget::EBlinkGdbServerProviderConfigWidget(
             this, &GdbServerProviderConfigWidget::dirty);
     connect(m_resetOnConnectCheckBox, &QAbstractButton::clicked,
             this, &GdbServerProviderConfigWidget::dirty);
-    connect(m_interfaceTypeComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_interfaceTypeComboBox, &QComboBox::currentIndexChanged,
             this, &GdbServerProviderConfigWidget::dirty);
     connect(m_initCommandsTextEdit, &QPlainTextEdit::textChanged,
             this, &GdbServerProviderConfigWidget::dirty);
@@ -341,9 +314,9 @@ EBlinkGdbServerProviderConfigWidget::interfaceTypeFromWidget() const
 
 void EBlinkGdbServerProviderConfigWidget::populateInterfaceTypes()
 {
-    m_interfaceTypeComboBox->insertItem(EBlinkGdbServerProvider::SWD, tr("SWD"),
+    m_interfaceTypeComboBox->insertItem(EBlinkGdbServerProvider::SWD, Tr::tr("SWD"),
                 EBlinkGdbServerProvider::SWD);
-    m_interfaceTypeComboBox->insertItem(EBlinkGdbServerProvider::JTAG, tr("JTAG"),
+    m_interfaceTypeComboBox->insertItem(EBlinkGdbServerProvider::JTAG, Tr::tr("JTAG"),
                 EBlinkGdbServerProvider::JTAG);
 }
 
@@ -393,5 +366,4 @@ void EBlinkGdbServerProviderConfigWidget::discard()
     GdbServerProviderConfigWidget::discard();
 }
 
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal

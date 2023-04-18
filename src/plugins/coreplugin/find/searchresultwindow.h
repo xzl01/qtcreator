@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -33,6 +11,8 @@
 #include <QVariant>
 #include <QStringList>
 #include <QIcon>
+
+#include <functional>
 
 QT_BEGIN_NAMESPACE
 class QFont;
@@ -75,12 +55,14 @@ public:
     void setSearchAgainSupported(bool supported);
     QWidget *additionalReplaceWidget() const;
     void setAdditionalReplaceWidget(QWidget *widget);
+    void makeNonInteractive(const std::function<void()> &callback);
+    bool isInteractive() const { return !m_finishedHandler; }
 
 public slots:
     void addResult(const SearchResultItem &item);
     void addResults(const QList<SearchResultItem> &items, AddMode mode);
     void setFilter(SearchResultFilter *filter); // Takes ownership
-    void finishSearch(bool canceled);
+    void finishSearch(bool canceled, const QString &reason = {});
     void setTextToReplace(const QString &textToReplace);
     void restart();
     void setReplaceEnabled(bool enabled);
@@ -91,7 +73,7 @@ signals:
     void activated(const Core::SearchResultItem &item);
     void replaceButtonClicked(const QString &replaceText, const QList<Core::SearchResultItem> &checkedItems, bool preserveCase);
     void replaceTextChanged(const QString &replaceText);
-    void cancelled();
+    void canceled();
     void paused(bool paused);
     void visibilityChanged(bool visible);
     void countChanged(int count);
@@ -105,6 +87,7 @@ private:
 private:
     Internal::SearchResultWidget *m_widget;
     QVariant m_userData;
+    std::function<void()> m_finishedHandler;
 };
 
 class CORE_EXPORT SearchResultWindow : public IOutputPane
@@ -122,7 +105,6 @@ public:
         PreserveCaseDisabled
     };
 
-
     SearchResultWindow(QWidget *newSearchPanel);
     ~SearchResultWindow() override;
     static SearchResultWindow *instance();
@@ -130,7 +112,7 @@ public:
     QWidget *outputWidget(QWidget *) override;
     QList<QWidget*> toolBarWidgets() const override;
 
-    QString displayName() const override { return tr("Search Results"); }
+    QString displayName() const override;
     int priorityInStatusBar() const override;
     void visibilityChanged(bool visible) override;
     bool hasFocus() const override;

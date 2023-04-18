@@ -1,32 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: BlackBerry (qt@blackberry.com), KDAB (info@kdab.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qnxtoolchain.h"
+
 #include "qnxconfiguration.h"
 #include "qnxconfigurationmanager.h"
 #include "qnxconstants.h"
+#include "qnxtr.h"
 #include "qnxutils.h"
 
 #include <projectexplorer/abiwidget.h>
@@ -39,11 +19,31 @@
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Qnx {
-namespace Internal {
+namespace Qnx::Internal {
 
 const char CompilerSdpPath[] = "Qnx.QnxToolChain.NDKPath";
 const char CpuDirKey[] = "Qnx.QnxToolChain.CpuDir";
+
+// QnxToolChainConfigWidget
+
+class QnxToolChainConfigWidget : public ToolChainConfigWidget
+{
+public:
+    QnxToolChainConfigWidget(QnxToolChain *tc);
+
+private:
+    void applyImpl() override;
+    void discardImpl() override;
+    bool isDirtyImpl() const override;
+    void makeReadOnlyImpl() override { }
+
+    void handleSdpPathChange();
+
+    Utils::PathChooser *m_compilerCommand;
+    Utils::PathChooser *m_sdpPath;
+    ProjectExplorer::AbiWidget *m_abiWidget;
+
+};
 
 static Abis detectTargetAbis(const FilePath &sdpPath)
 {
@@ -67,17 +67,15 @@ static Abis detectTargetAbis(const FilePath &sdpPath)
             result.append(target.m_abi);
     }
 
-    Utils::sort(result,
+    return Utils::sorted(std::move(result),
               [](const Abi &arg1, const Abi &arg2) { return arg1.toString() < arg2.toString(); });
-
-    return result;
 }
 
 static void setQnxEnvironment(Environment &env, const EnvironmentItems &qnxEnv)
 {
     // We only need to set QNX_HOST, QNX_TARGET, and QNX_CONFIGURATION_EXCLUSIVE
     // needed when running qcc
-    foreach (const EnvironmentItem &item, qnxEnv) {
+    for (const EnvironmentItem &item : qnxEnv) {
         if (item.name == QLatin1String("QNX_HOST") ||
             item.name == QLatin1String("QNX_TARGET") ||
             item.name == QLatin1String("QNX_CONFIGURATION_EXCLUSIVE"))
@@ -90,7 +88,7 @@ static void setQnxEnvironment(Environment &env, const EnvironmentItems &qnxEnv)
 static QStringList reinterpretOptions(const QStringList &args)
 {
     QStringList arguments;
-    foreach (const QString &str, args) {
+    for (const QString &str : args) {
         if (str.startsWith(QLatin1String("--sysroot=")))
             continue;
         QString arg = str;
@@ -99,7 +97,6 @@ static QStringList reinterpretOptions(const QStringList &args)
                 arg.prepend(QLatin1String("-Wp,"));
         arguments << arg;
     }
-
     return arguments;
 }
 
@@ -107,7 +104,7 @@ QnxToolChain::QnxToolChain()
     : GccToolChain(Constants::QNX_TOOLCHAIN_ID)
 {
     setOptionsReinterpreter(&reinterpretOptions);
-    setTypeDisplayName(tr("QCC"));
+    setTypeDisplayName(Tr::tr("QCC"));
 }
 
 std::unique_ptr<ToolChainConfigWidget> QnxToolChain::createConfigurationWidget()
@@ -138,7 +135,7 @@ QStringList QnxToolChain::suggestedMkspecList() const
 QVariantMap QnxToolChain::toMap() const
 {
     QVariantMap data = GccToolChain::toMap();
-    data.insert(QLatin1String(CompilerSdpPath), m_sdpPath.toVariant());
+    data.insert(QLatin1String(CompilerSdpPath), m_sdpPath.toSettings());
     data.insert(QLatin1String(CpuDirKey), m_cpuDir);
     return data;
 }
@@ -148,7 +145,7 @@ bool QnxToolChain::fromMap(const QVariantMap &data)
     if (!GccToolChain::fromMap(data))
         return false;
 
-    m_sdpPath = FilePath::fromVariant(data.value(CompilerSdpPath));
+    m_sdpPath = FilePath::fromSettings(data.value(CompilerSdpPath));
     m_cpuDir = data.value(QLatin1String(CpuDirKey)).toString();
 
     // Make the ABIs QNX specific (if they aren't already).
@@ -211,7 +208,7 @@ bool QnxToolChain::operator ==(const ToolChain &other) const
 
 QnxToolChainFactory::QnxToolChainFactory()
 {
-    setDisplayName(QnxToolChain::tr("QCC"));
+    setDisplayName(Tr::tr("QCC"));
     setSupportedToolChainType(Constants::QNX_TOOLCHAIN_ID);
     setSupportedLanguages({ProjectExplorer::Constants::C_LANGUAGE_ID,
                            ProjectExplorer::Constants::CXX_LANGUAGE_ID});
@@ -221,6 +218,10 @@ QnxToolChainFactory::QnxToolChainFactory()
 
 Toolchains QnxToolChainFactory::autoDetect(const ToolchainDetector &detector) const
 {
+    // FIXME: Support detecting toolchains on remote devices
+    if (detector.device)
+        return {};
+
     Toolchains tcs;
     const auto configurations = QnxConfigurationManager::instance()->configurations();
     for (QnxConfiguration *configuration : configurations)
@@ -252,10 +253,10 @@ QnxToolChainConfigWidget::QnxToolChainConfigWidget(QnxToolChain *tc)
     m_abiWidget->setAbis(abiList, tc->targetAbi());
     m_abiWidget->setEnabled(!tc->isAutoDetected() && !abiList.isEmpty());
 
-    m_mainLayout->addRow(tr("&Compiler path:"), m_compilerCommand);
+    m_mainLayout->addRow(Tr::tr("&Compiler path:"), m_compilerCommand);
     //: SDP refers to 'Software Development Platform'.
-    m_mainLayout->addRow(tr("SDP path:"), m_sdpPath);
-    m_mainLayout->addRow(tr("&ABI:"), m_abiWidget);
+    m_mainLayout->addRow(Tr::tr("SDP path:"), m_sdpPath);
+    m_mainLayout->addRow(Tr::tr("&ABI:"), m_abiWidget);
 
     connect(m_compilerCommand, &PathChooser::rawPathChanged, this, &ToolChainConfigWidget::dirty);
     connect(m_sdpPath, &PathChooser::rawPathChanged,
@@ -317,5 +318,4 @@ void QnxToolChainConfigWidget::handleSdpPathChange()
     emit dirty();
 }
 
-} // namespace Internal
-} // namespace Qnx
+} // Qnx::Internal

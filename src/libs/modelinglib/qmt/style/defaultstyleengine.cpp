@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jochen Becher
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Jochen Becher
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "defaultstyleengine.h"
 
@@ -38,7 +16,6 @@
 #include "qmt/infrastructure/qmtassert.h"
 
 #include <utils/algorithm.h>
-#include <utils/porting.h>
 
 #include <QSet>
 
@@ -83,7 +60,7 @@ public:
     ObjectVisuals m_objectVisuals;
 };
 
-Utils::QHashValueType qHash(const ObjectStyleKey &styleKey)
+size_t qHash(const ObjectStyleKey &styleKey)
 {
     return ::qHash(styleKey.m_elementType) ^ qHash(styleKey.m_objectVisuals);
 }
@@ -107,7 +84,7 @@ public:
     DObject::VisualPrimaryRole m_visualPrimaryRole = DObject::PrimaryRoleNormal;
 };
 
-Utils::QHashValueType qHash(const RelationStyleKey &styleKey)
+size_t qHash(const RelationStyleKey &styleKey)
 {
     return ::qHash(styleKey.m_elementType) ^ ::qHash(styleKey.m_visualPrimaryRole);
 }
@@ -128,7 +105,7 @@ public:
     DAnnotation::VisualRole m_visualRole = DAnnotation::RoleNormal;
 };
 
-Utils::QHashValueType qHash(const AnnotationStyleKey &styleKey)
+size_t qHash(const AnnotationStyleKey &styleKey)
 {
     return ::qHash(styleKey.m_visualRole);
 }
@@ -143,7 +120,7 @@ class BoundaryStyleKey
 {
 };
 
-Utils::QHashValueType qHash(const BoundaryStyleKey &styleKey)
+size_t qHash(const BoundaryStyleKey &styleKey)
 {
     Q_UNUSED(styleKey)
 
@@ -163,7 +140,7 @@ class SwimlaneStyleKey
 {
 };
 
-Utils::QHashValueType qHash(const SwimlaneStyleKey &styleKey)
+size_t qHash(const SwimlaneStyleKey &styleKey)
 {
     Q_UNUSED(styleKey)
 
@@ -285,7 +262,8 @@ const Style *DefaultStyleEngine::applyObjectStyle(const Style *baseStyle, const 
     DObject::VisualPrimaryRole styledVisualPrimaryRole = styledObject.objectVisuals().visualPrimaryRole();
     DObject::VisualSecondaryRole styledVisualSecondaryRole = styledObject.objectVisuals().visualSecondaryRole();
     QHash<int, DepthProperties> depths;
-    foreach (const DObject *collidingObject, styledObject.collidingObjects()) {
+    const QList<const DObject *> collidingObjectList = styledObject.collidingObjects();
+    for (const DObject *collidingObject : collidingObjectList) {
         int collidingDepth = collidingObject->depth();
         if (collidingDepth < styledObject.object()->depth()) {
             ElementType collidingElementType = objectType(collidingObject);
@@ -319,9 +297,8 @@ const Style *DefaultStyleEngine::applyObjectStyle(const Style *baseStyle, const 
     }
     int depth = 0;
     if (!depths.isEmpty()) {
-        QList<int> keys = depths.keys();
-        Utils::sort(keys);
-        foreach (int d, keys) {
+        const QList<int> keys = Utils::sorted(depths.keys());
+        for (int d : keys) {
             DepthProperties properties = depths.value(d);
             if (properties.m_elementType == elementType
                     && areStackingRoles(properties.m_visualPrimaryRole, properties.m_visualSecondaryRole,

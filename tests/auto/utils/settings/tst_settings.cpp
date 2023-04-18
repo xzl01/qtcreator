@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <utils/algorithm.h>
 #include <utils/settingsaccessor.h>
@@ -102,22 +80,21 @@ protected:
             return qMakePair(key, main);
 
         if (main.isNull() && secondary.isNull())
-            return nullopt;
+            return std::nullopt;
         if (!main.isNull())
             return qMakePair(key, main);
         return qMakePair(key, secondary);
     }
 
-    Utils::optional<Issue> writeFile(const Utils::FilePath &path, const QVariantMap &data) const override
+    std::optional<Issue> writeFile(const Utils::FilePath &path, const QVariantMap &data) const override
     {
         if (data.isEmpty()) {
-            return Issue(QCoreApplication::translate("Utils::SettingsAccessor", "Failed to Write File"),
-                         QCoreApplication::translate("Utils::SettingsAccessor", "There was nothing to write."),
+            return Issue("Failed to Write File", "There was nothing to write.",
                          Issue::Type::WARNING);
         }
 
         addFile(path, data);
-        return nullopt;
+        return std::nullopt;
     }
 
 private:
@@ -604,7 +581,7 @@ void tst_SettingsAccessor::findIssues_ok()
     const QVariantMap data = versionedMap(6, TESTACCESSOR_DEFAULT_ID);
     const Utils::FilePath path = "/foo/baz.user";
 
-    const Utils::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
+    const std::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
 
     QVERIFY(!info);
 }
@@ -615,7 +592,7 @@ void tst_SettingsAccessor::findIssues_emptyData()
     const QVariantMap data;
     const Utils::FilePath path = "/foo/bar.user";
 
-    const Utils::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
+    const std::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
 
     QVERIFY(bool(info));
 }
@@ -626,7 +603,7 @@ void tst_SettingsAccessor::findIssues_tooNew()
     const QVariantMap data = versionedMap(42, TESTACCESSOR_DEFAULT_ID);
     const Utils::FilePath path = "/foo/bar.user";
 
-    const Utils::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
+    const std::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
 
     QVERIFY(bool(info));
 }
@@ -637,7 +614,7 @@ void tst_SettingsAccessor::findIssues_tooOld()
     const QVariantMap data = versionedMap(2, TESTACCESSOR_DEFAULT_ID);
     const Utils::FilePath path = "/foo/bar.user";
 
-    const Utils::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
+    const std::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
 
     QVERIFY(bool(info));
 }
@@ -648,7 +625,7 @@ void tst_SettingsAccessor::findIssues_wrongId()
     const QVariantMap data = versionedMap(6, "foo");
     const Utils::FilePath path = "/foo/bar.user";
 
-    const Utils::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
+    const std::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
 
     QVERIFY(bool(info));
 }
@@ -659,7 +636,7 @@ void tst_SettingsAccessor::findIssues_nonDefaultPath()
     const QVariantMap data = versionedMap(6, TESTACCESSOR_DEFAULT_ID);
     const Utils::FilePath path = "/foo/bar.user.foobar";
 
-    const Utils::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
+    const std::optional<Utils::SettingsAccessor::Issue> info = accessor.findIssues(data, path);
 
     QVERIFY(bool(info));
 }
@@ -752,6 +729,6 @@ void tst_SettingsAccessor::loadSettings_pickBest()
     QCOMPARE(read.size(), data.size() + 2);
 }
 
-QTEST_MAIN(tst_SettingsAccessor)
+QTEST_GUILESS_MAIN(tst_SettingsAccessor)
 
 #include "tst_settings.moc"

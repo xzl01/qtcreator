@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include "qmlprofilerbindingloopsrenderpass_test.h"
@@ -49,7 +27,7 @@ DummyModel::DummyModel(QmlProfilerModelManager *manager,
 
 void DummyModel::loadData()
 {
-    QmlEventType type(MaximumMessage, Binding);
+    QmlEventType type(UndefinedMessage, Binding);
     const int typeIndex = modelManager()->appendEventType(QmlEventType(type));
     QCOMPARE(typeIndex, 0);
 
@@ -119,18 +97,10 @@ void QmlProfilerBindingLoopsRenderPassTest::testUpdate()
     QCOMPARE(node->geometry()->vertexCount(), 7 * 18);
     QVERIFY(material2 != nullptr);
     QCOMPARE(material1->type(), material2->type());
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    QSGMaterialShader *shader1 = material1->createShader();
-    QVERIFY(shader1 != nullptr);
-    QSGMaterialShader *shader2 = material2->createShader();
-    QVERIFY(shader2 != nullptr);
-    QCOMPARE(shader1->attributeNames(), shader2->attributeNames());
-#else // < Qt 6
     QSGMaterialShader *shader1 = material1->createShader(QSGRendererInterface::RenderMode2D);
     QVERIFY(shader1 != 0);
     QSGMaterialShader *shader2 = material2->createShader(QSGRendererInterface::RenderMode2D);
     QVERIFY(shader2 != 0);
-#endif // < Qt 6
 
     delete shader1;
     delete shader2;

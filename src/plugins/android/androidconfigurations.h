@@ -1,28 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Copyright (C) 2016 BogDan Vatra <bog_dan_ro@yahoo.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// Copyright (C) 2016 BogDan Vatra <bog_dan_ro@yahoo.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -34,24 +12,19 @@
 #include <projectexplorer/toolchain.h>
 #include <qtsupport/qtversionmanager.h>
 
-#include <QObject>
-#include <QString>
 #include <QStringList>
 #include <QVector>
 #include <QHash>
 #include <QMap>
 #include <QVersionNumber>
 
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 
 QT_BEGIN_NAMESPACE
 class QSettings;
 QT_END_NAMESPACE
 
-namespace ProjectExplorer {
-class Abi;
-class Project;
-}
+namespace ProjectExplorer { class Abi; }
 
 namespace Android {
 
@@ -76,12 +49,11 @@ public:
 
 struct SdkForQtVersions
 {
-    QList<QtSupport::QtVersionNumber> versions;
+    QList<QVersionNumber> versions;
     QStringList essentialPackages;
-    QString ndkPath;
 
 public:
-    bool containsVersion(const QtSupport::QtVersionNumber &qtVersion) const;
+    bool containsVersion(const QVersionNumber &qtVersion) const;
 };
 
 class ANDROID_EXPORT AndroidConfig
@@ -96,6 +68,7 @@ public:
     Utils::FilePath sdkLocation() const;
     void setSdkLocation(const Utils::FilePath &sdkLocation);
     QVersionNumber sdkToolsVersion() const;
+    Utils::FilePath sdkToolsVersionPath() const;
     QVersionNumber buildToolsVersion() const;
     QStringList sdkManagerToolArgs() const;
     void setSdkManagerToolArgs(const QStringList &args);
@@ -106,7 +79,7 @@ public:
 
     QUrl sdkToolsUrl() const { return m_sdkToolsUrl; }
     QByteArray getSdkToolsSha256() const { return m_sdkToolsSha256; }
-    QString ndkPathFromQtVersion(const QtSupport::QtVersion &version) const;
+    Utils::FilePath ndkSubPathFromQtVersion(const QtSupport::QtVersion &version) const; // relative!
 
     QStringList defaultEssentials() const;
     QStringList essentialsFromQtVersion(const QtSupport::QtVersion &version) const;
@@ -122,8 +95,8 @@ public:
     QString toolchainHost(const QtSupport::QtVersion *qtVersion) const;
     static QString toolchainHostFromNdk(const Utils::FilePath &ndkPath);
 
-    QStringList emulatorArgs() const;
-    void setEmulatorArgs(const QStringList &args);
+    QString emulatorArgs() const;
+    void setEmulatorArgs(const QString &args);
 
     bool automaticKitCreation() const;
     void setAutomaticKitCreation(bool b);
@@ -133,6 +106,8 @@ public:
     Utils::FilePath emulatorToolPath() const;
     Utils::FilePath sdkManagerToolPath() const;
     Utils::FilePath avdManagerToolPath() const;
+
+    void setTemporarySdkToolsPath(const Utils::FilePath &path);
 
     Utils::FilePath toolchainPath(const QtSupport::QtVersion *qtVersion) const;
     static Utils::FilePath toolchainPathFromNdk(const Utils::FilePath &ndkLocation,
@@ -156,11 +131,7 @@ public:
     static QLatin1String displayName(const ProjectExplorer::Abi &abi);
 
     QString getProductModel(const QString &device) const;
-    enum class OpenGl { Enabled, Disabled, Unknown };
-    OpenGl getOpenGLEnabled(const QString &emulator) const;
     bool isConnected(const QString &serialNumber) const;
-
-    bool isCmdlineSdkToolsInstalled() const;
 
     bool sdkFullyConfigured() const { return m_sdkFullyConfigured; }
     void setSdkFullyConfigured(bool allEssentialsInstalled) { m_sdkFullyConfigured = allEssentialsInstalled; }
@@ -190,11 +161,12 @@ private:
     QList<int> availableNdkPlatforms(const QtSupport::QtVersion *qtVersion) const;
 
     Utils::FilePath m_sdkLocation;
+    Utils::FilePath m_temporarySdkToolsPath;
     QStringList m_sdkManagerToolArgs;
     Utils::FilePath m_openJDKLocation;
     Utils::FilePath m_keystoreLocation;
     Utils::FilePath m_openSslLocation;
-    QStringList m_emulatorArgs;
+    QString m_emulatorArgs;
     bool m_automaticKitCreation = true;
     QUrl m_sdkToolsUrl;
     QByteArray m_sdkToolsSha256;
@@ -242,7 +214,6 @@ private:
     static AndroidConfigurations *m_instance;
     AndroidConfig m_config;
     std::unique_ptr<Internal::AndroidSdkManager> m_sdkManager;
-    bool m_force32bit;
 };
 
 } // namespace Android

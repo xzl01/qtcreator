@@ -1,38 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Nicolas Arnaud-Cormos
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Nicolas Arnaud-Cormos
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "macromanager.h"
 
-#include "macrosconstants.h"
-#include "macroevent.h"
-#include "macro.h"
-#include "imacrohandler.h"
-#include "savedialog.h"
 #include "actionmacrohandler.h"
-#include "texteditormacrohandler.h"
 #include "findmacrohandler.h"
+#include "imacrohandler.h"
+#include "macro.h"
+#include "macroevent.h"
+#include "macrosconstants.h"
+#include "macrostr.h"
+#include "savedialog.h"
+#include "texteditormacrohandler.h"
 
 #include <texteditor/texteditorconstants.h>
 
@@ -131,9 +110,9 @@ void MacroManagerPrivate::initialize()
     const QDir dir(MacroManager::macrosDirectory());
     QStringList filter;
     filter << QLatin1String("*.") + QLatin1String(Constants::M_EXTENSION);
-    QStringList files = dir.entryList(filter, QDir::Files);
+    const QStringList files = dir.entryList(filter, QDir::Files);
 
-    foreach (const QString &name, files) {
+    for (const QString &name : files) {
         QString fileName = dir.absolutePath() + QLatin1Char('/') + name;
         auto macro = new Macro;
         if (macro->loadHeader(fileName))
@@ -196,10 +175,11 @@ void MacroManagerPrivate::changeMacroDescription(Macro *macro, const QString &de
 bool MacroManagerPrivate::executeMacro(Macro *macro)
 {
     bool error = !macro->load();
-    foreach (const MacroEvent &macroEvent, macro->events()) {
+    const QList<MacroEvent> macroEvents = macro->events();
+    for (const MacroEvent &macroEvent : macroEvents) {
         if (error)
             break;
-        foreach (IMacroHandler *handler, handlers) {
+        for (IMacroHandler *handler : std::as_const(handlers)) {
             if (handler->canExecuteEvent(macroEvent)) {
                 if (!handler->executeEvent(macroEvent))
                     error = true;
@@ -211,8 +191,8 @@ bool MacroManagerPrivate::executeMacro(Macro *macro)
     if (error) {
         QMessageBox::warning(
             Core::ICore::dialogParent(),
-            MacroManager::tr("Playing Macro"),
-            MacroManager::tr("An error occurred while replaying the macro, execution stopped."));
+            Tr::tr("Playing Macro"),
+            Tr::tr("An error occurred while replaying the macro, execution stopped."));
     }
 
     // Set the focus back to the editor
@@ -255,8 +235,8 @@ MacroManager::MacroManager() :
 MacroManager::~MacroManager()
 {
     // Cleanup macro
-    QStringList macroList = d->macros.keys();
-    foreach (const QString &name, macroList)
+    const QStringList macroList = d->macros.keys();
+    for (const QString &name : macroList)
         d->removeMacro(name);
 
     // Cleanup handlers
@@ -277,15 +257,20 @@ void MacroManager::startMacro()
     Core::ActionManager::command(Constants::END_MACRO)->action()->setEnabled(true);
     Core::ActionManager::command(Constants::EXECUTE_LAST_MACRO)->action()->setEnabled(false);
     Core::ActionManager::command(Constants::SAVE_LAST_MACRO)->action()->setEnabled(false);
-    foreach (IMacroHandler *handler, d->handlers)
+    for (IMacroHandler *handler : std::as_const(d->handlers))
         handler->startRecording(d->currentMacro);
 
-    QString endShortcut = Core::ActionManager::command(Constants::END_MACRO)->keySequence().toString();
-    QString executeShortcut = Core::ActionManager::command(Constants::EXECUTE_LAST_MACRO)->keySequence().toString();
-    QString help = tr("Macro mode. Type \"%1\" to stop recording and \"%2\" to play the macro.")
-        .arg(endShortcut).arg(executeShortcut);
+    const QString endShortcut = Core::ActionManager::command(Constants::END_MACRO)
+                                    ->keySequence()
+                                    .toString(QKeySequence::NativeText);
+    const QString executeShortcut = Core::ActionManager::command(Constants::EXECUTE_LAST_MACRO)
+                                        ->keySequence()
+                                        .toString(QKeySequence::NativeText);
+    const QString help
+        = Tr::tr("Macro mode. Type \"%1\" to stop recording and \"%2\" to play the macro.")
+              .arg(endShortcut, executeShortcut);
     Core::EditorManager::showEditorStatusBar(Constants::M_STATUS_BUFFER, help,
-                                             tr("Stop Recording Macro"),
+                                             Tr::tr("Stop Recording Macro"),
                                              this, [this] { endMacro(); });
 }
 
@@ -297,7 +282,7 @@ void MacroManager::endMacro()
     Core::ActionManager::command(Constants::END_MACRO)->action()->setEnabled(false);
     Core::ActionManager::command(Constants::EXECUTE_LAST_MACRO)->action()->setEnabled(true);
     Core::ActionManager::command(Constants::SAVE_LAST_MACRO)->action()->setEnabled(true);
-    foreach (IMacroHandler *handler, d->handlers)
+    for (IMacroHandler *handler : std::as_const(d->handlers))
         handler->endRecordingMacro(d->currentMacro);
 
     d->isRecording = false;

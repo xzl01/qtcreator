@@ -1,38 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "documentmanager.h"
 #include "qmldesignerplugin.h"
 
+#include <bindingproperty.h>
 #include <modelnode.h>
-#include <qmlitemnode.h>
+#include <nodelistproperty.h>
 #include <nodemetainfo.h>
 #include <nodeproperty.h>
-#include <nodelistproperty.h>
-#include <bindingproperty.h>
 #include <variantproperty.h>
+#include <qmldesignerprojectmanager.h>
+#include <qmlitemnode.h>
 
 #include <utils/qtcassert.h>
 #include <utils/textfileformat.h>
@@ -67,7 +46,8 @@ static inline QHash<PropertyName, QVariant> getProperties(const ModelNode &node)
 {
     QHash<PropertyName, QVariant> propertyHash;
     if (QmlObjectNode::isValidQmlObjectNode(node)) {
-        foreach (const AbstractProperty &abstractProperty, node.properties()) {
+        const QList<AbstractProperty> abstractProperties = node.properties();
+        for (const AbstractProperty &abstractProperty : abstractProperties) {
             if (abstractProperty.isVariantProperty()
                     || (abstractProperty.isBindingProperty()
                         && !abstractProperty.name().contains("anchors.")))
@@ -91,19 +71,19 @@ static inline QHash<PropertyName, QVariant> getProperties(const ModelNode &node)
 
 static inline void applyProperties(ModelNode &node, const QHash<PropertyName, QVariant> &propertyHash)
 {
-    QHash<PropertyName, QVariant> auxiliaryData  = node.auxiliaryData();
+    const auto auxiliaryData = node.auxiliaryData(AuxiliaryDataType::NodeInstancePropertyOverwrite);
 
-    foreach (const PropertyName &propertyName, auxiliaryData.keys()) {
-        if (node.hasAuxiliaryData(propertyName))
-            node.setAuxiliaryData(propertyName, QVariant());
-    }
+    for (const auto &element : auxiliaryData)
+        node.removeAuxiliaryData(AuxiliaryDataType::NodeInstancePropertyOverwrite, element.first);
 
     for (auto propertyIterator = propertyHash.cbegin(), end = propertyHash.cend();
               propertyIterator != end;
               ++propertyIterator) {
         const PropertyName propertyName = propertyIterator.key();
         if (propertyName == "width" || propertyName == "height") {
-            node.setAuxiliaryData(propertyIterator.key(), propertyIterator.value());
+            node.setAuxiliaryData(AuxiliaryDataType::NodeInstancePropertyOverwrite,
+                                  propertyIterator.key(),
+                                  propertyIterator.value());
         }
     }
 }
@@ -220,10 +200,7 @@ static bool hasDelegateWithFileComponent(const ModelNode &node)
 
 static bool isLoaderWithSourceComponent(const ModelNode &modelNode)
 {
-    if (modelNode.isValid()
-            && modelNode.metaInfo().isValid()
-            && modelNode.metaInfo().isSubclassOf("QtQuick.Loader")) {
-
+    if (modelNode.isValid() && modelNode.metaInfo().isQtQuickLoader()) {
         if (modelNode.hasNodeProperty("sourceComponent"))
             return true;
         if (modelNode.hasNodeListProperty("component"))
@@ -235,35 +212,26 @@ static bool isLoaderWithSourceComponent(const ModelNode &modelNode)
 
 static bool hasSourceWithFileComponent(const ModelNode &modelNode)
 {
-    if (modelNode.isValid()
-            && modelNode.metaInfo().isValid()
-            && modelNode.metaInfo().isSubclassOf("QtQuick.Loader")
-            && modelNode.hasVariantProperty("source"))
+    if (modelNode.isValid() && modelNode.metaInfo().isQtQuickLoader()
+        && modelNode.hasVariantProperty("source"))
         return true;
 
     return false;
 }
 
-DocumentManager::DocumentManager()
-    : QObject()
-{
-}
-
-DocumentManager::~DocumentManager()
-{
-    qDeleteAll(m_designDocumentHash);
-}
-
 void DocumentManager::setCurrentDesignDocument(Core::IEditor *editor)
 {
     if (editor) {
-        m_currentDesignDocument = m_designDocumentHash.value(editor);
-        if (m_currentDesignDocument == nullptr) {
-            m_currentDesignDocument = new DesignDocument;
-            m_designDocumentHash.insert(editor, m_currentDesignDocument);
+        auto found = m_designDocuments.find(editor);
+        if (found == m_designDocuments.end()) {
+            auto &inserted = m_designDocuments[editor] = std::make_unique<DesignDocument>(
+                m_projectManager.projectStorage(), m_externalDependencies);
+            m_currentDesignDocument = inserted.get();
             m_currentDesignDocument->setEditor(editor);
+        } else {
+            m_currentDesignDocument = found->second.get();
         }
-    } else if (!m_currentDesignDocument.isNull()) {
+    } else if (m_currentDesignDocument) {
         m_currentDesignDocument->resetToDocumentModel();
         m_currentDesignDocument.clear();
     }
@@ -281,8 +249,16 @@ bool DocumentManager::hasCurrentDesignDocument() const
 
 void DocumentManager::removeEditors(const QList<Core::IEditor *> &editors)
 {
-    foreach (Core::IEditor *editor, editors)
-        delete m_designDocumentHash.take(editor).data();
+    for (Core::IEditor *editor : editors)
+        m_designDocuments.erase(editor);
+}
+
+void DocumentManager::resetPossibleImports()
+{
+    for (const auto &[key, value] : m_designDocuments) {
+        if (RewriterView *view = value->rewriterView())
+            view->resetPossibleImports();
+    }
 }
 
 bool DocumentManager::goIntoComponent(const ModelNode &modelNode)

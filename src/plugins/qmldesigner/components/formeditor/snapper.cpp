@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "snapper.h"
 
@@ -453,7 +431,7 @@ static QLineF mergedHorizontalLine(const QList<QLineF> &lineList)
 
     double minimumX =  std::numeric_limits<double>::max();
     double maximumX =  std::numeric_limits<double>::min();
-    foreach (const QLineF &line, lineList) {
+    for (const QLineF &line : lineList) {
         minimumX = qMin(minimumX, double(line.x1()));
         minimumX = qMin(minimumX, double(line.x2()));
         maximumX = qMax(maximumX, double(line.x1()));
@@ -471,7 +449,7 @@ static QLineF mergedVerticalLine(const QList<QLineF> &lineList)
 
     double minimumY =  std::numeric_limits<double>::max();
     double maximumY =  std::numeric_limits<double>::min();
-    foreach (const QLineF &line, lineList) {
+    for (const QLineF &line : lineList) {
         minimumY = qMin(minimumY, double(line.y1()));
         minimumY = qMin(minimumY, double(line.y2()));
         maximumY = qMax(maximumY, double(line.y1()));
@@ -705,13 +683,13 @@ QList<QGraphicsItem*> Snapper::generateSnappingLines(const QList<QRectF> &boundi
 {
     QList<QGraphicsItem*> graphicsItemList;
     QList<QLineF> lineList;
-    foreach (const QRectF &boundingRect, boundingRectList) {
+    for (const QRectF &boundingRect : boundingRectList) {
         QList<QRectF> snappedBoundingRectList;
         lineList += mergedHorizontalLines(horizontalSnappedLines(boundingRect, &snappedBoundingRectList));
         lineList += mergedVerticalLines(verticalSnappedLines(boundingRect, &snappedBoundingRectList));
     }
 
-    foreach (const QLineF &line, lineList) {
+    for (const QLineF &line : std::as_const(lineList)) {
         QLineF lineInTransformationSpace = transform.map(line);
         auto lineItem = new QGraphicsLineItem(lineInTransformationSpace, layerItem);
         lineItem->setZValue(40);

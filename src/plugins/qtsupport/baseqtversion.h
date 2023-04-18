@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -36,6 +14,7 @@
 #include <QSet>
 #include <QStringList>
 #include <QVariantMap>
+#include <QVersionNumber>
 
 QT_BEGIN_NAMESPACE
 class ProFileEvaluator;
@@ -58,28 +37,6 @@ namespace QtSupport {
 class QtConfigWidget;
 class QtVersion;
 
-class QTSUPPORT_EXPORT QtVersionNumber
-{
-public:
-    QtVersionNumber(int ma = -1, int mi = -1, int p = -1);
-    QtVersionNumber(const QString &versionString);
-
-    QSet<Utils::Id> features() const;
-
-    int majorVersion;
-    int minorVersion;
-    int patchVersion;
-
-    bool matches(int major = -1, int minor = -1, int patch = -1) const;
-
-    bool operator <(const QtVersionNumber &b) const;
-    bool operator <=(const QtVersionNumber &b) const;
-    bool operator >(const QtVersionNumber &b) const;
-    bool operator >=(const QtVersionNumber &b) const;
-    bool operator !=(const QtVersionNumber &b) const;
-    bool operator ==(const QtVersionNumber &b) const;
-};
-
 namespace Internal {
 class QtOptionsPageWidget;
 class QtVersionPrivate;
@@ -87,8 +44,6 @@ class QtVersionPrivate;
 
 class QTSUPPORT_EXPORT QtVersion
 {
-    Q_DECLARE_TR_FUNCTIONS(QtSupport::QtVersion)
-
 public:
     using Predicate = std::function<bool(const QtVersion *)>;
 
@@ -142,9 +97,9 @@ public:
     Utils::FilePath qmlplugindumpFilePath() const;
 
     QString qtVersionString() const;
-    QtVersionNumber qtVersion() const;
+    QVersionNumber qtVersion() const;
 
-    QStringList qtSoPaths() const;
+    Utils::FilePaths qtSoPaths() const;
 
     bool hasExamples() const;
     bool hasDocs() const;
@@ -176,7 +131,7 @@ public:
     /// Check a .pro-file/Qt version combination on possible issues
     /// @return a list of tasks, ordered on severity (errors first, then
     ///         warnings and finally info items.
-    ProjectExplorer::Tasks reportIssues(const QString &proFile, const QString &buildDir) const;
+    ProjectExplorer::Tasks reportIssues(const Utils::FilePath &proFile, const Utils::FilePath &buildDir) const;
 
     static bool isQmlDebuggingSupported(const ProjectExplorer::Kit *k, QString *reason = nullptr);
     bool isQmlDebuggingSupported(QString *reason = nullptr) const;
@@ -243,7 +198,8 @@ protected:
     QtVersion(const QtVersion &other) = delete;
 
     virtual QSet<Utils::Id> availableFeatures() const;
-    virtual ProjectExplorer::Tasks reportIssuesImpl(const QString &proFile, const QString &buildDir) const;
+    virtual ProjectExplorer::Tasks reportIssuesImpl(const Utils::FilePath &proFile,
+                                                    const Utils::FilePath &buildDir) const;
 
     virtual ProjectExplorer::Abis detectQtAbis() const;
 

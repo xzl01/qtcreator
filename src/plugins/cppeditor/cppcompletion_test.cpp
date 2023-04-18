@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppcompletion_test.h"
 
@@ -48,9 +26,11 @@
 /*!
     Tests for code completion.
  */
+
+using namespace Core;
 using namespace CPlusPlus;
 using namespace TextEditor;
-using namespace Core;
+using namespace Utils;
 
 namespace CppEditor::Internal {
 namespace {
@@ -75,11 +55,11 @@ public:
         m_temporaryDir.reset(new CppEditor::Tests::TemporaryDir());
         QVERIFY(m_temporaryDir->isValid());
         const QByteArray fileExt = isObjC ? "mm" : "h";
-        const QString fileName = m_temporaryDir->createFile("file." + fileExt, m_source);
-        QVERIFY(!fileName.isEmpty());
+        const FilePath filePath = m_temporaryDir->createFile("file." + fileExt, m_source);
+        QVERIFY(!filePath.isEmpty());
 
         // Open in editor
-        m_editor = EditorManager::openEditor(Utils::FilePath::fromString(fileName));
+        m_editor = EditorManager::openEditor(filePath);
         QVERIFY(m_editor);
         closeEditorAtEndOfTestCase(m_editor);
         m_editorWidget = TextEditorWidget::fromEditor(m_editor);
@@ -88,7 +68,7 @@ public:
         m_textDocument = m_editorWidget->document();
 
         // Get Document
-        const Document::Ptr document = waitForFileInGlobalSnapshot(fileName);
+        const Document::Ptr document = waitForFileInGlobalSnapshot(filePath);
         QVERIFY(document);
         QVERIFY(document->diagnosticMessages().isEmpty());
 
@@ -105,17 +85,22 @@ public:
         QStringList completions;
         LanguageFeatures languageFeatures = LanguageFeatures::defaultFeatures();
         languageFeatures.objCEnabled = false;
-        CppCompletionAssistInterface *ai
-            = new CppCompletionAssistInterface(m_editorWidget->textDocument()->filePath(),
-                                               m_textDocument, m_position,
-                                               ExplicitlyInvoked, m_snapshot,
-                                               ProjectExplorer::HeaderPaths(),
-                                               languageFeatures);
+        QTextCursor textCursor = m_editorWidget->textCursor();
+        textCursor.setPosition(m_position);
+        m_editorWidget->setTextCursor(textCursor);
+        std::unique_ptr<CppCompletionAssistInterface> ai(
+            new CppCompletionAssistInterface(m_editorWidget->textDocument()->filePath(),
+                                             m_editorWidget,
+                                             ExplicitlyInvoked,
+                                             m_snapshot,
+                                             ProjectExplorer::HeaderPaths(),
+                                             languageFeatures));
         ai->prepareForAsyncUse();
         ai->recreateTextDocument();
         InternalCppCompletionAssistProcessor processor;
+        processor.setupAssistInterface(std::move(ai));
 
-        const QScopedPointer<IAssistProposal> proposal(processor.perform(ai));
+        const QScopedPointer<IAssistProposal> proposal(processor.performAsync());
         if (!proposal)
             return completions;
         ProposalModelPtr model = proposal->model();
@@ -277,7 +262,7 @@ void CompletionTest::testCompletionTemplateFunction()
 
     QStringList actualCompletions = test.getCompletions();
     QString errorPattern(QLatin1String("Completion not found: %1"));
-    foreach (const QString &completion, expectedCompletions) {
+    for (const QString &completion : std::as_const(expectedCompletions))  {
         QByteArray errorMessage = errorPattern.arg(completion).toUtf8();
         QVERIFY2(actualCompletions.contains(completion), errorMessage.data());
     }
@@ -371,7 +356,7 @@ void CompletionTest::testGlobalCompletion_data()
                                     "<REPLACEMENT>\n"
                                     "@\n";
     const QStringList replacements = QStringList({"// text", "// text.", "/// text", "/// text."});
-    foreach (const QString &replacement, replacements) {
+    for (const QString &replacement : replacements) {
         QByteArray code = codeTemplate;
         code.replace("<REPLACEMENT>", replacement.toUtf8());
         const QByteArray tag = _("completion after comment: ") + replacement.toUtf8();

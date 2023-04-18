@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "tst_testtrie.h"
 #include <qmljs/persistenttrie.h>
@@ -70,9 +48,9 @@ void tst_TestTrie::testListAll_data()
 
 void tst_TestTrie::testListAll()
 {
-    QFETCH(QStringList, strs);
+    QFETCH(const QStringList, strs);
     Trie trie;
-    foreach (const QString &s, strs)
+    for (const QString &s : strs)
         trie.insert(s);
     QStringList ref=strs;
     ref.sort();
@@ -83,7 +61,7 @@ void tst_TestTrie::testListAll()
         QDebug dbg = qDebug();
         dbg << "ERROR inserting [";
         bool comma = false;
-        foreach (const QString &s, strs) {
+        for (const QString &s : strs) {
             if (comma)
                 dbg << ",";
             else
@@ -93,7 +71,7 @@ void tst_TestTrie::testListAll()
         dbg << "] one gets " << trie;
     }
     QCOMPARE(ref, content);
-    foreach (const QString &s,strs) {
+    for (const QString &s : strs) {
         if (VERBOSE && ! trie.contains(s)) {
             qDebug() << "ERROR could not find " << s << "in" << trie;
         }
@@ -137,13 +115,13 @@ void tst_TestTrie::testMerge_data()
 
 void tst_TestTrie::testMerge()
 {
-    QFETCH(QStringList, str1);
-    QFETCH(QStringList, str2);
+    QFETCH(const QStringList, str1);
+    QFETCH(const QStringList, str2);
     Trie trie1;
-    foreach (const QString &s, str1)
+    for (const QString &s : str1)
         trie1.insert(s);
     Trie trie2;
-    foreach (const QString &s, str2)
+    for (const QString &s : str2)
         trie2.insert(s);
     QStringList ref=str1;
     ref.append(str2);
@@ -156,7 +134,7 @@ void tst_TestTrie::testMerge()
         QDebug dbg=qDebug();
         dbg << "ERROR merging [";
         bool comma = false;
-        foreach (const QString &s, str1) {
+        for (const QString &s : str1) {
             if (comma)
                 dbg << ",";
             else
@@ -165,7 +143,7 @@ void tst_TestTrie::testMerge()
         }
         dbg << "] => " << trie1 << " and [";
         comma = false;
-        foreach (const QString &s, str2) {
+        for (const QString &s : str2) {
             if (comma)
                 dbg << ",";
             else
@@ -214,30 +192,31 @@ void tst_TestTrie::testIntersect_data()
 
 void tst_TestTrie::testIntersect()
 {
-    QFETCH(QStringList, str1);
-    QFETCH(QStringList, str2);
+    QFETCH(const QStringList, str1);
+    QFETCH(const QStringList, str2);
     Trie trie1;
-    foreach (const QString &s, str1)
+    for (const QString &s : str1)
         trie1.insert(s);
     Trie trie2;
-    foreach (const QString &s, str2)
+    for (const QString &s : str2)
         trie2.insert(s);
     QSet<QString> ref1;
-    foreach (const QString &s, str1)
+    for (const QString &s : str1)
         ref1.insert(s);
     QSet<QString> ref2;
-    foreach (const QString &s, str2)
+    for (const QString &s : str2)
         ref2.insert(s);
     ref1.intersect(ref2);
     Trie trie3 = trie1.intersectF(trie2);
     ref2.clear();
-    foreach (const QString &s, trie3.stringList())
+    const QStringList str = trie3.stringList();
+    for (const QString &s : str)
         ref2.insert(s);
     if (VERBOSE && ref1 != ref2) {
         QDebug dbg=qDebug();
         dbg << "ERROR intersecting [";
         bool comma = false;
-        foreach (const QString &s, str1) {
+        for (const QString &s : str1) {
             if (comma)
                 dbg << ",";
             else
@@ -246,7 +225,7 @@ void tst_TestTrie::testIntersect()
         }
         dbg << "] => " << trie1 << " and [";
         comma = false;
-        foreach (const QString &s, str2) {
+        for (const QString &s : str2) {
             if (comma)
                 dbg << ",";
             else
@@ -297,14 +276,15 @@ void tst_TestTrie::testCompletion_data()
     }
 }
 
-void tst_TestTrie::testCompletion() {
-    QFETCH(QStringList, trieContents);
+void tst_TestTrie::testCompletion()
+{
+    QFETCH(const QStringList, trieContents);
     QFETCH(QString, str);
-    QFETCH(QStringList, completions);
+    QFETCH(const QStringList, completions);
     QFETCH(int, flags);
 
     Trie trie;
-    foreach (const QString &s, trieContents)
+    for (const QString &s : trieContents)
         trie.insert(s);
     QStringList res = trie.complete(str, QString(), LookupFlags(flags));
     res = matchStrengthSort(str, res);
@@ -312,11 +292,11 @@ void tst_TestTrie::testCompletion() {
         qDebug() << "unexpected completions for " << str
             << " in " << trie;
         qDebug() << "expected :[";
-        foreach (const QString &s, completions) {
+        for (const QString &s : completions) {
             qDebug() << s;
         }
         qDebug() << "] got [";
-        foreach (const QString &s, res) {
+        for (const QString &s : std::as_const(res)) {
             qDebug() << s;
         }
         qDebug() << "]";
@@ -345,7 +325,7 @@ void interactiveCompletionTester(){
             LookupFlags(CaseInsensitive|SkipChars|SkipSpaces));
         res = matchStrengthSort(line,res);
         qDebug() << "possible completions:[";
-        foreach (const QString &s, res) {
+        for (const QString &s : std::as_const(res)) {
             qDebug() << matchStrength(line,s) << " " << s;
         }
         qDebug() << "]";
@@ -363,7 +343,7 @@ int main(int , const char *[])
 
 #else
 
-QTEST_MAIN(tst_TestTrie);
+QTEST_GUILESS_MAIN(tst_TestTrie);
 
 //#include "moc_tst_testtrie.cpp"
 

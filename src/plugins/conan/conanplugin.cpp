@@ -1,39 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Jochen Seemann
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 Jochen Seemann
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "conanplugin.h"
 
 #include "conanconstants.h"
 #include "conaninstallstep.h"
-#include "conanplugin.h"
 #include "conansettings.h"
 
 #include <coreplugin/icore.h>
+
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/project.h>
-#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/projecttree.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
@@ -42,8 +21,7 @@ using namespace Core;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace ConanPackageManager {
-namespace Internal {
+namespace Conan::Internal {
 
 class ConanPluginPrivate
 {
@@ -56,21 +34,13 @@ ConanPlugin::~ConanPlugin()
     delete d;
 }
 
-void ConanPlugin::extensionsInitialized()
-{ }
-
-bool ConanPlugin::initialize(const QStringList &arguments, QString *errorString)
+void ConanPlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorString)
-
     d = new ConanPluginPrivate;
     conanSettings()->readSettings(ICore::settings());
 
     connect(SessionManager::instance(), &SessionManager::projectAdded,
             this, &ConanPlugin::projectAdded);
-
-    return true;
 }
 
 static void connectTarget(Project *project, Target *target)
@@ -113,6 +83,4 @@ FilePath ConanPlugin::conanFilePath(Project *project, const FilePath &defaultFil
     return defaultFilePath;
 }
 
-
-} // namespace Internal
-} // namespace ConanPackageManager
+} // Conan::Internal

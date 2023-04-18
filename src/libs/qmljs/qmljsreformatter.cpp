@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljsreformatter.h"
 #include "qmljscodeformatter.h"
@@ -98,6 +76,7 @@ class Rewriter : protected Visitor
     bool _hadEmptyLine = false;
     int _binaryExpDepth = 0;
     bool _hasOpenComment = false;
+    int _lineLength = 80;
 
 public:
     Rewriter(Document::Ptr doc)
@@ -107,6 +86,7 @@ public:
 
     void setIndentSize(int size) { _formatter.setIndentSize(size); }
     void setTabSize(int size) { _formatter.setTabSize(size); }
+    void setLineLength(int size) { _lineLength = size; }
 
     QString operator()(Node *node)
     {
@@ -286,14 +266,14 @@ protected:
         QStringList lines;
         qreal badnessFromSplits;
 
-        qreal badness()
+        qreal badness(int lineLength)
         {
-            const int maxLineLength = 80;
-            const int strongMaxLineLength = 100;
+            const int maxLineLength = lineLength;
+            const int strongMaxLineLength = lineLength + 20;
             const int minContentLength = 10;
 
             qreal result = badnessFromSplits;
-            foreach (const QString &line, lines) {
+            for (const QString &line : std::as_const(lines)) {
                 // really long lines should be avoided at all cost
                 if (line.size() > strongMaxLineLength) {
                     result += 50 + (line.size() - strongMaxLineLength);
@@ -369,7 +349,7 @@ protected:
 
             nested.lines.prepend(newContextLine);
             nested.badnessFromSplits += possibleSplits.at(i).badness;
-            if (nested.badness() < result.badness())
+            if (nested.badness(_lineLength) < result.badness(_lineLength))
                 result = nested;
         }
 
@@ -391,13 +371,15 @@ protected:
             _indent = tryIndent(_line);
             adjustIndent(&_line, &_possibleSplits, _indent);
 
-            // maybe make multi-line?
-            BestSplit split = computeBestSplits(QStringList(), _line, _possibleSplits);
-            if (!split.lines.isEmpty() && split.lines.size() > 1) {
-                for (int i = 0; i < split.lines.size(); ++i) {
-                    _line = split.lines.at(i);
-                    if (i != split.lines.size() - 1)
-                        finishLine();
+            if (_lineLength > 0) {
+                // maybe make multi-line?
+                BestSplit split = computeBestSplits(QStringList(), _line, _possibleSplits);
+                if (!split.lines.isEmpty() && split.lines.size() > 1) {
+                    for (int i = 0; i < split.lines.size(); ++i) {
+                        _line = split.lines.at(i);
+                        if (i != split.lines.size() - 1)
+                            finishLine();
+                    }
                 }
             }
         }
@@ -953,10 +935,10 @@ protected:
         accept(ast->left);
 
         // in general, avoid splitting at the operator
-        // but && and || are ok
+        // but && || and ?? are ok
         qreal splitBadness = 30;
         if (ast->op == QSOperator::And
-                || ast->op == QSOperator::Or)
+                || ast->op == QSOperator::Or || ast->op == QSOperator::Coalesce)
             splitBadness = 0;
         addPossibleSplit(splitBadness);
 
@@ -1414,10 +1396,11 @@ QString QmlJS::reformat(const Document::Ptr &doc)
     return rewriter(doc->ast());
 }
 
-QString QmlJS::reformat(const Document::Ptr &doc, int indentSize, int tabSize)
+QString QmlJS::reformat(const Document::Ptr &doc, int indentSize, int tabSize, int lineLength)
 {
     Rewriter rewriter(doc);
     rewriter.setIndentSize(indentSize);
     rewriter.setTabSize(tabSize);
+    rewriter.setLineLength(lineLength);
     return rewriter(doc->ast());
 }

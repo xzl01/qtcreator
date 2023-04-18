@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "languageclientutils.h"
 
@@ -29,6 +7,7 @@
 #include "languageclient_global.h"
 #include "languageclientmanager.h"
 #include "languageclientoutline.h"
+#include "languageclienttr.h"
 #include "snippet.h"
 
 #include <coreplugin/editormanager/documentmodel.h>
@@ -84,21 +63,33 @@ bool applyTextDocumentEdit(const Client *client, const TextDocumentEdit &edit)
     if (edits.isEmpty())
         return true;
     const DocumentUri &uri = edit.textDocument().uri();
-    const FilePath &filePath = uri.toFilePath();
+    const FilePath &filePath = client->serverUriToHostPath(uri);
     LanguageClientValue<int> version = edit.textDocument().version();
     if (!version.isNull() && version.value(0) < client->documentVersion(filePath))
         return false;
-    return applyTextEdits(uri, edits);
+    return applyTextEdits(client, uri, edits);
 }
 
-bool applyTextEdits(const DocumentUri &uri, const QList<TextEdit> &edits)
+bool applyTextEdits(const Client *client, const DocumentUri &uri, const QList<TextEdit> &edits)
+{
+    return applyTextEdits(client, client->serverUriToHostPath(uri), edits);
+}
+
+bool applyTextEdits(const Client *client,
+                    const Utils::FilePath &filePath,
+                    const QList<LanguageServerProtocol::TextEdit> &edits)
 {
     if (edits.isEmpty())
         return true;
-    RefactoringChanges changes;
+    RefactoringChangesData * const backend = client->createRefactoringChangesBackend();
+    RefactoringChanges changes(backend);
     RefactoringFilePtr file;
-    file = changes.file(uri.toFilePath());
+    file = changes.file(filePath);
     file->setChangeSet(editsToChangeSet(edits, file->document()));
+    if (backend) {
+        for (const TextEdit &edit : edits)
+            file->appendIndentRange(convertRange(file->document(), edit.range()));
+    }
     return file->apply();
 }
 
@@ -130,7 +121,7 @@ bool applyWorkspaceEdit(const Client *client, const WorkspaceEdit &edit)
     } else {
         const WorkspaceEdit::Changes &changes = edit.changes().value_or(WorkspaceEdit::Changes());
         for (auto it = changes.cbegin(); it != changes.cend(); ++it)
-            result |= applyTextEdits(it.key(), it.value());
+            result |= applyTextEdits(client, it.key(), it.value());
         return result;
     }
     return result;
@@ -144,58 +135,70 @@ QTextCursor endOfLineCursor(const QTextCursor &cursor)
 }
 
 void updateCodeActionRefactoringMarker(Client *client,
-                                       const CodeAction &action,
+                                       const QList<CodeAction> &actions,
                                        const DocumentUri &uri)
 {
-    TextDocument* doc = TextDocument::textDocumentForFilePath(uri.toFilePath());
+    TextDocument* doc = TextDocument::textDocumentForFilePath(client->serverUriToHostPath(uri));
     if (!doc)
         return;
     const QVector<BaseTextEditor *> editors = BaseTextEditor::textEditorsForDocument(doc);
     if (editors.isEmpty())
         return;
 
-    const QList<Diagnostic> &diagnostics = action.diagnostics().value_or(QList<Diagnostic>());
+    QHash<int, RefactorMarker> markersAtBlock;
+    const auto addMarkerForCursor = [&](const CodeAction &action, const Range &range) {
+        const QTextCursor cursor = endOfLineCursor(range.start().toTextCursor(doc->document()));
+        const auto it = markersAtBlock.find(cursor.blockNumber());
+        if (it != markersAtBlock.end()) {
+            it->tooltip = Tr::tr("Show available quick fixes");
+            it->callback = [cursor](TextEditorWidget *editor) {
+                editor->setTextCursor(cursor);
+                editor->invokeAssist(TextEditor::QuickFix);
+            };
+            return;
+        }
+        RefactorMarker marker;
+        marker.type = client->id();
+        marker.cursor = cursor;
+        if (action.isValid())
+            marker.tooltip = action.title();
+        if (action.edit()) {
+            marker.callback = [client, edit = action.edit()](const TextEditorWidget *) {
+                applyWorkspaceEdit(client, *edit);
+            };
+        } else if (action.command()) {
+            marker.callback = [command = action.command(),
+                    client = QPointer(client)](const TextEditorWidget *) {
+                if (client)
+                    client->executeCommand(*command);
+            };
+        }
+        markersAtBlock[cursor.blockNumber()] = marker;
+    };
 
-    RefactorMarkers markers;
-    RefactorMarker marker;
-    marker.type = client->id();
-    if (action.isValid())
-        marker.tooltip = action.title();
-    if (action.edit().has_value()) {
-        WorkspaceEdit edit = action.edit().value();
-        marker.callback = [client, edit](const TextEditorWidget *) {
-            applyWorkspaceEdit(client, edit);
-        };
-        if (diagnostics.isEmpty()) {
-            QList<TextEdit> edits;
-            if (optional<QList<TextDocumentEdit>> documentChanges = edit.documentChanges()) {
-                QList<TextDocumentEdit> changesForUri = Utils::filtered(
-                    documentChanges.value(), [uri](const TextDocumentEdit &edit) {
-                    return edit.textDocument().uri() == uri;
-                });
-                for (const TextDocumentEdit &edit : changesForUri)
-                    edits << edit.edits();
-            } else if (optional<WorkspaceEdit::Changes> localChanges = edit.changes()) {
-                edits = localChanges.value()[uri];
-            }
-            for (const TextEdit &edit : qAsConst(edits)) {
-                marker.cursor = endOfLineCursor(edit.range().start().toTextCursor(doc->document()));
-                markers << marker;
+    for (const CodeAction &action : actions) {
+        const QList<Diagnostic> &diagnostics = action.diagnostics().value_or(QList<Diagnostic>());
+        if (std::optional<WorkspaceEdit> edit = action.edit()) {
+            if (diagnostics.isEmpty()) {
+                QList<TextEdit> edits;
+                if (std::optional<QList<TextDocumentEdit>> documentChanges = edit->documentChanges()) {
+                    QList<TextDocumentEdit> changesForUri = Utils::filtered(
+                                *documentChanges, [uri](const TextDocumentEdit &edit) {
+                        return edit.textDocument().uri() == uri;
+                    });
+                    for (const TextDocumentEdit &edit : changesForUri)
+                        edits << edit.edits();
+                } else if (std::optional<WorkspaceEdit::Changes> localChanges = edit->changes()) {
+                    edits = (*localChanges)[uri];
+                }
+                for (const TextEdit &edit : std::as_const(edits))
+                    addMarkerForCursor(action, edit.range());
             }
         }
-    } else if (action.command().has_value()) {
-        const Command command = action.command().value();
-        marker.callback = [command, client = QPointer<Client>(client)](const TextEditorWidget *) {
-            if (client)
-                client->executeCommand(command);
-        };
-    } else {
-        return;
+        for (const Diagnostic &diagnostic : diagnostics)
+            addMarkerForCursor(action, diagnostic.range());
     }
-    for (const Diagnostic &diagnostic : diagnostics) {
-        marker.cursor = endOfLineCursor(diagnostic.range().start().toTextCursor(doc->document()));
-        markers << marker;
-    }
+    const RefactorMarkers markers = markersAtBlock.values();
     for (BaseTextEditor *editor : editors) {
         if (TextEditorWidget *editorWidget = editor->editorWidget())
             editorWidget->setRefactorMarkers(markers + editorWidget->refactorMarkers());
@@ -211,7 +214,7 @@ public:
 
     QPointer<QAction> m_popupAction;
     QPointer<Client> m_client;
-    QPointer<QAction> m_outlineAction;
+    QPointer<QWidget> m_outline;
 };
 
 void updateEditorToolBar(Core::IEditor *editor)
@@ -244,7 +247,7 @@ void updateEditorToolBar(Core::IEditor *editor)
         const QIcon icon = Utils::Icon({{":/languageclient/images/languageclient.png",
                                          Utils::Theme::IconsBaseColor}}).icon();
         extras->m_popupAction = widget->toolBar()->addAction(
-                    icon, client->name(), [document = QPointer(document)] {
+                    icon, client->name(), [document = QPointer(document), client = QPointer<Client>(client)] {
             auto menu = new QMenu;
             auto clientsGroup = new QActionGroup(menu);
             clientsGroup->setExclusive(true);
@@ -263,30 +266,34 @@ void updateEditorToolBar(Core::IEditor *editor)
             menu->addActions(clientsGroup->actions());
             if (!clientsGroup->actions().isEmpty())
                 menu->addSeparator();
-            menu->addAction("Inspect Language Clients", [] {
+            if (client && client->reachable()) {
+                menu->addAction(Tr::tr("Restart %1").arg(client->name()), [client] {
+                    if (client && client->reachable())
+                        LanguageClientManager::restartClient(client);
+                });
+            }
+            menu->addAction(Tr::tr("Inspect Language Clients"), [] {
                 LanguageClientManager::showInspector();
             });
-            menu->addAction("Manage...", [] {
+            menu->addAction(Tr::tr("Manage..."), [] {
                 Core::ICore::showOptionsDialog(Constants::LANGUAGECLIENT_SETTINGS_PAGE);
             });
             menu->popup(QCursor::pos());
         });
     }
 
-    if (!extras->m_client || extras->m_client != client ||
-            !LanguageClientOutlineWidgetFactory::clientSupportsDocumentSymbols(client, document)) {
-        if (extras->m_outlineAction) {
-            widget->toolBar()->removeAction(extras->m_outlineAction);
-            delete extras->m_outlineAction;
-        }
+    if (!extras->m_client || !client || extras->m_client != client
+        || !client->supportsDocumentSymbols(document)) {
+        if (extras->m_outline && widget->toolbarOutlineWidget() == extras->m_outline)
+            widget->setToolbarOutline(nullptr);
         extras->m_client.clear();
     }
 
     if (!extras->m_client) {
-        if (QWidget *comboBox = LanguageClientOutlineWidgetFactory::createComboBox(client, editor)) {
+        extras->m_outline = LanguageClientOutlineWidgetFactory::createComboBox(client, textEditor);
+        if (extras->m_outline) {
+            widget->setToolbarOutline(extras->m_outline);
             extras->m_client = client;
-            extras->m_outlineAction = widget->insertExtraToolBarWidget(TextEditorWidget::Left,
-                                                                        comboBox);
         }
     }
 }

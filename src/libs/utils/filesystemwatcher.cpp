@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "filesystemwatcher.h"
+
+#include "algorithm.h"
 #include "globalfilechangeblocker.h"
 
 #include <QDebug>
@@ -133,7 +113,6 @@ bool WatchEntry::trigger(const QString &fileName)
 }
 
 using WatchEntryMap = QHash<QString, WatchEntry>;
-using WatchEntryMapIterator = WatchEntryMap::iterator;
 
 class FileSystemWatcherPrivate
 {
@@ -197,10 +176,10 @@ void FileSystemWatcherPrivate::autoReloadPostponed(bool postponed)
         return;
     m_postponed = postponed;
     if (!postponed) {
-        for (const QString &file : qAsConst(m_postponedFiles))
+        for (const QString &file : std::as_const(m_postponedFiles))
             emit q->fileChanged(file);
         m_postponedFiles.clear();
-        for (const QString &directory : qAsConst(m_postponedDirectories))
+        for (const QString &directory : std::as_const(m_postponedDirectories))
             emit q->directoryChanged(directory);
         m_postponedDirectories.clear();
     }
@@ -322,8 +301,8 @@ void FileSystemWatcher::removeFiles(const QStringList &files)
         qDebug() << this << d->m_id << "removeFiles " << files;
     QStringList toRemove;
     for (const QString &file : files) {
-        WatchEntryMapIterator it = d->m_files.find(file);
-        if (it == d->m_files.end()) {
+        const auto it = d->m_files.constFind(file);
+        if (it == d->m_files.constEnd()) {
             qWarning("FileSystemWatcher: File %s is not watched.", qPrintable(file));
             continue;
         }
@@ -350,9 +329,9 @@ void FileSystemWatcher::removeFiles(const QStringList &files)
 void FileSystemWatcher::clear()
 {
     if (!d->m_files.isEmpty())
-        removeFiles(files());
+        removeFiles(filePaths());
     if (!d->m_directories.isEmpty())
-        removeDirectories(directories());
+        removeDirectories(directoryPaths());
 }
 
 QStringList FileSystemWatcher::files() const
@@ -402,9 +381,9 @@ void FileSystemWatcher::addDirectories(const QStringList &directories, WatchMode
         d->m_staticData->m_watcher->addPaths(toAdd);
 }
 
-void FileSystemWatcher::removeDirectory(const QString &directory)
+void FileSystemWatcher::removeDirectory(const FilePath &file)
 {
-    removeDirectories(QStringList(directory));
+    removeDirectories({file.toFSPathString()});
 }
 
 void FileSystemWatcher::removeDirectories(const QStringList &directories)
@@ -414,8 +393,8 @@ void FileSystemWatcher::removeDirectories(const QStringList &directories)
 
     QStringList toRemove;
     for (const QString &directory : directories) {
-        WatchEntryMapIterator it = d->m_directories.find(directory);
-        if (it == d->m_directories.end()) {
+        const auto it = d->m_directories.constFind(directory);
+        if (it == d->m_directories.constEnd()) {
             qWarning("FileSystemWatcher: Directory %s is not watched.", qPrintable(directory));
             continue;
         }
@@ -438,7 +417,7 @@ QStringList FileSystemWatcher::directories() const
 
 void FileSystemWatcher::slotFileChanged(const QString &path)
 {
-    const WatchEntryMapIterator it = d->m_files.find(path);
+    const auto it = d->m_files.find(path);
     if (it != d->m_files.end() && it.value().trigger(path)) {
         if (debug)
             qDebug() << this << "triggers on file " << path
@@ -450,7 +429,7 @@ void FileSystemWatcher::slotFileChanged(const QString &path)
 
 void FileSystemWatcher::slotDirectoryChanged(const QString &path)
 {
-    const WatchEntryMapIterator it = d->m_directories.find(path);
+    const auto it = d->m_directories.find(path);
     if (it != d->m_directories.end() && it.value().trigger(path)) {
         if (debug)
             qDebug() << this << "triggers on dir " << path
@@ -472,9 +451,64 @@ void FileSystemWatcher::slotDirectoryChanged(const QString &path)
             toReadd.removeOne(rejected);
 
         // If we've successfully added the file, that means it was deleted and replaced.
-        for (const QString &reAdded : qAsConst(toReadd))
+        for (const QString &reAdded : std::as_const(toReadd))
             d->fileChanged(reAdded);
     }
 }
 
-} // namespace Utils
+void FileSystemWatcher::addFile(const FilePath &file, WatchMode wm)
+{
+    addFile(file.toFSPathString(), wm);
+}
+
+void FileSystemWatcher::addFiles(const FilePaths &files, WatchMode wm)
+{
+    addFiles(transform(files, &FilePath::toFSPathString), wm);
+}
+
+void FileSystemWatcher::removeFile(const FilePath &file)
+{
+    removeFile(file.toFSPathString());
+}
+
+void FileSystemWatcher::removeFiles(const FilePaths &files)
+{
+    removeFiles(transform(files, &FilePath::toFSPathString));
+}
+
+bool FileSystemWatcher::watchesFile(const FilePath &file) const
+{
+    return watchesFile(file.toFSPathString());
+}
+
+FilePaths FileSystemWatcher::filePaths() const
+{
+    return transform(files(), &FilePath::fromString);
+}
+
+void FileSystemWatcher::addDirectory(const FilePath &file, WatchMode wm)
+{
+    addDirectory(file.toFSPathString(), wm);
+}
+
+void FileSystemWatcher::addDirectories(const FilePaths &files, WatchMode wm)
+{
+    addDirectories(transform(files, &FilePath::toFSPathString), wm);
+}
+
+void FileSystemWatcher::removeDirectories(const FilePaths &files)
+{
+    removeDirectories(transform(files, &FilePath::toFSPathString));
+}
+
+bool FileSystemWatcher::watchesDirectory(const FilePath &file) const
+{
+    return watchesDirectory(file.toFSPathString());
+}
+
+FilePaths FileSystemWatcher::directoryPaths() const
+{
+    return transform(directories(), &FilePath::fromString);
+}
+
+} //Utils

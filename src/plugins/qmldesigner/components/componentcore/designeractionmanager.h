@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -45,21 +23,22 @@ QT_END_NAMESPACE
 namespace QmlDesigner {
 
 class DesignerActionManagerView;
+class DesignerIcons;
 
-using AddResourceOperation = std::function<AddFilesResult (const QStringList &, const QString &)>;
-using ModelNodePreviewImageOperation = std::function<QVariant (const ModelNode &)>;
+using AddResourceOperation = std::function<AddFilesResult(const QStringList &, const QString &, bool)>;
+using ModelNodePreviewImageOperation = std::function<QVariant(const ModelNode &)>;
 
 struct AddResourceHandler
 {
 public:
-    AddResourceHandler( const QString &_category,
-                        const QString &_filter,
-                        AddResourceOperation _operation,
-                        int _priority = 0)
+    AddResourceHandler(const QString &_category,
+                       const QString &_filter,
+                       AddResourceOperation _operation,
+                       int _priority = 0)
         : category(_category)
-        ,filter(_filter)
-        ,operation(_operation)
-        ,piority(_priority)
+        , filter(_filter)
+        , operation(_operation)
+        , piority(_priority)
     {
     }
 
@@ -100,9 +79,10 @@ private:
     QToolBar *m_toolBar;
 };
 
-class QMLDESIGNERCORE_EXPORT DesignerActionManager {
+class QMLDESIGNERCOMPONENTS_EXPORT DesignerActionManager
+{
 public:
-    DesignerActionManager(DesignerActionManagerView *designerActionManagerView);
+    DesignerActionManager(DesignerActionManagerView *designerActionManagerView, ExternalDependenciesInterface &externalDependencies);
     ~DesignerActionManager();
 
     void addDesignerAction(ActionInterface *newAction);
@@ -139,15 +119,20 @@ public:
     ModelNodePreviewImageOperation modelNodePreviewOperation(const ModelNode &node) const;
     bool externalDragHasSupportedAssets(const QMimeData *data) const;
     QHash<QString, QStringList> handleExternalAssetsDrop(const QMimeData *data) const;
+    QIcon contextIcon(int contextId) const;
 
 private:
     void addTransitionEffectAction(const TypeName &typeName);
     void addCustomTransitionEffectAction();
+    void setupIcons();
+    QString designerIconResourcesPath() const;
 
     QList<QSharedPointer<ActionInterface> > m_designerActions;
     DesignerActionManagerView *m_designerActionManagerView;
     QList<AddResourceHandler> m_addResourceHandler;
     QList<ModelNodePreviewImageHandler> m_modelNodePreviewImageHandlers;
+    ExternalDependenciesInterface &m_externalDependencies;
+    QScopedPointer<DesignerIcons> m_designerIcons;
 };
 
 } //QmlDesigner

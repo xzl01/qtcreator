@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -51,14 +29,16 @@ class FancyLineEdit;
 
 namespace Core { class IDocument; }
 namespace ProjectExplorer { class Project; }
+namespace TextEditor { class BaseTextEditor; }
 
 namespace LanguageClient {
 
 class Client;
 class BaseClientInterface;
 
-struct LANGUAGECLIENT_EXPORT LanguageFilter
+class LANGUAGECLIENT_EXPORT LanguageFilter
 {
+public:
     QStringList mimeTypes;
     QStringList filePattern;
     bool isSupported(const Utils::FilePath &filePath, const QString &mimeType) const;
@@ -88,26 +68,23 @@ public:
     StartBehavior m_startBehavior = RequiresFile;
     LanguageFilter m_languageFilter;
     QString m_initializationOptions;
+    QString m_configuration;
 
     QJsonObject initializationOptions() const;
+    QJsonValue configuration() const;
 
     virtual bool applyFromSettingsWidget(QWidget *widget);
     virtual QWidget *createSettingsWidget(QWidget *parent = nullptr) const;
     virtual BaseSettings *copy() const { return new BaseSettings(*this); }
     virtual bool isValid() const;
-    Client *createClient();
-    Client *createClient(ProjectExplorer::Project *project);
+    Client *createClient() const;
+    Client *createClient(ProjectExplorer::Project *project) const;
     virtual QVariantMap toMap() const;
     virtual void fromMap(const QVariantMap &map);
 
 protected:
-    // TODO: remove in Qt Creator 6 and rename createInterfaceWithProject back to it
-    virtual BaseClientInterface *createInterface() const { return nullptr; }
+    virtual BaseClientInterface *createInterface(ProjectExplorer::Project *) const;
     virtual Client *createClient(BaseClientInterface *interface) const;
-    virtual BaseClientInterface *createInterfaceWithProject(ProjectExplorer::Project *) const
-    {
-        return createInterface();
-    }
 
     BaseSettings(const BaseSettings &other) = default;
     BaseSettings(BaseSettings &&other) = default;
@@ -137,7 +114,7 @@ public:
     Utils::CommandLine command() const;
 
 protected:
-    BaseClientInterface *createInterfaceWithProject(ProjectExplorer::Project *project) const override;
+    BaseClientInterface *createInterface(ProjectExplorer::Project *project) const override;
 
     StdIOSettings(const StdIOSettings &other) = default;
     StdIOSettings(StdIOSettings &&other) = default;
@@ -154,7 +131,6 @@ struct ClientType {
 
 class LANGUAGECLIENT_EXPORT LanguageClientSettings
 {
-    Q_DECLARE_TR_FUNCTIONS(LanguageClientSettings)
 public:
     static void init();
     static QList<BaseSettings *> fromSettings(QSettings *settings);
@@ -167,8 +143,11 @@ public:
      */
     static void registerClientType(const ClientType &type);
     static void addSettings(BaseSettings *settings);
-    static void enableSettings(const QString &id);
+    static void enableSettings(const QString &id, bool enable = true);
     static void toSettings(QSettings *settings, const QList<BaseSettings *> &languageClientSettings);
+
+    static bool outlineComboBoxIsSorted();
+    static void setOutlineComboBoxSorted(bool sorted);
 };
 
 class LANGUAGECLIENT_EXPORT BaseSettingsWidget : public QWidget
@@ -211,5 +190,7 @@ private:
     Utils::PathChooser *m_executable = nullptr;
     QLineEdit *m_arguments = nullptr;
 };
+
+LANGUAGECLIENT_EXPORT TextEditor::BaseTextEditor *jsonEditor();
 
 } // namespace LanguageClient

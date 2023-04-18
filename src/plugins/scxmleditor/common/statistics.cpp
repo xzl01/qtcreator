@@ -1,34 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "scxmldocument.h"
+#include "scxmleditortr.h"
 #include "scxmltag.h"
 #include "statistics.h"
 #include "warningmodel.h"
 
+#include <utils/itemviews.h>
+#include <utils/layoutbuilder.h>
+
 #include <QDateTime>
+#include <QLabel>
 #include <QSortFilterProxyModel>
 
 using namespace ScxmlEditor::PluginInterface;
@@ -100,9 +83,9 @@ QVariant StatisticsModel::headerData(int section, Qt::Orientation orientation, i
     if (orientation == Qt::Horizontal && role == Qt::DisplayRole) {
         switch (section) {
         case 0:
-            return tr("Tag");
+            return Tr::tr("Tag");
         case 1:
-            return tr("Count");
+            return Tr::tr("Count");
         default:
             break;
         }
@@ -134,24 +117,38 @@ QVariant StatisticsModel::data(const QModelIndex &index, int role) const
 Statistics::Statistics(QWidget *parent)
     : QFrame(parent)
 {
-    m_ui.setupUi(this);
-
     m_model = new StatisticsModel(this);
+
+    m_fileNameLabel = new QLabel;
+    m_fileNameLabel->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Preferred);
+    m_levels = new QLabel;
+
+    m_timeLabel = new QLabel;
+    m_timeLabel->setText(QDateTime::currentDateTime().toString(Tr::tr("yyyy/MM/dd hh:mm:ss")));
 
     m_proxyModel = new QSortFilterProxyModel(this);
     m_proxyModel->setFilterKeyColumn(-1);
     m_proxyModel->setSourceModel(m_model);
 
-    m_ui.m_statisticsView->setModel(m_proxyModel);
-    m_ui.m_timeLabel->setText(QDateTime::currentDateTime().toString(tr("yyyy/MM/dd hh:mm:ss")));
+    m_statisticsView = new Utils::TreeView;
+    m_statisticsView->setModel(m_proxyModel);
+    m_statisticsView->setAlternatingRowColors(true);
+    m_statisticsView->setSortingEnabled(true);
+
+    using namespace Utils::Layouting;
+    Grid {
+        Tr::tr("File"), m_fileNameLabel, br,
+        Tr::tr("Time"), m_timeLabel, br,
+        Tr::tr("Max. levels"), m_levels, br,
+        Span(2, m_statisticsView), br
+    }.attachTo(this, WithoutMargins);
 }
 
 void Statistics::setDocument(ScxmlDocument *doc)
 {
-    m_ui.m_fileNameLabel->setText(doc->fileName());
+    m_fileNameLabel->setText(doc->fileName());
     m_model->setDocument(doc);
     m_proxyModel->invalidate();
     m_proxyModel->sort(1, Qt::DescendingOrder);
-    m_ui.m_statisticsView->resizeColumnsToContents();
-    m_ui.m_levels->setText(QString::fromLatin1("%1").arg(m_model->levels()));
+    m_levels->setText(QString::fromLatin1("%1").arg(m_model->levels()));
 }

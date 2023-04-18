@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Tooling
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "curveeditorview.h"
 #include "curveeditor.h"
@@ -29,9 +7,12 @@
 #include "curvesegment.h"
 #include "treeitem.h"
 
+#include <auxiliarydataproperties.h>
 #include <bindingproperty.h>
 #include <easingcurve.h>
 #include <nodeabstractproperty.h>
+#include <nodelistproperty.h>
+#include <nodemetainfo.h>
 #include <variantproperty.h>
 #include <qmlstate.h>
 #include <qmltimeline.h>
@@ -40,13 +21,12 @@
 
 namespace QmlDesigner {
 
-CurveEditorView::CurveEditorView(QObject *parent)
-    : AbstractView(parent)
+CurveEditorView::CurveEditorView(ExternalDependenciesInterface &externalDepoendencies)
+    : AbstractView{externalDepoendencies}
     , m_block(false)
     , m_model(new CurveEditorModel())
     , m_editor(new CurveEditor(m_model))
 {
-    Q_UNUSED(parent);
     connect(m_model, &CurveEditorModel::commitCurrentFrame, this, &CurveEditorView::commitCurrentFrame);
     connect(m_model, &CurveEditorModel::commitStartFrame, this, &CurveEditorView::commitStartFrame);
     connect(m_model, &CurveEditorModel::commitEndFrame, this, &CurveEditorView::commitEndFrame);
@@ -69,8 +49,7 @@ bool CurveEditorView::hasWidget() const
 
 WidgetInfo CurveEditorView::widgetInfo()
 {
-    return createWidgetInfo(
-        m_editor, nullptr, "CurveEditorId", WidgetInfo::BottomPane, 0, tr("Curve Editor"));
+    return createWidgetInfo(m_editor, "CurveEditorId", WidgetInfo::BottomPane, 0, tr("Curves"));
 }
 
 void CurveEditorView::modelAttached(Model *model)
@@ -93,13 +72,10 @@ bool dirtyfiesView(const ModelNode &node)
            || QmlTimelineKeyframeGroup::isValidQmlTimelineKeyframeGroup(node);
 }
 
-void CurveEditorView::nodeRemoved(const ModelNode &removedNode,
+void CurveEditorView::nodeRemoved([[maybe_unused]] const ModelNode &removedNode,
                                   const NodeAbstractProperty &parentProperty,
-                                  PropertyChangeFlags propertyChange)
+                                  [[maybe_unused]] PropertyChangeFlags propertyChange)
 {
-    Q_UNUSED(removedNode);
-    Q_UNUSED(propertyChange);
-
     if (!parentProperty.isValid())
         return;
 
@@ -111,16 +87,11 @@ void CurveEditorView::nodeRemoved(const ModelNode &removedNode,
         m_model->reset({});
 }
 
-void CurveEditorView::nodeReparented(const ModelNode &node,
-                                     const NodeAbstractProperty &newPropertyParent,
-                                     const NodeAbstractProperty &oldPropertyParent,
-                                     PropertyChangeFlags propertyChange)
+void CurveEditorView::nodeReparented([[maybe_unused]] const ModelNode &node,
+                                     [[maybe_unused]] const NodeAbstractProperty &newPropertyParent,
+                                     [[maybe_unused]] const NodeAbstractProperty &oldPropertyParent,
+                                     [[maybe_unused]] PropertyChangeFlags propertyChange)
 {
-    Q_UNUSED(node);
-    Q_UNUSED(newPropertyParent);
-    Q_UNUSED(oldPropertyParent);
-    Q_UNUSED(propertyChange);
-
     ModelNode parent = newPropertyParent.parentModelNode();
     if (newPropertyParent.isValid() && dirtyfiesView(parent))
         updateKeyframes();
@@ -134,10 +105,10 @@ void CurveEditorView::nodeReparented(const ModelNode &node,
 }
 
 void CurveEditorView::auxiliaryDataChanged(const ModelNode &node,
-                                           const PropertyName &name,
+                                           AuxiliaryDataKeyView key,
                                            const QVariant &data)
 {
-    if (name == "locked") {
+    if (key == lockedProperty) {
         if (auto *item = m_model->find(node.id())) {
             QSignalBlocker blocker(m_model);
             m_model->setLocked(item, data.toBool());
@@ -145,33 +116,35 @@ void CurveEditorView::auxiliaryDataChanged(const ModelNode &node,
     }
 }
 
-void CurveEditorView::instancePropertyChanged(const QList<QPair<ModelNode, PropertyName>> &propertyList)
+void CurveEditorView::instancePropertyChanged(
+    [[maybe_unused]] const QList<QPair<ModelNode, PropertyName>> &propertyList)
 {
-    Q_UNUSED(propertyList);
+    if (auto timeline = activeTimeline(); timeline.isValid()) {
 
-    for (const auto &pair : propertyList) {
-        if (!QmlTimeline::isValidQmlTimeline(pair.first))
-            continue;
+        auto timelineNode = timeline.modelNode();
+        for (const auto &pair : propertyList) {
+            if (!QmlTimeline::isValidQmlTimeline(pair.first))
+                continue;
 
-        if (pair.second == "startFrame")
-            updateStartFrame(pair.first);
-        else if (pair.second == "endFrame")
-            updateEndFrame(pair.first);
-        else if (pair.second == "currentFrame")
-            updateCurrentFrame(pair.first);
+            if (pair.first != timelineNode)
+                continue;
+
+            if (pair.second == "startFrame")
+                updateStartFrame(pair.first);
+            else if (pair.second == "endFrame")
+                updateEndFrame(pair.first);
+            else if (pair.second == "currentFrame")
+                updateCurrentFrame(pair.first);
+        }
     }
 }
 
-void CurveEditorView::variantPropertiesChanged(const QList<VariantProperty> &propertyList,
-                                               PropertyChangeFlags propertyChange)
+void CurveEditorView::variantPropertiesChanged([[maybe_unused]] const QList<VariantProperty> &propertyList,
+                                               [[maybe_unused]] PropertyChangeFlags propertyChange)
 {
-    Q_UNUSED(propertyList);
-    Q_UNUSED(propertyChange);
-
     for (const auto &property : propertyList) {
         if ((property.name() == "frame" || property.name() == "value")
             && property.parentModelNode().type() == "QtQuick.Timeline.Keyframe"
-            && property.parentModelNode().isValid()
             && property.parentModelNode().hasParentProperty()) {
             const ModelNode framesNode = property.parentModelNode().parentProperty().parentModelNode();
             if (QmlTimelineKeyframeGroup::isValidQmlTimelineKeyframeGroup(framesNode))
@@ -180,12 +153,9 @@ void CurveEditorView::variantPropertiesChanged(const QList<VariantProperty> &pro
     }
 }
 
-void CurveEditorView::bindingPropertiesChanged(const QList<BindingProperty> &propertyList,
-                                               PropertyChangeFlags propertyChange)
+void CurveEditorView::bindingPropertiesChanged([[maybe_unused]] const QList<BindingProperty> &propertyList,
+                                               [[maybe_unused]] PropertyChangeFlags propertyChange)
 {
-    Q_UNUSED(propertyList);
-    Q_UNUSED(propertyChange);
-
     for (const auto &property : propertyList) {
         if (property.name() == "easing.bezierCurve") {
             updateKeyframes();
@@ -193,12 +163,10 @@ void CurveEditorView::bindingPropertiesChanged(const QList<BindingProperty> &pro
     }
 }
 
-void CurveEditorView::propertiesRemoved(const QList<AbstractProperty> &propertyList)
+void CurveEditorView::propertiesRemoved([[maybe_unused]] const QList<AbstractProperty> &propertyList)
 {
-    Q_UNUSED(propertyList);
-
     for (const auto &property : propertyList) {
-        if (property.name() == "keyframes" && property.parentModelNode().isValid()) {
+        if (property.name() == "keyframes") {
             ModelNode parent = property.parentModelNode();
             if (dirtyfiesView(parent))
                 updateKeyframes();
@@ -208,27 +176,30 @@ void CurveEditorView::propertiesRemoved(const QList<AbstractProperty> &propertyL
 
 QmlTimeline CurveEditorView::activeTimeline() const
 {
+    if (!isAttached())
+        return {};
+
     QmlModelState state = currentState();
     if (state.isBaseState()) {
-        for (const ModelNode &node : allModelNodesOfType("QtQuick.Timeline.Timeline")) {
+        for (const ModelNode &node : allModelNodesOfType(model()->qtQuickTimelineTimelineMetaInfo())) {
             if (QmlTimeline::isValidQmlTimeline(node)) {
                 if (node.hasVariantProperty("enabled")
                     && node.variantProperty("enabled").value().toBool())
                     return QmlTimeline(node);
-
-                return {};
             }
         }
+        return {};
     }
 
-    for (const ModelNode &node : allModelNodesOfType("QtQuick.Timeline.Timeline")) {
+    for (const ModelNode &node : allModelNodesOfType(model()->qtQuickTimelineTimelineMetaInfo())) {
         if (QmlTimeline::isValidQmlTimeline(node) && state.affectsModelNode(node)) {
             QmlPropertyChanges propertyChanges(state.propertyChanges(node));
             if (!propertyChanges.isValid())
                 continue;
 
-            if (node.hasVariantProperty("enabled") && node.variantProperty("enabled").value().toBool())
-                return QmlTimeline(node);
+            if (propertyChanges.modelNode().hasProperty("enabled") &&
+                propertyChanges.modelNode().variantProperty("enabled").value().toBool())
+                    return QmlTimeline(node);
         }
     }
     return {};
@@ -289,10 +260,7 @@ ModelNode getTargetNode(PropertyTreeItem *item, const QmlTimeline &timeline)
 QmlTimelineKeyframeGroup timelineKeyframeGroup(QmlTimeline &timeline, PropertyTreeItem *item)
 {
     ModelNode node = getTargetNode(item, timeline);
-    if (node.isValid())
-        return timeline.keyframeGroup(node, item->name().toLatin1());
-
-    return QmlTimelineKeyframeGroup();
+    return timeline.keyframeGroup(node, item->name().toLatin1());
 }
 
 void attachEasingCurve(const QmlTimelineKeyframeGroup &group, double frame, const QEasingCurve &curve)
@@ -306,64 +274,76 @@ void attachEasingCurve(const QmlTimelineKeyframeGroup &group, double frame, cons
 
 void commitAuxiliaryData(ModelNode &node, TreeItem *item)
 {
-    if (node.isValid()) {
-        if (item->locked())
-            node.setAuxiliaryData("locked", true);
-        else
-            node.removeAuxiliaryData("locked");
+    if (item->locked())
+        node.setLocked(true);
+    else
+        node.setLocked(false);
 
-        if (item->pinned())
-            node.setAuxiliaryData("pinned", true);
-        else
-            node.removeAuxiliaryData("pinned");
+    if (item->pinned())
+        node.setAuxiliaryData(pinnedProperty, true);
+    else
+        node.removeAuxiliaryData(pinnedProperty);
 
-        if (auto *pitem = item->asPropertyItem()) {
-            if (pitem->hasUnified())
-                node.setAuxiliaryData("unified", pitem->unifyString());
-            else
-                node.removeAuxiliaryData("unified");
-        }
+    if (auto *pitem = item->asPropertyItem()) {
+        if (pitem->hasUnified())
+            node.setAuxiliaryData(unifiedProperty, pitem->unifyString());
+        else
+            node.removeAuxiliaryData(unifiedProperty);
     }
 }
 
 void CurveEditorView::commitKeyframes(TreeItem *item)
 {
+    if (!isAttached())
+        return;
+
     if (auto *nitem = item->asNodeItem()) {
         ModelNode node = modelNodeForId(nitem->name());
         commitAuxiliaryData(node, item);
 
     } else if (auto *pitem = item->asPropertyItem()) {
         QmlTimeline currentTimeline = activeTimeline();
+        if (!currentTimeline.isValid())
+            return;
+
         QmlTimelineKeyframeGroup group = timelineKeyframeGroup(currentTimeline, pitem);
 
         if (group.isValid()) {
             ModelNode groupNode = group.modelNode();
             commitAuxiliaryData(groupNode, item);
 
-            auto replaceKeyframes = [&group, pitem, this]() {
+            auto replaceKeyframes = [&group, pitem, this]() mutable {
                 m_block = true;
-                for (auto frame : group.keyframes())
+
+                for (auto& frame : group.keyframes())
                     frame.destroy();
 
-                Keyframe previous;
-                for (auto &&frame : pitem->curve().keyframes()) {
-                    QPointF pos = frame.position();
-                    group.setValue(QVariant(pos.y()), pos.x());
-
-                    if (previous.isValid()) {
-                        if (frame.interpolation() == Keyframe::Interpolation::Bezier ||
-                            frame.interpolation() == Keyframe::Interpolation::Step ) {
-                            CurveSegment segment(previous, frame);
-                            if (segment.isValid())
-                                attachEasingCurve(group, pos.x(), segment.easingCurve());
-                        } else if (frame.interpolation() == Keyframe::Interpolation::Easing) {
-                            QVariant data = frame.data();
-                            if (data.type() == static_cast<int>(QMetaType::QEasingCurve))
-                                attachEasingCurve(group, pos.x(), data.value<QEasingCurve>());
-                        }
+                AnimationCurve curve = pitem->curve();
+                if (curve.valueType() == AnimationCurve::ValueType::Bool) {
+                    for (const auto& frame : curve.keyframes()) {
+                        QPointF pos = frame.position();
+                        group.setValue(QVariant(pos.y()), pos.x());
                     }
+                } else {
+                    Keyframe previous;
+                    for (const auto& frame : curve.keyframes()) {
+                        QPointF pos = frame.position();
+                        group.setValue(QVariant(pos.y()), pos.x());
 
-                    previous = frame;
+                        if (previous.isValid()) {
+                            if (frame.interpolation() == Keyframe::Interpolation::Bezier ||
+                                frame.interpolation() == Keyframe::Interpolation::Step ) {
+                                CurveSegment segment(previous, frame);
+                                if (segment.isValid())
+                                    attachEasingCurve(group, pos.x(), segment.easingCurve());
+                            } else if (frame.interpolation() == Keyframe::Interpolation::Easing) {
+                                QVariant data = frame.data();
+                                if (data.type() == static_cast<int>(QMetaType::QEasingCurve))
+                                    attachEasingCurve(group, pos.x(), data.value<QEasingCurve>());
+                            }
+                        }
+                        previous = frame;
+                    }
                 }
                 m_block = false;
             };
@@ -377,7 +357,7 @@ void CurveEditorView::commitCurrentFrame(int frame)
 {
     QmlTimeline timeline = activeTimeline();
     if (timeline.isValid())
-        timeline.modelNode().setAuxiliaryData("currentFrame@NodeInstance", frame);
+        timeline.modelNode().setAuxiliaryData(currentFrameProperty, frame);
 }
 
 void CurveEditorView::commitStartFrame(int frame)
@@ -396,11 +376,7 @@ void CurveEditorView::commitEndFrame(int frame)
 
 void CurveEditorView::init()
 {
-    QmlTimeline timeline = activeTimeline();
-    if (timeline.isValid()) {
-        m_model->setTimeline(timeline);
-    }
-
+    m_model->setTimeline(activeTimeline());
 }
 
 } // namespace QmlDesigner

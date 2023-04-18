@@ -1,42 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "workspaceview.h"
 
 #include "dockmanager.h"
-#include "workspacedialog.h"
+#include "advanceddockingsystemtr.h"
 
 #include <utils/algorithm.h>
 
@@ -71,17 +39,10 @@ void RemoveItemFocusDelegate::paint(QPainter *painter,
     QStyledItemDelegate::paint(painter, opt, index);
 }
 
-WorkspaceDialog *WorkspaceView::castToWorkspaceDialog(QWidget *widget)
-{
-    auto dialog = qobject_cast<WorkspaceDialog *>(widget);
-    Q_ASSERT(dialog);
-    return dialog;
-}
-
-WorkspaceView::WorkspaceView(QWidget *parent)
+WorkspaceView::WorkspaceView(DockManager *manager, QWidget *parent)
     : Utils::TreeView(parent)
-    , m_manager(WorkspaceView::castToWorkspaceDialog(parent)->dockManager())
-    , m_workspaceModel(m_manager)
+    , m_manager(manager)
+    , m_workspaceModel(manager)
 {
     setItemDelegate(new RemoveItemFocusDelegate(this));
     setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -100,25 +61,19 @@ WorkspaceView::WorkspaceView(QWidget *parent)
                             m_workspaceModel.index(0, m_workspaceModel.columnCount() - 1));
     selectionModel()->select(firstRow, QItemSelectionModel::QItemSelectionModel::SelectCurrent);
 
-    connect(this, &Utils::TreeView::activated, [this](const QModelIndex &index) {
+    connect(this, &Utils::TreeView::activated, this, [this](const QModelIndex &index) {
         emit workspaceActivated(m_workspaceModel.workspaceAt(index.row()));
     });
-    connect(selectionModel(), &QItemSelectionModel::selectionChanged, [this] {
+    connect(selectionModel(), &QItemSelectionModel::selectionChanged, this, [this] {
         emit workspacesSelected(selectedWorkspaces());
     });
 
-    connect(&m_workspaceModel,
-            &WorkspaceModel::workspaceSwitched,
-            this,
-            &WorkspaceView::workspaceSwitched);
-    connect(&m_workspaceModel,
-            &WorkspaceModel::modelReset,
-            this,
-            &WorkspaceView::selectActiveWorkspace);
-    connect(&m_workspaceModel,
-            &WorkspaceModel::workspaceCreated,
-            this,
-            &WorkspaceView::selectWorkspace);
+    connect(&m_workspaceModel, &WorkspaceModel::workspaceSwitched,
+            this, &WorkspaceView::workspaceSwitched);
+    connect(&m_workspaceModel, &WorkspaceModel::modelReset,
+            this, &WorkspaceView::selectActiveWorkspace);
+    connect(&m_workspaceModel, &WorkspaceModel::workspaceCreated,
+            this, &WorkspaceView::selectWorkspace);
 }
 
 void WorkspaceView::createNewWorkspace()
@@ -141,7 +96,7 @@ void WorkspaceView::importWorkspace()
     static QString lastDir;
     const QString currentDir = lastDir.isEmpty() ? "" : lastDir;
     const auto fileName = QFileDialog::getOpenFileName(this,
-                                                       tr("Import Workspace"),
+                                                       Tr::tr("Import Workspace"),
                                                        currentDir,
                                                        "Workspaces (*" + m_manager->workspaceFileExtension() + ")");
 
@@ -158,7 +113,7 @@ void WorkspaceView::exportCurrentWorkspace()
     QFileInfo fileInfo(currentDir, m_manager->workspaceNameToFileName(currentWorkspace()));
 
     const auto fileName = QFileDialog::getSaveFileName(this,
-                                                       tr("Export Workspace"),
+                                                       Tr::tr("Export Workspace"),
                                                        fileInfo.absoluteFilePath(),
                                                        "Workspaces (*" + m_manager->workspaceFileExtension() + ")");
 

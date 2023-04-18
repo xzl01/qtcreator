@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -82,7 +60,7 @@ public:
     QString baseDirectory() const { return m_baseDirectory; }
     void setBaseDirectory(const QString &baseDirectory) { m_baseDirectory = baseDirectory; }
 
-    QString filePath() const;
+    Utils::FilePath filePath() const;
     bool writeToDisk() const;
 
     bool hasCursorMarker() const { return m_cursorPosition != -1; }
@@ -145,33 +123,33 @@ public:
     ~TestCase();
 
     bool succeededSoFar() const;
-    static bool openCppEditor(const QString &fileName, TextEditor::BaseTextEditor **editor,
+    static bool openCppEditor(const Utils::FilePath &filePath, TextEditor::BaseTextEditor **editor,
                               CppEditorWidget **editorWidget = nullptr);
     void closeEditorAtEndOfTestCase(Core::IEditor *editor);
 
     static bool closeEditorWithoutGarbageCollectorInvocation(Core::IEditor *editor);
 
     static bool parseFiles(const QString &filePath);
-    static bool parseFiles(const QSet<QString> &filePaths);
+    static bool parseFiles(const QSet<Utils::FilePath> &filePaths);
 
     static CPlusPlus::Snapshot globalSnapshot();
     static bool garbageCollectGlobalSnapshot();
 
-    static bool waitForProcessedEditorDocument(const QString &filePath, int timeOutInMs = 5000);
+    static bool waitForProcessedEditorDocument(
+            const Utils::FilePath &filePath, int timeOutInMs = 5000);
+
     static CPlusPlus::Document::Ptr waitForRehighlightedSemanticDocument(
             CppEditorWidget *editorWidget);
 
     enum { defaultTimeOutInMs = 30 * 1000 /*= 30 secs*/ };
     static bool waitUntilProjectIsFullyOpened(ProjectExplorer::Project *project,
                                               int timeOutInMs = defaultTimeOutInMs);
-    static CPlusPlus::Document::Ptr waitForFileInGlobalSnapshot(
-            const QString &filePath,
+    static CPlusPlus::Document::Ptr waitForFileInGlobalSnapshot(const Utils::FilePath &filePath,
             int timeOutInMs = defaultTimeOutInMs);
     static QList<CPlusPlus::Document::Ptr> waitForFilesInGlobalSnapshot(
-            const QStringList &filePaths,
-            int timeOutInMs = defaultTimeOutInMs);
+            const Utils::FilePaths &filePaths, int timeOutInMs = defaultTimeOutInMs);
 
-    static bool writeFile(const QString &filePath, const QByteArray &contents);
+    static bool writeFile(const Utils::FilePath &filePath, const QByteArray &contents);
 
 protected:
     CppModelManager *m_modelManager;
@@ -189,7 +167,7 @@ public:
     ~ProjectOpenerAndCloser(); // Closes opened projects
 
     ProjectInfo::ConstPtr open(
-            const QString &projectFile,
+            const Utils::FilePath &projectFile,
             bool configureAsExampleProject = false,
             ProjectExplorer::Kit *kit = nullptr);
 
@@ -206,8 +184,9 @@ public:
 
     bool isValid() const { return m_isValid; }
     QString path() const { return m_temporaryDir.path().path(); }
+    Utils::FilePath filePath() const { return m_temporaryDir.path(); }
 
-    QString createFile(const QByteArray &relativePath, const QByteArray &contents);
+    Utils::FilePath createFile(const QByteArray &relativePath, const QByteArray &contents);
 
 protected:
     Utils::TemporaryDirectory m_temporaryDir;
@@ -218,7 +197,7 @@ class CPPEDITOR_EXPORT TemporaryCopiedDir : public TemporaryDir
 {
 public:
     explicit TemporaryCopiedDir(const QString &sourceDirPath);
-    QString absolutePath(const QByteArray &relativePath) const;
+    Utils::FilePath absolutePath(const QString &relativePath) const;
 
 private:
     TemporaryCopiedDir();

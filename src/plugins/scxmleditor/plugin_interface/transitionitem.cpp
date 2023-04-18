@@ -1,29 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "transitionitem.h"
 #include "connectableitem.h"
 #include "cornergrabberitem.h"
 #include "finalstateitem.h"
@@ -33,11 +10,13 @@
 #include "sceneutils.h"
 #include "scxmldocument.h"
 #include "scxmleditorconstants.h"
+#include "scxmleditortr.h"
 #include "scxmltagutils.h"
 #include "scxmluifactory.h"
 #include "serializer.h"
 #include "stateitem.h"
 #include "tagtextitem.h"
+#include "transitionitem.h"
 
 #include <QBrush>
 #include <QDebug>
@@ -280,7 +259,8 @@ void TransitionItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
         if (bLeftButton) {
             // If we found QuickTransition-item or CornerGrabber at this point, we must ignore mouse press here
             // So we can press QuickTransition/CornerGrabber item although there is transition lines front of these items
-            foreach (QGraphicsItem *item, scene()->items(event->scenePos())) {
+            const QList<QGraphicsItem *> items = scene()->items(event->scenePos());
+            for (QGraphicsItem *item : items) {
                 if (item->type() == QuickTransitionType || (item->type() == CornerGrabberType && item->parentItem() != this)) {
                     event->ignore();
                     return;
@@ -416,7 +396,7 @@ void TransitionItem::createContextMenu(QMenu *menu)
     if (m_selectedGrabberIndex > 0) {
         data[Constants::C_SCXMLTAG_ACTIONTYPE] = TagUtils::RemovePoint;
         data["cornerIndex"] = m_selectedGrabberIndex;
-        menu->addAction(tr("Remove Point"))->setData(data);
+        menu->addAction(Tr::tr("Remove Point"))->setData(data);
     }
 
     menu->addSeparator();

@@ -1,47 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdbdevice.h"
 
-#include "qdbutils.h"
 #include "qdbconstants.h"
-#include "qdbdevicedebugsupport.h"
+#include "qdbtr.h"
+#include "qdbutils.h"
 
 #include <coreplugin/icore.h>
 
-#include <projectexplorer/applicationlauncher.h>
 #include <projectexplorer/devicesupport/idevice.h>
-#include <projectexplorer/runcontrol.h>
+#include <projectexplorer/devicesupport/sshparameters.h>
 
-#include <remotelinux/linuxdeviceprocess.h>
-
-#include <ssh/sshconnection.h>
+#include <remotelinux/linuxprocessinterface.h>
 
 #include <utils/portlist.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
+#include <utils/theme/theme.h>
 
 #include <QFormLayout>
 #include <QLabel>
@@ -49,92 +25,78 @@
 #include <QWizard>
 
 using namespace ProjectExplorer;
+using namespace RemoteLinux;
 using namespace Utils;
 
-namespace Qdb {
-namespace Internal {
+namespace Qdb::Internal {
 
-class QdbDeviceProcess : public RemoteLinux::LinuxDeviceProcess
+class QdbProcessImpl : public LinuxProcessInterface
 {
 public:
-    QdbDeviceProcess(const QSharedPointer<const IDevice> &device, QObject *parent)
-        : RemoteLinux::LinuxDeviceProcess(device, parent)
-    {
-    }
+    QdbProcessImpl(const LinuxDevice *linuxDevice)
+        : LinuxProcessInterface(linuxDevice) {}
+    ~QdbProcessImpl() { killIfRunning(); }
 
-    void terminate() override
+private:
+    void handleSendControlSignal(ControlSignal controlSignal) final
     {
-        ProjectExplorer::Runnable r;
-        r.command = {Constants::AppcontrollerFilepath, {"--stop"}};
-
-        (new ApplicationLauncher(this))->start(r, device());
+        QTC_ASSERT(controlSignal != ControlSignal::Interrupt, return);
+        QTC_ASSERT(controlSignal != ControlSignal::KickOff, return);
+        runInShell({Constants::AppcontrollerFilepath, {"--stop"}});
     }
 };
 
-
-class DeviceApplicationObserver : public ApplicationLauncher
+class DeviceApplicationObserver : public QObject
 {
 public:
     DeviceApplicationObserver(const IDevice::ConstPtr &device, const CommandLine &command)
     {
-        connect(&m_appRunner, &ApplicationLauncher::appendMessage, this,
-                &DeviceApplicationObserver::handleAppendMessage);
-        connect(&m_appRunner, &ApplicationLauncher::error, this,
-                [this] { m_error = m_appRunner.errorString(); });
-        connect(&m_appRunner, &ApplicationLauncher::processExited, this,
-                &DeviceApplicationObserver::handleFinished);
+        connect(&m_appRunner, &QtcProcess::done, this, &DeviceApplicationObserver::handleDone);
 
         QTC_ASSERT(device, return);
         m_deviceName = device->displayName();
 
-        Runnable r;
-        r.command = command;
-        m_appRunner.start(r, device);
-        showMessage(QdbDevice::tr("Starting command \"%1\" on device \"%2\".")
+        m_appRunner.setCommand(command);
+        m_appRunner.start();
+        showMessage(Tr::tr("Starting command \"%1\" on device \"%2\".")
                     .arg(command.toUserOutput(), m_deviceName));
     }
 
 private:
-    void handleAppendMessage(const QString &data, Utils::OutputFormat format)
+    void handleDone()
     {
-        if (format == Utils::StdOutFormat)
-            m_stdout += data;
-        else if (format == Utils::StdErrFormat)
-            m_stderr += data;
-    }
+        const QString stdOut = m_appRunner.cleanedStdOut();
+        const QString stdErr = m_appRunner.cleanedStdErr();
 
-    void handleFinished(int exitCode, QProcess::ExitStatus exitStatus)
-    {
-        Q_UNUSED(exitCode)
         // FIXME: Needed in a post-adb world?
         // adb does not forward exit codes and all stderr goes to stdout.
-        const bool failure = exitStatus == QProcess::CrashExit || m_stdout.contains("fail")
-                || m_stdout.contains("error") || m_stdout.contains("not found");
+        const bool failure = m_appRunner.result() != ProcessResult::FinishedWithSuccess
+                || stdOut.contains("fail")
+                || stdOut.contains("error")
+                || stdOut.contains("not found");
+
         if (failure) {
             QString errorString;
-            if (!m_error.isEmpty()) {
-                errorString = QdbDevice::tr("Command failed on device \"%1\": %2")
-                        .arg(m_deviceName, m_error);
+            if (!m_appRunner.errorString().isEmpty()) {
+                errorString = Tr::tr("Command failed on device \"%1\": %2")
+                        .arg(m_deviceName, m_appRunner.errorString());
             } else {
-                errorString = QdbDevice::tr("Command failed on device \"%1\".").arg(m_deviceName);
+                errorString = Tr::tr("Command failed on device \"%1\".").arg(m_deviceName);
             }
             showMessage(errorString, true);
-            if (!m_stdout.isEmpty())
-                showMessage(QdbDevice::tr("stdout was: \"%1\"").arg(m_stdout));
-            if (!m_stderr.isEmpty())
-                showMessage(QdbDevice::tr("stderr was: \"%1\"").arg(m_stderr));
+            if (!stdOut.isEmpty())
+                showMessage(Tr::tr("stdout was: \"%1\"").arg(stdOut));
+            if (!stdErr.isEmpty())
+                showMessage(Tr::tr("stderr was: \"%1\"").arg(stdErr));
         } else {
-            showMessage(QdbDevice::tr("Commands on device \"%1\" finished successfully.")
+            showMessage(Tr::tr("Commands on device \"%1\" finished successfully.")
                         .arg(m_deviceName));
         }
         deleteLater();
     }
 
-    QString m_stdout;
-    QString m_stderr;
-    ProjectExplorer::ApplicationLauncher m_appRunner;
+    QtcProcess m_appRunner;
     QString m_deviceName;
-    QString m_error;
 };
 
 
@@ -142,14 +104,14 @@ private:
 
 QdbDevice::QdbDevice()
 {
-    setDisplayType(tr("Boot2Qt Device"));
+    setDisplayType(Tr::tr("Boot2Qt Device"));
 
-    addDeviceAction({tr("Reboot Device"), [](const IDevice::Ptr &device, QWidget *) {
-        (void) new DeviceApplicationObserver(device, CommandLine{"reboot"});
+    addDeviceAction({Tr::tr("Reboot Device"), [](const IDevice::Ptr &device, QWidget *) {
+        (void) new DeviceApplicationObserver(device, {device->filePath("reboot"), {}});
     }});
 
-    addDeviceAction({tr("Restore Default App"), [](const IDevice::Ptr &device, QWidget *) {
-        (void) new DeviceApplicationObserver(device, CommandLine{"appcontroller", {"--remove-default"}});
+    addDeviceAction({Tr::tr("Restore Default App"), [](const IDevice::Ptr &device, QWidget *) {
+        (void) new DeviceApplicationObserver(device, {device->filePath("appcontroller"), {"--remove-default"}});
     }});
 }
 
@@ -160,9 +122,9 @@ ProjectExplorer::IDeviceWidget *QdbDevice::createWidget()
     return w;
 }
 
-ProjectExplorer::DeviceProcess *QdbDevice::createProcess(QObject *parent) const
+ProcessInterface *QdbDevice::createProcessInterface() const
 {
-    return new QdbDeviceProcess(sharedFromThis(), parent);
+    return new QdbProcessImpl(this);
 }
 
 void QdbDevice::setSerialNumber(const QString &serial)
@@ -192,12 +154,12 @@ void QdbDevice::setupDefaultNetworkSettings(const QString &host)
 {
     setFreePorts(Utils::PortList::fromString("10000-10100"));
 
-    QSsh::SshConnectionParameters parameters = sshParameters();
+    SshParameters parameters = sshParameters();
     parameters.setHost(host);
     parameters.setUserName("root");
     parameters.setPort(22);
     parameters.timeout = 10;
-    parameters.authenticationType = QSsh::SshConnectionParameters::AuthenticationTypeAll;
+    parameters.authenticationType = SshParameters::AuthenticationTypeAll;
     setSshParameters(parameters);
 }
 
@@ -208,14 +170,14 @@ class QdbSettingsPage : public QWizardPage
 public:
     QdbSettingsPage()
     {
-        setWindowTitle(QdbDevice::tr("WizardPage"));
-        setTitle(QdbDevice::tr("Device Settings"));
+        setWindowTitle(Tr::tr("WizardPage"));
+        setTitle(Tr::tr("Device Settings"));
 
         nameLineEdit = new QLineEdit(this);
-        nameLineEdit->setPlaceholderText(QdbDevice::tr("A short, free-text description"));
+        nameLineEdit->setPlaceholderText(Tr::tr("A short, free-text description"));
 
         addressLineEdit = new QLineEdit(this);
-        addressLineEdit->setPlaceholderText(QdbDevice::tr("Host name or IP address"));
+        addressLineEdit->setPlaceholderText(Tr::tr("Host name or IP address"));
 
         auto usbWarningLabel = new QLabel(this);
         usbWarningLabel->setText(QString("<html><head/><body><it><b>%1</it><p>%2</p></body></html>")
@@ -225,8 +187,8 @@ public:
                                       "<p>The connectivity to the device is tested after finishing."));
 
         auto formLayout = new QFormLayout(this);
-        formLayout->addRow(QdbDevice::tr("Device name:"), nameLineEdit);
-        formLayout->addRow(QdbDevice::tr("Device address:"), addressLineEdit);
+        formLayout->addRow(Tr::tr("Device name:"), nameLineEdit);
+        formLayout->addRow(Tr::tr("Device address:"), addressLineEdit);
         formLayout->addRow(usbWarningLabel);
 
         connect(nameLineEdit, &QLineEdit::textChanged, this, &QWizardPage::completeChanged);
@@ -252,7 +214,7 @@ public:
     QdbDeviceWizard(QWidget *parent)
         : QWizard(parent)
     {
-        setWindowTitle(QdbDevice::tr("Boot2Qt Network Device Setup"));
+        setWindowTitle(Tr::tr("Boot2Qt Network Device Setup"));
         settingsPage.setCommitPage(true);
 
         enum { SettingsPageId };
@@ -284,16 +246,17 @@ private:
 QdbLinuxDeviceFactory::QdbLinuxDeviceFactory()
     : IDeviceFactory(Constants::QdbLinuxOsType)
 {
-    setDisplayName(QdbDevice::tr("Boot2Qt Device"));
+    setDisplayName(Tr::tr("Boot2Qt Device"));
     setCombinedIcon(":/qdb/images/qdbdevicesmall.png", ":/qdb/images/qdbdevice.png");
     setConstructionFunction(&QdbDevice::create);
     setCreator([] {
         QdbDeviceWizard wizard(Core::ICore::dialogParent());
+        if (!creatorTheme()->preferredStyles().isEmpty())
+            wizard.setWizardStyle(QWizard::ModernStyle);
         if (wizard.exec() != QDialog::Accepted)
             return IDevice::Ptr();
         return wizard.device();
     });
 }
 
-} // namespace Internal
-} // namespace Qdb
+} // Qdb::Internal

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QScopedPointer>
 #include <QLatin1String>
@@ -124,10 +102,11 @@ void tst_Check::test_data()
 void tst_Check::test()
 {
     QFETCH(QString, path);
+    Utils::FilePath pathPath = Utils::FilePath::fromString(path);
     auto mm = ModelManagerInterface::instance();
     Snapshot snapshot =  mm->snapshot();
-    Document::MutablePtr doc = Document::create(path, Dialect::Qml);
-    QFile file(doc->fileName());
+    Document::MutablePtr doc = Document::create(pathPath, Dialect::Qml);
+    QFile file(doc->fileName().toString());
     file.open(QFile::ReadOnly | QFile::Text);
     doc->setSource(QString::fromUtf8(file.readAll()));
     file.close();
@@ -225,6 +204,6 @@ void tst_Check::test()
     }
 }
 
-QTEST_MAIN(tst_Check);
+QTEST_GUILESS_MAIN(tst_Check);
 
 #include "tst_check.moc"

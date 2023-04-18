@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectinfo_test.h"
 
@@ -511,7 +489,7 @@ public:
         tcInfo.targetTriple = targetTriple;
         tcInfo.installDir = toolchainInstallDir;
         projectPart = ProjectPart::create({}, rpp, {}, {}, {}, {}, {}, tcInfo);
-        filter.emplace(HeaderPathFilter(*projectPart, UseTweakedHeaderPaths::No, {}, {},
+        filter.emplace(HeaderPathFilter(*projectPart, UseTweakedHeaderPaths::No, {},
                                         "/project", "/build"));
         return *projectPart;
     }
@@ -535,7 +513,7 @@ public:
         user("/projectb/user_path"),
         user("/project/user_path")};
 
-    Utils::optional<HeaderPathFilter> filter;
+    std::optional<HeaderPathFilter> filter;
 
 private:
     ProjectPart::ConstPtr projectPart;
@@ -602,7 +580,7 @@ void HeaderPathFilterTest::testDontAddInvalidPath()
 void HeaderPathFilterTest::testClangHeadersPath()
 {
     HeaderPathFilterTestHelper t;
-    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "6.0", "clang_dir");
+    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "clang_dir");
     filter.process();
 
     QCOMPARE(filter.builtInHeaderPaths, (HeaderPaths{t.builtIn("clang_dir"),
@@ -631,7 +609,7 @@ void HeaderPathFilterTest::testClangHeadersAndCppIncludesPathsOrderMacOs()
     };
     std::copy(builtIns.begin(), builtIns.end(),
               std::inserter(t.headerPaths, t.headerPaths.begin()));
-    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "6.0", "clang_dir");
+    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "clang_dir");
     filter.process();
 
     QCOMPARE(filter.builtInHeaderPaths, (HeaderPaths{
@@ -653,7 +631,7 @@ void HeaderPathFilterTest::testClangHeadersAndCppIncludesPathsOrderLinux()
         t.builtIn("/usr/include/x86_64-linux-gnu"), t.builtIn("/usr/include")};
     std::copy(builtIns.begin(), builtIns.end(),
               std::inserter(t.headerPaths, t.headerPaths.begin()));
-    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "6.0", "clang_dir");
+    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "clang_dir");
     filter.process();
 
     QCOMPARE(filter.builtInHeaderPaths, (HeaderPaths{
@@ -675,7 +653,7 @@ void HeaderPathFilterTest::testRemoveGccInternalPaths()
         t.builtIn("/usr/lib/gcc/x86_64-linux-gnu/7/include"),
         t.builtIn("/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed"),
     };
-    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "6.0", "clang_dir");
+    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "clang_dir");
     filter.process();
 
     QCOMPARE(filter.builtInHeaderPaths, (HeaderPaths{t.builtIn("clang_dir")}));
@@ -697,7 +675,7 @@ void HeaderPathFilterTest::testRemoveGccInternalPathsExceptForStandardPaths()
 
     HeaderPaths expected = t.headerPaths;
     expected.append(t.builtIn("clang_dir"));
-    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "6.0", "clang_dir");
+    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "clang_dir");
     filter.process();
 
     QCOMPARE(filter.builtInHeaderPaths, expected);
@@ -713,7 +691,7 @@ void HeaderPathFilterTest::testClangHeadersAndCppIncludesPathsOrderNoVersion()
         t.builtIn("C:/mingw/i686-w64-mingw32/include/c++/backward"),
     };
     t.targetTriple = "x86_64-w64-windows-gnu";
-    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "6.0", "clang_dir");
+    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "clang_dir");
     filter.process();
 
     QCOMPARE(filter.builtInHeaderPaths, (HeaderPaths{
@@ -735,7 +713,7 @@ void HeaderPathFilterTest::testClangHeadersAndCppIncludesPathsOrderAndroidClang(
         t.builtIn("C:/Android/sdk/ndk-bundle/sysroot/usr/include")
     };
     t.targetTriple = "i686-linux-android";
-    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "6.0", "clang_dir");
+    HeaderPathFilter filter(t.finalize(), UseTweakedHeaderPaths::Yes, "clang_dir");
     filter.process();
 
     QCOMPARE(filter.builtInHeaderPaths, (HeaderPaths{

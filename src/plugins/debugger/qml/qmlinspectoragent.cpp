@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlinspectoragent.h"
 #include "qmlengine.h"
@@ -30,7 +8,7 @@
 #include <debugger/debuggercore.h>
 #include <debugger/debuggerengine.h>
 #include <debugger/debuggerinternalconstants.h>
-#include <debugger/debuggerruncontrol.h>
+#include <debugger/debuggertr.h>
 #include <debugger/watchhandler.h>
 
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -55,8 +33,7 @@
 using namespace QmlDebug;
 using namespace QmlDebug::Constants;
 
-namespace Debugger {
-namespace Internal {
+namespace Debugger::Internal {
 
 static Q_LOGGING_CATEGORY(qmlInspectorLog, "qtc.dbg.qmlinspector", QtWarningMsg)
 
@@ -231,7 +208,7 @@ void QmlInspectorAgent::onResult(quint32 queryId, const QVariant &value,
                || type == "RESET_BINDING_R"
                || type == "SET_METHOD_BODY_R") {
         // FIXME: This is not supported anymore.
-        QString msg = type + tr("Success:");
+        QString msg = type + Tr::tr("Success:");
         msg += ' ';
         msg += value.toBool() ? '1' : '0';
         // if (!value.toBool())
@@ -269,7 +246,7 @@ void QmlInspectorAgent::onResult(quint32 queryId, const QVariant &value,
             m_rootContexts.insert(engineId, qvariant_cast<ContextReference>(value));
             if (m_rootContexts.size() == m_engines.size()) {
                 clearObjectTree();
-                for (const auto &engine : qAsConst(m_engines)) {
+                for (const auto &engine : std::as_const(m_engines)) {
                     QString name = engine.name();
                     if (name.isEmpty())
                         name = QString::fromLatin1("Engine %1").arg(engine.debugId());
@@ -292,7 +269,7 @@ void QmlInspectorAgent::newObject(int engineId, int /*objectId*/, int /*parentId
 
     log(LogReceive, "OBJECT_CREATED");
 
-    for (const auto &engine : qAsConst(m_engines)) {
+    for (const auto &engine : std::as_const(m_engines)) {
         if (engine.debugId() == engineId) {
             m_delayQueryTimer.start();
             break;
@@ -383,7 +360,7 @@ void QmlInspectorAgent::queryEngineContext()
 
     m_rootContexts.clear();
     m_rootContextQueryIds.clear();
-    for (const auto &engine : qAsConst(m_engines))
+    for (const auto &engine : std::as_const(m_engines))
         m_rootContextQueryIds.append(m_engineClient->queryRootContexts(engine));
 }
 
@@ -446,7 +423,7 @@ void QmlInspectorAgent::verifyAndInsertObjectInTree(const ObjectReference &objec
 
         // Still not found? Maybe we're loading the engine itself.
         if (engineId == -1) {
-            for (const auto &engine : qAsConst(m_engines)) {
+            for (const auto &engine : std::as_const(m_engines)) {
                 if (engine.debugId() == objectDebugId) {
                     engineId = engine.debugId();
                     break;
@@ -608,7 +585,7 @@ void QmlInspectorAgent::addWatchData(const ObjectReference &obj,
         }
 
         if (name.isEmpty())
-            name = tr("<anonymous>");
+            name = Tr::tr("<anonymous>");
 
         // object
         auto objWatch = new WatchItem;
@@ -644,12 +621,13 @@ void QmlInspectorAgent::addWatchData(const ObjectReference &obj,
         QString iname = objIname + ".[properties]";
         auto propertiesWatch = new WatchItem;
         propertiesWatch->iname = iname;
-        propertiesWatch->name = tr("Properties");
+        propertiesWatch->name = Tr::tr("Properties");
         propertiesWatch->id = objDebugId;
         propertiesWatch->value = "list";
         propertiesWatch->wantsChildren = true;
 
-        foreach (const PropertyReference &property, obj.properties()) {
+        const QList<PropertyReference> properties = obj.properties();
+        for (const PropertyReference &property : properties) {
             const QString propertyName = property.name();
             if (propertyName.isEmpty())
                 continue;
@@ -669,7 +647,8 @@ void QmlInspectorAgent::addWatchData(const ObjectReference &obj,
     }
 
     // recurse
-    foreach (const ObjectReference &child, obj.children())
+    const QList<ObjectReference> children = obj.children();
+    for (const ObjectReference &child : children)
         addWatchData(child, objIname, append);
 }
 
@@ -778,5 +757,4 @@ void QmlInspectorAgent::onReloaded()
     reloadEngines();
 }
 
-} // namespace Internal
-} // namespace Debugger
+} // Debugger::Internal

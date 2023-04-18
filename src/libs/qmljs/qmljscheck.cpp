@@ -1,32 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljscheck.h"
+
 #include "qmljsbind.h"
 #include "qmljsevaluate.h"
+#include "qmljstr.h"
 #include "qmljsutils.h"
+
 #include "parser/qmljsast_p.h"
 
 #include <utils/algorithm.h>
@@ -119,11 +100,11 @@ public:
                 if (!url.isValid() && !url.isEmpty()) {
                     setMessage(ErrInvalidUrl);
                 } else {
-                    QString fileName = url.toLocalFile();
+                    Utils::FilePath fileName = Utils::FilePath::fromString(url.toLocalFile());
                     if (!fileName.isEmpty()) {
-                        if (QFileInfo(fileName).isRelative())
-                            fileName = QString("/%1%2").arg(_doc->path(), fileName);
-                        if (!QFileInfo::exists(fileName))
+                        if (fileName.isRelativePath())
+                            fileName = _doc->path().pathAppended(fileName.path());
+                        if (!fileName.exists())
                             setMessage(WarnFileOrDirectoryDoesNotExist);
                     }
                 }
@@ -455,7 +436,8 @@ protected:
         }
 
         if (_possiblyUndeclaredUses.contains(name)) {
-            foreach (const SourceLocation &loc, _possiblyUndeclaredUses.value(name)) {
+            const QList<SourceLocation> values = _possiblyUndeclaredUses.value(name);
+            for (const SourceLocation &loc : values) {
                 addMessage(WarnVarUsedBeforeDeclaration, loc, name);
             }
             _possiblyUndeclaredUses.remove(name);
@@ -491,7 +473,8 @@ protected:
 
         if (FunctionDeclaration *decl = cast<FunctionDeclaration *>(ast)) {
             if (_possiblyUndeclaredUses.contains(name)) {
-                foreach (const SourceLocation &loc, _possiblyUndeclaredUses.value(name)) {
+                const QList<SourceLocation> values = _possiblyUndeclaredUses.value(name);
+                for (const SourceLocation &loc : values) {
                     addMessage(WarnFunctionUsedBeforeDeclaration, loc, name);
                 }
                 _possiblyUndeclaredUses.remove(name);
@@ -571,7 +554,9 @@ public:
                        "color", "margin", "padding", "print",   "border", "font",
                        "text",  "source", "state",   "visible", "focus",  "data",
                       "clip",  "layer",  "scale",   "enabled", "anchors",
-                      "texture", "shaderInfo", "sprite", "spriteSequence", "baseState"})
+                      "texture", "shaderInfo", "sprite", "spriteSequence", "baseState"
+                      "vector", "string", "url", "var", "point", "date", "size", "list",
+                      "enumeration"})
     {}
 };
 
@@ -610,7 +595,7 @@ class UnsupportedTypesByVisualDesigner : public QStringList
 {
 public:
     UnsupportedTypesByVisualDesigner()
-        : QStringList({"Timer", "Package", "Particles", "ApplicationWindow"})
+        : QStringList({"Package", "Particles", "ApplicationWindow"})
     {}
 };
 
@@ -965,13 +950,13 @@ void Check::visitQmlObject(Node *ast, UiQualifiedId *typeId,
     if (checkTypeForDesignerSupport(typeId))
         addMessage(WarnUnsupportedTypeInVisualDesigner, typeErrorLocation, typeName);
 
-    if (typeId->next == nullptr && QFileInfo(_doc->fileName()).baseName() == typeName)
+    if (typeId->next == nullptr && _doc->fileName().baseName() == typeName)
         addMessage(ErrTypeIsInstantiatedRecursively, typeErrorLocation, typeName);
 
     if (checkTypeForQmlUiSupport(typeId))
         addMessage(ErrUnsupportedTypeInQmlUi, typeErrorLocation, typeName);
 
-    if (m_typeStack.count() > 1 && typeName == "State") {
+    if (m_typeStack.count() > 1 && typeName == "State" && m_typeStack.last() != "StateGroup") {
         addMessage(WarnStatesOnlyInRootItemForVisualDesigner, typeErrorLocation);
         addMessage(ErrStatesOnlyInRootItemInQmlUi, typeErrorLocation);
     }
@@ -1135,13 +1120,51 @@ bool Check::visit(UiPublicMember *ast)
 {
     if (ast->type == UiPublicMember::Property) {
         const QStringView typeName = ast->memberType->name;
+
+        // Check alias properties don't reference root item
+        // Item {
+        //     id: root
+        //     property alias p1: root
+        //     property alias p2: root.child
+        //
+        //     Item { id: child }
+        // }
+        // - Show error for alias property p1
+        // - Show warning for alias property p2
+
+        // Check if type and id stack only contain one item as we are only looking for alias
+        // properties in the root item.
+        if (typeName == QLatin1String("alias") && ast->type == AST::UiPublicMember::Property
+            && m_typeStack.count() == 1 && m_idStack.count() == 1 && m_idStack.top().count() == 1) {
+
+            const QString rootId = m_idStack.top().values().first();
+            if (!rootId.isEmpty()) {
+                if (ExpressionStatement *exp = cast<ExpressionStatement *>(ast->statement)) {
+                    ExpressionNode *node = exp->expression;
+
+                    // Check for case property alias p1: root
+                    if (IdentifierExpression *idExp = cast<IdentifierExpression *>(node)) {
+                        if (!idExp->name.isEmpty() && idExp->name.toString() == rootId)
+                            addMessage(ErrAliasReferRoot, idExp->identifierToken);
+
+                    // Check for case property alias p2: root.child
+                    } else if (FieldMemberExpression *fmExp = cast<FieldMemberExpression *>(node)) {
+                        if (IdentifierExpression *base = cast<IdentifierExpression *>(fmExp->base)) {
+                            if (!base->name.isEmpty() && base->name.toString() == rootId)
+                                addMessage(WarnAliasReferRootHierarchy, base->identifierToken);
+                        }
+                    }
+                }
+            }
+        }
+
         // warn about dubious use of var/variant
         if (typeName == QLatin1String("variant") || typeName == QLatin1String("var")) {
             Evaluate evaluator(&_scopeChain);
             const Value *init = evaluator(ast->statement);
             QString preferredType;
             if (init->asNumberValue())
-                preferredType = tr("'int' or 'real'");
+                preferredType = Tr::tr("'int' or 'real'");
             else if (init->asStringValue())
                 preferredType = "'string'";
             else if (init->asBooleanValue())
@@ -1196,7 +1219,7 @@ bool Check::visit(IdentifierExpression *)
 //        if (const Reference *ref = value_cast<Reference>(_lastValue)) {
 //            _lastValue = _context->lookupReference(ref);
 //            if (!_lastValue)
-//                error(ast->identifierToken, tr("could not resolve"));
+//                error(ast->identifierToken, Tr::tr("could not resolve"));
 //        }
 //    }
 //    return false;
@@ -1213,7 +1236,7 @@ bool Check::visit(FieldMemberExpression *)
 //    const ObjectValue *obj = _lastValue->asObjectValue();
 //    if (!obj) {
 //        error(locationFromRange(ast->base->firstSourceLocation(), ast->base->lastSourceLocation()),
-//              tr("does not have members"));
+//              Tr::tr("does not have members"));
 //    }
 //    if (!obj || ast->name.isEmpty()) {
 //        _lastValue = 0;
@@ -1221,7 +1244,7 @@ bool Check::visit(FieldMemberExpression *)
 //    }
 //    _lastValue = obj->lookupMember(ast->name.toString(), _context);
 //    if (!_lastValue)
-//        error(ast->identifierToken, tr("unknown member"));
+//        error(ast->identifierToken, Tr::tr("unknown member"));
 //    return false;
 }
 
@@ -1624,7 +1647,7 @@ void Check::checkExtraParentheses(ExpressionNode *expression)
 
 void Check::addMessages(const QList<Message> &messages)
 {
-    foreach (const Message &msg, messages)
+    for (const Message &msg : messages)
         addMessage(msg);
 }
 
@@ -1664,7 +1687,8 @@ void Check::scanCommentsForAnnotations()
     m_disabledMessageTypesByLine.clear();
     const QRegularExpression disableCommentPattern = Message::suppressionPattern();
 
-    foreach (const SourceLocation &commentLoc, _doc->engine()->comments()) {
+    const QList<SourceLocation> comments = _doc->engine()->comments();
+    for (const SourceLocation &commentLoc : comments) {
         const QString &comment = _doc->source().mid(int(commentLoc.begin()), int(commentLoc.length));
 
         // enable all checks annotation
@@ -1710,7 +1734,7 @@ void Check::warnAboutUnnecessarySuppressions()
 {
     for (auto it = m_disabledMessageTypesByLine.cbegin(), end = m_disabledMessageTypesByLine.cend();
            it != end; ++it) {
-        foreach (const MessageTypeAndSuppression &entry, it.value()) {
+        for (const MessageTypeAndSuppression &entry : it.value()) {
             if (!entry.wasSuppressed)
                 addMessage(WarnUnnecessaryMessageSuppression, entry.suppressionSource);
         }
@@ -1720,7 +1744,7 @@ void Check::warnAboutUnnecessarySuppressions()
 bool Check::isQtQuick2() const
 {
     if (_doc->language() == Dialect::Qml) {
-        foreach (const Import &import, _imports->all()) {
+        for (const Import &import : _imports->all()) {
             if (import.info.name() == "QtQuick"
                     && import.info.version().majorVersion() == 2)
                 return true;
@@ -2035,7 +2059,7 @@ void Check::checkCaseFallthrough(StatementList *statements, SourceLocation error
                     afterLastStatement = it->statement->lastSourceLocation().end();
             }
 
-            foreach (const SourceLocation &comment, _doc->engine()->comments()) {
+            for (const SourceLocation &comment : _doc->engine()->comments()) {
                 if (comment.begin() < afterLastStatement
                         || comment.end() > nextLoc.begin())
                     continue;

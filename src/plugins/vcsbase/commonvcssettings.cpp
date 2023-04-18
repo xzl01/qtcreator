@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "commonvcssettings.h"
 
 #include "vcsbaseconstants.h"
+#include "vcsbasetr.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/iversioncontrol.h>
@@ -47,9 +26,9 @@ namespace Internal {
 // Return default for the ssh-askpass command (default to environment)
 static QString sshPasswordPromptDefault()
 {
-    const QByteArray envSetting = qgetenv("SSH_ASKPASS");
+    const QString envSetting = qtcEnvironmentVariable("SSH_ASKPASS");
     if (!envSetting.isEmpty())
-        return QString::fromLocal8Bit(envSetting);
+        return envSetting;
     if (HostOsInfo::isWindowsHost())
         return QLatin1String("win-ssh-askpass");
     return QLatin1String("ssh-askpass");
@@ -65,8 +44,8 @@ CommonVcsSettings::CommonVcsSettings()
     nickNameMailMap.setDisplayStyle(StringAspect::PathChooserDisplay);
     nickNameMailMap.setExpectedKind(PathChooser::File);
     nickNameMailMap.setHistoryCompleter("Vcs.NickMap.History");
-    nickNameMailMap.setLabelText(tr("User/&alias configuration file:"));
-    nickNameMailMap.setToolTip(tr("A file listing nicknames in a 4-column mailmap format:\n"
+    nickNameMailMap.setLabelText(Tr::tr("User/&alias configuration file:"));
+    nickNameMailMap.setToolTip(Tr::tr("A file listing nicknames in a 4-column mailmap format:\n"
         "'name <email> alias <email>'."));
 
     registerAspect(&nickNameFieldListFile);
@@ -74,8 +53,8 @@ CommonVcsSettings::CommonVcsSettings()
     nickNameFieldListFile.setDisplayStyle(StringAspect::PathChooserDisplay);
     nickNameFieldListFile.setExpectedKind(PathChooser::File);
     nickNameFieldListFile.setHistoryCompleter("Vcs.NickFields.History");
-    nickNameFieldListFile.setLabelText(tr("User &fields configuration file:"));
-    nickNameFieldListFile.setToolTip(tr("A simple file containing lines with field names like "
+    nickNameFieldListFile.setLabelText(Tr::tr("User &fields configuration file:"));
+    nickNameFieldListFile.setToolTip(Tr::tr("A simple file containing lines with field names like "
         "\"Reviewed-By:\" which will be added below the submit editor."));
 
     registerAspect(&submitMessageCheckScript);
@@ -83,8 +62,8 @@ CommonVcsSettings::CommonVcsSettings()
     submitMessageCheckScript.setDisplayStyle(StringAspect::PathChooserDisplay);
     submitMessageCheckScript.setExpectedKind(PathChooser::ExistingCommand);
     submitMessageCheckScript.setHistoryCompleter("Vcs.MessageCheckScript.History");
-    submitMessageCheckScript.setLabelText(tr("Submit message &check script:"));
-    submitMessageCheckScript.setToolTip(tr("An executable which is called with the submit message "
+    submitMessageCheckScript.setLabelText(Tr::tr("Submit message &check script:"));
+    submitMessageCheckScript.setToolTip(Tr::tr("An executable which is called with the submit message "
         "in a temporary file as first argument. It should return with an exit != 0 and a message "
         "on standard error to indicate failure."));
 
@@ -94,19 +73,19 @@ CommonVcsSettings::CommonVcsSettings()
     sshPasswordPrompt.setExpectedKind(PathChooser::ExistingCommand);
     sshPasswordPrompt.setHistoryCompleter("Vcs.SshPrompt.History");
     sshPasswordPrompt.setDefaultValue(sshPasswordPromptDefault());
-    sshPasswordPrompt.setLabelText(tr("&SSH prompt command:"));
-    sshPasswordPrompt.setToolTip(tr("Specifies a command that is executed to graphically prompt "
+    sshPasswordPrompt.setLabelText(Tr::tr("&SSH prompt command:"));
+    sshPasswordPrompt.setToolTip(Tr::tr("Specifies a command that is executed to graphically prompt "
         "for a password,\nshould a repository require SSH-authentication "
         "(see documentation on SSH and the environment variable SSH_ASKPASS)."));
 
     registerAspect(&lineWrap);
     lineWrap.setSettingsKey("LineWrap");
     lineWrap.setDefaultValue(true);
-    lineWrap.setLabelText(tr("Wrap submit message at:"));
+    lineWrap.setLabelText(Tr::tr("Wrap submit message at:"));
 
     registerAspect(&lineWrapWidth);
     lineWrapWidth.setSettingsKey("LineWrapWidth");
-    lineWrapWidth.setSuffix(tr(" characters"));
+    lineWrapWidth.setSuffix(Tr::tr(" characters"));
     lineWrapWidth.setDefaultValue(72);
 }
 
@@ -130,15 +109,15 @@ CommonSettingsWidget::CommonSettingsWidget(CommonOptionsPage *page)
 {
     CommonVcsSettings &s = m_page->settings();
 
-    auto cacheResetButton = new QPushButton(CommonVcsSettings::tr("Reset VCS Cache"));
-    cacheResetButton->setToolTip(CommonVcsSettings::tr("Reset information about which "
+    auto cacheResetButton = new QPushButton(Tr::tr("Reset VCS Cache"));
+    cacheResetButton->setToolTip(Tr::tr("Reset information about which "
         "version control system handles which directory."));
 
     updatePath();
 
     using namespace Layouting;
     Column {
-        Row { s.lineWrap, s.lineWrapWidth, Stretch() },
+        Row { s.lineWrap, s.lineWrapWidth, st },
         Form {
             s.submitMessageCheckScript,
             s.nickNameMailMap,
@@ -178,10 +157,10 @@ CommonOptionsPage::CommonOptionsPage()
     m_settings.readSettings(Core::ICore::settings());
 
     setId(Constants::VCS_COMMON_SETTINGS_ID);
-    setDisplayName(QCoreApplication::translate("VcsBase", Constants::VCS_COMMON_SETTINGS_NAME));
+    setDisplayName(Tr::tr("General"));
     setCategory(Constants::VCS_SETTINGS_CATEGORY);
     // The following act as blueprint for other pages in the same category:
-    setDisplayCategory(QCoreApplication::translate("VcsBase", "Version Control"));
+    setDisplayCategory(Tr::tr("Version Control"));
     setCategoryIconPath(":/vcsbase/images/settingscategory_vcs.png");
     setWidgetCreator([this] { return new CommonSettingsWidget(this); });
 }

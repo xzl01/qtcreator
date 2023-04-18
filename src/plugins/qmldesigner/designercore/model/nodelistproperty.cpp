@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nodelistproperty.h"
 #include "internalproperty.h"
 #include "internalnodelistproperty.h"
-#include "invalidpropertyexception.h"
 #include "internalnode_p.h"
 #include "model.h"
 #include "model_p.h"
@@ -76,7 +53,7 @@ Internal::InternalNodeListPropertyPointer &NodeListProperty::internalNodeListPro
 static QList<ModelNode> internalNodesToModelNodes(const QList<Internal::InternalNode::Pointer> &inputList, Model* model, AbstractView *view)
 {
     QList<ModelNode> modelNodeList;
-    foreach (const Internal::InternalNode::Pointer &internalNode, inputList) {
+    for (const Internal::InternalNode::Pointer &internalNode : inputList) {
         modelNodeList.append(ModelNode(internalNode, model, view));
     }
     return modelNodeList;
@@ -85,7 +62,7 @@ static QList<ModelNode> internalNodesToModelNodes(const QList<Internal::Internal
 QList<ModelNode> NodeListProperty::toModelNodeList() const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "<invalid node list property>");
+        return {};
 
     if (internalNodeListProperty())
         return internalNodesToModelNodes(m_internalNodeListProperty->toNodeListProperty()->nodeList(),
@@ -102,7 +79,8 @@ QList<QmlObjectNode> NodeListProperty::toQmlObjectNodeList() const
 
     QList<QmlObjectNode> qmlObjectNodeList;
 
-    foreach (const ModelNode &modelNode, toModelNodeList())
+    const QList<ModelNode> modelNodeList = toModelNodeList();
+    for (const ModelNode &modelNode : modelNodeList)
         qmlObjectNodeList.append(QmlObjectNode(modelNode));
 
     return qmlObjectNodeList;
@@ -112,11 +90,12 @@ void NodeListProperty::slide(int from, int to) const
 {
     Internal::WriteLocker locker(model());
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "<invalid node list property>");
-    if (to < 0 || to > count() - 1 || from < 0 || from > count() - 1)
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "<invalid node list sliding>");
+        return;
 
-     privateModel()->changeNodeOrder(internalNode(), name(), from, to);
+    if (to < 0 || to > count() - 1 || from < 0 || from > count() - 1)
+        return;
+
+    privateModel()->changeNodeOrder(internalNode(), name(), from, to);
 }
 
 void NodeListProperty::swap(int from, int to) const
@@ -145,7 +124,7 @@ void NodeListProperty::reparentHere(const ModelNode &modelNode)
 ModelNode NodeListProperty::at(int index) const
 {
     if (!isValid())
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "<invalid node list property>");
+        return {};
 
     if (internalNodeListProperty())
         return ModelNode(m_internalNodeListProperty->at(index), model(), view());
@@ -155,6 +134,9 @@ ModelNode NodeListProperty::at(int index) const
 
 void NodeListProperty::iterSwap(NodeListProperty::iterator &first, NodeListProperty::iterator &second)
 {
+    if (!isValid())
+        return;
+
     if (!internalNodeListProperty())
         return;
 
@@ -166,6 +148,9 @@ NodeListProperty::iterator NodeListProperty::rotate(NodeListProperty::iterator f
                                                     NodeListProperty::iterator newFirst,
                                                     NodeListProperty::iterator last)
 {
+    if (!isValid())
+        return {};
+
     if (!internalNodeListProperty())
         return {};
 
@@ -182,6 +167,9 @@ NodeListProperty::iterator NodeListProperty::rotate(NodeListProperty::iterator f
 
 void NodeListProperty::reverse(NodeListProperty::iterator first, NodeListProperty::iterator last)
 {
+    if (!isValid())
+        return;
+
     if (!internalNodeListProperty())
         return;
 

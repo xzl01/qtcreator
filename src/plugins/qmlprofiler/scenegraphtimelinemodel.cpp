@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "scenegraphtimelinemodel.h"
-#include "qmlprofilermodelmanager.h"
 #include "qmlprofilereventtypes.h"
+#include "qmlprofilermodelmanager.h"
+#include "qmlprofilertr.h"
+#include "scenegraphtimelinemodel.h"
 
 #include <tracing/timelineformattime.h>
 
@@ -36,32 +15,32 @@ namespace QmlProfiler {
 namespace Internal {
 
 static const char *ThreadLabels[] = {
-    QT_TRANSLATE_NOOP("MainView", "GUI Thread"),
-    QT_TRANSLATE_NOOP("MainView", "Render Thread"),
-    QT_TRANSLATE_NOOP("MainView", "Render Thread Details")
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "GUI Thread"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Render Thread"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Render Thread Details")
 };
 
 static const char *StageLabels[] = {
-    QT_TRANSLATE_NOOP("MainView", "Polish"),
-    QT_TRANSLATE_NOOP("MainView", "Wait"),
-    QT_TRANSLATE_NOOP("MainView", "GUI Thread Sync"),
-    QT_TRANSLATE_NOOP("MainView", "Animations"),
-    QT_TRANSLATE_NOOP("MainView", "Render Thread Sync"),
-    QT_TRANSLATE_NOOP("MainView", "Render"),
-    QT_TRANSLATE_NOOP("MainView", "Swap"),
-    QT_TRANSLATE_NOOP("MainView", "Render Preprocess"),
-    QT_TRANSLATE_NOOP("MainView", "Render Update"),
-    QT_TRANSLATE_NOOP("MainView", "Render Bind"),
-    QT_TRANSLATE_NOOP("MainView", "Render Render"),
-    QT_TRANSLATE_NOOP("MainView", "Material Compile"),
-    QT_TRANSLATE_NOOP("MainView", "Glyph Render"),
-    QT_TRANSLATE_NOOP("MainView", "Glyph Upload"),
-    QT_TRANSLATE_NOOP("MainView", "Texture Bind"),
-    QT_TRANSLATE_NOOP("MainView", "Texture Convert"),
-    QT_TRANSLATE_NOOP("MainView", "Texture Swizzle"),
-    QT_TRANSLATE_NOOP("MainView", "Texture Upload"),
-    QT_TRANSLATE_NOOP("MainView", "Texture Mipmap"),
-    QT_TRANSLATE_NOOP("MainView", "Texture Delete")
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Polish"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Wait"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "GUI Thread Sync"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Animations"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Render Thread Sync"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Render"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Swap"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Render Preprocess"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Render Update"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Render Bind"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Render Render"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Material Compile"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Glyph Render"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Glyph Upload"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Texture Bind"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Texture Convert"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Texture Swizzle"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Texture Upload"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Texture Mipmap"),
+    QT_TRANSLATE_NOOP("QtC::QmlProfiler", "Texture Delete")
 };
 
 enum SceneGraphCategoryType {
@@ -77,7 +56,7 @@ Q_STATIC_ASSERT(sizeof(StageLabels) ==
 
 SceneGraphTimelineModel::SceneGraphTimelineModel(QmlProfilerModelManager *manager,
                                                  Timeline::TimelineModelAggregator *parent) :
-    QmlProfilerTimelineModel(manager, SceneGraphFrame, MaximumRangeType, ProfileSceneGraph, parent)
+    QmlProfilerTimelineModel(manager, SceneGraphFrame, UndefinedRangeType, ProfileSceneGraph, parent)
 {
 }
 
@@ -108,8 +87,8 @@ QVariantList SceneGraphTimelineModel::labels() const
     for (SceneGraphStage i = MinimumSceneGraphStage; i < MaximumSceneGraphStage;
          i = static_cast<SceneGraphStage>(i + 1)) {
         QVariantMap element;
-        element.insert(QLatin1String("displayName"), tr(threadLabel(i)));
-        element.insert(QLatin1String("description"), tr(StageLabels[i]));
+        element.insert(QLatin1String("displayName"), Tr::tr(threadLabel(i)));
+        element.insert(QLatin1String("description"), Tr::tr(StageLabels[i]));
         element.insert(QLatin1String("id"), i);
         result << element;
     }
@@ -122,13 +101,13 @@ QVariantMap SceneGraphTimelineModel::details(int index) const
     QVariantMap result;
     const SceneGraphStage stage = static_cast<SceneGraphStage>(selectionId(index));
 
-    result.insert(QLatin1String("displayName"), tr(threadLabel(stage)));
-    result.insert(tr("Stage"), tr(StageLabels[stage]));
-    result.insert(tr("Duration"), Timeline::formatTime(duration(index)));
+    result.insert(QLatin1String("displayName"), Tr::tr(threadLabel(stage)));
+    result.insert(Tr::tr("Stage"), Tr::tr(StageLabels[stage]));
+    result.insert(Tr::tr("Duration"), Timeline::formatTime(duration(index)));
 
     const int glyphCount = m_data[index].glyphCount;
     if (glyphCount >= 0)
-        result.insert(tr("Glyphs"), QString::number(glyphCount));
+        result.insert(Tr::tr("Glyphs"), QString::number(glyphCount));
 
     return result;
 }

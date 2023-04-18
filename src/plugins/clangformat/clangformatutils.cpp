@@ -1,38 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangformatutils.h"
 
 #include "clangformatconstants.h"
-#include "clangformatsettings.h"
 
 #include <coreplugin/icore.h>
+
 #include <cppeditor/cppcodestylesettings.h>
+
+#include <texteditor/icodestylepreferences.h>
 #include <texteditor/tabsettings.h>
+#include <texteditor/texteditorsettings.h>
+
+#include <projectexplorer/editorconfiguration.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/session.h>
+
 #include <utils/qtcassert.h>
 
 #include <QCryptographicHash>
@@ -54,8 +38,8 @@ clang::format::FormatStyle qtcStyle()
     style.AccessModifierOffset = -4;
     style.AlignAfterOpenBracket = FormatStyle::BAS_Align;
 #if LLVM_VERSION_MAJOR >= 15
-    style.AlignConsecutiveAssignments = {false};
-    style.AlignConsecutiveDeclarations = {false};
+    style.AlignConsecutiveAssignments = {false, false, false, false, false};
+    style.AlignConsecutiveDeclarations = {false, false, false, false, false};
 #elif LLVM_VERSION_MAJOR >= 12
     style.AlignConsecutiveAssignments = FormatStyle::ACS_None;
     style.AlignConsecutiveDeclarations = FormatStyle::ACS_None;
@@ -69,7 +53,11 @@ clang::format::FormatStyle qtcStyle()
 #else
     style.AlignOperands = true;
 #endif
+#if LLVM_VERSION_MAJOR >= 16
+    style.AlignTrailingComments = {FormatStyle::TCAS_Always, 0};
+#else
     style.AlignTrailingComments = true;
+#endif
     style.AllowAllParametersOfDeclarationOnNextLine = true;
 #if LLVM_VERSION_MAJOR >= 10
     style.AllowShortBlocksOnASingleLine = FormatStyle::SBS_Never;
@@ -116,7 +104,11 @@ clang::format::FormatStyle qtcStyle()
     style.ColumnLimit = 100;
     style.CommentPragmas = "^ IWYU pragma:";
     style.CompactNamespaces = false;
+#if LLVM_VERSION_MAJOR >= 15
+    style.PackConstructorInitializers = FormatStyle::PCIS_BinPack;
+#else
     style.ConstructorInitializerAllOnOneLineOrOnePerLine = false;
+#endif
     style.ConstructorInitializerIndentWidth = 4;
     style.ContinuationIndentWidth = 4;
     style.Cpp11BracedListStyle = true;
@@ -159,7 +151,11 @@ clang::format::FormatStyle qtcStyle()
 #else
     style.SortIncludes = true;
 #endif
+#if LLVM_VERSION_MAJOR >= 16
+    style.SortUsingDeclarations = FormatStyle::SUD_Lexicographic;
+#else
     style.SortUsingDeclarations = true;
+#endif
     style.SpaceAfterCStyleCast = true;
     style.SpaceAfterTemplateKeyword = false;
     style.SpaceBeforeAssignmentOperators = true;
@@ -184,14 +180,8 @@ clang::format::FormatStyle qtcStyle()
     return style;
 }
 
-static bool useGlobalOverriddenSettings()
+QString projectUniqueId(ProjectExplorer::Project *project)
 {
-    return ClangFormatSettings::instance().overrideDefaultFile();
-}
-
-QString currentProjectUniqueId()
-{
-    const Project *project = SessionManager::startupProject();
     if (!project)
         return QString();
 
@@ -200,163 +190,88 @@ QString currentProjectUniqueId()
                                  .toHex(0));
 }
 
-static bool useProjectOverriddenSettings()
+bool getProjectUseGlobalSettings(const ProjectExplorer::Project *project)
 {
-    const Project *project = SessionManager::startupProject();
-    return project ? project->namedSettings(Constants::OVERRIDE_FILE_ID).toBool() : false;
+    const QVariant projectUseGlobalSettings = project ? project->namedSettings(
+                                                  Constants::USE_GLOBAL_SETTINGS)
+                                                      : QVariant();
+
+    return projectUseGlobalSettings.isValid() ? projectUseGlobalSettings.toBool() : true;
 }
 
-static Utils::FilePath globalPath()
+bool getProjectOverriddenSettings(const ProjectExplorer::Project *project)
 {
-    return Core::ICore::userResourcePath();
+    const QVariant projectOverride = project ? project->namedSettings(Constants::OVERRIDE_FILE_ID)
+                                             : QVariant();
+
+    return projectOverride.isValid()
+               ? projectOverride.toBool()
+               : ClangFormatSettings::instance().overrideDefaultFile();
 }
 
-static Utils::FilePath projectPath()
+bool getCurrentOverriddenSettings(const Utils::FilePath &filePath)
 {
-    const Project *project = SessionManager::startupProject();
-    if (project)
-        return globalPath().pathAppended("clang-format/" + currentProjectUniqueId());
+    const ProjectExplorer::Project *project = ProjectExplorer::SessionManager::projectForFile(
+        filePath);
 
+    return getProjectUseGlobalSettings(project)
+               ? ClangFormatSettings::instance().overrideDefaultFile()
+               : getProjectOverriddenSettings(project);
+}
+
+ClangFormatSettings::Mode getProjectIndentationOrFormattingSettings(
+    const ProjectExplorer::Project *project)
+{
+    const QVariant projectIndentationOrFormatting = project
+                                                        ? project->namedSettings(Constants::MODE_ID)
+                                                        : QVariant();
+
+    return projectIndentationOrFormatting.isValid()
+               ? static_cast<ClangFormatSettings::Mode>(projectIndentationOrFormatting.toInt())
+               : ClangFormatSettings::instance().mode();
+}
+
+ClangFormatSettings::Mode getCurrentIndentationOrFormattingSettings(const Utils::FilePath &filePath)
+{
+    const ProjectExplorer::Project *project = ProjectExplorer::SessionManager::projectForFile(
+        filePath);
+
+    return getProjectUseGlobalSettings(project)
+               ? ClangFormatSettings::instance().mode()
+               : getProjectIndentationOrFormattingSettings(project);
+}
+
+Utils::FilePath findConfig(const Utils::FilePath &fileName)
+{
+    Utils::FilePath parentDirectory = fileName.parentDir();
+    while (parentDirectory.exists()) {
+        Utils::FilePath settingsFilePath = parentDirectory / Constants::SETTINGS_FILE_NAME;
+        if (settingsFilePath.exists())
+            return settingsFilePath;
+
+        Utils::FilePath settingsAltFilePath = parentDirectory / Constants::SETTINGS_FILE_ALT_NAME;
+        if (settingsAltFilePath.exists())
+            return settingsAltFilePath;
+
+        parentDirectory = parentDirectory.parentDir();
+    }
     return Utils::FilePath();
 }
 
-static QString findConfig(Utils::FilePath fileName)
+Utils::FilePath configForFile(const Utils::FilePath &fileName)
 {
-    QDir parentDir(fileName.parentDir().toString());
-    while (!parentDir.exists(Constants::SETTINGS_FILE_NAME)
-           && !parentDir.exists(Constants::SETTINGS_FILE_ALT_NAME)) {
-        if (!parentDir.cdUp())
-            return QString();
-    }
+    if (!getCurrentOverriddenSettings(fileName))
+        return findConfig(fileName);
 
-    if (parentDir.exists(Constants::SETTINGS_FILE_NAME))
-        return parentDir.filePath(Constants::SETTINGS_FILE_NAME);
-    return parentDir.filePath(Constants::SETTINGS_FILE_ALT_NAME);
-}
+    const ProjectExplorer::Project *projectForFile
+        = ProjectExplorer::SessionManager::projectForFile(fileName);
 
-static QString configForFile(Utils::FilePath fileName, bool checkForSettings)
-{
-    QDir overrideDir;
-    if (!checkForSettings || useProjectOverriddenSettings()) {
-        overrideDir.setPath(projectPath().toString());
-        if (!overrideDir.isEmpty() && overrideDir.exists(Constants::SETTINGS_FILE_NAME))
-            return overrideDir.filePath(Constants::SETTINGS_FILE_NAME);
-    }
+    const TextEditor::ICodeStylePreferences *preferences
+        = projectForFile
+              ? projectForFile->editorConfiguration()->codeStyle("Cpp")->currentPreferences()
+              : TextEditor::TextEditorSettings::codeStyle("Cpp")->currentPreferences();
 
-    if (!checkForSettings || useGlobalOverriddenSettings()) {
-        overrideDir.setPath(globalPath().toString());
-        if (!overrideDir.isEmpty() && overrideDir.exists(Constants::SETTINGS_FILE_NAME))
-            return overrideDir.filePath(Constants::SETTINGS_FILE_NAME);
-    }
-
-    return findConfig(fileName);
-}
-
-QString configForFile(Utils::FilePath fileName)
-{
-    return configForFile(fileName, true);
-}
-
-Utils::FilePath assumedPathForConfig(const QString &configFile)
-{
-    Utils::FilePath fileName = Utils::FilePath::fromString(configFile);
-    return fileName.parentDir().pathAppended("test.cpp");
-}
-
-static clang::format::FormatStyle constructStyle(const QByteArray &baseStyle = QByteArray())
-{
-    if (!baseStyle.isEmpty()) {
-        // Try to get the style for this base style.
-        Expected<FormatStyle> style = getStyle(baseStyle.toStdString(),
-                                               "dummy.cpp",
-                                               baseStyle.toStdString());
-        if (style)
-            return *style;
-
-        handleAllErrors(style.takeError(), [](const ErrorInfoBase &) {
-            // do nothing
-        });
-        // Fallthrough to the default style.
-    }
-
-    return qtcStyle();
-}
-
-void createStyleFileIfNeeded(bool isGlobal)
-{
-    const FilePath path = isGlobal ? globalPath() : projectPath();
-    const FilePath configFile = path / Constants::SETTINGS_FILE_NAME;
-
-    if (configFile.exists())
-        return;
-
-    QDir().mkpath(path.toString());
-    if (!isGlobal) {
-        const Project *project = SessionManager::startupProject();
-        FilePath possibleProjectConfig = project->rootProjectDirectory()
-                / Constants::SETTINGS_FILE_NAME;
-        if (possibleProjectConfig.exists()) {
-            // Just copy th .clang-format if current project has one.
-            possibleProjectConfig.copyFile(configFile);
-            return;
-        }
-    }
-
-    std::fstream newStyleFile(configFile.toString().toStdString(), std::fstream::out);
-    if (newStyleFile.is_open()) {
-        newStyleFile << clang::format::configurationAsText(constructStyle());
-        newStyleFile.close();
-    }
-}
-
-static QByteArray configBaseStyleName(const QString &configFile)
-{
-    if (configFile.isEmpty())
-        return QByteArray();
-
-    QFile config(configFile);
-    if (!config.open(QIODevice::ReadOnly))
-        return QByteArray();
-
-    const QByteArray content = config.readAll();
-    const char basedOnStyle[] = "BasedOnStyle:";
-    int basedOnStyleIndex = content.indexOf(basedOnStyle);
-    if (basedOnStyleIndex < 0)
-        return QByteArray();
-
-    basedOnStyleIndex += sizeof(basedOnStyle) - 1;
-    const int endOfLineIndex = content.indexOf('\n', basedOnStyleIndex);
-    return content
-        .mid(basedOnStyleIndex, endOfLineIndex < 0 ? -1 : endOfLineIndex - basedOnStyleIndex)
-        .trimmed();
-}
-
-static clang::format::FormatStyle styleForFile(Utils::FilePath fileName, bool checkForSettings)
-{
-    QString configFile = configForFile(fileName, checkForSettings);
-    if (configFile.isEmpty()) {
-        // If no configuration is found create a global one (if it does not yet exist) and use it.
-        createStyleFileIfNeeded(true);
-        configFile = globalPath().pathAppended(Constants::SETTINGS_FILE_NAME).toString();
-    }
-
-    fileName = assumedPathForConfig(configFile);
-    Expected<FormatStyle> style = format::getStyle("file",
-                                                   fileName.toString().toStdString(),
-                                                   "none");
-    if (style)
-        return *style;
-
-    handleAllErrors(style.takeError(), [](const ErrorInfoBase &) {
-        // do nothing
-    });
-
-    return constructStyle(configBaseStyleName(configFile));
-}
-
-clang::format::FormatStyle styleForFile(Utils::FilePath fileName)
-{
-    return styleForFile(fileName, true);
+    return filePathToCurrentSettings(preferences);
 }
 
 void addQtcStatementMacros(clang::format::FormatStyle &style)
@@ -371,56 +286,10 @@ void addQtcStatementMacros(clang::format::FormatStyle &style)
     }
 }
 
-static std::string readFile(const QString &path)
+Utils::FilePath filePathToCurrentSettings(const TextEditor::ICodeStylePreferences *codeStyle)
 {
-    const std::string defaultStyle = clang::format::configurationAsText(qtcStyle());
-
-    QFile file(path);
-    if (!file.open(QFile::ReadOnly))
-        return defaultStyle;
-
-    const std::string content = file.readAll().toStdString();
-    file.close();
-
-    clang::format::FormatStyle style;
-    style.Language = clang::format::FormatStyle::LK_Cpp;
-    const std::error_code error = clang::format::parseConfiguration(content, &style);
-    QTC_ASSERT(error.value() == static_cast<int>(ParseError::Success), return defaultStyle);
-
-    addQtcStatementMacros(style);
-    std::string settings = clang::format::configurationAsText(style);
-
-    // Needed workaround because parseConfiguration remove BasedOnStyle field
-    // ToDo: standardize this behavior for future
-    const size_t index = content.find("BasedOnStyle");
-    if (index != std::string::npos) {
-        const size_t size = content.find("\n", index) - index;
-        const size_t insert_index = settings.find("\n");
-        settings.insert(insert_index, "\n" + content.substr(index, size));
-    }
-
-    return settings;
-}
-
-std::string currentProjectConfigText()
-{
-    const QString configPath = projectPath().pathAppended(Constants::SETTINGS_FILE_NAME).toString();
-    return readFile(configPath);
-}
-
-std::string currentGlobalConfigText()
-{
-    const QString configPath = globalPath().pathAppended(Constants::SETTINGS_FILE_NAME).toString();
-    return readFile(configPath);
-}
-
-clang::format::FormatStyle currentProjectStyle()
-{
-    return styleForFile(projectPath().pathAppended(Constants::SAMPLE_FILE_NAME), false);
-}
-
-clang::format::FormatStyle currentGlobalStyle()
-{
-    return styleForFile(globalPath().pathAppended(Constants::SAMPLE_FILE_NAME), false);
+    return Core::ICore::userResourcePath() / "clang-format/"
+           / Utils::FileUtils::fileSystemFriendlyName(codeStyle->displayName())
+           / QLatin1String(Constants::SETTINGS_FILE_NAME);
 }
 } // namespace ClangFormat

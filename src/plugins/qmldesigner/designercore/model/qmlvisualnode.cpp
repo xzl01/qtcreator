@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlvisualnode.h"
 #include <metainfo.h>
@@ -31,13 +9,13 @@
 #include "variantproperty.h"
 #include "bindingproperty.h"
 #include "qmlanchors.h"
-#include "invalidmodelnodeexception.h"
 #include "itemlibraryinfo.h"
+
+#include <externaldependenciesinterface.h>
 
 #include "plaintexteditmodifier.h"
 #include "rewriterview.h"
 #include "modelmerger.h"
-#include "rewritingexception.h"
 
 #include <utils/qtcassert.h>
 
@@ -45,6 +23,7 @@
 #include <QPlainTextEdit>
 #include <QFileInfo>
 #include <QDir>
+#include <QRandomGenerator>
 
 namespace QmlDesigner {
 
@@ -52,13 +31,13 @@ static char imagePlaceHolder[] = "qrc:/qtquickplugin/images/template_image.png";
 
 bool QmlVisualNode::isItemOr3DNode(const ModelNode &modelNode)
 {
-    if (modelNode.metaInfo().isSubclassOf("QtQuick.Item"))
+    auto metaInfo = modelNode.metaInfo();
+    auto model = modelNode.model();
+
+    if (metaInfo.isBasedOn(model->qtQuickItemMetaInfo(), model->qtQuick3DNodeMetaInfo()))
         return true;
 
-    if (modelNode.metaInfo().isSubclassOf("QtQuick3D.Node"))
-        return true;
-
-    if (modelNode.metaInfo().isGraphicalItem() && modelNode.isRootNode())
+    if (metaInfo.isGraphicalItem() && modelNode.isRootNode())
         return true;
 
     return false;
@@ -71,11 +50,15 @@ bool QmlVisualNode::isValid() const
 
 bool QmlVisualNode::isValidQmlVisualNode(const ModelNode &modelNode)
 {
-    return isValidQmlObjectNode(modelNode)
-            && modelNode.metaInfo().isValid()
-           && (isItemOr3DNode(modelNode) || modelNode.metaInfo().isSubclassOf("FlowView.FlowTransition")
-               || modelNode.metaInfo().isSubclassOf("FlowView.FlowDecision")
-               || modelNode.metaInfo().isSubclassOf("FlowView.FlowWildcard"));
+    if (!isValidQmlObjectNode(modelNode))
+        return false;
+
+    auto metaInfo = modelNode.metaInfo();
+    auto model = modelNode.model();
+
+    return isItemOr3DNode(modelNode) || metaInfo.isBasedOn(model->flowViewFlowTransitionMetaInfo(),
+                              model->flowViewFlowDecisionMetaInfo(),
+                              model->flowViewFlowWildcardMetaInfo());
 }
 
 bool QmlVisualNode::isRootNode() const
@@ -162,16 +145,61 @@ bool QmlVisualNode::hasAnySubModelNodes() const
 void QmlVisualNode::setVisibilityOverride(bool visible)
 {
     if (visible)
-        modelNode().setAuxiliaryData("invisible", true);
+        modelNode().setAuxiliaryData(invisibleProperty, true);
     else
-        modelNode().removeAuxiliaryData("invisible");
+        modelNode().removeAuxiliaryData(invisibleProperty);
 }
 
 bool QmlVisualNode::visibilityOverride() const
 {
     if (isValid())
-        return modelNode().auxiliaryData("invisible").toBool();
+        return modelNode().auxiliaryDataWithDefault(invisibleProperty).toBool();
     return false;
+}
+
+void QmlVisualNode::scatter(const ModelNode &targetNode, const std::optional<int> &offset)
+{
+    if (!isValid())
+        return;
+
+    if (targetNode.metaInfo().isValid() && targetNode.metaInfo().isLayoutable())
+        return;
+
+    bool scatter = false;
+    const QList<ModelNode> targetDirectNodes = targetNode.directSubModelNodes();
+    for (const ModelNode &childNode : targetDirectNodes) {
+        if (childNode == modelNode())
+            continue;
+
+        if (isValidQmlVisualNode(childNode)) {
+            Position childPos = QmlVisualNode(childNode).position();
+            if (qFuzzyCompare(position().distanceToPoint(childPos), 0.f)) {
+                scatter = true;
+                break;
+            }
+        }
+    }
+
+    if (!scatter)
+        return;
+
+    if (offset.has_value()) { // offset
+        double offsetValue = offset.value();
+        this->translate(QVector3D(offsetValue, offsetValue, offsetValue));
+    } else { // scatter in range
+        const double scatterRange = 20.;
+        double x = QRandomGenerator::global()->generateDouble() * scatterRange - scatterRange / 2;
+        double y = QRandomGenerator::global()->generateDouble() * scatterRange - scatterRange / 2;
+        double z = (modelNode().metaInfo().isQtQuick3DNode())
+                ? QRandomGenerator::global()->generateDouble() * scatterRange - scatterRange / 2
+                : 0.;
+        this->translate(QVector3D(x, y, z));
+    }
+}
+
+void QmlVisualNode::translate(const QVector3D &vector)
+{
+    setPosition(position() + vector);
 }
 
 void QmlVisualNode::setDoubleProperty(const PropertyName &name, double value)
@@ -179,24 +207,36 @@ void QmlVisualNode::setDoubleProperty(const PropertyName &name, double value)
     modelNode().variantProperty(name).setValue(value);
 }
 
-void QmlVisualNode::initializePosition(const QmlVisualNode::Position &position)
+void QmlVisualNode::setPosition(const QmlVisualNode::Position &position)
 {
-    if (!position.m_2dPos.isNull()) {
-        setDoubleProperty("x", qRound(position.m_2dPos.x()));
-        setDoubleProperty("y", qRound(position.m_2dPos.y()));
-    } else if (!position.m_3dPos.isNull()) {
-        setDoubleProperty("x", position.m_3dPos.x());
-        setDoubleProperty("y", position.m_3dPos.y());
-        setDoubleProperty("z", position.m_3dPos.z());
+    if (!modelNode().isValid())
+        return;
+
+    if (!qFuzzyIsNull(position.x()) || modelNode().hasProperty("x"))
+        setDoubleProperty("x", position.x());
+    if (!qFuzzyIsNull(position.y()) || modelNode().hasProperty("y"))
+        setDoubleProperty("y", position.y());
+
+    if (position.is3D()
+            && (!qFuzzyIsNull(position.z()) || modelNode().hasProperty("z"))
+            && modelNode().metaInfo().isQtQuick3DNode()) {
+        setDoubleProperty("z", position.z());
     }
 }
 
-QmlModelStateGroup QmlVisualNode::states() const
+QmlVisualNode::Position QmlVisualNode::position() const
 {
-    if (isValid())
-        return QmlModelStateGroup(modelNode());
-    else
-        return QmlModelStateGroup();
+    if (!isValid())
+        return {};
+
+    double x = modelNode().variantProperty("x").value().toDouble();
+    double y = modelNode().variantProperty("y").value().toDouble();
+
+    if (modelNode().metaInfo().isQtQuick3DModel()) {
+        double z = modelNode().variantProperty("z").value().toDouble();
+        return Position(QVector3D(x,y,z));
+    }
+    return Position(QPointF(x,y));
 }
 
 QmlObjectNode QmlVisualNode::createQmlObjectNode(AbstractView *view,
@@ -223,7 +263,7 @@ QmlObjectNode QmlVisualNode::createQmlObjectNode(AbstractView *view,
     if (!forceNonDefaultProperty.isEmpty()) {
         const NodeMetaInfo metaInfo = parentQmlItemNode.modelNode().metaInfo();
         if (metaInfo.hasProperty(forceNonDefaultProperty)) {
-            if (!metaInfo.propertyIsListProperty(forceNonDefaultProperty)
+            if (!metaInfo.property(forceNonDefaultProperty).isListProperty()
                 && parentQmlItemNode.modelNode().hasNodeProperty(forceNonDefaultProperty)) {
                 parentQmlItemNode.removeProperty(forceNonDefaultProperty);
             }
@@ -239,14 +279,15 @@ static QmlObjectNode createQmlObjectNodeFromSource(AbstractView *view,
                                                    const QString &source,
                                                    const QmlVisualNode::Position &position)
 {
-    QScopedPointer<Model> inputModel(Model::create("QtQuick.Item", 1, 0, view->model()));
+    auto inputModel = Model::create("QtQuick.Item", 1, 0, view->model());
     inputModel->setFileUrl(view->model()->fileUrl());
     QPlainTextEdit textEdit;
 
     textEdit.setPlainText(source);
     NotIndentingTextEditModifier modifier(&textEdit);
 
-    QScopedPointer<RewriterView> rewriterView(new RewriterView(RewriterView::Amend, nullptr));
+    QScopedPointer<RewriterView> rewriterView(
+        new RewriterView(view->externalDependencies(), RewriterView::Amend));
     rewriterView->setCheckSemanticErrors(false);
     rewriterView->setTextModifier(&modifier);
     rewriterView->setAllowComponentRoot(true);
@@ -255,7 +296,7 @@ static QmlObjectNode createQmlObjectNodeFromSource(AbstractView *view,
     if (rewriterView->errors().isEmpty() && rewriterView->rootModelNode().isValid()) {
         ModelNode rootModelNode = rewriterView->rootModelNode();
         inputModel->detachView(rewriterView.data());
-        QmlVisualNode(rootModelNode).initializePosition(position);
+        QmlVisualNode(rootModelNode).setPosition(position);
         ModelMerger merger(view);
         return merger.insertModel(rootModelNode);
     }
@@ -263,12 +304,12 @@ static QmlObjectNode createQmlObjectNodeFromSource(AbstractView *view,
     return {};
 }
 
-static QString imagePlaceHolderPath(Model *model)
+static QString imagePlaceHolderPath(AbstractView *view)
 {
-    QFileInfo info(model->projectUrl().toLocalFile() +  "/images/place_holder.png");
+    QFileInfo info(view->externalDependencies().projectUrl().toLocalFile() + "/images/place_holder.png");
 
     if (info.exists()) {
-        const QDir dir(QFileInfo(model->fileUrl().toLocalFile()).absoluteDir());
+        const QDir dir(QFileInfo(view->model()->fileUrl().toLocalFile()).absoluteDir());
         return dir.relativeFilePath(info.filePath());
     }
 
@@ -296,19 +337,23 @@ QmlObjectNode QmlVisualNode::createQmlObjectNode(AbstractView *view,
         QList<PropertyBindingEntry> propertyBindingList;
         QList<PropertyBindingEntry> propertyEnumList;
         if (itemLibraryEntry.qmlSource().isEmpty()) {
-            QList<QPair<PropertyName, QVariant> > propertyPairList = position.propertyPairList();
+            QList<QPair<PropertyName, QVariant> > propertyPairList;
 
             for (const auto &property : itemLibraryEntry.properties()) {
                 if (property.type() == "binding") {
-                    propertyBindingList.append(PropertyBindingEntry(property.name(), property.value().toString()));
+                    const QString value = QmlObjectNode::convertToCorrectTranslatableFunction(
+                        property.value().toString(), view->externalDependencies().designerSettings());
+                    propertyBindingList.append(PropertyBindingEntry(property.name(), value));
                 } else if (property.type() == "enum") {
                     propertyEnumList.append(PropertyBindingEntry(property.name(), property.value().toString()));
                 } else if (property.value().toString() == QString::fromLatin1(imagePlaceHolder)) {
-                    propertyPairList.append({property.name(), imagePlaceHolderPath(view->model()) });
+                    propertyPairList.append({property.name(), imagePlaceHolderPath(view)});
                 } else {
                     propertyPairList.append({property.name(), property.value()});
                 }
             }
+            // Add position last so it'll override any default position specified in the entry
+            propertyPairList.append(position.propertyPairList());
 
             ModelNode::NodeSourceType nodeSourceType = ModelNode::NodeWithoutSource;
             if (itemLibraryEntry.typeName() == "QtQml.Component")
@@ -324,7 +369,7 @@ QmlObjectNode QmlVisualNode::createQmlObjectNode(AbstractView *view,
             const ModelNode parentNode = parentProperty.parentModelNode();
             const NodeMetaInfo metaInfo = parentNode.metaInfo();
 
-            if (metaInfo.isValid() && !metaInfo.propertyIsListProperty(propertyName)
+            if (metaInfo.isValid() && !metaInfo.property(propertyName).isListProperty()
                 && parentProperty.isNodeProperty()) {
                 parentNode.removeProperty(propertyName);
             }
@@ -400,23 +445,17 @@ NodeListProperty QmlVisualNode::findSceneNodeProperty(AbstractView *view, qint32
 
 bool QmlVisualNode::isFlowTransition(const ModelNode &node)
 {
-    return node.isValid()
-            && node.metaInfo().isValid()
-            && node.metaInfo().isSubclassOf("FlowView.FlowTransition");
+    return node.isValid() && node.metaInfo().isFlowViewFlowTransition();
 }
 
 bool QmlVisualNode::isFlowDecision(const ModelNode &node)
 {
-    return node.isValid()
-            && node.metaInfo().isValid()
-            && node.metaInfo().isSubclassOf("FlowView.FlowDecision");
+    return node.isValid() && node.metaInfo().isFlowViewFlowDecision();
 }
 
 bool QmlVisualNode::isFlowWildcard(const ModelNode &node)
 {
-    return node.isValid()
-            && node.metaInfo().isValid()
-            && node.metaInfo().isSubclassOf("FlowView.FlowWildcard");
+    return node.isValid() && node.metaInfo().isFlowViewFlowWildcard();
 }
 
 bool QmlVisualNode::isFlowTransition() const
@@ -461,7 +500,7 @@ QStringList QmlModelStateGroup::names() const
     QStringList returnList;
 
     if (!modelNode().isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     if (modelNode().property("states").isNodeListProperty()) {
         for (const ModelNode &node : modelNode().nodeListProperty("states").toModelNodeList()) {
@@ -477,7 +516,7 @@ QList<QmlModelState> QmlModelStateGroup::allStates() const
     QList<QmlModelState> returnList;
 
     if (!modelNode().isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     if (modelNode().property("states").isNodeListProperty()) {
         for (const ModelNode &node : modelNode().nodeListProperty("states").toModelNodeList()) {
@@ -491,7 +530,7 @@ QList<QmlModelState> QmlModelStateGroup::allStates() const
 QmlModelState QmlModelStateGroup::addState(const QString &name)
 {
     if (!modelNode().isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     ModelNode newState = QmlModelState::createQmlState(
                 modelNode().view(), {{PropertyName("name"), QVariant(name)}});
@@ -503,7 +542,7 @@ QmlModelState QmlModelStateGroup::addState(const QString &name)
 void QmlModelStateGroup::removeState(const QString &name)
 {
     if (!modelNode().isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     if (state(name).isValid())
         state(name).modelNode().destroy();
@@ -512,7 +551,7 @@ void QmlModelStateGroup::removeState(const QString &name)
 QmlModelState QmlModelStateGroup::state(const QString &name) const
 {
     if (!modelNode().isValid())
-        throw new InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     if (modelNode().property("states").isNodeListProperty()) {
         for (const ModelNode &node : modelNode().nodeListProperty("states").toModelNodeList()) {
@@ -523,17 +562,27 @@ QmlModelState QmlModelStateGroup::state(const QString &name) const
     return QmlModelState();
 }
 
+bool QmlVisualNode::Position::is3D() const
+{
+    return m_is3D;
+}
+
 QList<QPair<PropertyName, QVariant> > QmlVisualNode::Position::propertyPairList() const
 {
     QList<QPair<PropertyName, QVariant> > propertyPairList;
 
-    if (!m_2dPos.isNull()) {
-        propertyPairList.append({"x", QVariant(qRound(m_2dPos.x()))});
-        propertyPairList.append({"y", QVariant(qRound(m_2dPos.y()))});
-    } else if (!m_3dPos.isNull()) {
-        propertyPairList.append({"x", QVariant(m_3dPos.x())});
-        propertyPairList.append({"y", QVariant(m_3dPos.y())});
-        propertyPairList.append({"z", QVariant(m_3dPos.z())});
+    if (m_is3D) {
+        if (!qFuzzyIsNull(x()))
+            propertyPairList.append({"x", QVariant{x()}});
+        if (!qFuzzyIsNull(y()))
+            propertyPairList.append({"y", QVariant{y()}});
+        if (!qFuzzyIsNull(z()))
+            propertyPairList.append({"z", QVariant{z()}});
+    } else {
+        if (const int intX = qRound(x()))
+            propertyPairList.append({"x", QVariant(intX)});
+        if (const int intY = qRound(y()))
+            propertyPairList.append({"y", QVariant(intY)});
     }
 
     return propertyPairList;

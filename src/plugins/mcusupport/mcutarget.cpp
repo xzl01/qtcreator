@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "mcutarget.h"
-#include "mcupackage.h"
 #include "mcukitmanager.h"
+#include "mcupackage.h"
 #include "mcusupportplugin.h"
+#include "mcusupporttr.h"
+#include "mcutarget.h"
 
 #include <utils/algorithm.h>
 
@@ -37,25 +16,32 @@ namespace McuSupport::Internal {
 McuTarget::McuTarget(const QVersionNumber &qulVersion,
                      const Platform &platform,
                      OS os,
-                     const QVector<McuAbstractPackage *> &packages,
-                     const McuToolChainPackage *toolChainPackage,
+                     const Packages &packages,
+                     const McuToolChainPackagePtr &toolChainPackage,
+                     const McuPackagePtr &toolChainFilePackage,
                      int colorDepth)
     : m_qulVersion(qulVersion)
     , m_platform(platform)
     , m_os(os)
     , m_packages(packages)
     , m_toolChainPackage(toolChainPackage)
+    , m_toolChainFilePackage(toolChainFilePackage)
     , m_colorDepth(colorDepth)
 {}
 
-const QVector<McuAbstractPackage *> &McuTarget::packages() const
+Packages McuTarget::packages() const
 {
     return m_packages;
 }
 
-const McuToolChainPackage *McuTarget::toolChainPackage() const
+McuToolChainPackagePtr McuTarget::toolChainPackage() const
 {
     return m_toolChainPackage;
+}
+
+McuPackagePtr McuTarget::toolChainFilePackage() const
+{
+    return m_toolChainFilePackage;
 }
 
 McuTarget::OS McuTarget::os() const
@@ -63,17 +49,37 @@ McuTarget::OS McuTarget::os() const
     return m_os;
 }
 
-const McuTarget::Platform &McuTarget::platform() const
+McuTarget::Platform McuTarget::platform() const
 {
     return m_platform;
 }
 
 bool McuTarget::isValid() const
 {
-    return Utils::allOf(packages(), [](McuAbstractPackage *package) {
+    return Utils::allOf(packages(), [](const McuPackagePtr &package) {
         package->updateStatus();
         return package->isValidStatus();
     });
+}
+
+QString McuTarget::desktopCompilerId() const
+{
+    // MinGW shares CMake configuration with GCC
+    // and it is distinguished from MSVC by CMake compiler ID.
+    // This provides the compiler ID to set up a different Qul configuration
+    // for MSVC and MinGW.
+    if (m_toolChainPackage) {
+        switch (m_toolChainPackage->toolchainType()) {
+        case McuToolChainPackage::ToolChainType::MSVC:
+            return QLatin1String("msvc");
+        case McuToolChainPackage::ToolChainType::GCC:
+        case McuToolChainPackage::ToolChainType::MinGW:
+            return QLatin1String("gnu");
+        default:
+            return QLatin1String("unsupported");
+        }
+    }
+    return QLatin1String("invalid");
 }
 
 void McuTarget::printPackageProblems() const
@@ -81,21 +87,21 @@ void McuTarget::printPackageProblems() const
     for (auto package : packages()) {
         package->updateStatus();
         if (!package->isValidStatus())
-            printMessage(tr("Error creating kit for target %1, package %2: %3")
-                             .arg(McuKitManager::kitName(this),
+            printMessage(Tr::tr("Error creating kit for target %1, package %2: %3")
+                             .arg(McuKitManager::generateKitNameFromTarget(this),
                                   package->label(),
                                   package->statusText()),
                          true);
         if (package->status() == McuAbstractPackage::Status::ValidPackageMismatchedVersion)
-            printMessage(tr("Warning creating kit for target %1, package %2: %3")
-                             .arg(McuKitManager::kitName(this),
+            printMessage(Tr::tr("Warning creating kit for target %1, package %2: %3")
+                             .arg(McuKitManager::generateKitNameFromTarget(this),
                                   package->label(),
                                   package->statusText()),
                          false);
     }
 }
 
-const QVersionNumber &McuTarget::qulVersion() const
+QVersionNumber McuTarget::qulVersion() const
 {
     return m_qulVersion;
 }

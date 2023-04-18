@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "msvcparser.h"
 #include "projectexplorerconstants.h"
@@ -41,7 +19,7 @@ static QPair<FilePath, int> parseFileName(const QString &input)
 {
     QString fileName = input;
     if (fileName.startsWith("LINK") || fileName.startsWith("cl"))
-        return qMakePair(FilePath(), -1);
+        return {{}, -1};
 
     // Extract linenumber (if it is there):
     int linenumber = -1;
@@ -61,7 +39,7 @@ static QPair<FilePath, int> parseFileName(const QString &input)
         }
     }
     const QString normalized = FileUtils::normalizedPathName(fileName);
-    return qMakePair(FilePath::fromUserInput(normalized), linenumber);
+    return {FilePath::fromUserInput(normalized), linenumber};
 }
 
 using namespace ProjectExplorer;
@@ -69,16 +47,21 @@ using namespace ProjectExplorer;
 // nmake/jom messages.
 static Task handleNmakeJomMessage(const QString &line)
 {
+    Task::TaskType type = Task::Unknown;
     int matchLength = 0;
-    if (line.startsWith("Error:"))
+    if (line.startsWith("Error:")) {
         matchLength = 6;
-    else if (line.startsWith("Warning:"))
+        type = Task::Error;
+    } else if (line.startsWith("Warning:")) {
         matchLength = 8;
-
-    if (!matchLength)
+        type = Task::Warning;
+    } else {
         return {};
+    }
 
-    return CompileTask(Task::Error, line.mid(matchLength).trimmed());
+    CompileTask task(type, line.mid(matchLength).trimmed());
+    task.details << line;
+    return std::move(task);
 }
 
 static Task::TaskType taskType(const QString &category)
@@ -139,6 +122,7 @@ OutputLineParser::Result MsvcParser::handleLine(const QString &line, OutputForma
             LinkSpecs linkSpecs;
             addLinkSpecForAbsoluteFilePath(linkSpecs, filePath, lineNo, match, 2);
             m_lastTask = CompileTask(Task::Unknown, description, filePath, lineNo);
+            m_lastTask.details << line;
             m_lines = 1;
             return {Status::InProgress, linkSpecs};
         }
@@ -165,26 +149,26 @@ MsvcParser::Result MsvcParser::processCompileLine(const QString &line)
     if (match.hasMatch()) {
         QPair<FilePath, int> position = parseFileName(match.captured(1));
         const FilePath filePath = absoluteFilePath(position.first);
-        LinkSpecs linkSpecs;
-        addLinkSpecForAbsoluteFilePath(linkSpecs, filePath, position.second, match, 1);
+        LinkSpecs lineLinkSpecs;
+        addLinkSpecForAbsoluteFilePath(lineLinkSpecs, filePath, position.second, match, 1);
+        LinkSpecs detailsLinkSpecs = lineLinkSpecs;
         if (!m_lastTask.isNull() && line.contains("note: ")) {
             const int offset = std::accumulate(m_lastTask.details.cbegin(),
                     m_lastTask.details.cend(), 0,
                     [](int total, const QString &line) { return total + line.length() + 1;});
-            for (LinkSpec &ls : linkSpecs)
+            for (LinkSpec &ls : detailsLinkSpecs)
                 ls.startPos += offset;
-            m_linkSpecs << linkSpecs;
-            m_lastTask.details.append(line);
             ++m_lines;
         } else {
             flush();
             m_lastTask = CompileTask(taskType(match.captured(2)),
                                      match.captured(3) + match.captured(4).trimmed(), // description
                                      filePath, position.second);
-            m_linkSpecs << linkSpecs;
             m_lines = 1;
         }
-        return {Status::InProgress, linkSpecs};
+        m_linkSpecs << detailsLinkSpecs;
+        m_lastTask.details.append(line);
+        return {Status::InProgress, lineLinkSpecs};
     }
 
     flush();
@@ -196,6 +180,8 @@ void MsvcParser::flush()
     if (m_lastTask.isNull())
         return;
 
+    if (m_lastTask.details.count() == 1)
+        m_lastTask.details.clear();
     setDetailsFormat(m_lastTask, m_linkSpecs);
     Task t = m_lastTask;
     m_lastTask.clear();
@@ -476,6 +462,7 @@ void ProjectExplorerPlugin::testMsvcOutputParsers_data()
             << (Tasks()
                 << compileTask(Task::Error,
                                "C2440: 'initializing' : cannot convert from 'int' to 'std::_Tree<_Traits>::iterator'\n"
+                               "..\\untitled\\main.cpp(19) : error C2440: 'initializing' : cannot convert from 'int' to 'std::_Tree<_Traits>::iterator'\n"
                                "        with\n"
                                "        [\n"
                                "            _Traits=std::_Tmap_traits<int,double,std::less<int>,std::allocator<std::pair<const int,double>>,false>\n"
@@ -484,7 +471,7 @@ void ProjectExplorerPlugin::testMsvcOutputParsers_data()
                                FilePath::fromUserInput("..\\untitled\\main.cpp"),
                                19,
                                QVector<QTextLayout::FormatRange>()
-                                   << formatRange(85, 247)))
+                                   << formatRange(85, 365)))
             << "";
 
     QTest::newRow("Linker error 1")
@@ -545,6 +532,7 @@ void ProjectExplorerPlugin::testMsvcOutputParsers_data()
                         FilePath::fromUserInput("c:\\Program Files (x86)\\Microsoft Visual Studio 10.0\\VC\\INCLUDE\\xutility"), 2212)
                 << compileTask(Task::Unknown,
                         "see reference to function template instantiation '_OutIt std::copy<const unsigned char*,unsigned short*>(_InIt,_InIt,_OutIt)' being compiled\n"
+                        "        symbolgroupvalue.cpp(2314) : see reference to function template instantiation '_OutIt std::copy<const unsigned char*,unsigned short*>(_InIt,_InIt,_OutIt)' being compiled\n"
                         "        with\n"
                         "        [\n"
                         "            _OutIt=unsigned short *,\n"
@@ -553,7 +541,7 @@ void ProjectExplorerPlugin::testMsvcOutputParsers_data()
                         FilePath::fromUserInput("symbolgroupvalue.cpp"),
                         2314,
                         QVector<QTextLayout::FormatRange>()
-                            << formatRange(141, 109)))
+                            << formatRange(141, 287)))
             << "";
 
     QTest::newRow("Ambiguous symbol")
@@ -588,11 +576,12 @@ void ProjectExplorerPlugin::testMsvcOutputParsers_data()
             << "" << ""
             << Tasks{compileTask(Task::Error,
                                "C2733: 'func': second C linkage of overloaded function not allowed\n"
+                               "main.cpp(7): error C2733: 'func': second C linkage of overloaded function not allowed\n"
                                "main.cpp(6): note: see declaration of 'func'",
                                FilePath::fromUserInput("main.cpp"),
                                7,
                                QVector<QTextLayout::FormatRange>()
-                                   << formatRange(67, 44))}
+                                   << formatRange(67, 130))}
             << "";
 
     QTest::newRow("cyrillic warning") // QTCREATORBUG-20297

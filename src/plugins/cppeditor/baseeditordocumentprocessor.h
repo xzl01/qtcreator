@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -32,6 +10,7 @@
 #include "cpptoolsreuse.h"
 
 #include <coreplugin/helpitem.h>
+
 #include <texteditor/codeassist/assistinterface.h>
 #include <texteditor/quickfix.h>
 #include <texteditor/texteditor.h>
@@ -40,7 +19,6 @@
 #include <cplusplus/CppDocument.h>
 
 #include <QTextEdit>
-
 #include <QVariant>
 
 #include <functional>
@@ -50,7 +28,8 @@ namespace TextEditor { class TextDocument; }
 namespace CppEditor {
 
 // For clang code model only, move?
-struct CPPEDITOR_EXPORT ToolTipInfo {
+struct CPPEDITOR_EXPORT ToolTipInfo
+{
     QString text;
     QString briefComment;
 
@@ -67,7 +46,7 @@ class CPPEDITOR_EXPORT BaseEditorDocumentProcessor : public QObject
     Q_OBJECT
 
 public:
-    BaseEditorDocumentProcessor(QTextDocument *textDocument, const QString &filePath);
+    BaseEditorDocumentProcessor(QTextDocument *textDocument, const Utils::FilePath &filePath);
     ~BaseEditorDocumentProcessor() override;
 
     void run(bool projectsUpdated = false);
@@ -83,19 +62,11 @@ public:
 
     virtual void invalidateDiagnostics();
 
-    virtual void editorDocumentTimerRestarted();
-
     virtual void setParserConfig(const BaseEditorDocumentParser::Configuration &config);
 
     virtual QFuture<CursorInfo> cursorInfo(const CursorInfoParams &params) = 0;
-    virtual QFuture<CursorInfo> requestLocalReferences(const QTextCursor &cursor) = 0;
-    virtual QFuture<SymbolInfo> requestFollowSymbol(int line, int column) = 0;
-    virtual QFuture<ToolTipInfo> toolTipInfo(const QByteArray &codecName, int line, int column);
 
-    QString filePath() const { return m_filePath; }
-
-public:
-    using HeaderErrorDiagnosticWidgetCreator = std::function<QWidget*()>;
+    const Utils::FilePath &filePath() const { return m_filePath; }
 
 signals:
     // Signal interface to implement
@@ -103,7 +74,6 @@ signals:
 
     void codeWarningsUpdated(unsigned revision,
                              const QList<QTextEdit::ExtraSelection> &selections,
-                             const HeaderErrorDiagnosticWidgetCreator &creator,
                              const TextEditor::RefactorMarkers &refactorMarkers);
 
     void ifdefedOutBlocksUpdated(unsigned revision,
@@ -125,7 +95,7 @@ private:
     virtual void runImpl(const BaseEditorDocumentParser::UpdateParams &updateParams) = 0;
 
 private:
-    QString m_filePath;
+    Utils::FilePath m_filePath;
     QTextDocument *m_textDocument;
 };
 

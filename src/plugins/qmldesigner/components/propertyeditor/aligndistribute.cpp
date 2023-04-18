@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "aligndistribute.h"
 
@@ -29,6 +7,7 @@
 #include <qmldesignerplugin.h>
 #include <qmlmodelnodeproxy.h>
 
+#include <auxiliarydataproperties.h>
 #include <modelnode.h>
 #include <variantproperty.h>
 
@@ -330,7 +309,7 @@ void AlignDistribute::alignObjects(Target target, AlignTo alignTo, const QString
         };
 
     view->executeInTransaction("DesignerActionManager|" + operationName, [&]() {
-        for (const ModelNode &modelNode : qAsConst(selectedNodes)) {
+        for (const ModelNode &modelNode : std::as_const(selectedNodes)) {
             QTC_ASSERT(!modelNode.isRootNode(), continue);
             if (QmlItemNode::isValidQmlItemNode(modelNode)) {
                 QmlItemNode qmlItemNode(modelNode);
@@ -455,7 +434,7 @@ void AlignDistribute::distributeObjects(Target target, AlignTo alignTo, const QS
             return;
     }
 
-    for (const ModelNode &modelNode : qAsConst(selectedNodes)) {
+    for (const ModelNode &modelNode : std::as_const(selectedNodes)) {
         if (QmlItemNode::isValidQmlItemNode(modelNode)) {
             QmlItemNode qmlItemNode(modelNode);
             qreal currentPosition;
@@ -466,7 +445,7 @@ void AlignDistribute::distributeObjects(Target target, AlignTo alignTo, const QS
                 currentPosition = position.y();
                 position.ry() += equidistant;
             }
-            modelNode.setAuxiliaryData("tmp",
+            modelNode.setAuxiliaryData(tmpProperty,
                                        qRound(currentPosition
                                               - distributePosition(target, qmlItemNode)));
         }
@@ -482,7 +461,7 @@ void AlignDistribute::distributeObjects(Target target, AlignTo alignTo, const QS
         const auto keyObjectModelNode = view->modelNodeForId(keyObject);
         const QmlItemNode keyObjectQmlItemNode(keyObjectModelNode);
         const auto scenePosition = keyObjectQmlItemNode.instanceScenePosition();
-        keyObjectModelNode.setAuxiliaryData("tmp",
+        keyObjectModelNode.setAuxiliaryData(tmpProperty,
                                             (getDimension(target) == Dimension::X
                                                  ? scenePosition.x()
                                                  : scenePosition.y()));
@@ -494,7 +473,7 @@ void AlignDistribute::distributeObjects(Target target, AlignTo alignTo, const QS
     const QByteArray operationName = "distribute" + QVariant::fromValue(target).toByteArray();
 
     view->executeInTransaction("DesignerActionManager|" + operationName, [&]() {
-        for (const ModelNode &modelNode : qAsConst(selectedNodes)) {
+        for (const ModelNode &modelNode : std::as_const(selectedNodes)) {
             QTC_ASSERT(!modelNode.isRootNode(), continue);
             if (QmlItemNode::isValidQmlItemNode(modelNode)) {
                 QmlItemNode qmlItemNode(modelNode);
@@ -513,9 +492,9 @@ void AlignDistribute::distributeObjects(Target target, AlignTo alignTo, const QS
                 }
                 }
                 qmlItemNode.setVariantProperty(propertyName,
-                                               modelNode.auxiliaryData("tmp").toReal()
+                                               modelNode.auxiliaryDataWithDefault(tmpProperty).toReal()
                                                    - parentPosition);
-                modelNode.removeAuxiliaryData("tmp");
+                modelNode.removeAuxiliaryData(tmpProperty);
             }
         }
     });
@@ -590,7 +569,7 @@ void AlignDistribute::distributeSpacing(Dimension dimension,
         }
     }
 
-    for (const ModelNode &modelNode : qAsConst(selectedNodes)) {
+    for (const ModelNode &modelNode : std::as_const(selectedNodes)) {
         if (QmlItemNode::isValidQmlItemNode(modelNode)) {
             const QmlItemNode qmlItemNode(modelNode);
             qreal currentPosition;
@@ -601,7 +580,7 @@ void AlignDistribute::distributeSpacing(Dimension dimension,
                 currentPosition = position.y();
                 position.ry() += height(qmlItemNode) + equidistant;
             }
-            modelNode.setAuxiliaryData("tmp", qRound(currentPosition));
+            modelNode.setAuxiliaryData(AuxiliaryDataType::Temporary, "tmp", qRound(currentPosition));
         }
     }
 
@@ -615,7 +594,7 @@ void AlignDistribute::distributeSpacing(Dimension dimension,
         const auto keyObjectModelNode = view->modelNodeForId(keyObject);
         const QmlItemNode keyObjectQmlItemNode(keyObjectModelNode);
         const auto scenePosition = keyObjectQmlItemNode.instanceScenePosition();
-        keyObjectModelNode.setAuxiliaryData("tmp",
+        keyObjectModelNode.setAuxiliaryData(tmpProperty,
                                             (dimension == Dimension::X ? scenePosition.x()
                                                                        : scenePosition.y()));
         selectedNodes.append(keyObjectModelNode);
@@ -627,7 +606,7 @@ void AlignDistribute::distributeSpacing(Dimension dimension,
                                                                  : "distributeSpacingVertical";
 
     view->executeInTransaction("DesignerActionManager|" + operationName, [&]() {
-        for (const ModelNode &modelNode : qAsConst(selectedNodes)) {
+        for (const ModelNode &modelNode : std::as_const(selectedNodes)) {
             QTC_ASSERT(!modelNode.isRootNode(), continue);
             if (QmlItemNode::isValidQmlItemNode(modelNode)) {
                 QmlItemNode qmlItemNode(modelNode);
@@ -646,8 +625,9 @@ void AlignDistribute::distributeSpacing(Dimension dimension,
                 }
                 }
                 qmlItemNode.setVariantProperty(propertyName,
-                                               modelNode.auxiliaryData("tmp").toReal() - parentPos);
-                modelNode.removeAuxiliaryData("tmp");
+                                               modelNode.auxiliaryDataWithDefault(tmpProperty).toReal()
+                                                   - parentPos);
+                modelNode.removeAuxiliaryData(tmpProperty);
             }
         }
     });

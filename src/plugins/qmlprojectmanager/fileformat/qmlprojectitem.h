@@ -1,55 +1,31 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
+#include "filefilteritems.h"
+
 #include <utils/environment.h>
+#include <utils/filepath.h>
 
 #include <QObject>
 #include <QSet>
 #include <QStringList>
 
+#include <memory>
+#include <vector>
+
 namespace QmlProjectManager {
-
-class QmlProjectContentItem : public QObject {
-    // base class for all elements that should be direct children of Project element
-    Q_OBJECT
-
-public:
-    QmlProjectContentItem(QObject *parent = nullptr) : QObject(parent) {}
-};
 
 class QmlProjectItem : public QObject
 {
     Q_OBJECT
 
 public:
-    QString sourceDirectory() const { return m_sourceDirectory; }
-    void setSourceDirectory(const QString &directoryPath);
-    QString targetDirectory() const { return m_targetDirectory; }
-    void setTargetDirectory(const QString &directoryPath);
+    const Utils::FilePath &sourceDirectory() const { return m_sourceDirectory; }
+    void setSourceDirectory(const Utils::FilePath &directoryPath);
+    const Utils::FilePath &targetDirectory() const { return m_targetDirectory; }
+    void setTargetDirectory(const Utils::FilePath &directoryPath);
 
     bool qtForMCUs() const { return m_qtForMCUs; }
     void setQtForMCUs(bool qtForMCUs);
@@ -81,6 +57,9 @@ public:
     QString mainFile() const { return m_mainFile; }
     void setMainFile(const QString &mainFilePath) { m_mainFile = mainFilePath; }
 
+    QString mainUiFile() const { return m_mainUiFile; }
+    void setMainUiFile(const QString &mainUiFilePath) { m_mainUiFile = mainUiFilePath; }
+
     bool widgetApp() const { return m_widgetApp; }
     void setWidgetApp(bool widgetApp) { m_widgetApp = widgetApp; }
 
@@ -88,9 +67,12 @@ public:
     void setShaderToolArgs(const QStringList &args) {m_shaderToolArgs = args; }
 
     QStringList shaderToolFiles() const { return m_shaderToolFiles; }
-    void setShaderToolFiles(const QStringList &files) {m_shaderToolFiles = files; }
+    void setShaderToolFiles(const QStringList &files) { m_shaderToolFiles = files; }
 
-    void appendContent(QmlProjectContentItem *item) { m_content.append(item); }
+    void appendContent(std::unique_ptr<FileFilterBaseItem> item)
+    {
+        m_content.push_back(std::move(item));
+    }
 
     Utils::EnvironmentItems environment() const;
     void addToEnviroment(const QString &key, const QString &value);
@@ -99,16 +81,17 @@ signals:
     void qmlFilesChanged(const QSet<QString> &, const QSet<QString> &);
 
 protected:
-    QString m_sourceDirectory;
-    QString m_targetDirectory;
+    Utils::FilePath m_sourceDirectory;
+    Utils::FilePath m_targetDirectory;
     QStringList m_importPaths;
     QStringList m_fileSelectors;
     bool m_multilanguageSupport;
     QStringList m_supportedLanguages;
     QString m_primaryLanguage;
     QString m_mainFile;
+    QString m_mainUiFile;
     Utils::EnvironmentItems m_environment;
-    QVector<QmlProjectContentItem *> m_content; // content property
+    std::vector<std::unique_ptr<FileFilterBaseItem>> m_content; // content property
     bool m_forceFreeType = false;
     bool m_qtForMCUs = false;
     bool m_qt6Project = false;

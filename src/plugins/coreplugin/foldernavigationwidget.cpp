@@ -1,43 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "foldernavigationwidget.h"
 
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/actionmanager/command.h>
-#include <coreplugin/coreicons.h>
-#include <coreplugin/diffservice.h>
-#include <coreplugin/documentmanager.h>
-#include <coreplugin/editormanager/editormanager.h>
-#include <coreplugin/editormanager/ieditor.h>
-#include <coreplugin/fileiconprovider.h>
-#include <coreplugin/fileutils.h>
-#include <coreplugin/icontext.h>
-#include <coreplugin/icore.h>
-#include <coreplugin/idocument.h>
-#include <coreplugin/iwizardfactory.h>
+#include "actionmanager/actionmanager.h"
+#include "actionmanager/command.h"
+#include "coreicons.h"
+#include "coreplugintr.h"
+#include "diffservice.h"
+#include "documentmanager.h"
+#include "editormanager/editormanager.h"
+#include "editormanager/ieditor.h"
+#include "fileutils.h"
+#include "icontext.h"
+#include "icore.h"
+#include "idocument.h"
+#include "iwizardfactory.h"
 
 #include <extensionsystem/pluginmanager.h>
 
@@ -45,8 +23,10 @@
 
 #include <utils/algorithm.h>
 #include <utils/filecrumblabel.h>
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/hostosinfo.h>
+#include <utils/layoutbuilder.h>
 #include <utils/navigationtreeview.h>
 #include <utils/qtcassert.h>
 #include <utils/removefiledialog.h>
@@ -107,13 +87,6 @@ FolderNavigationWidgetFactory *FolderNavigationWidgetFactory::instance()
 
 namespace Internal {
 
-static QWidget *createHLine()
-{
-    auto widget = new QFrame;
-    widget->setFrameStyle(QFrame::Plain | QFrame::HLine);
-    return widget;
-}
-
 // Call delayLayoutOnce to delay reporting the new heightForWidget by the double-click interval.
 // Call setScrollBarOnce to set a scroll bar's value once during layouting (where heightForWidget
 // is called).
@@ -158,7 +131,23 @@ public:
 
 protected:
     bool lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const override;
+    bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
 };
+
+bool FolderSortProxyModel::filterAcceptsRow(int source_row, const QModelIndex &source_parent) const
+{
+    if (static_cast<QFileSystemModel *>(sourceModel())->rootPath().isEmpty()) {
+        QModelIndex sourceIndex = sourceModel()->index(source_row, 0, source_parent);
+        while (sourceIndex.isValid()) {
+            if (sourceIndex.data().toString() == FilePath::specialRootName())
+                return false;
+
+            sourceIndex = sourceIndex.parent();
+        }
+    }
+
+    return QSortFilterProxyModel::filterAcceptsRow(source_row, source_parent);
+}
 
 FolderSortProxyModel::FolderSortProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
@@ -262,9 +251,9 @@ FolderNavigationWidget::FolderNavigationWidget(QWidget *parent) : QWidget(parent
     m_listView(new Utils::NavigationTreeView(this)),
     m_fileSystemModel(new FolderNavigationModel(this)),
     m_sortProxyModel(new FolderSortProxyModel(m_fileSystemModel)),
-    m_filterHiddenFilesAction(new QAction(tr("Show Hidden Files"), this)),
-    m_showBreadCrumbsAction(new QAction(tr("Show Bread Crumbs"), this)),
-    m_showFoldersOnTopAction(new QAction(tr("Show Folders on Top"), this)),
+    m_filterHiddenFilesAction(new QAction(Tr::tr("Show Hidden Files"), this)),
+    m_showBreadCrumbsAction(new QAction(Tr::tr("Show Bread Crumbs"), this)),
+    m_showFoldersOnTopAction(new QAction(Tr::tr("Show Folders on Top"), this)),
     m_toggleSync(new QToolButton(this)),
     m_toggleRootSync(new QToolButton(this)),
     m_rootSelector(new QComboBox),
@@ -281,8 +270,9 @@ FolderNavigationWidget::FolderNavigationWidget(QWidget *parent) : QWidget(parent
     m_sortProxyModel->setSourceModel(m_fileSystemModel);
     m_sortProxyModel->setSortRole(FolderNavigationModel::IsFolderRole);
     m_sortProxyModel->sort(0);
+
     m_fileSystemModel->setResolveSymlinks(false);
-    m_fileSystemModel->setIconProvider(Core::FileIconProvider::iconProvider());
+    m_fileSystemModel->setIconProvider(Utils::FileIconProvider::iconProvider());
     QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
     if (Utils::HostOsInfo::isWindowsHost()) // Symlinked directories can cause file watcher warnings on Win32.
         filters |= QDir::NoSymLinks;
@@ -321,7 +311,7 @@ FolderNavigationWidget::FolderNavigationWidget(QWidget *parent) : QWidget(parent
     crumbLayout->setContentsMargins(4, 4, 4, 4);
     crumbLayout->addWidget(m_crumbLabel);
     crumbContainerLayout->addLayout(crumbLayout);
-    crumbContainerLayout->addWidget(createHLine());
+    crumbContainerLayout->addWidget(Layouting::createHr(this));
     m_crumbLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
 
     auto layout = new QVBoxLayout();
@@ -334,11 +324,11 @@ FolderNavigationWidget::FolderNavigationWidget(QWidget *parent) : QWidget(parent
 
     m_toggleSync->setIcon(Utils::Icons::LINK_TOOLBAR.icon());
     m_toggleSync->setCheckable(true);
-    m_toggleSync->setToolTip(tr("Synchronize with Editor"));
+    m_toggleSync->setToolTip(Tr::tr("Synchronize with Editor"));
 
     m_toggleRootSync->setIcon(Utils::Icons::LINK.icon());
     m_toggleRootSync->setCheckable(true);
-    m_toggleRootSync->setToolTip(tr("Synchronize Root Directory with Editor"));
+    m_toggleRootSync->setToolTip(Tr::tr("Synchronize Root Directory with Editor"));
     selectorLayout->addWidget(m_toggleRootSync);
 
     // connections
@@ -358,13 +348,11 @@ FolderNavigationWidget::FolderNavigationWidget(QWidget *parent) : QWidget(parent
                 const QModelIndex sourceIndex = m_sortProxyModel->mapToSource(index);
                 const auto filePath = Utils::FilePath::fromString(
                     m_fileSystemModel->filePath(sourceIndex));
-                // QTimer::singleShot only posts directly onto the event loop if you use the SLOT("...")
-                // notation, so using a singleShot with a lambda would flicker
-                // QTimer::singleShot(0, this, [this, filePath]() { setCrumblePath(filePath); });
                 QMetaObject::invokeMethod(this, [this, filePath] { setCrumblePath(filePath); },
                                           Qt::QueuedConnection);
             });
-    connect(m_crumbLabel, &Utils::FileCrumbLabel::pathClicked, [this](const Utils::FilePath &path) {
+    connect(m_crumbLabel, &Utils::FileCrumbLabel::pathClicked,
+            this, [this](const Utils::FilePath &path) {
         const QModelIndex rootIndex = m_sortProxyModel->mapToSource(m_listView->rootIndex());
         const QModelIndex fileIndex = m_fileSystemModel->index(path.toString());
         if (!isChildOf(fileIndex, rootIndex))
@@ -388,11 +376,8 @@ FolderNavigationWidget::FolderNavigationWidget(QWidget *parent) : QWidget(parent
             this,
             &FolderNavigationWidget::toggleAutoSynchronization);
     connect(m_toggleRootSync, &QAbstractButton::clicked,
-            this, [this]() { setRootAutoSynchronization(!m_rootAutoSync); });
-    connect(m_rootSelector,
-            QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this,
-            [this](int index) {
+            this, [this] { setRootAutoSynchronization(!m_rootAutoSync); });
+    connect(m_rootSelector, &QComboBox::currentIndexChanged, this, [this](int index) {
                 const auto directory = m_rootSelector->itemData(index).value<Utils::FilePath>();
                 m_rootSelector->setToolTip(directory.toUserOutput());
                 setRootDirectory(directory);
@@ -485,7 +470,7 @@ void FolderNavigationWidget::addNewItem()
         return;
     const auto filePath = Utils::FilePath::fromString(m_fileSystemModel->filePath(current));
     const Utils::FilePath path = filePath.isDir() ? filePath : filePath.parentDir();
-    Core::ICore::showNewItemDialog(tr("New File", "Title of dialog"),
+    Core::ICore::showNewItemDialog(Tr::tr("New File", "Title of dialog"),
                                    Utils::filtered(Core::IWizardFactory::allWizardFactories(),
                                                    Utils::equal(&Core::IWizardFactory::kind,
                                                                 Core::IWizardFactory::FileWizard)),
@@ -639,7 +624,7 @@ void FolderNavigationWidget::openItem(const QModelIndex &index)
 
 void FolderNavigationWidget::createNewFolder(const QModelIndex &parent)
 {
-    static const QString baseName = tr("New Folder");
+    static const QString baseName = Tr::tr("New Folder");
     // find non-existing name
     const QDir dir(m_fileSystemModel->filePath(parent));
     const QSet<Utils::FilePath> existingItems
@@ -694,13 +679,14 @@ void FolderNavigationWidget::contextMenuEvent(QContextMenuEvent *ev)
     const bool hasCurrentItem = current.isValid();
     QAction *actionOpenFile = nullptr;
     QAction *newFolder = nullptr;
+    QAction *removeFolder = nullptr;
     const bool isDir = m_fileSystemModel->isDir(current);
     const Utils::FilePath filePath = hasCurrentItem ? Utils::FilePath::fromString(
                                                           m_fileSystemModel->filePath(current))
                                                     : Utils::FilePath();
     if (hasCurrentItem) {
         if (!isDir)
-            actionOpenFile = menu.addAction(tr("Open \"%1\"").arg(filePath.toUserOutput()));
+            actionOpenFile = menu.addAction(Tr::tr("Open \"%1\"").arg(filePath.toUserOutput()));
         emit m_instance->aboutToShowContextMenu(&menu, filePath, isDir);
     }
 
@@ -718,11 +704,13 @@ void FolderNavigationWidget::contextMenuEvent(QContextMenuEvent *ev)
             menu.addAction(Core::ActionManager::command(REMOVEFILE)->action());
         if (m_fileSystemModel->flags(current) & Qt::ItemIsEditable)
             menu.addAction(Core::ActionManager::command(RENAMEFILE)->action());
-        newFolder = menu.addAction(tr("New Folder"));
+        newFolder = menu.addAction(Tr::tr("New Folder"));
+        if (isDir)
+            removeFolder = menu.addAction(Tr::tr("Remove Folder"));
     }
 
     menu.addSeparator();
-    QAction *const collapseAllAction = menu.addAction(tr("Collapse All"));
+    QAction *const collapseAllAction = menu.addAction(Tr::tr("Collapse All"));
 
     QAction *action = menu.exec(ev->globalPos());
     if (!action)
@@ -736,6 +724,15 @@ void FolderNavigationWidget::contextMenuEvent(QContextMenuEvent *ev)
             createNewFolder(current);
         else
             createNewFolder(current.parent());
+    } else if (action == removeFolder) {
+        RemoveFileDialog dialog(filePath, Core::ICore::dialogParent());
+        dialog.setDeleteFileVisible(false);
+        if (dialog.exec() == QDialog::Accepted) {
+            QString errorMessage;
+            filePath.removeRecursively(&errorMessage);
+            if (!errorMessage.isEmpty())
+                QMessageBox::critical(ICore::dialogParent(), Tr::tr("Error"), errorMessage);
+        }
     } else if (action == collapseAllAction) {
         m_listView->collapseAll();
     }
@@ -776,19 +773,19 @@ bool FolderNavigationWidget::isShowingFoldersOnTop() const
 FolderNavigationWidgetFactory::FolderNavigationWidgetFactory()
 {
     m_instance = this;
-    setDisplayName(tr("File System"));
+    setDisplayName(Tr::tr("File System"));
     setPriority(400);
     setId("File System");
-    setActivationSequence(QKeySequence(Core::useMacShortcuts ? tr("Meta+Y,Meta+F")
-                                                             : tr("Alt+Y,Alt+F")));
+    setActivationSequence(QKeySequence(Core::useMacShortcuts ? Tr::tr("Meta+Y,Meta+F")
+                                                             : Tr::tr("Alt+Y,Alt+F")));
     insertRootDirectory({QLatin1String("A.Computer"),
                          0 /*sortValue*/,
-                         FolderNavigationWidget::tr("Computer"),
+                         Tr::tr("Computer"),
                          Utils::FilePath(),
                          Core::Icons::DESKTOP_DEVICE_SMALL.icon()});
     insertRootDirectory({QLatin1String("A.Home"),
                          10 /*sortValue*/,
-                         FolderNavigationWidget::tr("Home"),
+                         Tr::tr("Home"),
                          Utils::FilePath::fromString(QDir::homePath()),
                          Utils::Icons::HOME.icon()});
     updateProjectsDirectoryRoot();
@@ -802,7 +799,7 @@ FolderNavigationWidgetFactory::FolderNavigationWidgetFactory()
 Core::NavigationView FolderNavigationWidgetFactory::createWidget()
 {
     auto fnw = new FolderNavigationWidget;
-    for (const RootDirectory &root : qAsConst(m_rootDirectories))
+    for (const RootDirectory &root : std::as_const(m_rootDirectories))
         fnw->insertRootDirectory(root);
     connect(this,
             &FolderNavigationWidgetFactory::rootDirectoryAdded,
@@ -819,7 +816,7 @@ Core::NavigationView FolderNavigationWidgetFactory::createWidget()
     n.widget = fnw;
     auto filter = new QToolButton;
     filter->setIcon(Utils::Icons::FILTER.icon());
-    filter->setToolTip(tr("Options"));
+    filter->setToolTip(Tr::tr("Options"));
     filter->setPopupMode(QToolButton::InstantPopup);
     filter->setProperty("noArrow", true);
     auto filterMenu = new QMenu(filter);
@@ -907,7 +904,7 @@ void FolderNavigationWidgetFactory::updateProjectsDirectoryRoot()
 {
     insertRootDirectory({QLatin1String(PROJECTSDIRECTORYROOT_ID),
                          20 /*sortValue*/,
-                         FolderNavigationWidget::tr("Projects"),
+                         Tr::tr("Projects"),
                          Core::DocumentManager::projectsDirectory(),
                          Utils::Icons::PROJECT.icon()});
 }
@@ -917,25 +914,36 @@ static FolderNavigationWidget *currentFolderNavigationWidget()
     return qobject_cast<FolderNavigationWidget *>(Core::ICore::currentContextWidget());
 }
 
+void FolderNavigationWidgetFactory::addRootPath(Utils::Id id, const QString &displayName, const QIcon &icon, const Utils::FilePath &path)
+{
+    if (path.isDir())
+        insertRootDirectory({id.toString(), 0, displayName, path, icon});
+}
+
+void FolderNavigationWidgetFactory::removeRootPath(Utils::Id id)
+{
+    removeRootDirectory(id.toString());
+}
+
 void FolderNavigationWidgetFactory::registerActions()
 {
     Core::Context context(C_FOLDERNAVIGATIONWIDGET);
 
-    auto add = new QAction(tr("Add New..."), this);
+    auto add = new QAction(Tr::tr("Add New..."), this);
     Core::ActionManager::registerAction(add, ADDNEWFILE, context);
     connect(add, &QAction::triggered, Core::ICore::instance(), [] {
         if (auto navWidget = currentFolderNavigationWidget())
             navWidget->addNewItem();
     });
 
-    auto rename = new QAction(tr("Rename..."), this);
+    auto rename = new QAction(Tr::tr("Rename..."), this);
     Core::ActionManager::registerAction(rename, RENAMEFILE, context);
     connect(rename, &QAction::triggered, Core::ICore::instance(), [] {
         if (auto navWidget = currentFolderNavigationWidget())
             navWidget->editCurrentItem();
     });
 
-    auto remove = new QAction(tr("Remove..."), this);
+    auto remove = new QAction(Tr::tr("Remove..."), this);
     Core::ActionManager::registerAction(remove, REMOVEFILE, context);
     connect(remove, &QAction::triggered, Core::ICore::instance(), [] {
         if (auto navWidget = currentFolderNavigationWidget())

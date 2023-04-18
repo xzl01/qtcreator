@@ -1,33 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include <QtGlobal>
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <type_traits>
 
@@ -41,12 +21,14 @@ template <uint MaximumShortStringDataAreaSize,
           typename ControlType = typename std::conditional_t<(MaximumShortStringDataAreaSize < 64), uint8_t, uint16_t>>
 struct ControlBlock
 {
-    using SizeType =  ControlType;
+    using SizeType = ControlType;
     constexpr ControlBlock() noexcept = default;
-    constexpr ControlBlock(ControlType shortStringSize, bool isReadOnlyReference, bool isReference) noexcept
-          : m_shortStringSize(shortStringSize),
-            m_isReadOnlyReference(isReadOnlyReference),
-            m_isReference(isReference)
+    constexpr ControlBlock(size_type shortStringSize,
+                           bool isReadOnlyReference,
+                           bool isReference) noexcept
+        : m_shortStringSize(static_cast<SizeType>(shortStringSize))
+        , m_isReadOnlyReference(isReadOnlyReference)
+        , m_isReference(isReference)
     {}
 
     constexpr void setShortStringSize(size_type size)
@@ -95,105 +77,127 @@ private:
     ControlType m_isReference : 1;
 };
 
-template <uint MaximumShortStringDataAreaSize>
-struct AllocatedLayout
-{
-    struct Data
-    {
+struct ReferenceLayout
+{    union {
+        const char *constPointer;
         char *pointer;
-        size_type size;
-        size_type capacity;
     };
-
-    ControlBlock<MaximumShortStringDataAreaSize> control;
-    Data data;
+    size_type size;
+    size_type capacity;
 };
 
-template <uint MaximumShortStringDataAreaSize>
-struct ReferenceLayout
+template<uint MaximumShortStringDataAreaSize, typename = void>
+struct alignas(16) StringDataLayout
 {
-    constexpr ReferenceLayout() noexcept = default;
-    constexpr ReferenceLayout(const char *stringPointer,
-                              size_type size,
-                              size_type capacity) noexcept
-          : control(0, true, true),
-          data{stringPointer, size, capacity}
+    static_assert(MaximumShortStringDataAreaSize >= 15, "Size must be greater equal than 15 bytes!");
+    static_assert(MaximumShortStringDataAreaSize < 32, "Size must be less than 32 bytes!");
+    static_assert(((MaximumShortStringDataAreaSize + 1) % 16) == 0,
+                  "Size + 1 must be dividable by 16 if under 64 and Size + 2 must be dividable by "
+                  "16 if over 64!");
+
+    StringDataLayout() noexcept { reset(); }
+
+    constexpr StringDataLayout(const char *string, size_type size) noexcept
+        : control{0, true, true}
+        , reference{{string}, size, 0}
     {}
 
-    struct Data
-    {
-        const char *pointer;
-        size_type size;
-        size_type capacity;
-    };
-
-    ControlBlock<MaximumShortStringDataAreaSize> control;
-    Data data;
-};
-
-template <uint MaximumShortStringDataAreaSize>
-struct ShortStringLayout
-{
-    ControlBlock<MaximumShortStringDataAreaSize> control;
-    char string[MaximumShortStringDataAreaSize];
-};
-
-template <uint MaximumShortStringDataAreaSize>
-struct StringDataLayout {
-    static_assert(MaximumShortStringDataAreaSize >= 15, "Size must be greater equal than 15 bytes!");
-    static_assert(MaximumShortStringDataAreaSize < 64
-                ? ((MaximumShortStringDataAreaSize + 1) % 16) == 0
-                : ((MaximumShortStringDataAreaSize + 2) % 16) == 0,
-                  "Size + 1 must be dividable by 16 if under 64 and Size + 2 must be dividable by 16 if over 64!");
-
-    StringDataLayout() noexcept
-    {
-        reset();
-    }
-
-    constexpr StringDataLayout(const char *string,
-                               size_type size) noexcept
-       : reference(string, size, 0)
-    {
-    }
-
-    template<size_type Size,
-             typename std::enable_if_t<Size <= MaximumShortStringDataAreaSize, int> = 0>
+    template<size_type Size>
     constexpr StringDataLayout(const char (&string)[Size]) noexcept
-        : shortString(ShortStringLayout<MaximumShortStringDataAreaSize>{})
     {
-       for (size_type i = 0; i < Size; ++i)
-           shortString.string[i] = string[i];
-
-       shortString.control.setShortStringSize(Size - 1);
-       shortString.control.setIsShortString(true);
-       shortString.control.setIsReadOnlyReference(false);
+        if constexpr (Size + 1 <= MaximumShortStringDataAreaSize) {
+            control = {Size - 1, false, false};
+            for (size_type i = 0; i < Size; ++i)
+                shortString[i] = string[i];
+        } else {
+            control = {0, true, true};
+            reference = {string, Size - 1, 0};
+        }
     }
 
-    template<size_type Size,
-            typename std::enable_if_t<!(Size <= MaximumShortStringDataAreaSize), int> = 1>
-    constexpr StringDataLayout(const char(&string)[Size]) noexcept
-        : reference(string, Size - 1, 0)
+    constexpr static size_type shortStringCapacity() noexcept
     {
+        return MaximumShortStringDataAreaSize;
     }
 
-    constexpr static
-    size_type shortStringCapacity() noexcept
-    {
-        return MaximumShortStringDataAreaSize - 1;
-    }
+    constexpr void reset() { control = ControlBlock<MaximumShortStringDataAreaSize>(); }
 
-    void reset()
-    {
-        shortString.control = ControlBlock<MaximumShortStringDataAreaSize>();
-        shortString.string[0] = '\0';
-    }
-
+#pragma pack(push)
+#pragma pack(1)
+    ControlBlock<MaximumShortStringDataAreaSize> control;
     union {
-        AllocatedLayout<MaximumShortStringDataAreaSize> allocated;
-        ReferenceLayout<MaximumShortStringDataAreaSize> reference;
-        ShortStringLayout<MaximumShortStringDataAreaSize> shortString;
+        char shortString[MaximumShortStringDataAreaSize];
+        struct
+        {
+            char dummy[sizeof(void *) - sizeof(ControlBlock<MaximumShortStringDataAreaSize>)];
+            ReferenceLayout reference;
+        };
     };
+#pragma pack(pop)
+};
+
+template<uint MaximumShortStringDataAreaSize>
+struct alignas(16) StringDataLayout<MaximumShortStringDataAreaSize,
+                                    std::enable_if_t<MaximumShortStringDataAreaSize >= 32>>
+{
+    static_assert(MaximumShortStringDataAreaSize > 31, "Size must be greater than 31 bytes!");
+    static_assert(MaximumShortStringDataAreaSize < 64
+                      ? ((MaximumShortStringDataAreaSize + 1) % 16) == 0
+                      : ((MaximumShortStringDataAreaSize + 2) % 16) == 0,
+                  "Size + 1 must be dividable by 16 if under 64 and Size + 2 must be dividable by "
+                  "16 if over 64!");
+
+    StringDataLayout() noexcept { reset(); }
+
+    constexpr StringDataLayout(const char *string, size_type size) noexcept
+        : control{0, true, true}
+        , reference{{string}, size, 0}
+    {}
+
+    template<size_type Size>
+    constexpr StringDataLayout(const char (&string)[Size]) noexcept
+    {
+        if constexpr (Size + 1 <= MaximumShortStringDataAreaSize) {
+            control = {Size - 1, false, false};
+            for (size_type i = 0; i < Size; ++i)
+                shortString[i] = string[i];
+        } else {
+            control = {0, true, true};
+            reference = {string, Size - 1, 0};
+        }
+    }
+
+    StringDataLayout(const StringDataLayout &other) noexcept { *this = other; }
+
+    StringDataLayout &operator=(const StringDataLayout &other) noexcept
+    {
+        constexpr auto controlBlockSize = sizeof(ControlBlock<MaximumShortStringDataAreaSize>);
+        auto shortStringLayoutSize = other.control.stringSize() + controlBlockSize;
+        constexpr auto referenceLayoutSize = sizeof(ReferenceLayout);
+        std::memcpy(this, &other, std::max(shortStringLayoutSize, referenceLayoutSize));
+
+        return *this;
+    }
+
+    constexpr static size_type shortStringCapacity() noexcept
+    {
+        return MaximumShortStringDataAreaSize;
+    }
+
+    constexpr void reset() { control = ControlBlock<MaximumShortStringDataAreaSize>(); }
+
+#pragma pack(push)
+#pragma pack(1)
+    ControlBlock<MaximumShortStringDataAreaSize> control;
+    union {
+        char shortString[MaximumShortStringDataAreaSize];
+        struct
+        {
+            char dummy[sizeof(void *) - sizeof(ControlBlock<MaximumShortStringDataAreaSize>)];
+            ReferenceLayout reference;
+        };
+    };
+#pragma pack(pop)
 };
 
 } // namespace Internal

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
-** Contact: http://www.qt.io/licensing
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -52,7 +30,6 @@ const char C_NIMBLEBUILDSTEP_ARGUMENTS[] = "Nim.NimbleBuildStep.Arguments";
 
 // NimbleTaskStep
 const char C_NIMBLETASKSTEP_ID[] = "Nim.NimbleTaskStep";
-const char C_NIMBLETASKSTEP_DISPLAY[] = QT_TRANSLATE_NOOP("NimbleTaskStep", "Nimble Task");
 const QString C_NIMBLETASKSTEP_TASKNAME = QStringLiteral("Nim.NimbleTaskStep.TaskName");
 const QString C_NIMBLETASKSTEP_TASKARGS = QStringLiteral("Nim.NimbleTaskStep.TaskArgs");
 
@@ -70,16 +47,12 @@ const char C_NIMPARSE_ID[] = "Nim.NimParse";
 
 const char C_NIMLANGUAGE_ID[] = "Nim";
 const char C_NIMCODESTYLESETTINGSPAGE_ID[] = "Nim.NimCodeStyleSettings";
-const char C_NIMCODESTYLESETTINGSPAGE_DISPLAY[] = QT_TRANSLATE_NOOP("NimCodeStyleSettingsPage", "Code Style");
 const char C_NIMCODESTYLESETTINGSPAGE_CATEGORY[] = "Z.Nim";
-const char C_NIMCODESTYLESETTINGSPAGE_CATEGORY_DISPLAY[] = QT_TRANSLATE_NOOP("NimCodeStyleSettingsPage", "Nim");
 
 const char C_NIMTOOLSSETTINGSPAGE_ID[] = "Nim.NimToolsSettings";
-const char C_NIMTOOLSSETTINGSPAGE_DISPLAY[] = QT_TRANSLATE_NOOP("NimToolsSettingsPage", "Tools");
 const char C_NIMTOOLSSETTINGSPAGE_CATEGORY[] = "Z.Nim";
-const char C_NIMTOOLSSETTINGSPAGE_CATEGORY_DISPLAY[] = QT_TRANSLATE_NOOP("NimToolsSettingsPage", "Nim");
 
-const char C_NIMLANGUAGE_NAME[] = QT_TRANSLATE_NOOP("NimCodeStylePreferencesFactory", "Nim");
+const char C_NIMLANGUAGE_NAME[] = QT_TRANSLATE_NOOP("QtC::Nim", "Nim");
 const char C_NIMGLOBALCODESTYLE_ID[] = "NimGlobal";
 const QString C_NIMSNIPPETSGROUP_ID = QStringLiteral("Nim.NimSnippetsGroup");
 

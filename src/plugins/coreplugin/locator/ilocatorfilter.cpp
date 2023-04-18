@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "ilocatorfilter.h"
 
-#include <coreplugin/coreconstants.h>
+#include "../coreplugintr.h"
+
 #include <utils/fuzzymatcher.h>
 
 #include <QBoxLayout>
@@ -39,7 +18,6 @@
 #include <QLineEdit>
 #include <QRegularExpression>
 
-using namespace Core;
 using namespace Utils;
 
 /*!
@@ -64,13 +42,15 @@ using namespace Utils;
     \internal
 */
 
+namespace Core {
+
 static QList<ILocatorFilter *> g_locatorFilters;
 
 /*!
     Constructs a locator filter with \a parent. Call from subclasses.
 */
-ILocatorFilter::ILocatorFilter(QObject *parent):
-    QObject(parent)
+ILocatorFilter::ILocatorFilter(QObject *parent)
+    : QObject(parent)
 {
     g_locatorFilters.append(this);
 }
@@ -141,6 +121,26 @@ void ILocatorFilter::setDefaultShortcutString(const QString &shortcut)
 void ILocatorFilter::setShortcutString(const QString &shortcut)
 {
     m_shortcut = shortcut;
+}
+
+QKeySequence ILocatorFilter::defaultKeySequence() const
+{
+    return m_defaultKeySequence;
+}
+
+void ILocatorFilter::setDefaultKeySequence(const QKeySequence &sequence)
+{
+    m_defaultKeySequence = sequence;
+}
+
+std::optional<QString> ILocatorFilter::defaultSearchText() const
+{
+    return m_defaultSearchText;
+}
+
+void ILocatorFilter::setDefaultSearchText(const QString &defaultSearchText)
+{
+    m_defaultSearchText = defaultSearchText;
 }
 
 const char kShortcutStringKey[] = "shortcut";
@@ -226,11 +226,14 @@ Qt::CaseSensitivity ILocatorFilter::caseSensitivity(const QString &str)
 
 /*!
     Creates the search term \a text as a regular expression with case
-    sensitivity set to \a caseSensitivity.
+    sensitivity set to \a caseSensitivity. Pass true to \a multiWord if the pattern is
+    expected to contain spaces.
 */
-QRegularExpression ILocatorFilter::createRegExp(const QString &text, Qt::CaseSensitivity caseSensitivity)
+QRegularExpression ILocatorFilter::createRegExp(const QString &text,
+                                                Qt::CaseSensitivity caseSensitivity,
+                                                bool multiWord)
 {
-    return FuzzyMatcher::createRegExp(text, caseSensitivity);
+    return FuzzyMatcher::createRegExp(text, caseSensitivity, multiWord);
 }
 
 /*!
@@ -251,7 +254,7 @@ LocatorFilterEntry::HighlightInfo ILocatorFilter::highlightInfo(
 */
 QString ILocatorFilter::msgConfigureDialogTitle()
 {
-    return tr("Filter Configuration");
+    return Tr::tr("Filter Configuration");
 }
 
 /*!
@@ -259,7 +262,7 @@ QString ILocatorFilter::msgConfigureDialogTitle()
 */
 QString ILocatorFilter::msgPrefixLabel()
 {
-    return tr("Prefix:");
+    return Tr::tr("Prefix:");
 }
 
 /*!
@@ -267,7 +270,7 @@ QString ILocatorFilter::msgPrefixLabel()
 */
 QString ILocatorFilter::msgPrefixToolTip()
 {
-    return tr("Type the prefix followed by a space and search term to restrict search to the filter.");
+    return Tr::tr("Type the prefix followed by a space and search term to restrict search to the filter.");
 }
 
 /*!
@@ -276,7 +279,7 @@ QString ILocatorFilter::msgPrefixToolTip()
 */
 QString ILocatorFilter::msgIncludeByDefault()
 {
-    return tr("Include by default");
+    return Tr::tr("Include by default");
 }
 
 /*!
@@ -285,7 +288,7 @@ QString ILocatorFilter::msgIncludeByDefault()
 */
 QString ILocatorFilter::msgIncludeByDefaultToolTip()
 {
-    return tr("Include the filter when not using a prefix for searches.");
+    return Tr::tr("Include the filter when not using a prefix for searches.");
 }
 
 /*!
@@ -643,3 +646,5 @@ bool ILocatorFilter::isOldSetting(const QByteArray &state)
            The result has the highest number of matches for the regular
            expression.
 */
+
+} // Core

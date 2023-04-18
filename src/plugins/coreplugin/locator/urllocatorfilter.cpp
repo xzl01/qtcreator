@@ -1,37 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "urllocatorfilter.h"
 
+#include "../coreplugintr.h"
+
 #include <utils/algorithm.h>
+#include <utils/layoutbuilder.h>
 #include <utils/stringutils.h>
 
+#include <QCheckBox>
 #include <QDesktopServices>
+#include <QDialogButtonBox>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
 #include <QMutexLocker>
+#include <QPushButton>
 #include <QUrl>
 
 using namespace Utils;
@@ -43,83 +30,117 @@ UrlFilterOptions::UrlFilterOptions(UrlLocatorFilter *filter, QWidget *parent)
     : QDialog(parent)
     , m_filter(filter)
 {
-    m_ui.setupUi(this);
     setWindowTitle(ILocatorFilter::msgConfigureDialogTitle());
-    m_ui.prefixLabel->setText(Core::ILocatorFilter::msgPrefixLabel());
-    m_ui.prefixLabel->setToolTip(Core::ILocatorFilter::msgPrefixToolTip());
-    m_ui.includeByDefault->setText(Core::ILocatorFilter::msgIncludeByDefault());
-    m_ui.includeByDefault->setToolTip(Core::ILocatorFilter::msgIncludeByDefaultToolTip());
-    m_ui.shortcutEdit->setText(m_filter->shortcutString());
-    m_ui.includeByDefault->setChecked(m_filter->isIncludedByDefault());
-    m_ui.nameEdit->setText(filter->displayName());
-    m_ui.nameEdit->selectAll();
-    m_ui.nameLabel->setVisible(filter->isCustomFilter());
-    m_ui.nameEdit->setVisible(filter->isCustomFilter());
-    m_ui.listWidget->setToolTip(
-        tr("Add \"%1\" placeholder for the query string.\nDouble-click to edit item."));
+    resize(600, 400);
 
+    auto nameLabel = new QLabel(Tr::tr("Name:"));
+    nameLabel->setVisible(filter->isCustomFilter());
+
+    nameEdit = new QLineEdit;
+    nameEdit->setText(filter->displayName());
+    nameEdit->selectAll();
+    nameEdit->setVisible(filter->isCustomFilter());
+
+    listWidget = new QListWidget;
+    listWidget->setDragDropMode(QAbstractItemView::InternalMove);
+    listWidget->setToolTip(
+        Tr::tr("Add \"%1\" placeholder for the query string.\nDouble-click to edit item."));
     const QStringList remoteUrls = m_filter->remoteUrls();
     for (const QString &url : remoteUrls) {
         auto item = new QListWidgetItem(url);
-        m_ui.listWidget->addItem(item);
+        listWidget->addItem(item);
         item->setFlags(item->flags() | Qt::ItemIsEditable);
     }
 
-    connect(m_ui.add, &QPushButton::clicked, this, &UrlFilterOptions::addNewItem);
-    connect(m_ui.remove, &QPushButton::clicked, this, &UrlFilterOptions::removeItem);
-    connect(m_ui.moveUp, &QPushButton::clicked, this, &UrlFilterOptions::moveItemUp);
-    connect(m_ui.moveDown, &QPushButton::clicked, this, &UrlFilterOptions::moveItemDown);
-    connect(m_ui.listWidget,
+    auto add = new QPushButton(Tr::tr("Add"));
+    remove = new QPushButton(Tr::tr("Remove"));
+    moveUp = new QPushButton(Tr::tr("Move Up"));
+    moveDown = new QPushButton(Tr::tr("Move Down"));
+
+    auto prefixLabel = new QLabel;
+    prefixLabel->setText(Core::ILocatorFilter::msgPrefixLabel());
+    prefixLabel->setToolTip(Core::ILocatorFilter::msgPrefixToolTip());
+
+    shortcutEdit = new QLineEdit;
+    shortcutEdit->setText(m_filter->shortcutString());
+
+    includeByDefault = new QCheckBox;
+    includeByDefault->setText(Core::ILocatorFilter::msgIncludeByDefault());
+    includeByDefault->setToolTip(Core::ILocatorFilter::msgIncludeByDefaultToolTip());
+    includeByDefault->setChecked(m_filter->isIncludedByDefault());
+
+    auto buttonBox = new QDialogButtonBox;
+    buttonBox->setStandardButtons(QDialogButtonBox::Cancel | QDialogButtonBox::Ok);
+
+    using namespace Layouting;
+
+    Column buttons { add, remove, moveUp, moveDown, st };
+
+    Grid {
+        nameLabel, nameEdit, br,
+        Column { Tr::tr("URLs:"), st }, Row { listWidget, buttons}, br,
+        prefixLabel, Row { shortcutEdit, includeByDefault, st }, br,
+        Span(2, buttonBox)
+    }.attachTo(this);
+
+    connect(add, &QPushButton::clicked, this, &UrlFilterOptions::addNewItem);
+    connect(remove, &QPushButton::clicked, this, &UrlFilterOptions::removeItem);
+    connect(moveUp, &QPushButton::clicked, this, &UrlFilterOptions::moveItemUp);
+    connect(moveDown, &QPushButton::clicked, this, &UrlFilterOptions::moveItemDown);
+    connect(listWidget,
             &QListWidget::currentItemChanged,
             this,
             &UrlFilterOptions::updateActionButtons);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
     updateActionButtons();
 }
 
 void UrlFilterOptions::addNewItem()
 {
     QListWidgetItem *item = new QListWidgetItem("https://www.example.com/search?query=%1");
-    m_ui.listWidget->addItem(item);
+    listWidget->addItem(item);
     item->setSelected(true);
     item->setFlags(item->flags() | Qt::ItemIsEditable);
-    m_ui.listWidget->setCurrentItem(item);
-    m_ui.listWidget->editItem(item);
+    listWidget->setCurrentItem(item);
+    listWidget->editItem(item);
 }
 
 void UrlFilterOptions::removeItem()
 {
-    if (QListWidgetItem *item = m_ui.listWidget->currentItem()) {
-        m_ui.listWidget->removeItemWidget(item);
+    if (QListWidgetItem *item = listWidget->currentItem()) {
+        listWidget->removeItemWidget(item);
         delete item;
     }
 }
 
 void UrlFilterOptions::moveItemUp()
 {
-    const int row = m_ui.listWidget->currentRow();
+    const int row = listWidget->currentRow();
     if (row > 0) {
-        QListWidgetItem *item = m_ui.listWidget->takeItem(row);
-        m_ui.listWidget->insertItem(row - 1, item);
-        m_ui.listWidget->setCurrentRow(row - 1);
+        QListWidgetItem *item = listWidget->takeItem(row);
+        listWidget->insertItem(row - 1, item);
+        listWidget->setCurrentRow(row - 1);
     }
 }
 
 void UrlFilterOptions::moveItemDown()
 {
-    const int row = m_ui.listWidget->currentRow();
-    if (row >= 0 && row < m_ui.listWidget->count() - 1) {
-        QListWidgetItem *item = m_ui.listWidget->takeItem(row);
-        m_ui.listWidget->insertItem(row + 1, item);
-        m_ui.listWidget->setCurrentRow(row + 1);
+    const int row = listWidget->currentRow();
+    if (row >= 0 && row < listWidget->count() - 1) {
+        QListWidgetItem *item = listWidget->takeItem(row);
+        listWidget->insertItem(row + 1, item);
+        listWidget->setCurrentRow(row + 1);
     }
 }
 
 void UrlFilterOptions::updateActionButtons()
 {
-    m_ui.remove->setEnabled(m_ui.listWidget->currentItem());
-    const int row = m_ui.listWidget->currentRow();
-    m_ui.moveUp->setEnabled(row > 0);
-    m_ui.moveDown->setEnabled(row >= 0 && row < m_ui.listWidget->count() - 1);
+    remove->setEnabled(listWidget->currentItem());
+    const int row = listWidget->currentRow();
+    moveUp->setEnabled(row > 0);
+    moveDown->setEnabled(row >= 0 && row < listWidget->count() - 1);
 }
 
 } // namespace Internal
@@ -133,7 +154,7 @@ void UrlFilterOptions::updateActionButtons()
 */
 
 UrlLocatorFilter::UrlLocatorFilter(Id id)
-    : UrlLocatorFilter(tr("URL Template"), id)
+    : UrlLocatorFilter(Tr::tr("URL Template"), id)
 {}
 
 UrlLocatorFilter::UrlLocatorFilter(const QString &displayName, Id id)
@@ -155,7 +176,7 @@ QList<Core::LocatorFilterEntry> UrlLocatorFilter::matchesFor(
         if (future.isCanceled())
             break;
         const QString name = url.arg(entry);
-        Core::LocatorFilterEntry filterEntry(this, name, QVariant());
+        Core::LocatorFilterEntry filterEntry(this, name);
         filterEntry.highlightInfo = {int(name.lastIndexOf(entry)), int(entry.length())};
         entries.append(filterEntry);
     }
@@ -230,12 +251,12 @@ bool UrlLocatorFilter::openConfigDialog(QWidget *parent, bool &needsRefresh)
     if (optionsDialog.exec() == QDialog::Accepted) {
         QMutexLocker lock(&m_mutex);
         m_remoteUrls.clear();
-        setIncludedByDefault(optionsDialog.m_ui.includeByDefault->isChecked());
-        setShortcutString(optionsDialog.m_ui.shortcutEdit->text().trimmed());
-        for (int i = 0; i < optionsDialog.m_ui.listWidget->count(); ++i)
-            m_remoteUrls.append(optionsDialog.m_ui.listWidget->item(i)->text());
+        setIncludedByDefault(optionsDialog.includeByDefault->isChecked());
+        setShortcutString(optionsDialog.shortcutEdit->text().trimmed());
+        for (int i = 0; i < optionsDialog.listWidget->count(); ++i)
+            m_remoteUrls.append(optionsDialog.listWidget->item(i)->text());
         if (isCustomFilter())
-            setDisplayName(optionsDialog.m_ui.nameEdit->text());
+            setDisplayName(optionsDialog.nameEdit->text());
         return true;
     }
     return true;

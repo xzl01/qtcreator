@@ -1,31 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Digia Plc and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Digia Plc and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "externaltoolmanager.h"
+
 #include "externaltool.h"
 #include "coreconstants.h"
+#include "coreplugintr.h"
 #include "icontext.h"
 #include "icore.h"
 #include "messagemanager.h"
@@ -61,13 +41,6 @@ static ExternalToolManager *m_instance = nullptr;
 static ExternalToolManagerPrivate *d = nullptr;
 
 static void writeSettings();
-static void readSettings(const QMap<QString, ExternalTool *> &tools,
-                  QMap<QString, QList<ExternalTool*> > *categoryPriorityMap);
-
-static void parseDirectory(const QString &directory,
-                     QMap<QString, QMultiMap<int, ExternalTool*> > *categoryMenus,
-                     QMap<QString, ExternalTool *> *tools,
-                     bool isPreset = false);
 
 ExternalToolManager::ExternalToolManager()
     : QObject(ICore::instance())
@@ -84,7 +57,7 @@ ExternalToolManager::ExternalToolManager()
 
     // add the external tools menu
     ActionContainer *mexternaltools = ActionManager::createMenu(Id(Constants::M_TOOLS_EXTERNAL));
-    mexternaltools->menu()->setTitle(ExternalToolManager::tr("&External"));
+    mexternaltools->menu()->setTitle(Tr::tr("&External"));
     ActionContainer *mtools = ActionManager::actionContainer(Constants::M_TOOLS);
     mtools->addMenu(mexternaltools, Constants::G_DEFAULT_THREE);
 
@@ -120,7 +93,7 @@ ExternalToolManager *ExternalToolManager::instance()
     return m_instance;
 }
 
-static void parseDirectory(const QString &directory,
+void ExternalToolManager::parseDirectory(const QString &directory,
                            QMap<QString, QMultiMap<int, ExternalTool*> > *categoryMenus,
                            QMap<QString, ExternalTool *> *tools,
                            bool isPreset)
@@ -128,12 +101,13 @@ static void parseDirectory(const QString &directory,
     QTC_ASSERT(categoryMenus, return);
     QTC_ASSERT(tools, return);
     QDir dir(directory, QLatin1String("*.xml"), QDir::Unsorted, QDir::Files | QDir::Readable);
-    foreach (const QFileInfo &info, dir.entryInfoList()) {
+    const QList<QFileInfo> infoList = dir.entryInfoList();
+    for (const QFileInfo &info : infoList) {
         const QString &fileName = info.absoluteFilePath();
         QString error;
         ExternalTool *tool = ExternalTool::createFromFile(Utils::FilePath::fromString(fileName), &error, ICore::userInterfaceLanguage());
         if (!tool) {
-            qWarning() << ExternalTool::tr("Error while parsing external tool %1: %2").arg(fileName, error);
+            qWarning() << Tr::tr("Error while parsing external tool %1: %2").arg(fileName, error);
             continue;
         }
         if (tools->contains(tool->id())) {
@@ -142,7 +116,7 @@ static void parseDirectory(const QString &directory,
                 ExternalTool *other = tools->value(tool->id());
                 other->setPreset(QSharedPointer<ExternalTool>(tool));
             } else {
-                qWarning() << ExternalToolManager::tr("Error: External tool in %1 has duplicate id").arg(fileName);
+                qWarning() << Tr::tr("Error: External tool in %1 has duplicate id").arg(fileName);
                 delete tool;
             }
             continue;
@@ -176,7 +150,8 @@ void ExternalToolManager::setToolsByCategory(const QMap<QString, QList<ExternalT
     QMap<QString, ExternalTool *> newTools;
     QMap<QString, QAction *> newActions;
     for (auto it = tools.cbegin(), end = tools.cend(); it != end; ++it) {
-        foreach (ExternalTool *tool, it.value()) {
+        const QList<ExternalTool *> values = it.value();
+        for (ExternalTool *tool : values) {
             const QString id = tool->id();
             if (d->m_tools.value(id) == tool) {
                 newActions.insert(id, d->m_actions.value(id));
@@ -217,7 +192,8 @@ void ExternalToolManager::setToolsByCategory(const QMap<QString, QList<ExternalT
             mexternaltools->addMenu(container, Constants::G_DEFAULT_ONE);
             container->menu()->setTitle(containerName);
         }
-        foreach (ExternalTool *tool, it.value()) {
+        const QList<ExternalTool *> values = it.value();
+        for (ExternalTool *tool : values) {
             const QString &toolId = tool->id();
             // tool action and command
             QAction *action = nullptr;
@@ -254,7 +230,7 @@ void ExternalToolManager::setToolsByCategory(const QMap<QString, QList<ExternalT
     mexternaltools->menu()->addAction(d->m_configureAction);
 }
 
-static void readSettings(const QMap<QString, ExternalTool *> &tools,
+void ExternalToolManager::readSettings(const QMap<QString, ExternalTool *> &tools,
                                        QMap<QString, QList<ExternalTool *> > *categoryMap)
 {
     QSettings *settings = ICore::settings();
@@ -262,7 +238,8 @@ static void readSettings(const QMap<QString, ExternalTool *> &tools,
 
     if (categoryMap) {
         settings->beginGroup(QLatin1String("OverrideCategories"));
-        foreach (const QString &settingsCategory, settings->childGroups()) {
+        const QStringList settingsCategories = settings->childGroups();
+        for (const QString &settingsCategory : settingsCategories) {
             QString displayCategory = settingsCategory;
             if (displayCategory == QLatin1String(kSpecialUncategorizedSetting))
                 displayCategory = QLatin1String("");
@@ -301,7 +278,8 @@ static void writeSettings()
             category = QLatin1String(kSpecialUncategorizedSetting);
         settings->beginWriteArray(category, it.value().count());
         int i = 0;
-        foreach (ExternalTool *tool, it.value()) {
+        const QList<ExternalTool *> values = it.value();
+        for (const ExternalTool *tool : values) {
             settings->setArrayIndex(i);
             settings->setValue(QLatin1String("Tool"), tool->id());
             ++i;

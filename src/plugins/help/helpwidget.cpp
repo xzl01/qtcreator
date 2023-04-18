@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "helpwidget.h"
 
@@ -30,6 +8,7 @@
 #include "helpconstants.h"
 #include "helpicons.h"
 #include "helpplugin.h"
+#include "helptr.h"
 #include "helpviewer.h"
 #include "indexwindow.h"
 #include "localhelpmanager.h"
@@ -41,19 +20,21 @@
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/command.h>
 #include <coreplugin/coreconstants.h>
-#include <coreplugin/icore.h>
+#include <coreplugin/coreplugintr.h>
 #include <coreplugin/findplaceholder.h>
+#include <coreplugin/icore.h>
 #include <coreplugin/locator/locatormanager.h>
 #include <coreplugin/minisplitter.h>
-#include <coreplugin/sidebar.h>
 #include <coreplugin/minisplitter.h>
+#include <coreplugin/sidebar.h>
 #include <texteditor/texteditorconstants.h>
 #include <utils/qtcassert.h>
 #include <utils/styledbar.h>
 #include <utils/utilsicons.h>
 
-#include <QCoreApplication>
+#include <QComboBox>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QMenu>
 #include <QPrintDialog>
 #include <QPrinter>
@@ -61,10 +42,8 @@
 #include <QStatusBar>
 #include <QToolButton>
 
-#ifdef HELP_NEW_FILTER_ENGINE
 #include <QtHelp/QHelpEngine>
 #include <QtHelp/QHelpFilterEngine>
-#endif
 
 static const char kWindowSideBarSettingsKey[] = "Help/WindowSideBar";
 static const char kModeSideBarSettingsKey[] = "Help/ModeSideBar";
@@ -97,7 +76,7 @@ QVariant OpenPagesModel::data(const QModelIndex &index, int role) const
         return m_parent->viewerAt(index.row())->source().toString();
     case Qt::DisplayRole: {
         const QString title = m_parent->viewerAt(index.row())->title();
-        return title.isEmpty() ? HelpWidget::tr("(Untitled)") : title;
+        return title.isEmpty() ? Tr::tr("(Untitled)") : title;
     }
     default:
         break;
@@ -130,13 +109,13 @@ static QString helpTargetActionText(Core::HelpManager::HelpViewerLocation option
 {
     switch (option) {
     case Core::HelpManager::SideBySideIfPossible:
-        return HelpWidget::tr("Show Context Help Side-by-Side if Possible");
+        return Tr::tr("Show Context Help Side-by-Side if Possible");
     case Core::HelpManager::SideBySideAlways:
-        return HelpWidget::tr("Always Show Context Help Side-by-Side");
+        return Tr::tr("Always Show Context Help Side-by-Side");
     case Core::HelpManager::HelpModeAlways:
-        return HelpWidget::tr("Always Show Context Help in Help Mode");
+        return Tr::tr("Always Show Context Help in Help Mode");
     case Core::HelpManager::ExternalHelpAlways:
-        return HelpWidget::tr("Always Show Context Help in External Window");
+        return Tr::tr("Always Show Context Help in External Window");
     }
     QTC_CHECK(false);
     return {};
@@ -242,20 +221,18 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
         setAttribute(Qt::WA_QuitOnClose, false); // don't prevent Qt Creator from closing
     }
     if (style != SideBarWidget) {
-        m_toggleSideBarAction = new QAction(Utils::Icons::TOGGLE_LEFT_SIDEBAR_TOOLBAR.icon(),
-                                            QCoreApplication::translate("Core", Core::Constants::TR_SHOW_LEFT_SIDEBAR),
-                                            toolBar);
+        m_toggleSideBarAction
+            = new QAction(Utils::Icons::TOGGLE_LEFT_SIDEBAR_TOOLBAR.icon(),
+                          Tr::tr(Core::Constants::TR_SHOW_LEFT_SIDEBAR), toolBar);
         m_toggleSideBarAction->setCheckable(true);
         m_toggleSideBarAction->setChecked(false);
         cmd = Core::ActionManager::registerAction(m_toggleSideBarAction,
                                                   Core::Constants::TOGGLE_LEFT_SIDEBAR, context);
-        connect(m_toggleSideBarAction, &QAction::toggled, m_toggleSideBarAction,
-                [this](bool checked) {
-                    m_toggleSideBarAction->setText(
-                        QCoreApplication::translate("Core",
-                                                    checked ? Core::Constants::TR_HIDE_LEFT_SIDEBAR
-                                                            : Core::Constants::TR_SHOW_LEFT_SIDEBAR));
-                });
+        connect(m_toggleSideBarAction, &QAction::toggled, m_toggleSideBarAction, [this](bool checked) {
+            m_toggleSideBarAction->setText(::Core::Tr::tr(
+                                               checked ? Core::Constants::TR_HIDE_LEFT_SIDEBAR
+                                                       : Core::Constants::TR_SHOW_LEFT_SIDEBAR));
+        });
         addSideBar();
         m_toggleSideBarAction->setChecked(m_sideBar->isVisibleTo(this));
         connect(m_toggleSideBarAction, &QAction::triggered, m_sideBar, &Core::SideBar::setVisible);
@@ -281,7 +258,7 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
     }
 
     if (style != ModeWidget) {
-        m_switchToHelp = new QAction(tr("Open in Help Mode"), toolBar);
+        m_switchToHelp = new QAction(Tr::tr("Open in Help Mode"), toolBar);
         cmd = Core::ActionManager::registerAction(m_switchToHelp, Constants::CONTEXT_HELP, context);
         connect(m_switchToHelp, &QAction::triggered, this, [this] {
             postRequestShowHelpUrl(Core::HelpManager::HelpModeAlways);
@@ -289,12 +266,12 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
         layout->addWidget(Core::Command::toolButtonWithAppendedShortcut(m_switchToHelp, cmd));
     }
 
-    m_homeAction = new QAction(Utils::Icons::HOME_TOOLBAR.icon(), tr("Home"), this);
+    m_homeAction = new QAction(Utils::Icons::HOME_TOOLBAR.icon(), Tr::tr("Home"), this);
     cmd = Core::ActionManager::registerAction(m_homeAction, Constants::HELP_HOME, context);
     connect(m_homeAction, &QAction::triggered, this, &HelpWidget::goHome);
     layout->addWidget(Core::Command::toolButtonWithAppendedShortcut(m_homeAction, cmd));
 
-    m_backAction = new QAction(Utils::Icons::PREV_TOOLBAR.icon(), tr("Back"), toolBar);
+    m_backAction = new QAction(Utils::Icons::PREV_TOOLBAR.icon(), Tr::tr("Back"), toolBar);
     connect(m_backAction, &QAction::triggered, this, &HelpWidget::backward);
     m_backMenu = new QMenu(toolBar);
     connect(m_backMenu, &QMenu::aboutToShow, this, &HelpWidget::updateBackMenu);
@@ -305,7 +282,7 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
     button->setPopupMode(QToolButton::DelayedPopup);
     layout->addWidget(button);
 
-    m_forwardAction = new QAction(Utils::Icons::NEXT_TOOLBAR.icon(), tr("Forward"), toolBar);
+    m_forwardAction = new QAction(Utils::Icons::NEXT_TOOLBAR.icon(), Tr::tr("Forward"), toolBar);
     connect(m_forwardAction, &QAction::triggered, this, &HelpWidget::forward);
     m_forwardMenu = new QMenu(toolBar);
     connect(m_forwardMenu, &QMenu::aboutToShow, this, &HelpWidget::updateForwardMenu);
@@ -316,14 +293,19 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
     button->setPopupMode(QToolButton::DelayedPopup);
     layout->addWidget(button);
 
-    m_addBookmarkAction = new QAction(Utils::Icons::BOOKMARK_TOOLBAR.icon(), tr("Add Bookmark"), this);
+    m_addBookmarkAction = new QAction(Utils::Icons::BOOKMARK_TOOLBAR.icon(),
+                                      Tr::tr("Add Bookmark"),
+                                      this);
     cmd = Core::ActionManager::registerAction(m_addBookmarkAction, Constants::HELP_ADDBOOKMARK, context);
-    cmd->setDefaultKeySequence(QKeySequence(Core::useMacShortcuts ? tr("Meta+M") : tr("Ctrl+M")));
+    cmd->setDefaultKeySequence(
+        QKeySequence(Core::useMacShortcuts ? Tr::tr("Meta+M") : Tr::tr("Ctrl+M")));
     connect(m_addBookmarkAction, &QAction::triggered, this, &HelpWidget::addBookmark);
     layout->addWidget(new Utils::StyledSeparator(toolBar));
     layout->addWidget(Core::Command::toolButtonWithAppendedShortcut(m_addBookmarkAction, cmd));
 
-    m_openOnlineDocumentationAction = new QAction(Utils::Icons::ONLINE_TOOLBAR.icon(), tr("Open Online Documentation..."), this);
+    m_openOnlineDocumentationAction = new QAction(Utils::Icons::ONLINE_TOOLBAR.icon(),
+                                                  Tr::tr("Open Online Documentation..."),
+                                                  this);
     cmd = Core::ActionManager::registerAction(m_openOnlineDocumentationAction, Constants::HELP_OPENONLINE, context);
     connect(m_openOnlineDocumentationAction, &QAction::triggered, this, &HelpWidget::openOnlineDocumentation);
     layout->addWidget(
@@ -365,23 +347,11 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
         m_filterComboBox = new QComboBox;
         m_filterComboBox->setMinimumContentsLength(15);
         layout->addWidget(m_filterComboBox);
-#ifndef HELP_NEW_FILTER_ENGINE
-        m_filterComboBox->setModel(LocalHelpManager::filterModel());
-        m_filterComboBox->setCurrentIndex(LocalHelpManager::filterIndex());
-        connect(m_filterComboBox, QOverload<int>::of(&QComboBox::activated),
-                LocalHelpManager::instance(), &LocalHelpManager::setFilterIndex);
-        connect(LocalHelpManager::instance(),
-                &LocalHelpManager::filterIndexChanged,
-                m_filterComboBox,
-                &QComboBox::setCurrentIndex);
-#else
         connect(&LocalHelpManager::helpEngine(), &QHelpEngine::setupFinished,
                 this, &HelpWidget::setupFilterCombo, Qt::QueuedConnection);
-        connect(m_filterComboBox, QOverload<int>::of(&QComboBox::activated),
-                this, &HelpWidget::filterDocumentation);
+        connect(m_filterComboBox, &QComboBox::activated, this, &HelpWidget::filterDocumentation);
         connect(LocalHelpManager::filterEngine(), &QHelpFilterEngine::filterActivated,
                 this, &HelpWidget::currentFilterChanged);
-#endif
 
         Core::ActionContainer *windowMenu = Core::ActionManager::actionContainer(
             Core::Constants::M_WINDOW);
@@ -424,19 +394,19 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
     Core::ActionContainer *advancedMenu = Core::ActionManager::actionContainer(Core::Constants::M_EDIT_ADVANCED);
     if (QTC_GUARD(advancedMenu)) {
         // reuse TextEditor constants to avoid a second pair of menu actions
-        m_scaleUp = new QAction(tr("Increase Font Size"), this);
+        m_scaleUp = new QAction(Tr::tr("Increase Font Size"), this);
         cmd = Core::ActionManager::registerAction(m_scaleUp, TextEditor::Constants::INCREASE_FONT_SIZE,
                                                   context);
         connect(m_scaleUp, &QAction::triggered, this, &HelpWidget::scaleUp);
         advancedMenu->addAction(cmd, Core::Constants::G_EDIT_FONT);
 
-        m_scaleDown = new QAction(tr("Decrease Font Size"), this);
+        m_scaleDown = new QAction(Tr::tr("Decrease Font Size"), this);
         cmd = Core::ActionManager::registerAction(m_scaleDown, TextEditor::Constants::DECREASE_FONT_SIZE,
                                                   context);
         connect(m_scaleDown, &QAction::triggered, this, &HelpWidget::scaleDown);
         advancedMenu->addAction(cmd, Core::Constants::G_EDIT_FONT);
 
-        m_resetScale = new QAction(tr("Reset Font Size"), this);
+        m_resetScale = new QAction(Tr::tr("Reset Font Size"), this);
         cmd = Core::ActionManager::registerAction(m_resetScale, TextEditor::Constants::RESET_FONT_SIZE,
                                                   context);
         connect(m_resetScale, &QAction::triggered, this, &HelpWidget::resetScale);
@@ -454,20 +424,20 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
     if (m_switchToHelp)
         openMenu->addAction(m_switchToHelp);
     if (style != SideBarWidget) {
-        QAction *openSideBySide = openMenu->addAction(tr("Open in Edit Mode"));
+        QAction *openSideBySide = openMenu->addAction(Tr::tr("Open in Edit Mode"));
         connect(openSideBySide, &QAction::triggered, this, [this]() {
             postRequestShowHelpUrl(Core::HelpManager::SideBySideAlways);
         });
     }
     if (supportsPages()) {
-        QAction *openPage = openMenu->addAction(tr("Open in New Page"));
+        QAction *openPage = openMenu->addAction(Tr::tr("Open in New Page"));
         connect(openPage, &QAction::triggered, this, [this]() {
             if (HelpViewer *viewer = currentViewer())
                 openNewPage(viewer->source());
         });
     }
     if (style != ExternalWindow) {
-        QAction *openExternal = openMenu->addAction(tr("Open in Window"));
+        QAction *openExternal = openMenu->addAction(Tr::tr("Open in Window"));
         connect(openExternal, &QAction::triggered, this, [this]() {
             postRequestShowHelpUrl(Core::HelpManager::ExternalHelpAlways);
         });
@@ -486,7 +456,7 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
     button->setDefaultAction(m_closeAction);
     layout->addWidget(button);
 
-    QAction *reload = openMenu->addAction(tr("Reload"));
+    QAction *reload = openMenu->addAction(Tr::tr("Reload"));
     connect(reload, &QAction::triggered, this, [this]() {
         const int index = m_viewerStack->currentIndex();
         HelpViewer *previous = currentViewer();
@@ -501,13 +471,11 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
     }
 }
 
-#ifdef HELP_NEW_FILTER_ENGINE
-
 void HelpWidget::setupFilterCombo()
 {
     const QString currentFilter = LocalHelpManager::filterEngine()->activeFilter();
     m_filterComboBox->clear();
-    m_filterComboBox->addItem(tr("Unfiltered"));
+    m_filterComboBox->addItem(Tr::tr("Unfiltered"));
     const QStringList allFilters = LocalHelpManager::filterEngine()->filters();
     if (!allFilters.isEmpty())
         m_filterComboBox->insertSeparator(1);
@@ -533,8 +501,6 @@ void HelpWidget::currentFilterChanged(const QString &filter)
         index = 0;
     m_filterComboBox->setCurrentIndex(index);
 }
-
-#endif
 
 HelpWidget::~HelpWidget()
 {
@@ -585,58 +551,58 @@ void HelpWidget::addSideBar()
     auto contentWindow = new ContentWindow;
     auto contentItem = new Core::SideBarItem(contentWindow, Constants::HELP_CONTENTS);
     contentWindow->setOpenInNewPageActionVisible(supportsPages());
-    contentWindow->setWindowTitle(HelpPlugin::tr(Constants::SB_CONTENTS));
+    contentWindow->setWindowTitle(Tr::tr(Constants::SB_CONTENTS));
     connect(contentWindow, &ContentWindow::linkActivated,
             this, &HelpWidget::open);
-    m_contentsAction = new QAction(HelpPlugin::tr(Constants::SB_CONTENTS), this);
+    m_contentsAction = new QAction(Tr::tr(Constants::SB_CONTENTS), this);
     cmd = Core::ActionManager::registerAction(m_contentsAction, Constants::HELP_CONTENTS, m_context->context());
-    cmd->setDefaultKeySequence(QKeySequence(Core::useMacShortcuts ? tr("Meta+Shift+C")
-                                                                  : tr("Ctrl+Shift+C")));
+    cmd->setDefaultKeySequence(
+        QKeySequence(Core::useMacShortcuts ? Tr::tr("Meta+Shift+C") : Tr::tr("Ctrl+Shift+C")));
     shortcutMap.insert(Constants::HELP_CONTENTS, cmd);
 
     auto indexWindow = new IndexWindow();
     auto indexItem = new Core::SideBarItem(indexWindow, Constants::HELP_INDEX);
     indexWindow->setOpenInNewPageActionVisible(supportsPages());
-    indexWindow->setWindowTitle(HelpPlugin::tr(Constants::SB_INDEX));
+    indexWindow->setWindowTitle(Tr::tr(Constants::SB_INDEX));
     connect(indexWindow, &IndexWindow::linksActivated,
         this, &HelpWidget::showLinks);
-    m_indexAction = new QAction(HelpPlugin::tr(Constants::SB_INDEX), this);
+    m_indexAction = new QAction(Tr::tr(Constants::SB_INDEX), this);
     cmd = Core::ActionManager::registerAction(m_indexAction, Constants::HELP_INDEX, m_context->context());
-    cmd->setDefaultKeySequence(QKeySequence(Core::useMacShortcuts ? tr("Meta+I")
-                                                                  : tr("Ctrl+Shift+I")));
+    cmd->setDefaultKeySequence(
+        QKeySequence(Core::useMacShortcuts ? Tr::tr("Meta+I") : Tr::tr("Ctrl+Shift+I")));
     shortcutMap.insert(Constants::HELP_INDEX, cmd);
 
     auto bookmarkWidget = new BookmarkWidget(&LocalHelpManager::bookmarkManager());
-    bookmarkWidget->setWindowTitle(HelpPlugin::tr(Constants::SB_BOOKMARKS));
+    bookmarkWidget->setWindowTitle(Tr::tr(Constants::SB_BOOKMARKS));
     bookmarkWidget->setOpenInNewPageActionVisible(supportsPages());
     auto bookmarkItem = new Core::SideBarItem(bookmarkWidget, Constants::HELP_BOOKMARKS);
     connect(bookmarkWidget, &BookmarkWidget::linkActivated, this, &HelpWidget::setSource);
-    m_bookmarkAction = new QAction(tr("Activate Help Bookmarks View"), this);
+    m_bookmarkAction = new QAction(Tr::tr("Activate Help Bookmarks View"), this);
     cmd = Core::ActionManager::registerAction(m_bookmarkAction, Constants::HELP_BOOKMARKS,
                                               m_context->context());
-    cmd->setDefaultKeySequence(QKeySequence(Core::useMacShortcuts ? tr("Alt+Meta+M")
-                                                                  : tr("Ctrl+Shift+B")));
+    cmd->setDefaultKeySequence(
+        QKeySequence(Core::useMacShortcuts ? Tr::tr("Alt+Meta+M") : Tr::tr("Ctrl+Shift+B")));
     shortcutMap.insert(Constants::HELP_BOOKMARKS, cmd);
 
     auto searchItem = new SearchSideBarItem;
     connect(searchItem, &SearchSideBarItem::linkActivated, this, &HelpWidget::openFromSearch);
-    m_searchAction = new QAction(tr("Activate Help Search View"), this);
+    m_searchAction = new QAction(Tr::tr("Activate Help Search View"), this);
     cmd = Core::ActionManager::registerAction(m_searchAction, Constants::HELP_SEARCH,
                                               m_context->context());
-    cmd->setDefaultKeySequence(QKeySequence(Core::useMacShortcuts ? tr("Meta+/")
-                                                                  : tr("Ctrl+Shift+/")));
+    cmd->setDefaultKeySequence(
+        QKeySequence(Core::useMacShortcuts ? Tr::tr("Meta+/") : Tr::tr("Ctrl+Shift+/")));
     shortcutMap.insert(Constants::HELP_SEARCH, cmd);
 
     Core::SideBarItem *openPagesItem = nullptr;
     QWidget *openPagesWidget = m_openPagesManager->openPagesWidget();
-    openPagesWidget->setWindowTitle(HelpPlugin::tr(Constants::SB_OPENPAGES));
+    openPagesWidget->setWindowTitle(Tr::tr(Constants::SB_OPENPAGES));
     openPagesItem = new Core::SideBarItem(openPagesWidget, Constants::HELP_OPENPAGES);
-    m_openPagesAction = new QAction(tr("Activate Open Help Pages View"), this);
+    m_openPagesAction = new QAction(Tr::tr("Activate Open Help Pages View"), this);
     cmd = Core::ActionManager::registerAction(m_openPagesAction,
                                               Constants::HELP_OPENPAGES,
                                               m_context->context());
     cmd->setDefaultKeySequence(
-        QKeySequence(Core::useMacShortcuts ? tr("Meta+O") : tr("Ctrl+Shift+O")));
+        QKeySequence(Core::useMacShortcuts ? Tr::tr("Meta+O") : Tr::tr("Ctrl+Shift+O")));
     shortcutMap.insert(Constants::HELP_OPENPAGES, cmd);
 
     QList<Core::SideBarItem *> itemList = {contentItem, indexItem, bookmarkItem, searchItem};
@@ -747,7 +713,9 @@ HelpViewer *HelpWidget::insertViewer(int index, const QUrl &url)
         emit m_model.dataChanged(m_model.index(i, 0), m_model.index(i, 0));
     });
 
-    connect(viewer, &HelpViewer::loadFinished, this, &HelpWidget::highlightSearchTerms);
+    connect(viewer, &HelpViewer::loadFinished, this, [this, viewer] {
+        highlightSearchTerms(viewer);
+    });
     connect(viewer, &HelpViewer::newPageRequested, this, &HelpWidget::openNewPage);
     connect(viewer, &HelpViewer::externalPageRequested, this, [this](const QUrl &url) {
         emit requestShowHelpUrl(url, Core::HelpManager::ExternalHelpAlways);
@@ -879,9 +847,9 @@ void HelpWidget::updateWindowTitle()
     QTC_ASSERT(currentViewer(), return);
     const QString pageTitle = currentViewer()->title();
     if (pageTitle.isEmpty())
-        setWindowTitle(tr("Help"));
+        setWindowTitle(Tr::tr("Help"));
     else
-        setWindowTitle(tr("Help - %1").arg(pageTitle));
+        setWindowTitle(Tr::tr("Help - %1").arg(pageTitle));
 }
 
 void HelpWidget::postRequestShowHelpUrl(Core::HelpManager::HelpViewerLocation location)
@@ -1006,7 +974,7 @@ void HelpWidget::print(HelpViewer *viewer)
     if (!m_printer)
         m_printer = new QPrinter(QPrinter::HighResolution);
     QPrintDialog dlg(m_printer, this);
-    dlg.setWindowTitle(tr("Print Documentation"));
+    dlg.setWindowTitle(Tr::tr("Print Documentation"));
     if (!viewer->selectedText().isEmpty())
         dlg.setOption(QAbstractPrintDialog::PrintSelection, true);
     dlg.setOption(QAbstractPrintDialog::PrintPageRange, true);
@@ -1016,13 +984,11 @@ void HelpWidget::print(HelpViewer *viewer)
         viewer->print(m_printer);
 }
 
-void HelpWidget::highlightSearchTerms()
+void HelpWidget::highlightSearchTerms(HelpViewer *viewer)
 {
     if (m_searchTerms.isEmpty())
         return;
-    auto viewer = qobject_cast<HelpViewer *>(sender());
-    QTC_ASSERT(viewer, return);
-    foreach (const QString& term, m_searchTerms)
+    for (const QString &term : std::as_const(m_searchTerms))
         viewer->findText(term, {}, false, true);
     m_searchTerms.clear();
 }

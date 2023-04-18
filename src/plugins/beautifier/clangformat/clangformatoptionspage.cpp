@@ -1,113 +1,144 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Lorenz Haas
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Lorenz Haas
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangformatoptionspage.h"
-#include "ui_clangformatoptionspage.h"
 
-#include "clangformatconstants.h"
 #include "clangformatsettings.h"
 
 #include "../beautifierconstants.h"
 #include "../beautifierplugin.h"
+#include "../beautifiertr.h"
+#include "../configurationpanel.h"
 
-namespace Beautifier {
-namespace Internal {
+#include <utils/layoutbuilder.h>
+#include <utils/pathchooser.h>
+
+#include <QButtonGroup>
+#include <QComboBox>
+#include <QGroupBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QRadioButton>
+#include <QSpacerItem>
+
+namespace Beautifier::Internal {
 
 class ClangFormatOptionsPageWidget : public Core::IOptionsPageWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Beautifier::Internal::ClangFormat)
-
 public:
     explicit ClangFormatOptionsPageWidget(ClangFormatSettings *settings);
 
     void apply() final;
 
 private:
-    Ui::ClangFormatOptionsPage ui;
     ClangFormatSettings *m_settings;
+    ConfigurationPanel *m_configurations;
+    QRadioButton *m_usePredefinedStyle;
+    QComboBox *m_predefinedStyle;
+    QComboBox *m_fallbackStyle;
+    Utils::PathChooser *m_command;
+    QLineEdit *m_mime;
 };
 
 ClangFormatOptionsPageWidget::ClangFormatOptionsPageWidget(ClangFormatSettings *settings)
     : m_settings(settings)
 {
-    ui.setupUi(this);
-    ui.options->setEnabled(false);
-    ui.predefinedStyle->addItems(m_settings->predefinedStyles());
-    ui.fallbackStyle->addItems(m_settings->fallbackStyles());
-    ui.command->setExpectedKind(Utils::PathChooser::ExistingCommand);
-    ui.command->setCommandVersionArguments({"--version"});
-    ui.command->setPromptDialogTitle(
-                BeautifierPlugin::msgCommandPromptDialogTitle("Clang Format"));
-    connect(ui.command, &Utils::PathChooser::validChanged, ui.options, &QWidget::setEnabled);
-    connect(ui.predefinedStyle, &QComboBox::currentTextChanged, [this](const QString &item) {
-        ui.fallbackStyle->setEnabled(item == "File");
-    });
-    connect(ui.usePredefinedStyle, &QRadioButton::toggled, [this](bool checked) {
-        ui.fallbackStyle->setEnabled(checked && ui.predefinedStyle->currentText() == "File");
-        ui.predefinedStyle->setEnabled(checked);
-    });
-    ui.configurations->setSettings(m_settings);
+    auto options = new QGroupBox(Tr::tr("Options"));
+    options->setEnabled(false);
 
-    ui.command->setFilePath(m_settings->command());
-    ui.mime->setText(m_settings->supportedMimeTypesAsString());
-    const int predefinedStyleIndex = ui.predefinedStyle->findText(m_settings->predefinedStyle());
+    auto styleButtonGroup = new QButtonGroup(this);
+
+    auto useCustomizedStyle = new QRadioButton(Tr::tr("Use customized style:"));
+    styleButtonGroup->addButton(useCustomizedStyle);
+
+    m_configurations = new ConfigurationPanel;
+    m_configurations->setSettings(m_settings);
+    m_configurations->setCurrentConfiguration(m_settings->customStyle());
+
+    m_usePredefinedStyle = new QRadioButton(Tr::tr("Use predefined style:"));
+
+    m_usePredefinedStyle->setChecked(true);
+    styleButtonGroup->addButton(m_usePredefinedStyle);
+
+    m_predefinedStyle = new QComboBox;
+    m_predefinedStyle->addItems(m_settings->predefinedStyles());
+    const int predefinedStyleIndex = m_predefinedStyle->findText(m_settings->predefinedStyle());
     if (predefinedStyleIndex != -1)
-        ui.predefinedStyle->setCurrentIndex(predefinedStyleIndex);
-    const int fallbackStyleIndex = ui.fallbackStyle->findText(m_settings->fallbackStyle());
+        m_predefinedStyle->setCurrentIndex(predefinedStyleIndex);
+
+    m_fallbackStyle = new QComboBox;
+    m_fallbackStyle->addItems(m_settings->fallbackStyles());
+    m_fallbackStyle->setEnabled(false);
+    const int fallbackStyleIndex = m_fallbackStyle->findText(m_settings->fallbackStyle());
     if (fallbackStyleIndex != -1)
-        ui.fallbackStyle->setCurrentIndex(fallbackStyleIndex);
-    ui.configurations->setSettings(m_settings);
-    ui.configurations->setCurrentConfiguration(m_settings->customStyle());
+        m_fallbackStyle->setCurrentIndex(fallbackStyleIndex);
+
+    m_mime = new QLineEdit(m_settings->supportedMimeTypesAsString());
+
+    m_command = new Utils::PathChooser;
+    m_command->setExpectedKind(Utils::PathChooser::ExistingCommand);
+    m_command->setCommandVersionArguments({"--version"});
+    m_command->setPromptDialogTitle(
+                BeautifierPlugin::msgCommandPromptDialogTitle("Clang Format"));
 
     if (m_settings->usePredefinedStyle())
-        ui.usePredefinedStyle->setChecked(true);
+        m_usePredefinedStyle->setChecked(true);
     else
-        ui.useCustomizedStyle->setChecked(true);
+        useCustomizedStyle->setChecked(true);
+
+    using namespace Utils::Layouting;
+
+    Form {
+        m_usePredefinedStyle, m_predefinedStyle, br,
+        empty, Row { Tr::tr("Fallback style:"), m_fallbackStyle }, br,
+        useCustomizedStyle, m_configurations, br,
+    }.attachTo(options);
+
+    Column {
+        Group {
+            title(Tr::tr("Configuration")),
+            Form {
+                Tr::tr("Clang Format command:"), m_command, br,
+                Tr::tr("Restrict to MIME types:"), m_mime
+            }
+        },
+        options,
+        st
+    }.attachTo(this);
+
+    connect(m_command, &Utils::PathChooser::validChanged, options, &QWidget::setEnabled);
+    connect(m_predefinedStyle, &QComboBox::currentTextChanged, this, [this](const QString &item) {
+        m_fallbackStyle->setEnabled(item == "File");
+    });
+    connect(m_usePredefinedStyle, &QRadioButton::toggled, this, [this](bool checked) {
+        m_fallbackStyle->setEnabled(checked && m_predefinedStyle->currentText() == "File");
+        m_predefinedStyle->setEnabled(checked);
+    });
+
+    // might trigger PathChooser::validChanged, so so after the connect above
+    m_command->setFilePath(m_settings->command());
 }
 
 void ClangFormatOptionsPageWidget::apply()
 {
-    m_settings->setCommand(ui.command->filePath().toString());
-    m_settings->setSupportedMimeTypes(ui.mime->text());
-    m_settings->setUsePredefinedStyle(ui.usePredefinedStyle->isChecked());
-    m_settings->setPredefinedStyle(ui.predefinedStyle->currentText());
-    m_settings->setFallbackStyle(ui.fallbackStyle->currentText());
-    m_settings->setCustomStyle(ui.configurations->currentConfiguration());
+    m_settings->setCommand(m_command->filePath());
+    m_settings->setSupportedMimeTypes(m_mime->text());
+    m_settings->setUsePredefinedStyle(m_usePredefinedStyle->isChecked());
+    m_settings->setPredefinedStyle(m_predefinedStyle->currentText());
+    m_settings->setFallbackStyle(m_fallbackStyle->currentText());
+    m_settings->setCustomStyle(m_configurations->currentConfiguration());
     m_settings->save();
 
     // update since not all MIME types are accepted (invalids or duplicates)
-    ui.mime->setText(m_settings->supportedMimeTypesAsString());
+    m_mime->setText(m_settings->supportedMimeTypesAsString());
 }
 
 ClangFormatOptionsPage::ClangFormatOptionsPage(ClangFormatSettings *settings)
 {
     setId("ClangFormat");
-    setDisplayName(ClangFormatOptionsPageWidget::tr("Clang Format"));
+    setDisplayName(Tr::tr("Clang Format"));
     setCategory(Constants::OPTION_CATEGORY);
     setWidgetCreator([settings] { return new ClangFormatOptionsPageWidget(settings); });
 }
 
-} // namespace Internal
-} // namespace Beautifier
+} // Beautifier::Internal

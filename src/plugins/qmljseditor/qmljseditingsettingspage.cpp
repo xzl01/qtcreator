@@ -1,56 +1,40 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljseditingsettingspage.h"
 #include "qmljseditorconstants.h"
+#include "qmljseditortr.h"
 
-#include <qmljstools/qmljstoolsconstants.h>
+#include <coreplugin/coreconstants.h>
 #include <coreplugin/icore.h>
+#include <utils/layoutbuilder.h>
+#include <utils/macroexpander.h>
+#include <utils/qtcsettings.h>
+#include <utils/variablechooser.h>
+#include <qmljstools/qmljstoolsconstants.h>
 
+#include <QCheckBox>
+#include <QComboBox>
+#include <QLabel>
+#include <QLineEdit>
 #include <QSettings>
 #include <QTextStream>
-#include <QCheckBox>
 
 const char AUTO_FORMAT_ON_SAVE[] = "QmlJSEditor.AutoFormatOnSave";
 const char AUTO_FORMAT_ONLY_CURRENT_PROJECT[] = "QmlJSEditor.AutoFormatOnlyCurrentProject";
 const char QML_CONTEXTPANE_KEY[] = "QmlJSEditor.ContextPaneEnabled";
 const char QML_CONTEXTPANEPIN_KEY[] = "QmlJSEditor.ContextPanePinned";
 const char FOLD_AUX_DATA[] = "QmlJSEditor.FoldAuxData";
-const char OPEN_UIQML_FILES_IN_QDS[] = "QmlJSEditor.openUiQmlFilesInQDS";
+const char USE_QMLLS[] = "QmlJSEditor.UseQmlls";
+const char USE_LATEST_QMLLS[] = "QmlJSEditor.UseLatestQmlls";
+const char UIQML_OPEN_MODE[] = "QmlJSEditor.openUiQmlMode";
+const char FORMAT_COMMAND[] = "QmlJSEditor.formatCommand";
+const char FORMAT_COMMAND_OPTIONS[] = "QmlJSEditor.formatCommandOptions";
+const char CUSTOM_COMMAND[] = "QmlJSEditor.useCustomFormatCommand";
+const char DEFAULT_CUSTOM_FORMAT_COMMAND[] = "%{CurrentDocument:Project:QT_HOST_BINS}/qmlformat";
 
 using namespace QmlJSEditor;
 using namespace QmlJSEditor::Internal;
-
-QmlJsEditingSettings::QmlJsEditingSettings()
-    : m_enableContextPane(false),
-    m_pinContextPane(false),
-    m_autoFormatOnSave(false),
-    m_autoFormatOnlyCurrentProject(false),
-    m_foldAuxData(false),
-    m_openUiQmlFilesInQDS(false)
-{}
 
 void QmlJsEditingSettings::set()
 {
@@ -67,7 +51,12 @@ void QmlJsEditingSettings::fromSettings(QSettings *settings)
     m_autoFormatOnlyCurrentProject
         = settings->value(AUTO_FORMAT_ONLY_CURRENT_PROJECT, QVariant(false)).toBool();
     m_foldAuxData = settings->value(FOLD_AUX_DATA, QVariant(true)).toBool();
-    m_openUiQmlFilesInQDS = settings->value(OPEN_UIQML_FILES_IN_QDS, QVariant(false)).toBool();
+    m_uiQmlOpenMode = settings->value(UIQML_OPEN_MODE, "").toString();
+    m_qmllsSettings.useQmlls = settings->value(USE_QMLLS, QVariant(false)).toBool();
+    m_qmllsSettings.useLatestQmlls = settings->value(USE_LATEST_QMLLS, QVariant(false)).toBool();
+    m_formatCommand = settings->value(FORMAT_COMMAND, {}).toString();
+    m_formatCommandOptions = settings->value(FORMAT_COMMAND_OPTIONS, {}).toString();
+    m_useCustomFormatCommand = settings->value(CUSTOM_COMMAND, QVariant(false)).toBool();
     settings->endGroup();
 }
 
@@ -79,8 +68,20 @@ void QmlJsEditingSettings::toSettings(QSettings *settings) const
     settings->setValue(AUTO_FORMAT_ON_SAVE, m_autoFormatOnSave);
     settings->setValue(AUTO_FORMAT_ONLY_CURRENT_PROJECT, m_autoFormatOnlyCurrentProject);
     settings->setValue(FOLD_AUX_DATA, m_foldAuxData);
-    settings->setValue(OPEN_UIQML_FILES_IN_QDS, m_openUiQmlFilesInQDS);
+    settings->setValue(UIQML_OPEN_MODE, m_uiQmlOpenMode);
+    settings->setValue(USE_QMLLS, m_qmllsSettings.useQmlls);
+    settings->setValue(USE_LATEST_QMLLS, m_qmllsSettings.useLatestQmlls);
+    Utils::QtcSettings::setValueWithDefault(settings, FORMAT_COMMAND, m_formatCommand, {});
+    Utils::QtcSettings::setValueWithDefault(settings,
+                                            FORMAT_COMMAND_OPTIONS,
+                                            m_formatCommandOptions,
+                                            {});
+    Utils::QtcSettings::setValueWithDefault(settings,
+                                            CUSTOM_COMMAND,
+                                            m_useCustomFormatCommand,
+                                            false);
     settings->endGroup();
+    QmllsSettingsManager::instance()->checkForChanges();
 }
 
 bool QmlJsEditingSettings::equals(const QmlJsEditingSettings &other) const
@@ -89,8 +90,10 @@ bool QmlJsEditingSettings::equals(const QmlJsEditingSettings &other) const
            && m_pinContextPane == other.m_pinContextPane
            && m_autoFormatOnSave == other.m_autoFormatOnSave
            && m_autoFormatOnlyCurrentProject == other.m_autoFormatOnlyCurrentProject
-           && m_foldAuxData == other.m_foldAuxData
-           && m_openUiQmlFilesInQDS == other.m_openUiQmlFilesInQDS;
+           && m_foldAuxData == other.m_foldAuxData && m_qmllsSettings == other.m_qmllsSettings
+           && m_uiQmlOpenMode == other.m_uiQmlOpenMode && m_formatCommand == other.m_formatCommand
+           && m_formatCommandOptions == other.m_formatCommandOptions
+           && m_useCustomFormatCommand == other.m_useCustomFormatCommand;
 }
 
 bool QmlJsEditingSettings::enableContextPane() const
@@ -143,48 +146,193 @@ void QmlJsEditingSettings::setFoldAuxData(const bool foldAuxData)
     m_foldAuxData = foldAuxData;
 }
 
-void QmlJsEditingSettings::setOpenUiQmlFilesInQDS(const bool openUiQmlFilesInQDS)
+QString QmlJsEditingSettings::defaultFormatCommand() const
 {
-    m_openUiQmlFilesInQDS = openUiQmlFilesInQDS;
+    return DEFAULT_CUSTOM_FORMAT_COMMAND;
 }
 
-bool QmlJsEditingSettings::openUiQmlFilesInQDS() const
+QString QmlJsEditingSettings::formatCommand() const
 {
-    return m_openUiQmlFilesInQDS;
+    return m_formatCommand;
+}
+
+void QmlJsEditingSettings::setFormatCommand(const QString &formatCommand)
+{
+    m_formatCommand = formatCommand;
+}
+
+QString QmlJsEditingSettings::formatCommandOptions() const
+{
+    return m_formatCommandOptions;
+}
+
+void QmlJsEditingSettings::setFormatCommandOptions(const QString &formatCommandOptions)
+{
+    m_formatCommandOptions = formatCommandOptions;
+}
+
+bool QmlJsEditingSettings::useCustomFormatCommand() const
+{
+    return m_useCustomFormatCommand;
+}
+
+void QmlJsEditingSettings::setUseCustomFormatCommand(bool customCommand)
+{
+    m_useCustomFormatCommand = customCommand;
+}
+
+QmllsSettings &QmlJsEditingSettings::qmllsSettigs()
+{
+    return m_qmllsSettings;
+}
+
+const QmllsSettings &QmlJsEditingSettings::qmllsSettigs() const
+{
+    return m_qmllsSettings;
+}
+
+const QString QmlJsEditingSettings::uiQmlOpenMode() const
+{
+    return m_uiQmlOpenMode;
+}
+
+void QmlJsEditingSettings::setUiQmlOpenMode(const QString &mode)
+{
+    m_uiQmlOpenMode = mode;
 }
 
 class QmlJsEditingSettingsPageWidget final : public Core::IOptionsPageWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(QmlDesigner::Internal::QmlJsEditingSettingsPage)
-
 public:
     QmlJsEditingSettingsPageWidget()
     {
-        m_ui.setupUi(this);
-
         auto s = QmlJsEditingSettings::get();
-        m_ui.textEditHelperCheckBox->setChecked(s.enableContextPane());
-        m_ui.textEditHelperCheckBoxPin->setChecked(s.pinContextPane());
-        m_ui.autoFormatOnSave->setChecked(s.autoFormatOnSave());
-        m_ui.autoFormatOnlyCurrentProject->setChecked(s.autoFormatOnlyCurrentProject());
-        m_ui.foldAuxDataCheckBox->setChecked(s.foldAuxData());
-        m_ui.openUiQmlFilesInQDS->setChecked(s.openUiQmlFilesInQDS());
+        autoFormatOnSave = new QCheckBox(Tr::tr("Enable auto format on file save"));
+        autoFormatOnSave->setChecked(s.autoFormatOnSave());
+        autoFormatOnlyCurrentProject =
+                new QCheckBox(Tr::tr("Restrict to files contained in the current project"));
+        autoFormatOnlyCurrentProject->setChecked(s.autoFormatOnlyCurrentProject());
+        autoFormatOnlyCurrentProject->setEnabled(autoFormatOnSave->isChecked());
+        useCustomFormatCommand = new QCheckBox(
+            Tr::tr("Use custom command instead of built-in formatter"));
+        useCustomFormatCommand->setChecked(s.useCustomFormatCommand());
+        auto formatCommandLabel = new QLabel(Tr::tr("Command:"));
+        formatCommand = new QLineEdit();
+        formatCommand->setText(s.formatCommand());
+        formatCommand->setPlaceholderText(s.defaultFormatCommand());
+        auto formatCommandOptionsLabel = new QLabel(Tr::tr("Arguments:"));
+        formatCommandOptions = new QLineEdit();
+        formatCommandOptions->setText(s.formatCommandOptions());
+        pinContextPane = new QCheckBox(Tr::tr("Pin Qt Quick Toolbar"));
+        pinContextPane->setChecked(s.pinContextPane());
+        enableContextPane = new QCheckBox(Tr::tr("Always show Qt Quick Toolbar"));
+        enableContextPane->setChecked(s.enableContextPane());
+        foldAuxData = new QCheckBox(Tr::tr("Auto-fold auxiliary data"));
+        foldAuxData->setChecked(s.foldAuxData());
+        uiQmlOpenComboBox = new QComboBox;
+        uiQmlOpenComboBox->addItem(Tr::tr("Always Ask"), "");
+        uiQmlOpenComboBox->addItem(Tr::tr("Qt Design Studio"), Core::Constants::MODE_DESIGN);
+        uiQmlOpenComboBox->addItem(Tr::tr("Qt Creator"), Core::Constants::MODE_EDIT);
+        const int comboIndex = qMax(0, uiQmlOpenComboBox->findData(s.uiQmlOpenMode()));
+        uiQmlOpenComboBox->setCurrentIndex(comboIndex);
+        uiQmlOpenComboBox->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+        uiQmlOpenComboBox->setSizeAdjustPolicy(QComboBox::QComboBox::AdjustToContents);
+
+        useQmlls = new QCheckBox(Tr::tr("Use qmlls (EXPERIMENTAL!)"));
+        useQmlls->setChecked(s.qmllsSettigs().useQmlls);
+        useLatestQmlls = new QCheckBox(Tr::tr("Always use latest qmlls"));
+        useLatestQmlls->setChecked(s.qmllsSettigs().useLatestQmlls);
+        useLatestQmlls->setEnabled(s.qmllsSettigs().useQmlls);
+        QObject::connect(useQmlls, &QCheckBox::stateChanged, this, [this](int checked) {
+            useLatestQmlls->setEnabled(checked != Qt::Unchecked);
+        });
+        using namespace Utils::Layouting;
+        // clang-format off
+        const auto formattingGroup =
+            Group {
+                title(Tr::tr("Automatic Formatting on File Save")),
+                Column {
+                    autoFormatOnSave,
+                    autoFormatOnlyCurrentProject,
+                    useCustomFormatCommand,
+                    Form {
+                        formatCommandLabel, formatCommand, br,
+                        formatCommandOptionsLabel, formatCommandOptions
+                    }
+                },
+            };
+
+        Column {
+            formattingGroup,
+            Group {
+                title(Tr::tr("Qt Quick Toolbars")),
+                Column { pinContextPane, enableContextPane },
+            },
+            Group {
+                title(Tr::tr("Features")),
+                Column {
+                    foldAuxData,
+                    Form { Tr::tr("Open .ui.qml files with:"), uiQmlOpenComboBox },
+                },
+            },
+            Group{
+                title(Tr::tr("Language Server")),
+                Column{useQmlls, useLatestQmlls},
+            },
+            st,
+        }.attachTo(this);
+        // clang-format on
+
+        Utils::VariableChooser::addSupportForChildWidgets(formattingGroup.widget,
+                                                          Utils::globalMacroExpander());
+
+        const auto updateFormatCommandState = [&, formatCommandLabel, formatCommandOptionsLabel] {
+            const bool enabled = useCustomFormatCommand->isChecked()
+                                 && autoFormatOnSave->isChecked();
+            formatCommandLabel->setEnabled(enabled);
+            formatCommand->setEnabled(enabled);
+            formatCommandOptionsLabel->setEnabled(enabled);
+            formatCommandOptions->setEnabled(enabled);
+        };
+        updateFormatCommandState();
+
+        connect(autoFormatOnSave, &QCheckBox::toggled, this, [&, updateFormatCommandState]() {
+            autoFormatOnlyCurrentProject->setEnabled(autoFormatOnSave->isChecked());
+            useCustomFormatCommand->setEnabled(autoFormatOnSave->isChecked());
+            updateFormatCommandState();
+        });
+        connect(useCustomFormatCommand, &QCheckBox::toggled, this, updateFormatCommandState);
     }
 
     void apply() final
     {
         QmlJsEditingSettings s;
-        s.setEnableContextPane(m_ui.textEditHelperCheckBox->isChecked());
-        s.setPinContextPane(m_ui.textEditHelperCheckBoxPin->isChecked());
-        s.setAutoFormatOnSave(m_ui.autoFormatOnSave->isChecked());
-        s.setAutoFormatOnlyCurrentProject(m_ui.autoFormatOnlyCurrentProject->isChecked());
-        s.setFoldAuxData(m_ui.foldAuxDataCheckBox->isChecked());
-        s.setOpenUiQmlFilesInQDS(m_ui.openUiQmlFilesInQDS->isChecked());
+        s.setEnableContextPane(enableContextPane->isChecked());
+        s.setPinContextPane(pinContextPane->isChecked());
+        s.setAutoFormatOnSave(autoFormatOnSave->isChecked());
+        s.setAutoFormatOnlyCurrentProject(autoFormatOnlyCurrentProject->isChecked());
+        s.setUseCustomFormatCommand(useCustomFormatCommand->isChecked());
+        s.setFormatCommand(formatCommand->text());
+        s.setFormatCommandOptions(formatCommandOptions->text());
+        s.setFoldAuxData(foldAuxData->isChecked());
+        s.setUiQmlOpenMode(uiQmlOpenComboBox->currentData().toString());
+        s.qmllsSettigs().useQmlls = useQmlls->isChecked();
+        s.qmllsSettigs().useLatestQmlls = useLatestQmlls->isChecked();
         s.set();
     }
 
 private:
-    Ui::QmlJsEditingSettingsPage m_ui;
+    QCheckBox *autoFormatOnSave;
+    QCheckBox *autoFormatOnlyCurrentProject;
+    QCheckBox *useCustomFormatCommand;
+    QLineEdit *formatCommand;
+    QLineEdit *formatCommandOptions;
+    QCheckBox *pinContextPane;
+    QCheckBox *enableContextPane;
+    QCheckBox *foldAuxData;
+    QCheckBox *useQmlls;
+    QCheckBox *useLatestQmlls;
+    QComboBox *uiQmlOpenComboBox;
 };
 
 
@@ -198,8 +346,7 @@ QmlJsEditingSettings QmlJsEditingSettings::get()
 QmlJsEditingSettingsPage::QmlJsEditingSettingsPage()
 {
     setId("C.QmlJsEditing");
-    setDisplayName(QmlJsEditingSettingsPageWidget::tr("QML/JS Editing"));
+    setDisplayName(Tr::tr("QML/JS Editing"));
     setCategory(Constants::SETTINGS_CATEGORY_QML);
     setWidgetCreator([] { return new QmlJsEditingSettingsPageWidget; });
 }
-

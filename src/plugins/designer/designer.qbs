@@ -35,6 +35,7 @@ QtcPlugin {
             "designer_export.h",
             "designerconstants.h",
             "designercontext.cpp", "designercontext.h",
+            "designertr.h",
             "editordata.h",
             "editorwidget.cpp", "editorwidget.h",
             "formeditorfactory.cpp", "formeditorfactory.h",
@@ -70,9 +71,9 @@ QtcPlugin {
         files: [
             "formclasswizard.cpp", "formclasswizard.h",
             "formclasswizarddialog.cpp", "formclasswizarddialog.h",
-            "formclasswizardpage.cpp", "formclasswizardpage.h", "formclasswizardpage.ui",
+            "formclasswizardpage.cpp", "formclasswizardpage.h",
             "formclasswizardparameters.cpp", "formclasswizardparameters.h",
-            "newclasswidget.cpp", "newclasswidget.h", "newclasswidget.ui",
+            "newclasswidget.cpp", "newclasswidget.h",
         ]
     }
 

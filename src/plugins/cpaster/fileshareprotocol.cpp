@@ -1,33 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "fileshareprotocol.h"
+
+#include "cpastertr.h"
 #include "fileshareprotocolsettingspage.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
+
+#include <utils/fileutils.h>
 
 #include <QXmlStreamReader>
 #include <QXmlStreamAttribute>
@@ -38,12 +20,12 @@
 
 enum { debug = 0 };
 
-static const char tempPatternC[] = "pasterXXXXXX.xml";
-static const char tempGlobPatternC[] = "paster*.xml";
-static const char pasterElementC[] = "paster";
-static const char userElementC[] = "user";
-static const char descriptionElementC[] = "description";
-static const char textElementC[] = "text";
+const char tempPatternC[] = "pasterXXXXXX.xml";
+const char tempGlobPatternC[] = "paster*.xml";
+const char pasterElementC[] = "paster";
+const char userElementC[] = "user";
+const char descriptionElementC[] = "description";
+const char textElementC[] = "text";
 
 namespace CodePaster {
 
@@ -94,7 +76,7 @@ static bool parse(const QString &fileName,
 
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly|QIODevice::Text)) {
-        *errorMessage = FileShareProtocol::tr("Cannot open %1: %2").arg(fileName, file.errorString());
+        *errorMessage = Tr::tr("Cannot open %1: %2").arg(fileName, file.errorString());
         return false;
     }
     QXmlStreamReader reader(&file);
@@ -103,7 +85,7 @@ static bool parse(const QString &fileName,
             const auto elementName = reader.name();
             // Check start element
             if (elementCount == 0 && elementName != QLatin1String(pasterElementC)) {
-                *errorMessage = FileShareProtocol::tr("%1 does not appear to be a paster file.").arg(fileName);
+                *errorMessage = Tr::tr("%1 does not appear to be a paster file.").arg(fileName);
                 return false;
             }
             // Parse elements
@@ -117,7 +99,7 @@ static bool parse(const QString &fileName,
         }
     }
     if (reader.hasError()) {
-        *errorMessage = FileShareProtocol::tr("Error in %1 at %2: %3")
+        *errorMessage = Tr::tr("Error in %1 at %2: %3")
                         .arg(fileName).arg(reader.lineNumber()).arg(reader.errorString());
         return false;
     }
@@ -128,7 +110,7 @@ bool FileShareProtocol::checkConfiguration(QString *errorMessage)
 {
     if (m_settings.path.value().isEmpty()) {
         if (errorMessage)
-            *errorMessage = tr("Please configure a path.");
+            *errorMessage = Tr::tr("Please configure a path.");
         return false;
     }
     return true;

@@ -1,36 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "basetreeview.h"
 
+#include "algorithm.h"
 #include "progressindicator.h"
+#include "qtcassert.h"
 #include "qtcsettings.h"
 #include "treemodel.h"
-
-#include <utils/algorithm.h>
-#include <utils/qtcassert.h>
+#include "utilstr.h"
 
 #include <QDebug>
 #include <QFontMetrics>
@@ -174,45 +152,43 @@ public:
         }
     }
 
-
-    void considerItems(int column, QModelIndex start, int *minimum, bool single) const
-    {
-        QModelIndex a = start;
-        a = a.sibling(a.row(), column);
-        QFontMetrics fm = q->fontMetrics();
-        const int ind = q->indentation();
-        QAbstractItemModel *m = q->model();
-        for (int i = 0; i < 100 && a.isValid(); ++i) {
-            const QString s = m->data(a).toString();
-            int w = fm.horizontalAdvance(s) + 10;
-            if (column == 0) {
-                for (QModelIndex b = a.parent(); b.isValid(); b = b.parent())
-                    w += ind;
-            }
-            if (w > *minimum)
-                *minimum = w;
-            if (single)
-                break;
-            a = q->indexBelow(a);
-        }
-    }
-
     int suggestedColumnSize(int column) const
     {
-        QHeaderView *h = q->header();
+        const QHeaderView *h = q->header();
         QTC_ASSERT(h, return -1);
-        QAbstractItemModel *m = q->model();
+        const QAbstractItemModel *m = q->model();
         QTC_ASSERT(m, return -1);
 
-        QFontMetrics fm = q->fontMetrics();
+        const QFontMetrics fm = q->fontMetrics();
+        const int ind = q->indentation();
+        const int avg = fm.averageCharWidth();
         int minimum = fm.horizontalAdvance(m->headerData(column, Qt::Horizontal).toString())
-            + 2 * fm.horizontalAdvance(QLatin1Char('m'));
-        considerItems(column, q->indexAt(QPoint(1, 1)), &minimum, false);
+            + 2 * avg;
+
+        auto considerItems = [&](const QModelIndex &start, bool single) {
+            QModelIndex a = start;
+            a = a.sibling(a.row(), column);
+            for (int i = 0; i < 100 && a.isValid(); ++i) {
+                const QString s = m->data(a).toString();
+                int w = avg * s.size() + 20;
+                if (column == 0) {
+                    for (QModelIndex b = a.parent(); b.isValid(); b = b.parent())
+                        w += ind;
+                }
+                if (w > minimum)
+                    minimum = w;
+                if (single)
+                    break;
+                a = q->indexBelow(a);
+            }
+        };
+
+        considerItems(q->indexAt(QPoint(1, 1)), false);
 
         const QVariant extraIndices = m->data(QModelIndex(), BaseTreeView::ExtraIndicesForColumnWidth);
         const QList<QModelIndex> values = extraIndices.value<QModelIndexList>();
         for (const QModelIndex &a : values)
-            considerItems(column, a, &minimum, true);
+            considerItems(a, true);
 
         return minimum;
     }
@@ -565,7 +541,7 @@ void BaseTreeView::enableColumnHiding()
             shown += !isColumnHidden(i);
         for (int i = 0; i < columns; ++i) {
             QString columnName = model()->headerData(i, Qt::Horizontal).toString();
-            QAction *act = menu.addAction(tr("Show %1 Column").arg(columnName));
+            QAction *act = menu.addAction(Tr::tr("Show %1 Column").arg(columnName));
             act->setCheckable(true);
             act->setChecked(!isColumnHidden(i));
             // Prevent disabling the last visible column as there's no way back.
@@ -638,7 +614,7 @@ ItemViewEvent::ItemViewEvent(QEvent *ev, QAbstractItemView *view)
     };
 
     m_sourceModelIndex = fixIndex(m_index);
-    m_selectedRows = Utils::transform(m_selectedRows, fixIndex);
+    m_selectedRows = transform(m_selectedRows, fixIndex);
 }
 
 QModelIndexList ItemViewEvent::currentOrSelectedRows() const

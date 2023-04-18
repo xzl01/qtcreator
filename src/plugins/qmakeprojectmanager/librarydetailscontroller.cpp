@@ -1,42 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "librarydetailscontroller.h"
-#include "ui_librarydetailswidget.h"
+
 #include "qmakebuildconfiguration.h"
 #include "qmakeparsernodes.h"
 #include "qmakeproject.h"
+#include "qmakeprojectmanagertr.h"
 
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
+
 #include <utils/hostosinfo.h>
+#include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 
-#include <QFileInfo>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDir>
+#include <QFileInfo>
+#include <QGroupBox>
+#include <QRadioButton>
 #include <QTextStream>
 
 using namespace ProjectExplorer;
@@ -56,7 +41,7 @@ static void fillLibraryPlatformTypes(QComboBox *comboBox)
 }
 
 LibraryDetailsController::LibraryDetailsController(
-        Ui::LibraryDetailsWidget *libraryDetails,
+        LibraryDetailsWidget *libraryDetails,
         const FilePath &proFile, QObject *parent) :
     QObject(parent),
     m_proFile(proFile),
@@ -90,7 +75,7 @@ LibraryDetailsController::LibraryDetailsController(
             this, &LibraryDetailsController::slotPlatformChanged);
 }
 
-Ui::LibraryDetailsWidget *LibraryDetailsController::libraryDetailsWidget() const
+LibraryDetailsWidget *LibraryDetailsController::libraryDetailsWidget() const
 {
     return m_libraryDetailsWidget;
 }
@@ -164,15 +149,15 @@ void LibraryDetailsController::updateGui()
     libraryDetailsWidget()->libraryRadio->setEnabled(macRadiosEnabled);
     libraryDetailsWidget()->frameworkRadio->setEnabled(macRadiosEnabled);
 
-    // update values in gui
-    setIgnoreGuiSignals(true);
+    {
+        // update values in gui
+        const GuardLocker locker(m_ignoreChanges);
 
-    showLinkageType(linkageType());
-    showMacLibraryType(macLibraryType());
-    if (!m_includePathChanged)
-        libraryDetailsWidget()->includePathChooser->setPath(suggestedIncludePath());
-
-    setIgnoreGuiSignals(false);
+        showLinkageType(linkageType());
+        showMacLibraryType(macLibraryType());
+        if (!m_includePathChanged)
+            libraryDetailsWidget()->includePathChooser->setPath(suggestedIncludePath());
+    }
 
     // UGLY HACK BEGIN
     //
@@ -185,7 +170,7 @@ void LibraryDetailsController::updateGui()
     // we use it as a hacky solution to the above issue.
     // For reference please see: QTBUG-88666
     if (!m_wizard) {
-        QWidget *widget = libraryDetailsWidget()->detailsLayout->parentWidget();
+        QWidget *widget = libraryDetailsWidget()->platformGroupBox->parentWidget();
         while (widget) {
             QWizard *wizard = qobject_cast<QWizard *>(widget);
             if (wizard) {
@@ -210,29 +195,19 @@ bool LibraryDetailsController::isIncludePathChanged() const
     return m_includePathChanged;
 }
 
-void LibraryDetailsController::setIgnoreGuiSignals(bool ignore)
-{
-    m_ignoreGuiSignals = ignore;
-}
-
-bool LibraryDetailsController::guiSignalsIgnored() const
-{
-    return m_ignoreGuiSignals;
-}
-
 void LibraryDetailsController::showLinkageType(
         AddLibraryWizard::LinkageType linkageType)
 {
-    const QString linkage(tr("Linkage:"));
+    const QString linkage(Tr::tr("Linkage:"));
     QString linkageTitle;
     switch (linkageType) {
     case AddLibraryWizard::DynamicLinkage:
         libraryDetailsWidget()->dynamicRadio->setChecked(true);
-        linkageTitle = tr("%1 Dynamic").arg(linkage);
+        linkageTitle = Tr::tr("%1 Dynamic").arg(linkage);
         break;
     case AddLibraryWizard::StaticLinkage:
         libraryDetailsWidget()->staticRadio->setChecked(true);
-        linkageTitle = tr("%1 Static").arg(linkage);
+        linkageTitle = Tr::tr("%1 Static").arg(linkage);
         break;
     default:
         libraryDetailsWidget()->dynamicRadio->setChecked(false);
@@ -246,16 +221,16 @@ void LibraryDetailsController::showLinkageType(
 void LibraryDetailsController::showMacLibraryType(
         AddLibraryWizard::MacLibraryType libType)
 {
-    const QString libraryType(tr("Mac:"));
+    const QString libraryType(Tr::tr("Mac:"));
     QString libraryTypeTitle;
     switch (libType) {
     case AddLibraryWizard::FrameworkType:
         libraryDetailsWidget()->frameworkRadio->setChecked(true);
-        libraryTypeTitle = tr("%1 Framework").arg(libraryType);
+        libraryTypeTitle = Tr::tr("%1 Framework").arg(libraryType);
         break;
     case AddLibraryWizard::LibraryType:
         libraryDetailsWidget()->libraryRadio->setChecked(true);
-        libraryTypeTitle = tr("%1 Library").arg(libraryType);
+        libraryTypeTitle = Tr::tr("%1 Library").arg(libraryType);
         break;
     default:
         libraryDetailsWidget()->frameworkRadio->setChecked(false);
@@ -352,7 +327,7 @@ bool LibraryDetailsController::isWindowsGroupVisible() const
 
 void LibraryDetailsController::slotIncludePathChanged()
 {
-    if (m_ignoreGuiSignals)
+    if (m_ignoreChanges.isLocked())
         return;
     m_includePathChanged = true;
 }
@@ -365,14 +340,12 @@ void LibraryDetailsController::slotPlatformChanged()
 
 void LibraryDetailsController::slotMacLibraryTypeChanged()
 {
-    if (guiSignalsIgnored())
+    if (m_ignoreChanges.isLocked())
         return;
 
-    if (m_linkageRadiosVisible
-            && libraryDetailsWidget()->frameworkRadio->isChecked()) {
-        setIgnoreGuiSignals(true);
+    if (m_linkageRadiosVisible && libraryDetailsWidget()->frameworkRadio->isChecked()) {
+        const GuardLocker locker(m_ignoreChanges);
         libraryDetailsWidget()->dynamicRadio->setChecked(true);
-        setIgnoreGuiSignals(false);
     }
 
     updateGui();
@@ -622,8 +595,7 @@ static QString generatePreTargetDepsSnippet(AddLibraryWizard::Platforms platform
     return snippetMessage;
 }
 
-NonInternalLibraryDetailsController::NonInternalLibraryDetailsController(
-        Ui::LibraryDetailsWidget *libraryDetails,
+NonInternalLibraryDetailsController::NonInternalLibraryDetailsController(LibraryDetailsWidget *libraryDetails,
         const FilePath &proFile, QObject *parent) :
     LibraryDetailsController(libraryDetails, proFile, parent)
 {
@@ -706,17 +678,15 @@ void NonInternalLibraryDetailsController::updateWindowsOptionsEnablement()
 
 void NonInternalLibraryDetailsController::handleLinkageTypeChange()
 {
-    if (isMacLibraryRadiosVisible()
-            && libraryDetailsWidget()->staticRadio->isChecked()) {
-        setIgnoreGuiSignals(true);
+    if (isMacLibraryRadiosVisible() && libraryDetailsWidget()->staticRadio->isChecked()) {
+        const GuardLocker locker(m_ignoreChanges);
         libraryDetailsWidget()->libraryRadio->setChecked(true);
-        setIgnoreGuiSignals(false);
     }
 }
 
 void NonInternalLibraryDetailsController::slotLinkageTypeChanged()
 {
-    if (guiSignalsIgnored())
+    if (m_ignoreChanges.isLocked())
         return;
 
     handleLinkageTypeChange();
@@ -862,8 +832,7 @@ QString NonInternalLibraryDetailsController::snippet() const
 
 /////////////
 
-PackageLibraryDetailsController::PackageLibraryDetailsController(
-    Ui::LibraryDetailsWidget *libraryDetails,
+PackageLibraryDetailsController::PackageLibraryDetailsController(LibraryDetailsWidget *libraryDetails,
     const FilePath &proFile, QObject *parent)
     : NonInternalLibraryDetailsController(libraryDetails, proFile, parent)
 {
@@ -922,7 +891,7 @@ bool PackageLibraryDetailsController::isLinkPackageGenerated() const
 /////////////
 
 SystemLibraryDetailsController::SystemLibraryDetailsController(
-    Ui::LibraryDetailsWidget *libraryDetails,
+    LibraryDetailsWidget *libraryDetails,
     const FilePath &proFile, QObject *parent)
     : NonInternalLibraryDetailsController(libraryDetails, proFile, parent)
 {
@@ -935,7 +904,7 @@ SystemLibraryDetailsController::SystemLibraryDetailsController(
 /////////////
 
 ExternalLibraryDetailsController::ExternalLibraryDetailsController(
-    Ui::LibraryDetailsWidget *libraryDetails,
+    LibraryDetailsWidget *libraryDetails,
     const FilePath &proFile, QObject *parent)
     : NonInternalLibraryDetailsController(libraryDetails, proFile, parent)
 {
@@ -970,7 +939,7 @@ void ExternalLibraryDetailsController::updateWindowsOptionsEnablement()
 
 /////////////
 
-InternalLibraryDetailsController::InternalLibraryDetailsController(Ui::LibraryDetailsWidget *libraryDetails,
+InternalLibraryDetailsController::InternalLibraryDetailsController(LibraryDetailsWidget *libraryDetails,
         const FilePath &proFile, QObject *parent)
     : LibraryDetailsController(libraryDetails, proFile, parent)
 {
@@ -984,8 +953,7 @@ InternalLibraryDetailsController::InternalLibraryDetailsController(Ui::LibraryDe
     if (HostOsInfo::isWindowsHost())
         libraryDetailsWidget()->useSubfoldersCheckBox->setEnabled(true);
 
-    connect(libraryDetailsWidget()->libraryComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(libraryDetailsWidget()->libraryComboBox, &QComboBox::currentIndexChanged,
             this, &InternalLibraryDetailsController::slotCurrentLibraryChanged);
 
     updateProFile();
@@ -1052,7 +1020,7 @@ void InternalLibraryDetailsController::updateProFile()
     if (!project)
         return;
 
-    setIgnoreGuiSignals(true);
+    const GuardLocker locker(m_ignoreChanges);
 
     m_rootProjectPath = project->projectDirectory().toString();
 
@@ -1061,7 +1029,8 @@ void InternalLibraryDetailsController::updateProFile()
     QTC_ASSERT(bs, return);
 
     QDir rootDir(m_rootProjectPath);
-    foreach (QmakeProFile *proFile, bs->rootProFile()->allProFiles()) {
+    const QList<QmakeProFile *> proFiles = bs->rootProFile()->allProFiles();
+    for (QmakeProFile *proFile : proFiles) {
         QmakeProjectManager::ProjectType type = proFile->projectType();
         if (type != ProjectType::SharedLibraryTemplate && type != ProjectType::StaticLibraryTemplate)
             continue;
@@ -1079,8 +1048,6 @@ void InternalLibraryDetailsController::updateProFile()
                         itemToolTip, Qt::ToolTipRole);
         }
     }
-
-    setIgnoreGuiSignals(false);
 }
 
 void InternalLibraryDetailsController::slotCurrentLibraryChanged()
@@ -1102,7 +1069,7 @@ void InternalLibraryDetailsController::slotCurrentLibraryChanged()
         }
     }
 
-    if (guiSignalsIgnored())
+    if (m_ignoreChanges.isLocked())
         return;
 
     updateGui();

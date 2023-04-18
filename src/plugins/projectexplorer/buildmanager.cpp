@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "buildmanager.h"
 
@@ -30,11 +8,14 @@
 #include "buildsystem.h"
 #include "compileoutputwindow.h"
 #include "deployconfiguration.h"
+#include "devicesupport/devicemanager.h"
 #include "kit.h"
 #include "kitinformation.h"
 #include "project.h"
 #include "projectexplorer.h"
+#include "projectexplorerconstants.h"
 #include "projectexplorersettings.h"
+#include "projectexplorertr.h"
 #include "runcontrol.h"
 #include "session.h"
 #include "target.h"
@@ -46,10 +27,11 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/progressmanager/futureprogress.h>
 #include <coreplugin/progressmanager/progressmanager.h>
+
 #include <extensionsystem/pluginmanager.h>
+
 #include <utils/algorithm.h>
 #include <utils/outputformatter.h>
-#include <utils/runextensions.h>
 #include <utils/stringutils.h>
 
 #include <QApplication>
@@ -71,7 +53,7 @@ using namespace Internal;
 
 static QString msgProgress(int progress, int total)
 {
-    return BuildManager::tr("Finished %1 of %n steps", nullptr, total).arg(progress);
+    return Tr::tr("Finished %1 of %n steps", nullptr, total).arg(progress);
 }
 
 static const QList<Target *> targetsForSelection(const Project *project,
@@ -117,7 +99,8 @@ static int queue(const QList<Project *> &projects, const QList<Id> &stepIds,
                 return projects.contains(rc->project());
             case StopBeforeBuild::SameBuildDir:
                 return Utils::contains(projects, [rc, configSelection](Project *p) {
-                    IDevice::ConstPtr device = rc->runnable().device;
+                    const FilePath executable = rc->commandLine().executable();
+                    IDevice::ConstPtr device = DeviceManager::deviceForPath(executable);
                     for (const Target * const t : targetsForSelection(p, configSelection)) {
                         if (device.isNull())
                             device = DeviceKitAspect::device(t->kit());
@@ -125,7 +108,7 @@ static int queue(const QList<Project *> &projects, const QList<Id> &stepIds,
                             continue;
                         for (const BuildConfiguration * const bc
                              : buildConfigsForSelection(t, configSelection)) {
-                            if (rc->runnable().command.executable().isChildOf(bc->buildDirectory()))
+                            if (executable.isChildOf(bc->buildDirectory()))
                                 return true;
                         }
                     }
@@ -146,8 +129,8 @@ static int queue(const QList<Project *> &projects, const QList<Id> &stepIds,
             if (settings.prompToStopRunControl) {
                 QStringList names = Utils::transform(toStop, &RunControl::displayName);
                 if (QMessageBox::question(ICore::dialogParent(),
-                        BuildManager::tr("Stop Applications"),
-                        BuildManager::tr("Stop these applications before building?")
+                        Tr::tr("Stop Applications"),
+                        Tr::tr("Stop these applications before building?")
                         + "\n\n" + names.join('\n'))
                         == QMessageBox::No) {
                     stopThem = false;
@@ -155,7 +138,7 @@ static int queue(const QList<Project *> &projects, const QList<Id> &stepIds,
             }
 
             if (stopThem) {
-                foreach (RunControl *rc, toStop)
+                for (RunControl *rc : toStop)
                     rc->initiateStop();
 
                 WaitForStopDialog dialog(toStop);
@@ -170,18 +153,35 @@ static int queue(const QList<Project *> &projects, const QList<Id> &stepIds,
     QList<BuildStepList *> stepLists;
     QStringList preambleMessage;
 
-    foreach (Project *pro, projects) {
+    for (const Project *pro : projects) {
         if (pro && pro->needsConfiguration()) {
             preambleMessage.append(
-                        BuildManager::tr("The project %1 is not configured, skipping it.")
+                        Tr::tr("The project %1 is not configured, skipping it.")
                         .arg(pro->displayName()) + QLatin1Char('\n'));
         }
     }
-    foreach (Id id, stepIds) {
+    for (const Project *pro : projects) {
+        for (const Target *const t : targetsForSelection(pro, configSelection)) {
+            for (const BuildConfiguration *bc : buildConfigsForSelection(t, configSelection)) {
+                const IDevice::Ptr device = BuildDeviceKitAspect::device(bc->kit())
+                                                .constCast<IDevice>();
+
+                if (device && !device->prepareForBuild(t)) {
+                    preambleMessage.append(
+                        Tr::tr("The build device failed to prepare for the build of %1 (%2).")
+                            .arg(pro->displayName())
+                            .arg(t->displayName())
+                        + QLatin1Char('\n'));
+                }
+            }
+        }
+    }
+
+    for (const Id id : stepIds) {
         const bool isBuild = id == Constants::BUILDSTEPS_BUILD;
         const bool isClean = id == Constants::BUILDSTEPS_CLEAN;
         const bool isDeploy = id == Constants::BUILDSTEPS_DEPLOY;
-        foreach (Project *pro, projects) {
+        for (const Project *pro : projects) {
             if (!pro || pro->needsConfiguration())
                 continue;
             BuildStepList *bsl = nullptr;
@@ -224,6 +224,7 @@ public:
     QStringList m_stepNames;
     int m_progress = 0;
     int m_maxProgress = 0;
+    bool m_poppedUpTaskWindow = false;
     bool m_running = false;
     bool m_isDeploying = false;
     // is set to true while canceling, so that nextBuildStep knows that the BuildStep finished because of canceling
@@ -286,16 +287,16 @@ BuildManager *BuildManager::instance()
 void BuildManager::extensionsInitialized()
 {
     TaskHub::addCategory(Constants::TASK_CATEGORY_COMPILE,
-                         tr("Compile", "Category for compiler issues listed under 'Issues'"),
+                         Tr::tr("Compile", "Category for compiler issues listed under 'Issues'"),
                          true, 100);
     TaskHub::addCategory(Constants::TASK_CATEGORY_BUILDSYSTEM,
-                         tr("Build System", "Category for build system issues listed under 'Issues'"),
+                         Tr::tr("Build System", "Category for build system issues listed under 'Issues'"),
                          true, 100);
     TaskHub::addCategory(Constants::TASK_CATEGORY_DEPLOYMENT,
-                         tr("Deployment", "Category for deployment issues listed under 'Issues'"),
+                         Tr::tr("Deployment", "Category for deployment issues listed under 'Issues'"),
                          true, 100);
     TaskHub::addCategory(Constants::TASK_CATEGORY_AUTOTEST,
-                         tr("Autotests", "Category for autotest issues listed under 'Issues'"),
+                         Tr::tr("Autotests", "Category for autotest issues listed under 'Issues'"),
                          true, 100);
 }
 
@@ -441,12 +442,12 @@ int BuildManager::getErrorTaskCount()
     return errors;
 }
 
-void BuildManager::setCompileOutputSettings(const Internal::CompileOutputSettings &settings)
+void BuildManager::setCompileOutputSettings(const CompileOutputSettings &settings)
 {
     d->m_outputWindow->setSettings(settings);
 }
 
-const Internal::CompileOutputSettings &BuildManager::compileOutputSettings()
+const CompileOutputSettings &BuildManager::compileOutputSettings()
 {
     return d->m_outputWindow->settings();
 }
@@ -455,14 +456,14 @@ QString BuildManager::displayNameForStepId(Id stepId)
 {
     if (stepId == Constants::BUILDSTEPS_CLEAN) {
         //: Displayed name for a "cleaning" build step
-        return tr("Clean");
+        return Tr::tr("Clean");
     }
     if (stepId == Constants::BUILDSTEPS_DEPLOY) {
         //: Displayed name for a deploy step
-        return tr("Deploy");
+        return Tr::tr("Deploy");
     }
     //: Displayed name for a normal build step
-    return tr("Build");
+    return Tr::tr("Build");
 }
 
 void BuildManager::cancel()
@@ -485,6 +486,10 @@ void BuildManager::updateTaskCount()
 {
     const int errors = getErrorTaskCount();
     ProgressManager::setApplicationLabel(errors > 0 ? QString::number(errors) : QString());
+    if (isBuilding() && errors > 0 && !d->m_poppedUpTaskWindow) {
+        showTaskWindow();
+        d->m_poppedUpTaskWindow = true;
+    }
 }
 
 void BuildManager::finish()
@@ -498,12 +503,12 @@ void BuildManager::finish()
 
 void BuildManager::emitCancelMessage()
 {
-    addToOutputWindow(tr("Canceled build/deployment."), BuildStep::OutputFormat::ErrorMessage);
+    addToOutputWindow(Tr::tr("Canceled build/deployment."), BuildStep::OutputFormat::ErrorMessage);
 }
 
 void BuildManager::clearBuildQueue()
 {
-    for (BuildStep *bs : qAsConst(d->m_buildQueue)) {
+    for (BuildStep *bs : std::as_const(d->m_buildQueue)) {
         decrementActiveBuildSteps(bs);
         disconnectOutput(bs);
     }
@@ -512,6 +517,7 @@ void BuildManager::clearBuildQueue()
     d->m_buildQueue.clear();
     d->m_enabledState.clear();
     d->m_running = false;
+    d->m_poppedUpTaskWindow = false;
     d->m_isDeploying = false;
     d->m_previousBuildStepProject = nullptr;
     d->m_currentBuildStep = nullptr;
@@ -652,7 +658,7 @@ void BuildManager::nextBuildQueue()
 
         //TODO NBS fix in qtconcurrent
         d->m_progressFutureInterface->setProgressValueAndText(d->m_progress*100,
-                                                              tr("Build/Deployment canceled"));
+                                                              Tr::tr("Build/Deployment canceled"));
         clearBuildQueue();
         return;
     }
@@ -672,13 +678,13 @@ void BuildManager::nextBuildQueue()
         Target *t = d->m_currentBuildStep->target();
         const QString projectName = d->m_currentBuildStep->project()->displayName();
         const QString targetName = t->displayName();
-        addToOutputWindow(tr("Error while building/deploying project %1 (kit: %2)").arg(projectName, targetName), BuildStep::OutputFormat::Stderr);
+        addToOutputWindow(Tr::tr("Error while building/deploying project %1 (kit: %2)").arg(projectName, targetName), BuildStep::OutputFormat::Stderr);
         const Tasks kitTasks = t->kit()->validate();
         if (!kitTasks.isEmpty()) {
-            addToOutputWindow(tr("The kit %1 has configuration issues which might be the root cause for this problem.")
+            addToOutputWindow(Tr::tr("The kit %1 has configuration issues which might be the root cause for this problem.")
                               .arg(targetName), BuildStep::OutputFormat::Stderr);
         }
-        addToOutputWindow(tr("When executing step \"%1\"").arg(d->m_currentBuildStep->displayName()), BuildStep::OutputFormat::Stderr);
+        addToOutputWindow(Tr::tr("When executing step \"%1\"").arg(d->m_currentBuildStep->displayName()), BuildStep::OutputFormat::Stderr);
 
         bool abort = ProjectExplorerPlugin::projectExplorerSettings().abortBuildAllOnError;
         if (!abort) {
@@ -695,7 +701,7 @@ void BuildManager::nextBuildQueue()
         if (abort) {
             // NBS TODO fix in qtconcurrent
             d->m_progressFutureInterface->setProgressValueAndText(d->m_progress * 100,
-                    tr("Error while building/deploying project %1 (kit: %2)")
+                    Tr::tr("Error while building/deploying project %1 (kit: %2)")
                         .arg(projectName, targetName));
             clearBuildQueue();
         } else {
@@ -722,13 +728,13 @@ void BuildManager::nextStep()
 
         if (d->m_currentBuildStep->project() != d->m_previousBuildStepProject) {
             const QString projectName = d->m_currentBuildStep->project()->displayName();
-            addToOutputWindow(tr("Running steps for project %1...")
+            addToOutputWindow(Tr::tr("Running steps for project %1...")
                               .arg(projectName), BuildStep::OutputFormat::NormalMessage);
             d->m_previousBuildStepProject = d->m_currentBuildStep->project();
         }
 
         if (d->m_skipDisabled) {
-            addToOutputWindow(tr("Skipping disabled step %1.")
+            addToOutputWindow(Tr::tr("Skipping disabled step %1.")
                               .arg(d->m_currentBuildStep->displayName()), BuildStep::OutputFormat::NormalMessage);
             nextBuildQueue();
             return;
@@ -748,6 +754,7 @@ void BuildManager::nextStep()
         d->m_currentBuildStep->run();
     } else {
         d->m_running = false;
+        d->m_poppedUpTaskWindow = false;
         d->m_isDeploying = false;
         d->m_previousBuildStepProject = nullptr;
         d->m_progressFutureInterface->reportFinished();
@@ -795,8 +802,8 @@ bool BuildManager::buildQueueAppend(const QList<BuildStep *> &steps, QStringList
         // print something for the user
         const QString projectName = bs->project()->displayName();
         const QString targetName = bs->target()->displayName();
-        addToOutputWindow(tr("Error while building/deploying project %1 (kit: %2)").arg(projectName, targetName), BuildStep::OutputFormat::Stderr);
-        addToOutputWindow(tr("When executing step \"%1\"").arg(bs->displayName()), BuildStep::OutputFormat::Stderr);
+        addToOutputWindow(Tr::tr("Error while building/deploying project %1 (kit: %2)").arg(projectName, targetName), BuildStep::OutputFormat::Stderr);
+        addToOutputWindow(Tr::tr("When executing step \"%1\"").arg(bs->displayName()), BuildStep::OutputFormat::Stderr);
 
         // disconnect the buildsteps again
         for (int j = 0; j <= i; ++j)

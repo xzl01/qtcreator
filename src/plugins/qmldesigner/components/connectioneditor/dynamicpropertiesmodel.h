@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -33,9 +11,9 @@
 
 namespace QmlDesigner {
 
-namespace Internal {
+class AbstractView;
 
-class ConnectionView;
+namespace Internal {
 
 class DynamicPropertiesModel : public QStandardItemModel
 {
@@ -48,13 +26,18 @@ public:
         PropertyTypeRow = 2,
         PropertyValueRow = 3
     };
-    DynamicPropertiesModel(ConnectionView *parent = nullptr);
+    DynamicPropertiesModel(bool explicitSelection, AbstractView *parent);
     void bindingPropertyChanged(const BindingProperty &bindingProperty);
+    void abstractPropertyChanged(const AbstractProperty &bindingProperty);
     void variantPropertyChanged(const VariantProperty &variantProperty);
     void bindingRemoved(const BindingProperty &bindingProperty);
-    void selectionChanged(const QList<ModelNode> &selectedNodes);
+    void variantRemoved(const VariantProperty &variantProperty);
+    void reset();
+    void setSelectedNode(const ModelNode &node);
+    const QList<ModelNode> selectedNodes() const;
+    const ModelNode singleSelectedNode() const;
 
-    ConnectionView *connectionView() const;
+    AbstractView *view() const { return m_view; }
     AbstractProperty abstractPropertyForRow(int rowNumber) const;
     BindingProperty bindingPropertyForRow(int rowNumber) const;
     VariantProperty variantPropertyForRow(int rowNumber) const;
@@ -68,6 +51,14 @@ public:
 
     BindingProperty replaceVariantWithBinding(const PropertyName &name, bool copyValue = false);
     void resetProperty(const PropertyName &name);
+
+    void dispatchPropertyChanges(const AbstractProperty &abstractProperty);
+
+    QmlDesigner::PropertyName unusedProperty(const QmlDesigner::ModelNode &modelNode);
+
+    static bool isValueType(const TypeName &type);
+    static QVariant defaultValueForType(const TypeName &type);
+    static QString defaultExpressionForType(const TypeName &type);
 
 protected:
     void addProperty(const QVariant &propertyValue,
@@ -86,6 +77,7 @@ protected:
     void updateCustomData(int row, const AbstractProperty &property);
     int findRowForBindingProperty(const BindingProperty &bindingProperty) const;
     int findRowForVariantProperty(const VariantProperty &variantProperty) const;
+    int findRowForProperty(const AbstractProperty &abstractProperty) const;
 
     bool getExpressionStrings(const BindingProperty &bindingProperty, QString *sourceNode, QString *sourceProperty);
 
@@ -95,12 +87,12 @@ private:
     void handleDataChanged(const QModelIndex &topLeft, const QModelIndex& bottomRight);
     void handleException();
 
-private:
-    ConnectionView *m_connectionView;
+    AbstractView *m_view = nullptr;
     bool m_lock = false;
     bool m_handleDataChanged = false;
     QString m_exceptionError;
-
+    QList<ModelNode> m_selectedNodes;
+    bool m_explicitSelection = false;
 };
 
 } // namespace Internal

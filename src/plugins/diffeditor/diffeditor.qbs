@@ -14,12 +14,10 @@ QtcPlugin {
     ]
 
     files: [
-        "descriptionwidgetwatcher.cpp",
-        "descriptionwidgetwatcher.h",
         "diffeditor.cpp",
         "diffeditor.h",
         "diffeditor.qrc",
-        "diffeditor_global.h",
+        "diffeditor_global.h", "diffeditortr.h",
         "diffeditorconstants.h",
         "diffeditoricons.h",
         "diffeditorcontroller.cpp",
@@ -32,6 +30,7 @@ QtcPlugin {
         "diffeditorplugin.h",
         "diffeditorwidgetcontroller.cpp",
         "diffeditorwidgetcontroller.h",
+        "diffenums.h",
         "diffutils.cpp",
         "diffutils.h",
         "diffview.cpp",

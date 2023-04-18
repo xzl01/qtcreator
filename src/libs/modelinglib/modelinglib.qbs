@@ -19,6 +19,13 @@ QtcLibrary {
     }
 
     Group {
+        name: "common"
+        files: [
+            "modelinglibtr.h",
+        ]
+    }
+
+    Group {
         name: "Qmt"
         prefix: "./qmt/"
         files: [
@@ -354,7 +361,7 @@ QtcLibrary {
         name: "Images"
         prefix: "./qmt/resources/"
         files: [
-            "resources.qrc",
+            "resources_modelinglib.qrc",
             "25x25/align-bottom.png",
             "25x25/align-horizontal.png",
             "25x25/align-left.png",

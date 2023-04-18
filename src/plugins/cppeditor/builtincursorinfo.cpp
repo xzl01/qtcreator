@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "builtincursorinfo.h"
 
@@ -209,7 +187,7 @@ private:
             const SemanticUses &uses = it.value();
 
             bool good = false;
-            foreach (const SemanticInfo::Use &use, uses) {
+            for (const SemanticInfo::Use &use : uses) {
                 if (m_line == use.line && m_column >= use.column
                         && m_column <= static_cast<int>(use.column + use.length)) {
                     good = true;
@@ -276,7 +254,7 @@ bool isMacroUseOf(const Document::MacroUse &marcoUse, const Macro &macro)
     return candidate.line() == macro.line()
         && candidate.utf16CharOffset() == macro.utf16CharOffset()
         && candidate.length() == macro.length()
-        && candidate.fileName() == macro.fileName();
+        && candidate.filePath() == macro.filePath();
 }
 
 bool handleMacroCase(const Document::Ptr document,
@@ -292,11 +270,11 @@ bool handleMacroCase(const Document::Ptr document,
     const int length = macro->nameToQString().size();
 
     // Macro definition
-    if (macro->fileName() == document->fileName())
+    if (macro->filePath() == document->filePath())
         ranges->append(toRange(textCursor, macro->utf16CharOffset(), length));
 
     // Other macro uses
-    foreach (const Document::MacroUse &use, document->macroUses()) {
+    for (const Document::MacroUse &use : document->macroUses()) {
         if (isMacroUseOf(use, *macro))
             ranges->append(toRange(textCursor, use.utf16charsBegin(), length));
     }

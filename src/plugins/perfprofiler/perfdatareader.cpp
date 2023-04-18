@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "perfdatareader.h"
 #include "perfprofilerconstants.h"
 #include "perfprofilerplugin.h"
+#include "perfprofilertr.h"
 #include "perfrunconfigurationaspect.h"
 #include "perfsettings.h"
 #include "perftimelinemodel.h"
@@ -43,8 +22,9 @@
 #include <projectexplorer/target.h>
 #include <projectexplorer/toolchain.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <utils/environment.h>
 #include <utils/qtcassert.h>
+#include <qtsupport/qtkitinformation.h>
 
 #include <QDateTime>
 #include <QDebug>
@@ -55,6 +35,7 @@
 #include <QtEndian>
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace PerfProfiler {
 namespace Internal {
@@ -69,8 +50,7 @@ PerfDataReader::PerfDataReader(QObject *parent) :
     m_remoteProcessStart(std::numeric_limits<qint64>::max()),
     m_lastRemoteTimestamp(0)
 {
-    connect(&m_input, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this](int exitCode) {
+    connect(&m_input, &QProcess::finished, this, [this](int exitCode) {
         emit processFinished();
         // process any remaining input before signaling finished()
         readFromDevice();
@@ -80,9 +60,9 @@ PerfDataReader::PerfDataReader(QObject *parent) :
         }
         if (exitCode != 0) {
             QMessageBox::warning(Core::ICore::dialogParent(),
-                                 tr("Perf Data Parser Failed"),
-                                 tr("The Perf data parser failed to process all the samples. "
-                                    "Your trace is incomplete. The exit code was %1.")
+                                 Tr::tr("Perf Data Parser Failed"),
+                                 Tr::tr("The Perf data parser failed to process all the samples. "
+                                        "Your trace is incomplete. The exit code was %1.")
                                  .arg(exitCode));
         }
     });
@@ -106,18 +86,18 @@ PerfDataReader::PerfDataReader(QObject *parent) :
     connect(&m_input, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e){
         switch (e) {
         case QProcess::FailedToStart:
-            emit processFailed(tr("perfparser failed to start."));
+            emit processFailed(Tr::tr("perfparser failed to start."));
             QMessageBox::warning(Core::ICore::dialogParent(),
-                                 tr("Perf Data Parser Failed"),
-                                 tr("Could not start the perfparser utility program. "
-                                    "Make sure a working Perf parser is available at the location "
-                                    "given by the PERFPROFILER_PARSER_FILEPATH environment "
-                                    "variable."));
+                                 Tr::tr("Perf Data Parser Failed"),
+                                 Tr::tr("Could not start the perfparser utility program. "
+                                        "Make sure a working Perf parser is available at the "
+                                        "location given by the PERFPROFILER_PARSER_FILEPATH "
+                                        "environment variable."));
             break;
         case QProcess::Crashed:
             QMessageBox::warning(Core::ICore::dialogParent(),
-                                 tr("Perf Data Parser Crashed"),
-                                 tr("This is a bug. Please report it."));
+                                 Tr::tr("Perf Data Parser Crashed"),
+                                 Tr::tr("This is a bug. Please report it."));
             break;
         case QProcess::ReadError:
             qWarning() << "Cannot receive data from perfparser";
@@ -146,20 +126,25 @@ PerfDataReader::~PerfDataReader()
     qDeleteAll(m_buffer);
 }
 
-void PerfDataReader::loadFromFile(const QString &filePath, const QString &executableDirPath,
-                                  ProjectExplorer::Kit *kit)
+void PerfDataReader::loadFromFile(const FilePath &filePath, const QString &executableDirPath,
+                                  Kit *kit)
 {
-    createParser(collectArguments(executableDirPath, kit) << QLatin1String("--input") << filePath);
+    CommandLine cmd{findPerfParser()};
+    collectArguments(&cmd, executableDirPath, kit);
+    cmd.addArg("--input");
+    cmd.addArg(filePath.nativePath());
+    createParser(cmd);
+
     m_remoteProcessStart = 0; // Don't try to guess the timestamps
     m_input.start(QIODevice::ReadOnly);
 }
 
-void PerfDataReader::createParser(const QStringList &arguments)
+void PerfDataReader::createParser(const CommandLine &cmd)
 {
     clear();
-    QString program = findPerfParser();
+    const QString program = cmd.executable().path();
     m_input.setProgram(program);
-    m_input.setArguments(arguments);
+    m_input.setArguments(cmd.splitArguments());
     m_input.setWorkingDirectory(QFileInfo(program).dir().absolutePath());
 }
 
@@ -208,13 +193,13 @@ void PerfDataReader::triggerRecordingStateChange(bool recording)
                              static_cast<qint64>(std::numeric_limits<int>::max())));
 
             Core::FutureProgress *fp = Core::ProgressManager::addTimedTask(
-                        future(), tr("Skipping Processing Delay"),
+                        future(), Tr::tr("Skipping Processing Delay"),
                         Constants::PerfProfilerTaskSkipDelay, seconds);
             fp->setToolTip(recording ?
-                               tr("Cancel this to ignore the processing delay and immediately "
-                                  "start recording.") :
-                               tr("Cancel this to ignore the processing delay and immediately "
-                                  "stop recording."));
+                               Tr::tr("Cancel this to ignore the processing delay and immediately "
+                                      "start recording.") :
+                               Tr::tr("Cancel this to ignore the processing delay and immediately "
+                                      "stop recording."));
             connect(fp, &Core::FutureProgress::canceled, this, [this, recording]() {
                 setRecording(recording);
             });
@@ -290,35 +275,39 @@ bool PerfDataReader::acceptsSamples() const
     return m_recording;
 }
 
-QStringList PerfDataReader::collectArguments(const QString &executableDirPath, const Kit *kit) const
+void PerfDataReader::collectArguments(CommandLine *cmd, const QString &exe, const Kit *kit) const
 {
-    QStringList arguments;
-    if (!executableDirPath.isEmpty())
-        arguments << "--app" << executableDirPath;
+    if (!exe.isEmpty()) {
+        cmd->addArg("--app");
+        cmd->addArg(exe);
+    }
 
     if (QtSupport::QtVersion *qt = QtSupport::QtKitAspect::qtVersion(kit)) {
-        arguments << "--extra" << QString("%1%5%2%5%3%5%4")
-                     .arg(QDir::toNativeSeparators(qt->libraryPath().toString()))
-                     .arg(QDir::toNativeSeparators(qt->pluginPath().toString()))
-                     .arg(QDir::toNativeSeparators(qt->hostBinPath().toString()))
-                     .arg(QDir::toNativeSeparators(qt->qmlPath().toString()))
-                     .arg(QDir::listSeparator());
+        cmd->addArg("--extra");
+        cmd->addArg(QString("%1%5%2%5%3%5%4")
+                     .arg(qt->libraryPath().nativePath())
+                     .arg(qt->pluginPath().nativePath())
+                     .arg(qt->hostBinPath().nativePath())
+                     .arg(qt->qmlPath().nativePath())
+                     .arg(cmd->executable().osType() == OsTypeWindows ? u';' : u':'));
     }
 
     if (auto toolChain = ToolChainKitAspect::cxxToolChain(kit)) {
         Abi::Architecture architecture = toolChain->targetAbi().architecture();
         if (architecture == Abi::ArmArchitecture && toolChain->targetAbi().wordWidth() == 64) {
-            arguments << "--arch" << "aarch64";
+            cmd->addArg("--arch");
+            cmd->addArg("aarch64");
         } else if (architecture != Abi::UnknownArchitecture) {
-            arguments << "--arch" << Abi::toString(architecture);
+            cmd->addArg("--arch");
+            cmd->addArg(Abi::toString(architecture));
         }
     }
 
-    QString sysroot = SysRootKitAspect::sysRoot(kit).toString();
-    if (!sysroot.isEmpty())
-        arguments << "--sysroot" << sysroot;
-
-    return arguments;
+    const FilePath sysroot = SysRootKitAspect::sysRoot(kit);
+    if (!sysroot.isEmpty()) {
+        cmd->addArg("--sysroot");
+        cmd->addArg(sysroot.nativePath());
+    }
 }
 
 static bool checkedWrite(QIODevice *device, const QByteArray &input)
@@ -347,9 +336,9 @@ void PerfDataReader::writeChunk()
                 m_input.kill();
                 emit finished();
                 QMessageBox::warning(Core::ICore::dialogParent(),
-                                     tr("Cannot Send Data to Perf Data Parser"),
-                                     tr("The Perf data parser does not accept further input. "
-                                        "Your trace is incomplete."));
+                                     Tr::tr("Cannot Send Data to Perf Data Parser"),
+                                     Tr::tr("The Perf data parser does not accept further input. "
+                                            "Your trace is incomplete."));
             }
         }
     } else if (m_dataFinished && m_input.isWritable()) {
@@ -393,21 +382,21 @@ bool PerfDataReader::feedParser(const QByteArray &input)
     return true;
 }
 
-QStringList PerfDataReader::findTargetArguments(const ProjectExplorer::RunControl *runControl) const
+void PerfDataReader::addTargetArguments(CommandLine *cmd, const RunControl *runControl) const
 {
     ProjectExplorer::Kit *kit = runControl->kit();
-    QTC_ASSERT(kit, return QStringList());
+    QTC_ASSERT(kit, return);
     ProjectExplorer::BuildConfiguration *buildConfig = runControl->target()->activeBuildConfiguration();
     QString buildDir = buildConfig ? buildConfig->buildDirectory().toString() : QString();
-    return collectArguments(buildDir, kit);
+    collectArguments(cmd, buildDir, kit);
 }
 
-QString PerfDataReader::findPerfParser()
+FilePath findPerfParser()
 {
-    QString filePath = QString::fromLocal8Bit(qgetenv("PERFPROFILER_PARSER_FILEPATH"));
+    FilePath filePath = FilePath::fromUserInput(qtcEnvironmentVariable("PERFPROFILER_PARSER_FILEPATH"));
     if (filePath.isEmpty())
-        filePath = Core::ICore::libexecPath("perfparser" QTC_HOST_EXE_SUFFIX).toString();
-    return QDir::toNativeSeparators(QDir::cleanPath(filePath));
+        filePath = Core::ICore::libexecPath("perfparser" QTC_HOST_EXE_SUFFIX);
+    return filePath;
 }
 
 } // namespace Internal

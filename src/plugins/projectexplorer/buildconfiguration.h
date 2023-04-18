@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -30,7 +8,7 @@
 #include "task.h"
 
 #include <utils/environment.h>
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 
 namespace Utils { class MacroExpander; }
 
@@ -110,14 +88,13 @@ public:
 
     static QString buildTypeName(BuildType type);
 
-    enum SpaceHandling { KeepSpace, ReplaceSpaces };
     static Utils::FilePath buildDirectoryFromTemplate(const Utils::FilePath &projectDir,
                                                       const Utils::FilePath &mainFilePath,
                                                       const QString &projectName,
                                                       const Kit *kit,
                                                       const QString &bcName,
                                                       BuildType buildType,
-                                                      SpaceHandling spaceHandling = ReplaceSpaces);
+                                                      const QString &buildSystem);
 
     bool isActive() const;
 
@@ -139,6 +116,7 @@ public:
 
 signals:
     void environmentChanged();
+    void buildDirectoryInitialized();
     void buildDirectoryChanged();
     void enabledChanged();
     void buildTypeChanged();
@@ -177,10 +155,12 @@ public:
     static BuildConfigurationFactory *find(const Kit *k, const Utils::FilePath &projectPath);
     static BuildConfigurationFactory *find(Target *parent);
 
-    using IssueReporter = std::function<Tasks(Kit *, const QString &, const QString &)>;
+    using IssueReporter
+        = std::function<Tasks(Kit *, const Utils::FilePath &, const Utils::FilePath &)>;
     void setIssueReporter(const IssueReporter &issueReporter);
     const Tasks reportIssues(ProjectExplorer::Kit *kit,
-                             const QString &projectPath, const QString &buildDir) const;
+                             const Utils::FilePath &projectPath,
+                             const Utils::FilePath &buildDir) const;
 
 protected:
     using BuildGenerator

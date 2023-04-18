@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
-** Contact: http://www.qt.io/licensing
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nimcompilercleanstep.h"
 #include "nimbuildconfiguration.h"
 
 #include "../nimconstants.h"
+#include "../nimtr.h"
 
 #include <projectexplorer/projectexplorerconstants.h>
 
@@ -43,10 +22,8 @@ namespace Nim {
 
 class NimCompilerCleanStep final : public BuildStep
 {
-    Q_DECLARE_TR_FUNCTIONS(Nim::NimCompilerCleanStep)
-
 public:
-    NimCompilerCleanStep(BuildStepList *parentList, Utils::Id id);
+    NimCompilerCleanStep(BuildStepList *parentList, Id id);
 
 private:
     bool init() final;
@@ -56,14 +33,14 @@ private:
     bool removeCacheDirectory();
     bool removeOutFilePath();
 
-    Utils::FilePath m_buildDir;
+    FilePath m_buildDir;
 };
 
-NimCompilerCleanStep::NimCompilerCleanStep(BuildStepList *parentList, Utils::Id id)
+NimCompilerCleanStep::NimCompilerCleanStep(BuildStepList *parentList, Id id)
     : BuildStep(parentList, id)
 {
     auto workingDirectory = addAspect<StringAspect>();
-    workingDirectory->setLabelText(tr("Working directory:"));
+    workingDirectory->setLabelText(Tr::tr("Working directory:"));
     workingDirectory->setDisplayStyle(StringAspect::LineEditDisplay);
 
     setSummaryUpdater([this, workingDirectory] {
@@ -84,24 +61,24 @@ bool NimCompilerCleanStep::init()
 void NimCompilerCleanStep::doRun()
 {
     if (!m_buildDir.exists()) {
-        emit addOutput(tr("Build directory \"%1\" does not exist.").arg(m_buildDir.toUserOutput()), OutputFormat::ErrorMessage);
+        emit addOutput(Tr::tr("Build directory \"%1\" does not exist.").arg(m_buildDir.toUserOutput()), OutputFormat::ErrorMessage);
         emit finished(false);
         return;
     }
 
     if (!removeCacheDirectory()) {
-        emit addOutput(tr("Failed to delete the cache directory."), OutputFormat::ErrorMessage);
+        emit addOutput(Tr::tr("Failed to delete the cache directory."), OutputFormat::ErrorMessage);
         emit finished(false);
         return;
     }
 
     if (!removeOutFilePath()) {
-        emit addOutput(tr("Failed to delete the out file."), OutputFormat::ErrorMessage);
+        emit addOutput(Tr::tr("Failed to delete the out file."), OutputFormat::ErrorMessage);
         emit finished(false);
         return;
     }
 
-    emit addOutput(tr("Clean step completed successfully."), OutputFormat::NormalMessage);
+    emit addOutput(Tr::tr("Clean step completed successfully."), OutputFormat::NormalMessage);
     emit finished(true);
 }
 
@@ -137,7 +114,7 @@ NimCompilerCleanStepFactory::NimCompilerCleanStepFactory()
     setSupportedStepList(ProjectExplorer::Constants::BUILDSTEPS_CLEAN);
     setSupportedConfiguration(Constants::C_NIMBUILDCONFIGURATION_ID);
     setRepeatable(false);
-    setDisplayName(NimCompilerCleanStep::tr("Nim Clean Step"));
+    setDisplayName(Tr::tr("Nim Clean Step"));
 }
 
 } // Nim

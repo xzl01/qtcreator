@@ -1,134 +1,85 @@
-set(SRCDIR "${PROJECT_SOURCE_DIR}/share/qtcreator/qml/qmlpuppet")
+cmake_minimum_required(VERSION 3.16)
 
-set(DESTDIR "${IDE_LIBEXEC_PATH}")
-if (APPLE)
-  string(APPEND DESTDIR "/qmldesigner")
+if (NOT QT_CREATOR_API_DEFINED)
+  # standalone build
+  list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake")
+
+  project(qml2puppet)
+
+  set(CMAKE_AUTOMOC ON)
+  set(CMAKE_AUTORCC ON)
+  set(CMAKE_AUTOUIC ON)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+
+  set(DESTINATION DESTINATION .)
+  include(QtCreatorIDEBranding)
+  include(QtCreatorAPI)
+
+  find_package(QT 5.15.0 NAMES Qt6 Qt5
+    COMPONENTS Core REQUIRED
+  )
+  find_package(Qt${QT_VERSION_MAJOR}
+    COMPONENTS Concurrent Core Gui Network PrintSupport Qml Quick Sql Widgets Xml
+    REQUIRED
+  )
+else()
+  # Qt Creator only supports Qt 6
+  set(QT_VERSION_MAJOR ${Qt6_VERSION_MAJOR})
 endif()
 
-add_qtc_library(qml2puppet_static
-  STATIC
-  DEPENDS
-  Qt5::CorePrivate Qt5::Widgets
-  PUBLIC_INCLUDES "${SRCDIR}/interfaces"
-  SOURCES_PREFIX "${SRCDIR}/interfaces"
-  SOURCES
-    commondefines.h
-    nodeinstanceclientinterface.h
-    nodeinstanceglobal.h
-    nodeinstanceserverinterface.cpp nodeinstanceserverinterface.h
-)
+configure_file(../../app/app_version.h.cmakein app/app_version.h ESCAPE_QUOTES)
 
-extend_qtc_library(qml2puppet_static
-  PUBLIC_INCLUDES "${SRCDIR}/types"
-  SOURCES "${SRCDIR}/types/enumeration.h"
-)
-
-extend_qtc_library(qml2puppet_static
-  PUBLIC_INCLUDES "${SRCDIR}/container"
-  SOURCES_PREFIX "${SRCDIR}/container"
-  SOURCES
-    addimportcontainer.cpp addimportcontainer.h
-    idcontainer.cpp idcontainer.h
-    imagecontainer.cpp imagecontainer.h
-    informationcontainer.cpp informationcontainer.h
-    instancecontainer.cpp instancecontainer.h
-    mockuptypecontainer.cpp mockuptypecontainer.h
-    propertyabstractcontainer.cpp propertyabstractcontainer.h
-    propertybindingcontainer.cpp propertybindingcontainer.h
-    propertyvaluecontainer.cpp propertyvaluecontainer.h
-    reparentcontainer.cpp reparentcontainer.h
-    sharedmemory.h
-)
-
-extend_qtc_library(qml2puppet_static
-  CONDITION UNIX
-  SOURCES_PREFIX "${SRCDIR}/container"
-  SOURCES
-    sharedmemory_unix.cpp
-)
-
-extend_qtc_library(qml2puppet_static
-  CONDITION NOT UNIX
-  SOURCES_PREFIX "${SRCDIR}/container"
-  SOURCES
-    sharedmemory_qt.cpp
-)
-
-extend_qtc_library(qml2puppet_static
-  PUBLIC_INCLUDES "${SRCDIR}/commands"
-  SOURCES_PREFIX "${SRCDIR}/commands"
-  SOURCES
-    changeauxiliarycommand.cpp changeauxiliarycommand.h
-    changebindingscommand.cpp changebindingscommand.h
-    changefileurlcommand.cpp changefileurlcommand.h
-    changeidscommand.cpp changeidscommand.h
-    changenodesourcecommand.cpp changenodesourcecommand.h
-    changestatecommand.cpp changestatecommand.h
-    changevaluescommand.cpp changevaluescommand.h
-    childrenchangedcommand.cpp childrenchangedcommand.h
-    clearscenecommand.cpp clearscenecommand.h
-    completecomponentcommand.cpp completecomponentcommand.h
-    componentcompletedcommand.cpp componentcompletedcommand.h
-    createinstancescommand.cpp createinstancescommand.h
-    createscenecommand.cpp createscenecommand.h
-    changepreviewimagesizecommand.cpp changepreviewimagesizecommand.h
-    changelanguagecommand.cpp changelanguagecommand.h
-    debugoutputcommand.cpp debugoutputcommand.h
-    endpuppetcommand.cpp endpuppetcommand.h
-    informationchangedcommand.cpp informationchangedcommand.h
-    nanotracecommand.cpp nanotracecommand.h
-    pixmapchangedcommand.cpp pixmapchangedcommand.h
-    puppetalivecommand.cpp puppetalivecommand.h
-    removeinstancescommand.cpp removeinstancescommand.h
-    removepropertiescommand.cpp removepropertiescommand.h
-    removesharedmemorycommand.cpp removesharedmemorycommand.h
-    reparentinstancescommand.cpp reparentinstancescommand.h
-    statepreviewimagechangedcommand.cpp statepreviewimagechangedcommand.h
-    synchronizecommand.cpp synchronizecommand.h
-    tokencommand.cpp tokencommand.h
-    changeselectioncommand.cpp changeselectioncommand.h
-    update3dviewstatecommand.cpp update3dviewstatecommand.h
-    puppettocreatorcommand.cpp puppettocreatorcommand.h
-    inputeventcommand.cpp inputeventcommand.h
-    view3dactioncommand.cpp view3dactioncommand.h
-    requestmodelnodepreviewimagecommand.cpp requestmodelnodepreviewimagecommand.h
-    valueschangedcommand.cpp
-    captureddatacommand.h
-    scenecreatedcommand.h
-)
-
-extend_qtc_library(qml2puppet_static
-  PUBLIC_INCLUDES "${PROJECT_SOURCE_DIR}/src/libs"
-)
-extend_qtc_library(qml2puppet_static
-  CONDITION TARGET Nanotrace
-  DEPENDS Nanotrace
-)
+if (NOT TARGET QmlPuppetCommunication)
+  include(../../libs/qmlpuppetcommunication/QmlPuppetCommunication.cmake)
+endif()
 
 add_qtc_executable(qml2puppet
-  CONDITION TARGET Qt5::QuickPrivate
+  ${DESTINATION}
+  CONDITION TARGET Qt::Quick
   DEPENDS
-    Qt5::CorePrivate Qt5::Widgets Qt5::QmlPrivate
-    Qt5::QuickPrivate Qt5::Network Qt5::GuiPrivate
-    qml2puppet_static
+    Qt::CorePrivate Qt::Widgets Qt::QmlPrivate
+    Qt::QuickPrivate Qt::Network Qt::GuiPrivate
+    QmlPuppetCommunication
+  INCLUDES
+    ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}
   SOURCES
-    "${SRCDIR}/qml2puppet/qml2puppetmain.cpp"
-    "${SRCDIR}/qmlpuppet.qrc"
-  DESTINATION ${DESTDIR}
+    qml2puppet/main.cpp
+    qml2puppet/qmlbase.h qml2puppet/appmetadata.h
+    qml2puppet/qmlpuppet.h qml2puppet/qmlpuppet.cpp qml2puppet/configcrashpad.h
+    qmlpuppet.qrc
+  PROPERTIES
+    OUTPUT_NAME qml2puppet-${IDE_VERSION}
 )
 
+if(TARGET qml2puppet)
+  execute_process(
+      COMMAND git describe --tags --always --dirty=+
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      RESULT_VARIABLE GIT_SHA_RESULT
+      OUTPUT_VARIABLE GIT_SHA_OUTPUT
+      ERROR_VARIABLE GIT_SHA_ERROR
+  )
+
+  #if we are not a git repository use the .tag file
+  if(NOT GIT_SHA_OUTPUT)
+      file(READ ${CMAKE_CURRENT_SOURCE_DIR}/../../../.tag GIT_SHA_OUTPUT)
+  endif()
+
+  add_definitions( -D GIT_SHA=${GIT_SHA_OUTPUT} )
+endif()
+
 extend_qtc_executable(qml2puppet
-  CONDITION Qt5_VERSION VERSION_GREATER_EQUAL 6.0.0
-  SOURCES_PREFIX "${SRCDIR}/"
+  CONDITION Qt6_VERSION
   SOURCES
-    "editor3d_qt6.qrc"
+    editor3d_qt6.qrc
 )
 
 extend_qtc_executable(qml2puppet
   CONDITION Qt5_VERSION VERSION_LESS 6.0.0
-  SOURCES_PREFIX "${SRCDIR}/"
   SOURCES
-    "editor3d_qt5.qrc"
+    editor3d_qt5.qrc
 )
 
 extend_qtc_executable(qml2puppet
@@ -137,19 +88,19 @@ extend_qtc_executable(qml2puppet
 )
 
 extend_qtc_executable(qml2puppet
-  SOURCES_PREFIX "${SRCDIR}/instances"
+  SOURCES_PREFIX instances
   SOURCES
     nodeinstanceclientproxy.cpp nodeinstanceclientproxy.h
 )
 
-find_package(Qt5 5.15.0 COMPONENTS Quick3D QUIET)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Quick3D QUIET)
 extend_qtc_executable(qml2puppet
-  CONDITION TARGET Qt5::Quick3D
+  CONDITION TARGET Qt::Quick3D
   FEATURE_INFO "Qt Quick 3D support"
-  DEPENDS Qt5::Quick3D Qt5::Quick3DPrivate
+  DEPENDS Qt::Quick3D Qt::Quick3DPrivate
   DEFINES QUICK3D_MODULE
 
-  SOURCES_PREFIX "${SRCDIR}/qml2puppet/editor3d"
+  SOURCES_PREFIX qml2puppet/editor3d
   SOURCES
     generalhelper.cpp generalhelper.h
     mousearea3d.cpp mousearea3d.h
@@ -162,53 +113,52 @@ extend_qtc_executable(qml2puppet
     icongizmoimageprovider.cpp icongizmoimageprovider.h
 )
 
-find_package(Qt5 5.15.0 COMPONENTS Quick3DAssetImport QUIET)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Quick3DAssetImport QUIET)
 extend_qtc_executable(qml2puppet
-  CONDITION TARGET Qt5::Quick3DAssetImport
+  CONDITION TARGET Qt::Quick3DAssetImport
   FEATURE_INFO "Qt Quick 3D asset import"
-  DEPENDS Qt5::Quick3DAssetImportPrivate
+  DEPENDS Qt::Quick3DAssetImportPrivate
   DEFINES IMPORT_QUICK3D_ASSETS
 )
 
-find_package(Qt5 5.15.0 COMPONENTS Quick3DParticles QUIET)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Quick3DParticles QUIET)
 extend_qtc_executable(qml2puppet
-  CONDITION TARGET Qt5::Quick3DParticles
+  CONDITION TARGET Qt::Quick3DParticles
   FEATURE_INFO "Qt Quick 3D particles"
-  DEPENDS Qt5::Quick3DParticles Qt5::Quick3DParticlesPrivate
+  DEPENDS Qt::Quick3DParticles Qt::Quick3DParticlesPrivate
   DEFINES QUICK3D_PARTICLES_MODULE
 )
 
 # Quick3DAssetUtils optionally depends on QuickTimeline, so find also it to make the CI build work
-find_package(Qt5 5.15.0 COMPONENTS Quick3DAssetUtils QuickTimeline QUIET)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Quick3DAssetUtils QuickTimeline QUIET)
 extend_qtc_executable(qml2puppet
-  CONDITION TARGET Qt5::Quick3DAssetUtils
+  CONDITION TARGET Qt::Quick3DAssetUtils
   FEATURE_INFO "Qt Quick 3D asset utils"
-  DEPENDS Qt5::Quick3DAssetUtilsPrivate
+  DEPENDS Qt::Quick3DAssetUtilsPrivate
   DEFINES QUICK3D_ASSET_UTILS_MODULE
 )
 
 extend_qtc_executable(qml2puppet
-  CONDITION Qt5_VERSION VERSION_GREATER_EQUAL 6.0.0
-
-  SOURCES_PREFIX "${SRCDIR}/qml2puppet/editor3d/qt5compat"
+  CONDITION Qt6_VERSION
+  SOURCES_PREFIX qml2puppet/editor3d/qt5compat
   SOURCES
     qquick3darealight.cpp qquick3darealight_p.h
 )
 
 extend_qtc_executable(qml2puppet
-  SOURCES_PREFIX "${SRCDIR}/qml2puppet/iconrenderer"
+  SOURCES_PREFIX qml2puppet/iconrenderer
   SOURCES
     iconrenderer.cpp iconrenderer.h
 )
 
 extend_qtc_executable(qml2puppet
-  SOURCES_PREFIX "${SRCDIR}/qml2puppet/import3d"
+  SOURCES_PREFIX qml2puppet/import3d
   SOURCES
     import3d.cpp import3d.h
 )
 
 extend_qtc_executable(qml2puppet
-  SOURCES_PREFIX "${SRCDIR}/qml2puppet/instances"
+  SOURCES_PREFIX qml2puppet/instances
   SOURCES
     anchorchangesnodeinstance.cpp anchorchangesnodeinstance.h
     behaviornodeinstance.cpp behaviornodeinstance.h
@@ -231,7 +181,9 @@ extend_qtc_executable(qml2puppet
     qt5previewnodeinstanceserver.cpp qt5previewnodeinstanceserver.h
     qt5rendernodeinstanceserver.cpp qt5rendernodeinstanceserver.h
     qt5testnodeinstanceserver.cpp qt5testnodeinstanceserver.h
+    quick3dmaterialnodeinstance.cpp quick3dmaterialnodeinstance.h
     quick3dnodeinstance.cpp quick3dnodeinstance.h
+    quick3drenderablenodeinstance.cpp quick3drenderablenodeinstance.h
     quick3dtexturenodeinstance.cpp quick3dtexturenodeinstance.h
     quickitemnodeinstance.cpp quickitemnodeinstance.h
     servernodeinstance.cpp servernodeinstance.h
@@ -244,16 +196,9 @@ extend_qtc_executable(qml2puppet
 )
 
 extend_qtc_executable(qml2puppet
-  SOURCES_PREFIX "${SRCDIR}/types"
+  SOURCES_PREFIX qmlprivategate
   SOURCES
-    enumeration.h
-)
-
-extend_qtc_executable(qml2puppet
-  SOURCES_PREFIX "${SRCDIR}/qmlprivategate"
-  SOURCES
-    designersupportdelegate.h
-    qmlprivategate_56.cpp qmlprivategate.h
+    qmlprivategate.cpp qmlprivategate.h
 )
 
 if(DEFINED MULTILANGUAGE_SUPPORT_SUBDIRECTORY AND Qt6_VERSION VERSION_GREATER_EQUAL 6.2.1)
@@ -267,13 +212,34 @@ extend_qtc_executable(qml2puppet
 )
 
 extend_qtc_executable(qml2puppet
-  PUBLIC_INCLUDES "${PROJECT_SOURCE_DIR}/src/libs"
+  PUBLIC_INCLUDES src/libs
 )
 
 extend_qtc_executable(qml2puppet
   CONDITION TARGET Nanotrace
   DEPENDS Nanotrace
 )
+
+if (Qt6_VERSION VERSION_GREATER_EQUAL 6.4.0)
+    extend_qtc_executable(qml2puppet
+      DEFINES ENABLE_INTERNAL_QML_RUNTIME
+      PUBLIC_INCLUDES ${CMAKE_CURRENT_LIST_DIR}/qml2puppet/runner
+      SOURCES_PREFIX qml2puppet/runner
+      SOURCES
+        qmlruntime.h qmlruntime.cpp
+        qmlconfiguration.h loadwatcher.h
+    )
+
+    # Turn the tool into its own self-contained qml module
+    qt_add_qml_module(qml2puppet
+        URI QmlRuntime.QmlConfiguration
+        VERSION 1.0
+    )
+    if (QTC_STATIC_BUILD)
+      qt_import_qml_plugins(qml2puppet PATH_TO_SCAN ${SRCDIR})
+    endif()
+endif()
+
 
 # Crashpad
 # only windows requires separate crashpad client per process until client->SetHandlerIPCPipe()

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelinemodel.h"
 #include "timelinemodel_p.h"
@@ -444,7 +422,10 @@ int TimelineModel::insert(qint64 startTime, qint64 duration, int selectionId)
     int index = d->insertStart(TimelineModelPrivate::Range(startTime, duration, selectionId));
     if (index < d->ranges.size() - 1)
         d->incrementStartIndices(index);
-    d->insertEnd(TimelineModelPrivate::RangeEnd(index, startTime + duration));
+    int endIndex = d->insertEnd(TimelineModelPrivate::RangeEnd(index, startTime + duration));
+    d->setEndIndex(index, endIndex);
+    if (endIndex < d->endTimes.size() - 1)
+        d->incrementEndIndices(endIndex);
     return index;
 }
 
@@ -468,7 +449,10 @@ int TimelineModel::insertStart(qint64 startTime, int selectionId)
 void TimelineModel::insertEnd(int index, qint64 duration)
 {
     d->ranges[index].duration = duration;
-    d->insertEnd(TimelineModelPrivate::RangeEnd(index, d->ranges[index].start + duration));
+    int endIndex = d->insertEnd(TimelineModelPrivate::RangeEnd(index, d->ranges[index].start + duration));
+    d->setEndIndex(index, endIndex);
+    if (endIndex < d->endTimes.size() - 1)
+        d->incrementEndIndices(endIndex);
 }
 
 bool TimelineModel::expanded() const

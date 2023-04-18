@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Design Studio documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example Loginui2
@@ -69,14 +47,14 @@
 
     To preview the changes that you make to the UI while you make
     them, select the \inlineimage icons/live_preview.png
-    (\uicontrol {Show Live Preview}) button on the \l {Form Editor}
+    (\uicontrol {Show Live Preview}) button on the \l {2D} view
     toolbar or press \key {Alt+P}.
 
     To anchor component instances on a page:
 
     \list 1
         \li Open \e {Screen01.ui.qml} for editing in the
-            \uicontrol {Form Editor} view.
+            \uicontrol {2D} view.
         \li Select \e adventurePage in the \l Navigator view to display its
             properties in the \l Properties view.
         \li In \uicontrol Properties > \uicontrol Layout, select
@@ -85,8 +63,8 @@
             parent in the \uicontrol Target field. This attaches the background
             image to the rectangle on all sides.
             Note: Selecting the anchor button should automatically select the
-            four buttons on the left side of it. If it doesn't, refresh
-            \uicontrol{Form Editor}.
+            four buttons on the left side of it. If it doesn't, refresh the
+            \uicontrol{2D} view.
             \image loginui2-layout.png "Layout properties"
         \li Select \e qt_logo_green_128x128px in \l Navigator.
         \li In \uicontrol Properties > \uicontrol Layout, select the
@@ -98,13 +76,11 @@
             rectangle at the top, while keeping its horizontal center aligned
             with that of the rectangle.
         \li Select \e tagLine in \uicontrol Navigator.
-        \li In \uicontrol Properties > \uicontrol Layout, deselect the
-            \inlineimage icons/anchor-center-vertical.png
-            button to remove the vertical center anchor, and then select the
-            \inlineimage icons/anchor-top.png
-            button to anchor the tag line to
-            \e qt_logo_green_128x128px in the \uicontrol Target field with a
-            40-pixel margin. This attaches the top of the tag line to the
+        \li In \uicontrol Properties > \uicontrol Layout,
+            select the \inlineimage icons/anchor-top.png
+            button and then select \e qt_logo_green_128x128px
+            as \uicontrol Target to anchor \e tagLine with a 40-pixel margin.
+            This attaches the top of the tag line to the
             bottom of the logo, while keeping its horizontal center aligned
             with that of the rectangle.
             \image loginui2-layout-text.png "Text Layout properties"
@@ -123,20 +99,6 @@
 
     \image loginui2-loginpage.jpg "Login page in the Design mode and live preview"
 
-    \section2 Learn More - Anchors
-
-    In an anchor-based layout, each component instance can be thought of as
-    having a set of invisible \e anchor lines: top, bottom, left, right, fill,
-    horizontal center, vertical center, and baseline.
-
-    Anchors enable placing a component instance either adjacent to or inside of
-    another component instance, by attaching one or more of the instance's
-    anchor lines to the anchor lines of the other component instance. If a
-    component instance changes, the instances that are anchored to it will
-    adjust automatically to maintain the anchoring.
-
-    For more information, see \l{Positioning with Anchors}.
-
     \section1 Using Column Positioners
 
     You will now position the entry fields and buttons in columns
@@ -152,8 +114,8 @@
             \l {Multiselection}{multiple selection}), and right-click
             either of them to open a context menu.
         \li Select \uicontrol Position > \uicontrol {Position in Column}
-            to position the fields on top of each other in
-            \uicontrol {Form Editor}.
+            to position the fields on top of each other in the
+            \uicontrol {2D} view.
         \li Select the column in \uicontrol Navigator and change its ID
             to \e fields in \uicontrol Properties.
         \li In \uicontrol Column > \uicontrol Spacing, set the spacing between
@@ -172,7 +134,7 @@
         \li Select \e fields in \uicontrol Navigator.
         \li In \uicontrol Properties > \uicontrol Layout, select the
             \inlineimage icons/anchor-top.png
-            button to anchor the top of the field column to
+            button to anchor the top of the fields column to
             the bottom of \e tagLine with a 170-pixel margin.
         \li Select the \inlineimage icons/anchor-center-horizontal.png
             button to anchor the column horizontally to its parent.
@@ -192,7 +154,20 @@
 
     \image loginui2-loginpage-ready.jpg "Login page in the Design mode and live preview"
 
-    \section1 Learn More - Positioners
+    \section1 Learn More
+    \section2 Anchors
+    In an anchor-based layout, each component instance can be thought of as
+    having a set of invisible \e anchor lines: top, bottom, left, right, fill,
+    horizontal center, vertical center, and baseline.
+
+    Anchors enable placing a component instance either adjacent to or inside of
+    another component instance, by attaching one or more of the instance's
+    anchor lines to the anchor lines of the other component instance. If a
+    component instance changes, the instances that are anchored to it will
+    adjust automatically to maintain the anchoring.
+
+    For more information, see \l{Positioning with Anchors}.
+    \section2 Positioners
 
     For many use cases, the best positioner to use is a simple grid, row, or
     column, and \QDS provides components that will position children in these

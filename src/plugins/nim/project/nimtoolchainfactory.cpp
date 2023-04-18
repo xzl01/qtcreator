@@ -1,39 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
-** Contact: http://www.qt.io/licensing
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) Filippo Cucchetto <filippocucchetto@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "nimtoolchainfactory.h"
 
 #include "nimconstants.h"
 #include "nimtoolchain.h"
+#include "nimtr.h"
 
 #include <projectexplorer/devicesupport/devicemanager.h>
 
 #include <utils/algorithm.h>
 #include <utils/environment.h>
-#include <utils/pathchooser.h>
 #include <utils/fileutils.h>
+#include <utils/pathchooser.h>
+#include <utils/qtcassert.h>
 
 #include <QFormLayout>
 
@@ -44,7 +24,7 @@ namespace Nim {
 
 NimToolChainFactory::NimToolChainFactory()
 {
-    setDisplayName(NimToolChain::tr("Nim"));
+    setDisplayName(Tr::tr("Nim"));
     setSupportedToolChainType(Constants::C_NIMTOOLCHAIN_TYPEID);
     setSupportedLanguages({Constants::C_NIMLANGUAGE_ID});
     setToolchainConstructor([] { return new NimToolChain; });
@@ -98,15 +78,21 @@ NimToolChainConfigWidget::NimToolChainConfigWidget(NimToolChain *tc)
     const auto gnuVersionArgs = QStringList("--version");
     m_compilerCommand->setExpectedKind(PathChooser::ExistingCommand);
     m_compilerCommand->setCommandVersionArguments(gnuVersionArgs);
-    m_mainLayout->addRow(tr("&Compiler path:"), m_compilerCommand);
+    m_mainLayout->addRow(Tr::tr("&Compiler path:"), m_compilerCommand);
     m_compilerVersion->setReadOnly(true);
-    m_mainLayout->addRow(tr("&Compiler version:"), m_compilerVersion);
+    m_mainLayout->addRow(Tr::tr("&Compiler version:"), m_compilerVersion);
 
     // Fill
     fillUI();
 
     // Connect
-    connect(m_compilerCommand, &PathChooser::pathChanged, this, &NimToolChainConfigWidget::onCompilerCommandChanged);
+    connect(m_compilerCommand, &PathChooser::textChanged, this, [this] {
+        const FilePath path = m_compilerCommand->rawFilePath();
+        auto tc = static_cast<NimToolChain *>(toolChain());
+        QTC_ASSERT(tc, return);
+        tc->setCompilerCommand(path);
+        fillUI();
+    });
 }
 
 void NimToolChainConfigWidget::applyImpl()
@@ -141,14 +127,6 @@ void NimToolChainConfigWidget::fillUI()
     Q_ASSERT(tc);
     m_compilerCommand->setFilePath(tc->compilerCommand());
     m_compilerVersion->setText(tc->compilerVersion());
-}
-
-void NimToolChainConfigWidget::onCompilerCommandChanged(const QString &path)
-{
-    auto tc = static_cast<NimToolChain *>(toolChain());
-    Q_ASSERT(tc);
-    tc->setCompilerCommand(FilePath::fromString(path));
-    fillUI();
 }
 
 }

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -35,8 +13,8 @@
     \previouspage studio-developer-topics.html
     \nextpage studio-porting-projects.html
     \else
-    \previouspage creator-vcs-cvs.html
-    \nextpage creator-vcs-mercurial.html
+    \previouspage creator-vcs-fossil.html
+    \nextpage creator-vcs-gitlab.html
     \endif
 
     \title Using Git
@@ -62,17 +40,19 @@
     installation directory, and therefore, the authorization fails.
 
     You can set the \c HOME environment variable from \QC. Select
-    \uicontrol Tools > \uicontrol Options > \uicontrol {Version Control} >
+    \uicontrol Edit > \uicontrol Preferences > \uicontrol {Version Control} >
     \uicontrol Git, and then select the
     \uicontrol {Set "HOME" environment variable} check box. \c HOME is
     set to \c %HOMEDRIVE%%HOMEPATH% when the Git executable is run and
     authorization works as it would with \c {git bash}.
 
+    \image qtcreator-preferences-vcs-git.webp {Git preferences}
+
     \section1 Working with the Current File
 
     To work with the current file, select the commands in \uicontrol Tools >
     \uicontrol Git > \uicontrol {Current File}. Some of the commands are also
-    available for the project or local repository that contains the file.
+    available for the project or local repository that has the file.
 
     \section2 Viewing Git Diff
 
@@ -84,8 +64,8 @@
 
     \image qtcreator-vcs-diff.png
 
-    The diff is displayed side-by-side in a \l{Comparing Files}{diff editor}
-    by default. To use the unified diff view instead, select the
+    The \l{Comparing Files}{diff editor} displays the diff side-by-side. To use
+    the unified diff view instead, select the
     \uicontrol {Switch to Unified Diff Editor} (1) option from the toolbar.
     In both views, you can use context menu commands to apply, revert, stage,
     and unstage chunks or selected lines, as well as send chunks to a code
@@ -94,10 +74,16 @@
     \section2 Viewing Git Log
 
     To display the versioning history of a file, select \uicontrol{Log of}.
-    The log output contains the date, the commit message, and a commit
-    identifier. Click on the commit identifier to view commit details.
+    The log output has the date, the commit message, and a commit
+    identifier.
 
-    \image qtcreator-git-log.png "Commit details in Git log"
+    You can set the maximum number of log entries to show in \uicontrol Edit >
+    \uicontrol Preferences > \uicontrol {Version Control} > \uicontrol Git >
+    \uicontrol {Log count}.
+
+    Click on the commit identifier to view commit details.
+
+    \image qtcreator-git-log.png {Commit details in Git log}
 
     Right-clicking on a commit identifier brings up a context menu that lets
     you apply actions on the commit, such as view annotations or cherry-pick
@@ -131,23 +117,41 @@
     \uicontrol {Git Show} view, select \uicontrol {Describe Change} in the
     context menu.
 
-    \image qtcreator-vcs-show.png "Commit description in Git show"
+    \image qtcreator-vcs-show.png {Commit description in Git show}
 
     \section2 Viewing Annotations
 
-    To view annotations, select \uicontrol{Blame}. The view displays the lines
-    of the file prepended by the commit identifier they originate from. Clicking
-    on the commit identifier shows a detailed description of the change.
+    To view annotations, select \uicontrol {Blame}. The \uicontrol {Git Blame}
+    view displays the lines of the file prepended by the commit identifier they
+    originate from.
+
+    \image qtcreator-git-blame.webp {Git Blame view}
+
+    By default, each line is annotated in the editor when you scroll through
+    the file. To disable this feature, select \uicontrol Edit >
+    \uicontrol Preferences > \uicontrol {Version Control} > \uicontrol Git, and
+    deselect \uicontrol {Add instant blame annotations to editor}. To view
+    annotations for the current line, select \uicontrol Tools > \uicontrol Git >
+    \uicontrol {Current File} > \uicontrol {Instant Blame}.
+
+    Click the commit identifier to show a detailed description of the change.
 
     To show the annotation of a previous version, right-click on the commit
     identifier and select \uicontrol {Blame Parent Revision}. This allows you
     to navigate through the history of the file and obtain previous versions
     of it.
 
+    To view moved or copied lines within a file or between files, select
+    \uicontrol {Detect Moves Within File}, \uicontrol {Detect Moves Between Files},
+    or \uicontrol {Detect Moves and Copies Between Files}.
+
+    To hide the date and time information in the view, select
+    \uicontrol {Omit Date}.
+
     The other actions in the context-menu enable you to apply actions to the
     commit, such as cherry-pick, checkout, or revert it.
 
-    To rescan the files, click \inlineimage icons/reload_gray.png
+    To rescan the files, select \inlineimage icons/reload_gray.png
     (\uicontrol Reload).
 
     \section2 Staging Changes
@@ -158,7 +162,7 @@
 
     \section2 Resetting Changes
 
-    Git has an index that is used to stage changes. The index is committed on
+    Git uses an index to stage changes. The index is committed on
     the next commit. Git allows you to revert back to the state of the last
     commit as well as to the state staged in the index.
 
@@ -180,9 +184,8 @@
 
     To clean the working directory, select \uicontrol {Build Project} > \uicontrol {Clean}.
     All files that are not under version control are displayed in
-    the \uicontrol {Clean Repository} dialog. Ignored files are
-    deselected by default. Select the files to delete and click
-    \uicontrol Delete.
+    the \uicontrol {Clean Repository} dialog. Ignored files are deselected by
+    default. Select the files to delete, and then select \uicontrol Delete.
 
     \section1 Working with Local Repositories
 
@@ -198,25 +201,25 @@
 
     \section2 Viewing Git Status
 
-    To view the status of the repository in the \uicontrol {Version Control}
-    output pane, select \uicontrol Status. The context menu contains additional
-    actions, such as selecting and clearing all entries in the pane, copying
+    To view the status of the repository in \uicontrol {Version Control},
+    select \uicontrol Status. The context menu has additional
+    actions, such as selecting and clearing all entries, copying
     text, and opening files.
 
     \section2 Committing Changes to Git
 
     To submit your changes to Git, select \uicontrol Commit. \QC displays a
     commit page containing a text editor where you can enter your commit
-    message and a checkable list of modified files to be included.
+    message and a checkable list of modified files to include.
 
-    \image qtcreator-vcs-commit.png "Committing changes with Git"
+    \image qtcreator-vcs-commit.png {Committing changes with Git}
 
     \uicontrol {General Information} displays the names of the
     repository and branch for the commit.
 
     In \uicontrol {Commit Information}, you can edit information about the
     author of the commit. To bypass re-commit and commit message hooks,
-    select \uicontrol {Bypass hooks}. If signoffs are used for your project,
+    select \uicontrol {Bypass hooks}. If your project uses signoffs,
     select \uicontrol {Sign off} to add a \e signed-off-by trailer by the
     author at the end of the commit log message.
 
@@ -224,7 +227,7 @@
 
     In \uicontrol Files, select the files to include in the commit.
 
-    When you have finished filling out the commit page information, click on
+    When you have finished filling out the commit page information, select
     \uicontrol Commit to start committing.
 
     The \uicontrol {Diff Selected Files} button opens a \l{Viewing Git Diff}
@@ -246,7 +249,7 @@
     \uicontrol Git > \uicontrol {Local Repository} >
     \uicontrol {Amend Last Commit}.
 
-    \image qtcreator-git-amend.png "Amending a Git commit"
+    \image qtcreator-git-amend.png {Amending a Git commit}
 
     To view the commit in its current form, before amending, select
     \uicontrol {Show HEAD}.
@@ -258,7 +261,7 @@
 
     To amend an earlier comment in a series of related commits, select
     \uicontrol Tools > \uicontrol Git > \uicontrol {Local Repository} >
-    \uicontrol {Fixup Previous Commit}. This operation is done using interactive
+    \uicontrol {Fixup Previous Commit}. This operation uses interactive
     rebase. In case of conflicts, a merge tool is suggested.
 
     \section2 Resetting Local Repository
@@ -287,11 +290,11 @@
 
     \section2 Working with Branches
 
-    To work with Git branches, select \uicontrol {Branches}. The checked out
-    branch is shown in bold and underlined in the list of branches in the
-    \uicontrol {Git Branches} sidebar view.
+    To work with Git branches, select \uicontrol {Branches}. The
+    \uicontrol {Git Branches} sidebar view shows the checked out
+    branch in bold and underlined in the list of branches.
 
-    \image qtcreator-vcs-gitbranch.png "Git Branches sidebar view"
+    \image qtcreator-vcs-gitbranch.png {Git Branches sidebar view}
 
     Old entries and tags are filtered out of the list of branches
     by default. To include them, select \inlineimage icons/filtericon.png
@@ -305,13 +308,13 @@
     If you checked out a specific commit, the list of branches displays a
     \e {Detached HEAD} entry.
 
-    For local and remote branches, the changes log can be shown by double
-    clicking on the branch name.
+    For local and remote branches, double-click the branch name to view the
+    change log.
 
-    To refresh the list of branches, click \inlineimage icons/reload_gray.png
+    To refresh the list of branches, select \inlineimage icons/reload_gray.png
     (\uicontrol Refresh).
 
-    The following operations are supported in the context-menu for a branch:
+    The context menu for a branch has the following functions:
 
     \table
         \header
@@ -369,9 +372,9 @@
             \li Push the committed changes to the selected remote branch.
     \endtable
 
-    The following additional context-menu operations are available for
-    \uicontrol{Remote Branches}. The context-menu can be opened on
-    \uicontrol{Remote Branches} or on a specific remote repository.
+    The context menu for a remote branch has the following additional
+    functions. To open it, select \uicontrol{Remote Branches} or a remote
+    repository.
 
     \table
         \header
@@ -400,7 +403,7 @@
 
     \section2 Applying Patches
 
-    Patches are rewriting instructions that can be applied to a set of files.
+    Patches are rewriting instructions that Git can apply to a set of files.
     To apply a patch file that is open in \QC, select \uicontrol Patch >
     \uicontrol {Apply from Editor}.
 
@@ -411,7 +414,7 @@
 
     With Git, you can put your current set of changes onto a virtual shelf
     called a \e stash. Stashes are useful, for example, to put aside a set of
-    changes to work on higher priority tasks or to pull in new chages from
+    changes to work on higher priority tasks or to pull in new changes from
     another repository.
 
     To stash all local changes, select \uicontrol Stash > \uicontrol Stash. The
@@ -423,7 +426,7 @@
     display or delete them, select \uicontrol Stashes.
 
     To save a snapshot of your current work under a name for later reference,
-    select \uicontrol {Take Snapshot}. The working copy is unchanged. For
+    select \uicontrol {Take Snapshot}. The working copy is not changed. For
     example, if you want to try something and find out later that it does not
     work, you can discard the changes and return to the state of the snapshot.
 
@@ -436,7 +439,7 @@
     commits, select \uicontrol Tools > \uicontrol Git >
     \uicontrol {Actions on Commits}.
 
-    \image creator-git-commit-actions.png "Select a Git Commit dialog"
+    \image creator-git-commit-actions.png {Select a Git Commit dialog}
 
     You can apply the following actions on commits:
 
@@ -466,8 +469,8 @@
     To start controlling a project directory that is currently not under
     version control, select \uicontrol Tools > \uicontrol Git >
     \uicontrol {Create Repository}. \QC creates a new subdirectory named .git
-    that contains all the necessary repository files. However, nothing in the
-    project is tracked yet, so you will need to create an initial commit to
+    that has all the necessary repository files. However, Git does not track
+    anything in the project yet, so you will need to create an initial commit to
     start tracking the project files.
 
     \section1 Working with Remote Repositories
@@ -480,7 +483,7 @@
 
     To pull changes from the remote repository, select \uicontrol Pull. If there
     are locally modified files, you are prompted to stash the changes. Select
-    \uicontrol Tools > \uicontrol Options > \uicontrol {Version Control} >
+    \uicontrol Edit > \uicontrol Preferences > \uicontrol {Version Control} >
     \uicontrol Git and then select the \uicontrol {Pull with rebase} check box
     to perform a rebase operation while pulling.
 
@@ -569,36 +572,36 @@
     To refresh the list of changes, select \uicontrol Refresh.
 
     The \uicontrol Remote field lists the remotes of the current repository that
-    are detected as Gerrit servers. Select \uicontrol Tools > \uicontrol Options
+    are detected as Gerrit servers. Select \uicontrol Edit > \uicontrol Preferences
     > \uicontrol {Version Control} > \uicontrol Gerrit to specify a fallback
     connection to a Gerrit server over SSH. The Gerrit REST interface and the
     \l{https://curl.haxx.se/}{curl} tool are used for HTTP connections.
 
     Select the \uicontrol HTTPS check box to prepend \c https to the Gerrit URL
-    if Gerrit does not provide it.
+    if Gerrit does not add it.
 
-    \image qtcreator-gerrit-options.png
+    \image qtcreator-preferences-vcs-gerrit.webp {Gerrit preferences}
 
     \section1 Working with Git Tools
 
     To start a graphical interface to Git, select \uicontrol Tools >
     \uicontrol Git > \uicontrol {Git Tools} > \uicontrol {Git Gui}.
 
-    \note On \macos, the default Git installation does not contain Git Gui. To
+    \note On \macos, the default Git installation does not have Git Gui. To
     use Git Gui, install it separately. To start Git Gui from \QC, select
     \uicontrol Preferences > \uicontrol {Version Control} > \uicontrol Git, and
-    set the path to the environment that contains Git Gui in the
+    set the path to the environment that has Git Gui in the
     \uicontrol {Prepend to PATH} field.
 
     To start the commit viewer for Git, select \uicontrol Tools >
     \uicontrol Git > \uicontrol {Git Tools} > \uicontrol Gitk. You can also
     start the tool to view commits in the current document or in the folder that
-    contains the current document. To specify arguments for running Gitk, select
-    \uicontrol Tools > \uicontrol Options > \uicontrol {Version Control} >
+    has the current document. To specify arguments for running Gitk, select
+    \uicontrol Edit > \uicontrol Preferences > \uicontrol {Version Control} >
     \uicontrol Git.
 
     To use some other application for viewing Git history, such as GitX or
-    QGit viewer, select \uicontrol Tools > \uicontrol Options >
+    QGit viewer, select \uicontrol Edit > \uicontrol Preferences >
     \uicontrol {Version Control} > \uicontrol Git and specify the path to the
     application executable in the \uicontrol {Command} field. To start the
     application, select \uicontrol Tools > \uicontrol Git

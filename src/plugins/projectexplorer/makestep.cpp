@@ -1,37 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "makestep.h"
 
 #include "buildconfiguration.h"
 #include "gnumakeparser.h"
 #include "kitinformation.h"
-#include "project.h"
 #include "processparameters.h"
 #include "projectexplorer.h"
 #include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "target.h"
 #include "toolchain.h"
 
@@ -39,17 +17,17 @@
 #include <utils/environment.h>
 #include <utils/hostosinfo.h>
 #include <utils/layoutbuilder.h>
-#include <utils/optional.h>
 #include <utils/pathchooser.h>
 #include <utils/qtcprocess.h>
 #include <utils/utilsicons.h>
 #include <utils/variablechooser.h>
 
 #include <QCheckBox>
-#include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QThread>
+
+#include <optional>
 
 using namespace Core;
 using namespace Utils;
@@ -80,41 +58,41 @@ MakeStep::MakeStep(BuildStepList *parent, Id id)
 
     m_userArgumentsAspect = addAspect<StringAspect>();
     m_userArgumentsAspect->setSettingsKey(id.withSuffix(MAKE_ARGUMENTS_SUFFIX).toString());
-    m_userArgumentsAspect->setLabelText(tr("Make arguments:"));
+    m_userArgumentsAspect->setLabelText(Tr::tr("Make arguments:"));
     m_userArgumentsAspect->setDisplayStyle(StringAspect::LineEditDisplay);
 
     m_userJobCountAspect = addAspect<IntegerAspect>();
     m_userJobCountAspect->setSettingsKey(id.withSuffix(JOBCOUNT_SUFFIX).toString());
-    m_userJobCountAspect->setLabel(tr("Parallel jobs:"));
+    m_userJobCountAspect->setLabel(Tr::tr("Parallel jobs:"));
     m_userJobCountAspect->setRange(1, 999);
     m_userJobCountAspect->setValue(defaultJobCount());
     m_userJobCountAspect->setDefaultValue(defaultJobCount());
 
-    const QString text = tr("Override MAKEFLAGS");
+    const QString text = Tr::tr("Override MAKEFLAGS");
     m_overrideMakeflagsAspect = addAspect<BoolAspect>();
     m_overrideMakeflagsAspect->setSettingsKey(id.withSuffix(OVERRIDE_MAKEFLAGS_SUFFIX).toString());
     m_overrideMakeflagsAspect->setLabel(text, BoolAspect::LabelPlacement::AtCheckBox);
 
     m_nonOverrideWarning = addAspect<TextDisplay>();
-    m_nonOverrideWarning->setToolTip("<html><body><p>" +
-         tr("<code>MAKEFLAGS</code> specifies parallel jobs. Check \"%1\" to override.")
+    m_nonOverrideWarning->setText("<html><body><p>" +
+         Tr::tr("<code>MAKEFLAGS</code> specifies parallel jobs. Check \"%1\" to override.")
          .arg(text) + "</p></body></html>");
     m_nonOverrideWarning->setIconType(InfoLabel::Warning);
 
     m_disabledForSubdirsAspect = addAspect<BoolAspect>();
     m_disabledForSubdirsAspect->setSettingsKey(id.withSuffix(".disabledForSubdirs").toString());
-    m_disabledForSubdirsAspect->setLabel(tr("Disable in subdirectories:"));
-    m_disabledForSubdirsAspect->setToolTip(tr("Runs this step only for a top-level build."));
+    m_disabledForSubdirsAspect->setLabel(Tr::tr("Disable in subdirectories:"));
+    m_disabledForSubdirsAspect->setToolTip(Tr::tr("Runs this step only for a top-level build."));
 
     m_buildTargetsAspect = addAspect<MultiSelectionAspect>();
     m_buildTargetsAspect->setSettingsKey(id.withSuffix(BUILD_TARGETS_SUFFIX).toString());
-    m_buildTargetsAspect->setLabelText(tr("Targets:"));
+    m_buildTargetsAspect->setLabelText(Tr::tr("Targets:"));
 
     const auto updateMakeLabel = [this] {
         const FilePath defaultMake = defaultMakeCommand();
         const QString labelText = defaultMake.isEmpty()
-                ? tr("Make:")
-                : tr("Override %1:").arg(defaultMake.toUserOutput());
+                ? Tr::tr("Make:")
+                : Tr::tr("Override %1:").arg(defaultMake.toUserOutput());
         m_makeCommandAspect->setLabelText(labelText);
     };
 
@@ -160,14 +138,13 @@ void MakeStep::setupOutputFormatter(OutputFormatter *formatter)
 
 QString MakeStep::defaultDisplayName()
 {
-    return tr("Make");
+    return Tr::tr("Make");
 }
 
 static const QList<ToolChain *> preferredToolChains(const Kit *kit)
 {
-    QList<ToolChain *> tcs = ToolChainKitAspect::toolChains(kit);
     // prefer CXX, then C, then others
-    Utils::sort(tcs, [](ToolChain *tcA, ToolChain *tcB) {
+    return Utils::sorted(ToolChainKitAspect::toolChains(kit), [](ToolChain *tcA, ToolChain *tcB) {
         if (tcA->language() == tcB->language())
             return false;
         if (tcA->language() == Constants::CXX_LANGUAGE_ID)
@@ -178,7 +155,6 @@ static const QList<ToolChain *> preferredToolChains(const Kit *kit)
             return true;
         return false;
     });
-    return tcs;
 }
 
 FilePath MakeStep::defaultMakeCommand() const
@@ -194,7 +170,7 @@ FilePath MakeStep::defaultMakeCommand() const
 
 QString MakeStep::msgNoMakeCommand()
 {
-    return tr("Make command missing. Specify Make command in step configuration.");
+    return Tr::tr("Make command missing. Specify Make command in step configuration.");
 }
 
 Task MakeStep::makeCommandMissingTask()
@@ -209,22 +185,17 @@ bool MakeStep::isJobCountSupported() const
     return tc && tc->isJobCountSupported();
 }
 
-int MakeStep::jobCount() const
-{
-    return m_userJobCountAspect->value();
-}
-
 bool MakeStep::jobCountOverridesMakeflags() const
 {
     return m_overrideMakeflagsAspect->value();
 }
 
-static Utils::optional<int> argsJobCount(const QString &str)
+static std::optional<int> argsJobCount(const QString &str)
 {
     const QStringList args = ProcessArgs::splitArgs(str, HostOsInfo::hostOs());
     const int argIndex = Utils::indexOf(args, [](const QString &arg) { return arg.startsWith("-j"); });
     if (argIndex == -1)
-        return Utils::nullopt;
+        return std::nullopt;
     QString arg = args.at(argIndex);
     bool requireNumber = false;
     // -j [4] as separate arguments (or no value)
@@ -239,8 +210,8 @@ static Utils::optional<int> argsJobCount(const QString &str)
     bool ok = false;
     const int res = arg.toInt(&ok);
     if (!ok && requireNumber)
-        return Utils::nullopt;
-    return Utils::make_optional(ok && res > 0 ? res : 1000);
+        return std::nullopt;
+    return std::make_optional(ok && res > 0 ? res : 1000);
 }
 
 bool MakeStep::makeflagsJobCountMismatch() const
@@ -248,7 +219,7 @@ bool MakeStep::makeflagsJobCountMismatch() const
     const Environment env = makeEnvironment();
     if (!env.hasKey(MAKEFLAGS))
         return false;
-    Utils::optional<int> makeFlagsJobCount = argsJobCount(env.expandedValueForKey(MAKEFLAGS));
+    std::optional<int> makeFlagsJobCount = argsJobCount(env.expandedValueForKey(MAKEFLAGS));
     return makeFlagsJobCount.has_value() && *makeFlagsJobCount != m_userJobCountAspect->value();
 }
 
@@ -354,17 +325,17 @@ QWidget *MakeStep::createConfigWidget()
         builder.addRow(m_disabledForSubdirsAspect);
     builder.addRow(m_buildTargetsAspect);
 
-    auto widget = builder.emerge(false);
+    auto widget = builder.emerge(Layouting::WithoutMargins);
 
     VariableChooser::addSupportForChildWidgets(widget, macroExpander());
 
     setSummaryUpdater([this] {
         const CommandLine make = effectiveMakeCommand(MakeStep::Display);
         if (make.executable().isEmpty())
-            return tr("<b>Make:</b> %1").arg(MakeStep::msgNoMakeCommand());
+            return Tr::tr("<b>Make:</b> %1").arg(MakeStep::msgNoMakeCommand());
 
         if (!buildConfiguration())
-            return tr("<b>Make:</b> No build configuration.");
+            return Tr::tr("<b>Make:</b> No build configuration.");
 
         ProcessParameters param;
         param.setMacroExpander(macroExpander());
@@ -373,7 +344,7 @@ QWidget *MakeStep::createConfigWidget()
         param.setEnvironment(buildEnvironment());
 
         if (param.commandMissing()) {
-            return tr("<b>Make:</b> %1 not found in the environment.")
+            return Tr::tr("<b>Make:</b> %1 not found in the environment.")
                         .arg(param.command().executable().toUserOutput()); // Override display text
         }
 

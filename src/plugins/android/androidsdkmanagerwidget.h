@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #pragma once
 
 #include "androidconfigurations.h"
@@ -36,16 +14,31 @@ class QLineEdit;
 class QPlainTextEdit;
 QT_END_NAMESPACE
 
+#include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QCheckBox>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QDialogButtonBox>
+#include <QtWidgets/QFrame>
+#include <QtWidgets/QGroupBox>
+#include <QtWidgets/QHeaderView>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QPlainTextEdit>
+#include <QtWidgets/QProgressBar>
+#include <QtWidgets/QPushButton>
+#include <QtWidgets/QRadioButton>
+#include <QtWidgets/QSpacerItem>
+#include <QtWidgets/QStackedWidget>
+#include <QtWidgets/QTreeView>
+#include <QtWidgets/QWidget>
+#include <utils/fancylineedit.h>
+
 namespace Utils { class OutputFormatter; }
 
-namespace Android {
-namespace Internal {
+namespace Android::Internal {
 
 class AndroidSdkManager;
-namespace Ui {
-    class AndroidSdkManagerWidget;
-}
-
 class AndroidSdkModel;
 
 class OptionsDialog : public QDialog
@@ -60,12 +53,12 @@ public:
     QStringList sdkManagerArguments() const;
 
 private:
-    QPlainTextEdit *argumentDetailsEdit;
-    QLineEdit *argumentsEdit;
+    QPlainTextEdit *m_argumentDetailsEdit;
+    QLineEdit *m_argumentsEdit;
     QFuture<QString> m_optionsFuture;
 };
 
-class AndroidSdkManagerWidget : public QWidget
+class AndroidSdkManagerWidget : public QDialog
 {
     Q_OBJECT
 
@@ -80,7 +73,7 @@ public:
                             QWidget *parent = nullptr);
     ~AndroidSdkManagerWidget() override;
 
-    void installEssentials(const QString &extraMessage = {});
+    void installEssentials();
 
 signals:
     void updatingSdk();
@@ -110,10 +103,17 @@ private:
     View m_currentView = PackageListing;
     AndroidSdkManager *m_sdkManager = nullptr;
     AndroidSdkModel *m_sdkModel = nullptr;
-    Ui::AndroidSdkManagerWidget *m_ui = nullptr;
     Utils::OutputFormatter *m_formatter = nullptr;
     QFutureWatcher<AndroidSdkManager::OperationOutput> *m_currentOperation = nullptr;
+
+    QStackedWidget *m_viewStack;
+    QWidget *m_packagesStack;
+    QWidget *m_outputStack;
+    QProgressBar *m_operationProgress;
+    QPlainTextEdit *m_outputEdit;
+    QLabel *m_sdkLicenseLabel;
+    QDialogButtonBox *m_sdkLicenseButtonBox;
+    QDialogButtonBox *m_buttonBox;
 };
 
-} // namespace Internal
-} // namespace Android
+} // Android::Internal

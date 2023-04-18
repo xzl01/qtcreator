@@ -1,37 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include "qmljseditortr.h"
 #include "qmljsfindreferences.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/find/searchresultwindow.h>
 #include <coreplugin/icore.h>
-#include <coreplugin/progressmanager/progressmanager.h>
 #include <coreplugin/progressmanager/futureprogress.h>
+#include <coreplugin/progressmanager/progressmanager.h>
 #include <extensionsystem/pluginmanager.h>
 #include <texteditor/basefilefind.h>
+#include <utils/algorithm.h>
 #include <utils/filesearch.h>
 #include <utils/runextensions.h>
 
@@ -260,7 +240,8 @@ private:
         if (root && root->lookupMember(_name, _scopeChain.context()))
             return check(root);
 
-        foreach (const QmlComponentChain *parent, chain->instantiatingComponents()) {
+        const QList<const QmlComponentChain *> parents = chain->instantiatingComponents();
+        for (const QmlComponentChain *parent : parents) {
             if (contains(parent))
                 return true;
         }
@@ -278,7 +259,8 @@ private:
 
     bool checkQmlScope()
     {
-        foreach (const ObjectValue *s, _scopeChain.qmlScopeObjects()) {
+        const QList<const ObjectValue *> scopes = _scopeChain.qmlScopeObjects();
+        for (const ObjectValue *s : scopes) {
             if (check(s))
                 return true;
         }
@@ -736,22 +718,27 @@ public:
         : context(context), name(name), scope(scope), future(future)
     { }
 
-    QList<Usage> operator()(const QString &fileName)
+    QList<Usage> operator()(const Utils::FilePath &fileName)
     {
         QList<Usage> usages;
         if (future->isPaused())
             future->waitForResume();
         if (future->isCanceled())
             return usages;
+        ModelManagerInterface *modelManager = ModelManagerInterface::instance();
         Document::Ptr doc = context->snapshot().document(fileName);
         if (!doc)
             return usages;
 
         // find all idenfifier expressions, try to resolve them and check if the result is in scope
         FindUsages findUsages(doc, context);
-        FindUsages::Result results = findUsages(name, scope);
-        foreach (const SourceLocation &loc, results)
-            usages.append(Usage(fileName, matchingLine(loc.offset, doc->source()), loc.startLine, loc.startColumn - 1, loc.length));
+        const FindUsages::Result results = findUsages(name, scope);
+        for (const SourceLocation &loc : results)
+            usages.append(Usage(modelManager->fileToSource(fileName),
+                                matchingLine(loc.offset, doc->source()),
+                                loc.startLine,
+                                loc.startColumn - 1,
+                                loc.length));
         if (future->isPaused())
             future->waitForResume();
         return usages;
@@ -778,7 +765,7 @@ public:
         : context(context), name(name), scope(scope), future(future)
     { }
 
-    QList<Usage> operator()(const QString &fileName)
+    QList<Usage> operator()(const Utils::FilePath &fileName)
     {
         QList<Usage> usages;
         if (future->isPaused())
@@ -791,8 +778,8 @@ public:
 
         // find all idenfifier expressions, try to resolve them and check if the result is in scope
         FindTypeUsages findUsages(doc, context);
-        FindTypeUsages::Result results = findUsages(name, scope);
-        foreach (const SourceLocation &loc, results)
+        const FindTypeUsages::Result results = findUsages(name, scope);
+        for (const SourceLocation &loc : results)
             usages.append(Usage(fileName, matchingLine(loc.offset, doc->source()), loc.startLine, loc.startColumn - 1, loc.length));
         if (future->isPaused())
             future->waitForResume();
@@ -815,7 +802,7 @@ public:
 
     void operator()(QList<Usage> &, const QList<Usage> &usages)
     {
-        foreach (const Usage &u, usages)
+        for (const Usage &u : usages)
             future->reportResult(u);
 
         future->setProgressValue(future->progressValue() + 1);
@@ -838,7 +825,7 @@ FindReferences::~FindReferences() = default;
 static void find_helper(QFutureInterface<FindReferences::Usage> &future,
                         const ModelManagerInterface::WorkingCopy &workingCopy,
                         Snapshot snapshot,
-                        const QString &fileName,
+                        const Utils::FilePath &fileName,
                         quint32 offset,
                         QString replacement)
 {
@@ -847,7 +834,7 @@ static void find_helper(QFutureInterface<FindReferences::Usage> &future,
     // ### this is a great candidate for map-reduce
     const ModelManagerInterface::WorkingCopy::Table &all = workingCopy.all();
     for (auto it = all.cbegin(), end = all.cend(); it != end; ++it) {
-        const QString fileName = it.key();
+        const Utils::FilePath fileName = it.key();
         Document::Ptr oldDoc = snapshot.document(fileName);
         if (oldDoc && oldDoc->editorRevision() == it.value().second)
             continue;
@@ -891,16 +878,17 @@ static void find_helper(QFutureInterface<FindReferences::Usage> &future,
     if (!replacement.isNull() && replacement.isEmpty())
         replacement = name;
 
-    QStringList files;
-    foreach (const Document::Ptr &doc, snapshot) {
+    Utils::FilePaths files;
+    for (const Document::Ptr &doc : std::as_const(snapshot)) {
         // ### skip files that don't contain the name token
-        files.append(doc->fileName());
+        files.append(modelManager->fileToSource(doc->fileName()));
     }
+    files = Utils::filteredUnique(files);
 
     future.setProgressRange(0, files.size());
 
     // report a dummy usage to indicate the search is starting
-    FindReferences::Usage searchStarting(replacement, name, 0, 0, 0);
+    FindReferences::Usage searchStarting(Utils::FilePath::fromString(replacement), name, 0, 0, 0);
 
     if (findTarget.typeKind() == findTarget.TypeKind){
         const ObjectValue *typeValue = value_cast<ObjectValue>(findTarget.targetValue());
@@ -931,7 +919,7 @@ static void find_helper(QFutureInterface<FindReferences::Usage> &future,
     future.setProgressValue(files.size());
 }
 
-void FindReferences::findUsages(const QString &fileName, quint32 offset)
+void FindReferences::findUsages(const Utils::FilePath &fileName, quint32 offset)
 {
     ModelManagerInterface *modelManager = ModelManagerInterface::instance();
 
@@ -941,7 +929,8 @@ void FindReferences::findUsages(const QString &fileName, quint32 offset)
     m_synchronizer.addFuture(result);
 }
 
-void FindReferences::renameUsages(const QString &fileName, quint32 offset,
+void FindReferences::renameUsages(const Utils::FilePath &fileName,
+                                  quint32 offset,
                                   const QString &replacement)
 {
     ModelManagerInterface *modelManager = ModelManagerInterface::instance();
@@ -957,7 +946,8 @@ void FindReferences::renameUsages(const QString &fileName, quint32 offset,
     m_synchronizer.addFuture(result);
 }
 
-QList<FindReferences::Usage> FindReferences::findUsageOfType(const QString &fileName, const QString &typeName)
+QList<FindReferences::Usage> FindReferences::findUsageOfType(const Utils::FilePath &fileName,
+                                                             const QString &typeName)
 {
     QList<Usage> usages;
     ModelManagerInterface *modelManager = ModelManagerInterface::instance();
@@ -974,11 +964,23 @@ QList<FindReferences::Usage> FindReferences::findUsageOfType(const QString &file
 
     QmlJS::Snapshot snapshot =  modelManager->snapshot();
 
-    foreach (const QmlJS::Document::Ptr &doc, snapshot) {
-        FindTypeUsages findUsages(doc, context);
-        FindTypeUsages::Result results = findUsages(typeName, targetValue);
-        foreach (const SourceLocation &loc, results) {
-            usages.append(Usage(doc->fileName(), matchingLine(loc.offset, doc->source()), loc.startLine, loc.startColumn - 1, loc.length));
+    QSet<Utils::FilePath> docDone;
+    for (const QmlJS::Document::Ptr &doc : std::as_const(snapshot)) {
+        Utils::FilePath sourceFile = modelManager->fileToSource(doc->fileName());
+        if (docDone.contains(sourceFile))
+            continue;
+        docDone.insert(sourceFile);
+        QmlJS::Document::Ptr sourceDoc = doc;
+        if (sourceFile != doc->fileName())
+            sourceDoc = snapshot.document(sourceFile);
+        FindTypeUsages findUsages(sourceDoc, context);
+        const FindTypeUsages::Result results = findUsages(typeName, targetValue);
+        for (const SourceLocation &loc : results) {
+            usages.append(Usage(sourceFile,
+                                matchingLine(loc.offset, doc->source()),
+                                loc.startLine,
+                                loc.startColumn - 1,
+                                loc.length));
         }
     }
     return usages;
@@ -989,9 +991,9 @@ void FindReferences::displayResults(int first, int last)
     // the first usage is always a dummy to indicate we now start searching
     if (first == 0) {
         Usage dummy = m_watcher.future().resultAt(0);
-        const QString replacement = dummy.path;
+        const QString replacement = dummy.path.toString();
         const QString symbolName = dummy.lineText;
-        const QString label = tr("QML/JS Usages:");
+        const QString label = Tr::tr("QML/JS Usages:");
 
         if (replacement.isEmpty()) {
             m_currentSearch = SearchResultWindow::instance()->startNewSearch(
@@ -1008,12 +1010,12 @@ void FindReferences::displayResults(int first, int last)
                 [](const Core::SearchResultItem& item) {
                     Core::EditorManager::openEditorAtSearchResult(item);
                 });
-        connect(m_currentSearch.data(), &SearchResult::cancelled, this, &FindReferences::cancel);
+        connect(m_currentSearch.data(), &SearchResult::canceled, this, &FindReferences::cancel);
         connect(m_currentSearch.data(), &SearchResult::paused, this, &FindReferences::setPaused);
         SearchResultWindow::instance()->popup(IOutputPane::Flags(IOutputPane::ModeSwitch | IOutputPane::WithFocus));
 
         FutureProgress *progress = ProgressManager::addTask(m_watcher.future(),
-                                                            tr("Searching for Usages"),
+                                                            Tr::tr("Searching for Usages"),
                                                             "QmlJSEditor.TaskSearch");
         connect(progress, &FutureProgress::clicked, m_currentSearch.data(), &SearchResult::popup);
 
@@ -1027,7 +1029,7 @@ void FindReferences::displayResults(int first, int last)
     for (int index = first; index != last; ++index) {
         Usage result = m_watcher.future().resultAt(index);
         SearchResultItem item;
-        item.setFilePath(Utils::FilePath::fromString(result.path));
+        item.setFilePath(result.path);
         item.setLineText(result.lineText);
         item.setMainRange(result.line, result.col, result.len);
         item.setUseTextEditorFont(true);
@@ -1061,13 +1063,13 @@ void FindReferences::onReplaceButtonClicked(const QString &text, const QList<Sea
                                                                             preserveCase);
 
     // files that are opened in an editor are changed, but not saved
-    QStringList changedOnDisk;
-    QStringList changedUnsavedEditors;
+    Utils::FilePaths changedOnDisk;
+    Utils::FilePaths changedUnsavedEditors;
     for (const Utils::FilePath &filePath : filePaths) {
         if (DocumentModel::documentForFilePath(filePath))
-            changedOnDisk += filePath.toString();
+            changedOnDisk += filePath;
         else
-            changedUnsavedEditors += filePath.toString();
+            changedUnsavedEditors += filePath;
     }
 
     if (!changedOnDisk.isEmpty())

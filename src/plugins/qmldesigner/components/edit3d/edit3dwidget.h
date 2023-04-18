@@ -1,34 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #pragma once
 
-#include <QtWidgets/qwidget.h>
-#include <QtWidgets/qlabel.h>
-#include <QtWidgets/qmenu.h>
-#include <QtCore/qpointer.h>
+#include <QLabel>
+#include <QMenu>
+#include <QPointer>
+#include <QVector3D>
+#include <QWidget>
+
 #include <coreplugin/icontext.h>
+#include "itemlibraryinfo.h"
+#include <modelnode.h>
 
 namespace QmlDesigner {
 
@@ -51,12 +33,26 @@ public:
     QMenu *visibilityTogglesMenu() const;
     void showVisibilityTogglesMenu(bool show, const QPoint &pos);
 
+    QMenu *backgroundColorMenu() const;
+    void showBackgroundColorMenu(bool show, const QPoint &pos);
+
+    void showContextMenu(const QPoint &pos, const ModelNode &modelNode, const QVector3D &pos3d);
+    void updateCreateSubMenu(const QStringList &keys,
+                             const QHash<QString, QList<ItemLibraryEntry>> &entriesMap);
+
+private slots:
+    void onCreateAction();
+
 protected:
     void dragEnterEvent(QDragEnterEvent *dragEnterEvent) override;
     void dropEvent(QDropEvent *dropEvent) override;
 
 private:
     void linkActivated(const QString &link);
+    void createContextMenu();
+
+    bool isPasteAvailable() const;
+    bool isSceneLocked() const;
 
     QPointer<Edit3DView> m_edit3DView;
     QPointer<Edit3DView> m_view;
@@ -65,6 +61,24 @@ private:
     QPointer<ToolBox> m_toolBox;
     Core::IContext *m_context = nullptr;
     QPointer<QMenu> m_visibilityTogglesMenu;
+    QPointer<QMenu> m_backgroundColorMenu;
+    QPointer<QMenu> m_contextMenu;
+    QPointer<QAction> m_editComponentAction;
+    QPointer<QAction> m_editMaterialAction;
+    QPointer<QAction> m_duplicateAction;
+    QPointer<QAction> m_copyAction;
+    QPointer<QAction> m_pasteAction;
+    QPointer<QAction> m_deleteAction;
+    QPointer<QAction> m_fitSelectedAction;
+    QPointer<QAction> m_alignCameraAction;
+    QPointer<QAction> m_alignViewAction;
+    QPointer<QAction> m_selectParentAction;
+    QPointer<QAction> m_toggleGroupAction;
+    QPointer<QMenu> m_createSubMenu;
+    ModelNode m_contextMenuTarget;
+    QVector3D m_contextMenuPos3d;
+    QHash<QString, ItemLibraryEntry> m_nameToEntry;
+    ItemLibraryEntry m_draggedEntry;
 };
 
 } // namespace QmlDesigner

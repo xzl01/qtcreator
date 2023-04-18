@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "eventlistdialog.h"
 #include "eventlist.h"
 #include "eventlistdelegate.h"
@@ -68,7 +46,8 @@ EventListDialog::EventListDialog(QWidget *parent)
 
     auto *toolbar = new QToolBar;
     m_addAction = toolbar->addAction(Utils::Icons::PLUS_TOOLBAR.icon(), tr("Add Event"));
-    m_removeAction = toolbar->addAction(Utils::Icons::MINUS.icon(), tr("Remove Selected Events"));
+    m_removeAction = toolbar->addAction(Utils::Icons::MINUS_TOOLBAR.icon(),
+                                        tr("Remove Selected Events"));
 
     auto *filterWidget = new FilterLineWidget;
     toolbar->addWidget(filterWidget);
@@ -96,7 +75,9 @@ void EventListDialog::initialize(EventList &events)
         Model *model = events.model();
         m_modifier->setParent(model);
 
-        m_rewriter = new RewriterView(QmlDesigner::RewriterView::Validate, model);
+        m_rewriter = new RewriterView(events.view()->externalDependencies(),
+                                      QmlDesigner::RewriterView::Validate);
+        m_rewriter->setParent(model);
         m_rewriter->setTextModifier(m_modifier);
         m_rewriter->setCheckSemanticErrors(false);
         model->attachView(m_rewriter);
@@ -145,9 +126,8 @@ void EventListDialog::initialize(EventList &events)
     m_table->setColumnHidden(EventListModel::connectColumn, true);
 }
 
-void EventListDialog::closeEvent(QCloseEvent *event)
+void EventListDialog::closeEvent([[maybe_unused]] QCloseEvent *event)
 {
-    Q_UNUSED(event);
     if (auto *view = EventList::nodeListView())
         view->reset();
 }

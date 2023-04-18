@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 //! [json wizards]
@@ -34,7 +12,7 @@
     actually copied from the \QC source directory into the \QC build directory
     as part of the next \QC build.
 
-    If you do not run CMake or qmake, your new wizard will not show up, because
+    If you do not run CMake or qmake, your new wizard will not show up because
     it does not exist in the build directory you run your newly built \QC from.
     It never got copied there because CMake or qmake did not inform the
     build tool, such as make or ninja, about the new files in the source tree.
@@ -50,7 +28,7 @@
     You can use variables (\c {%\{<variableName>\}}) in strings in the JSON configuration
     file and in template source files.
     A set of variables is predefined by the wizards and their pages.
-    You can introduce new variables as shortcuts to be used later by
+    You can introduce new variables as shortcuts for later use by
     defining the variable key names and values in the \c options section in the
     \c {wizard.json} file.
 
@@ -58,7 +36,7 @@
     JavaScript expression and converts the resulting JavaScript value to a string.
     In the JavaScript expression you can refer to variables defined by the wizard with
     \c {value('<variableName>')}. The returned JavaScript object has the type that the value
-    of the variable has, which can be a string, list, dictionary or boolean.
+    of the variable has, which can be a string, list, dictionary, or boolean.
 
     In places where a boolean value is expected and a string is given,
     an empty string as well as the string \c {"false"} is treated as
@@ -84,7 +62,7 @@
 
     \section1 Creating Wizards
 
-    \QC contains wizards for adding classes, files, and projects. You can
+    \QC has wizards for adding classes, files, and projects. You can
     use them as basis for adding your own wizards. We use the C++ wizard
     to explain the process and the sections and settings in the .json file.
 
@@ -138,8 +116,8 @@
 
                     \li \c supportedProjectTypes is an optional setting that
                         can be used to filter wizards when adding a new build
-                        target to an existing project. For example, only wizards
-                        that produce qmake projects should be provided when
+                        target to an existing project. For example, show only
+                        wizards that produce qmake projects when
                         adding a new target to an existing qmake project.
 
                         Possible values are the build systems supported by \QC
@@ -244,11 +222,11 @@
 
             \endlist
 
-            \li The \c options section contains an array of objects with \e key
+            \li The \c options section has an array of objects with \e key
                 and \e value attributes. You can define your own variables to
                 use in the configuration and template source files, in addition
-                to the predefined variables. For example, the following
-                variables are used in the C++ class creation wizard:
+                to the predefined variables. For example, the C++ class creation
+                wizard uses the following variables:
 
                 \code
                 "options":
@@ -324,7 +302,7 @@
 
                     \li \c data specifies the wizard pages. In the C++ wizard,
                         it specifies a \c Fields page and a \c Summary page. The
-                        \c Fields page contains the \c CheckBox, \c ComboBox,
+                        \c Fields page has the \c CheckBox, \c ComboBox,
                         \c LineEdit, \c PathChooser, and \c Spacer widgets. For
                         more information about the widgets, see
                         \l{Available Widgets}.
@@ -386,21 +364,21 @@
         \li \c Features lists all features available via any of the kits
             configured in \QC.
 
-        \li \c Plugins contains a list of all plugins running in the current
+        \li \c Plugins has a list of all plugins running in the current
             instance of \QC.
 
-        \li \c Platform contains the platform selected in the \uicontrol File >
+        \li \c Platform has the platform selected in the \uicontrol File >
             \uicontrol {New Project} or \uicontrol {New File} dialog. This value
             may be empty.
     \endlist
 
-    The following information is only available when the wizard was triggered
+    The following information is only available when users trigger the wizard
     via the context menu of a node in the \uicontrol Projects view:
 
     \list
         \li \c InitialPath with the path to the selected node.
 
-        \li \c ProjectExplorer.Profile.Ids contains a list of Kits configured
+        \li \c ProjectExplorer.Profile.Ids has a list of Kits configured
             for the project of the selected node.
     \endlist
 
@@ -411,7 +389,7 @@
 
     \section2 Field Page
 
-    A Field page has the \c typeId value \c Field and contains widgets. For more
+    A Field page has the \c typeId value \c Field and has widgets. For more
     information about widget definitions, see \l{Available Widgets}.
 
     \code
@@ -473,13 +451,13 @@
     \section2 Kits
 
     A Kits page has the \c typeId value \c Kits. The \c data section of a Kits
-    page contains an object with the following settings:
+    page has an object with the following settings:
 
     \list
         \li \c projectFilePath with the path to the project file.
 
         \li \c requiredFeatures with a list of strings or objects that describe
-            the features that a kit must provide to be listed on the page.
+            the features that a kit must have to appear on the page.
 
             When a string is found, this feature must be set. When using an
             object instead, the following settings are checked:
@@ -493,7 +471,7 @@
             \endlist
 
         \li \c preferredFeatures with a list in the same format as
-            requiredFeatures. Any kit matching all features listed in
+            \c requiredFeatures. Any kit matching all features listed in
             \c preferredFeatures (in addition to \c requiredFeatures) will be
             pre-selected on this page.
     \endlist
@@ -515,7 +493,7 @@
 
     \section2 Project
 
-    A Project page has the \c typeId value \c Project. It contains no data or an
+    A Project page has the \c typeId value \c Project. It has no data or an
     object with the \c trDescription property which will be shown on the
     generated page. \c trDescription defaults to \c {%\{trDescription\}}, which
     is filled in with the information taken from the \c trDescription
@@ -535,7 +513,7 @@
 
     \section2 Summary
 
-    A Summary page has the \c typeId value \c Summary. It contains no data or
+    A Summary page has the \c typeId value \c Summary. It has no data or
     an empty object.
 
     \code
@@ -546,7 +524,7 @@
     }
     \endcode
 
-    The page sets \c IsSubproject to an empty string if this is a toplevel
+    The page sets \c IsSubproject to an empty string if this is a top-level
     project and to \c yes otherwise. It sets \c VersionControl to the ID of the
     version control system in use.
 
@@ -585,19 +563,19 @@
             settings:
 
             \list
-                \li \c skipIfEmpty will cause empty arguments to be silently
-                    removed from the command to be run if set to \c true.
+                \li \c skipIfEmpty silently removes empty arguments from the
+                    command to run if you set it to \c true.
                     Defaults to \c true.
 
                 \li \c directory with the working directory of the command to
-                    be run. This defaults to the value of \c baseDirectory.
+                    run. This defaults to the value of \c baseDirectory.
 
                 \li \c command with the command to be run.
 
                 \li \c arguments with the arguments to pass to \c command.
 
-                \li \c timeOutFactor can be used to provide for longer than
-                    default timeouts for long-running commands.
+                \li \c timeOutFactor extends default timeouts for long-running
+                    commands.
 
                 \li \c enabled which will be evaluated to decide whether or
                     not to actually execute this job.
@@ -627,8 +605,8 @@
         \li Text Edit
     \endlist
 
-    \note Only the the settings documented in the following sections are
-    supported in wizards.
+    \note Wizards support only the settings documented in the following
+    sections.
 
     Specify the following settings for each widget:
 
@@ -643,7 +621,7 @@
         \li \c type specifies the type of the widget: \c CheckBox, \c ComboBox,
             \c Label, \c LineEdit, \c PathChooser, \c Spacer, and \c TextEdit.
 
-        \li \c trToolTip specifies a tool tip to show when hovering the field
+        \li \c trToolTip specifies a tooltip to show when hovering the field
             with the mouse.
 
         \li \c isComplete is evaluated for all fields to decide whether the
@@ -651,36 +629,30 @@
             must have their \c isComplete evaluate to \c true for this to
             happen. This setting defaults to \c true.
 
-        \li \c trIncompleteMessage is shown when the field's \c isComplete was
-            evaluated to \c false.
+        \li \c trIncompleteMessage is shown when the field's \c isComplete
+            evaluates to \c false.
 
         \li \c persistenceKey makes the user choice persistent. The value is
             taken to be a settings key. If the user changes the default
-            value of the widget, the user-provided value is stored and will
+            value of the widget, the user's value is stored and will
             become the new default value the next time the wizard is run.
 
-        \li \c data specifies settings for the widget:
+        \li \c visible is set to \c true if the widget is visible, otherwise
+            it is set to \c false. By default, it is set to \c true.
 
-        \list
+        \li \c enabled is set to \c true if the widget is enabled, otherwise
+            it is set to \c false. By default, it is set to \c true.
 
-            \li \c visible is set to \c true if the widget is visible, otherwise
-                it is set to \c false. By default, it is set to \c true.
+        \li \c mandatory is set to \c true if this widget must have a value
+            for the \uicontrol Next button to become enabled. By default, it
+            is set to \c true.
 
-            \li \c enabled is set to \c true if the widget is enabled, otherwise
-                it is set to \c false. By default, it is set to \c true.
+        \li \c span is set to hide the label and to span the form. By
+            default, it is set to \c false. For more information, see
+            \l{Using Variables in Wizards}.
 
-            \li \c mandatory is set to \c true if this widget must have a value
-                for the \uicontrol Next button to become enabled. By default, it
-                is set to \c true.
-
-            \li \c span is set to hide the label and to span the form. By
-                default, it is set to \c false. For more information, see
-                \l{Using Variables in Wizards}.
-
-       \endlist
-
-       The additional settings available for a particular widget are described
-       in the following sections.
+        \li \c data specifies additional settings for the particular widget type, as described
+            in the following sections.
 
     \endlist
 
@@ -750,9 +722,9 @@
     \list
 
         \li \c items specifies a list of items to put into the list type. The
-            list can contain both JSON objects and plain strings.
+            list can have both JSON objects and plain strings.
             For JSON objects, define \c trKey and \c value pairs, where the
-            \c trKey is the list item visible to users and \c value contains
+            \c trKey is the list item visible to users and \c value has
             the data associated with the item.
             In addition, you can use \c icon to specify an icon for the list
             item and \c trToolTip to specify a tooltip for it.
@@ -786,7 +758,7 @@
         \li \c wordWrap is set to \c true to enable word wrap. By default, it is
              set to \c{false}.
 
-        \li \c trText contains the label text to display.
+        \li \c trText has the label text to display.
 
     \endlist
 
@@ -839,7 +811,7 @@
             case.
 
         \li \c isPassword is a boolean value that specifies that the line edit
-            contains a password, which will be masked.
+            has a password, which will be masked.
 
         \li \c historyId is a key that specifies the name for a list of items
             for the history completer. This value and \c completion are
@@ -936,7 +908,7 @@
 
     \list
         \li \c source specifies the path and filename of the template file
-            relative to the directory containing the \c {wizard.json} file.
+            relative to the directory that has the \c {wizard.json} file.
 
             If \c source is unset, it is assumed that the file with the name
             given in \c target is generated by some other means. This is useful

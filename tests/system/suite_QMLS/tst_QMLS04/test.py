@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 source("../shared/qmls.py")
 
@@ -59,25 +37,21 @@ def main():
         test.passes("Refactoring was properly applied in source file")
     else:
         test.fail("Refactoring of Text to MyComponent failed in source file. Content of editor:\n%s" % codeText)
-    myCompTE = "SampleApp.SampleApp.qml\\.qrc./.MyComponent\\.qml"
+    myCompTE = "SampleApp.appSampleApp.MyComponent\\.qml"
     # there should be new QML file generated with name "MyComponent.qml"
     try:
-        waitForObjectItem(":Qt Creator_Utils::NavigationTreeView", myCompTE, 5000)
+        # openDocument() doesn't wait for expected elements, so it might be faster than the updates
+        # to the tree. Explicitly wait here to avoid timing issues. Using wFOI() instead of
+        # snooze() allows to proceed earlier, just in case it can find the item.
+        waitForObjectItem(":Qt Creator_Utils::NavigationTreeView",
+                          addBranchWildcardToRoot(myCompTE), 2000)
     except:
-        try:
-            waitForObjectItem(":Qt Creator_Utils::NavigationTreeView", addBranchWildcardToRoot(myCompTE), 1000)
-        except:
-            test.fail("Refactoring failed - file MyComponent.qml was not generated properly in project explorer")
-            #save and exit
-            invokeMenuItem("File", "Save All")
-            invokeMenuItem("File", "Exit")
-            return
-    test.passes("Refactoring - file MyComponent.qml was generated properly in project explorer")
+        pass
     # open MyComponent.qml file for verification
-    if not openDocument(myCompTE):
+    if not test.verify(openDocument(myCompTE),
+                       "Was MyComponent.qml properly generated in project explorer?"):
         test.fatal("Could not open MyComponent.qml.")
-        invokeMenuItem("File", "Save All")
-        invokeMenuItem("File", "Exit")
+        saveAndExit()
         return
     editorArea = waitForObject(":Qt Creator_QmlJSEditor::QmlJSTextEditorWidget")
     codeText = str(editorArea.plainText)

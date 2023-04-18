@@ -1,32 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtQuick 2.1
-import QtQuick.Controls 2.0
+import QtQuick
+import QtQuick.Controls
 
-import QtCreator.Tracing 1.0
+import QtCreator.Tracing
 
 Rectangle {
     id: root
@@ -151,7 +129,7 @@ Rectangle {
         color: Theme.color(Theme.PanelStatusBarBackgroundColor)
         modelProxy: timelineModelAggregator
         zoomer: zoomControl
-        reverseSelect: shiftPressed
+        reverseSelect: root.shiftPressed
 
         onMoveCategories: (sourceIndex, targetIndex) => {
             content.moveCategories(sourceIndex, targetIndex)
@@ -250,7 +228,7 @@ Rectangle {
 
     MouseArea {
         id: selectionRangeControl
-        enabled: selectionRangeMode &&
+        enabled: root.selectionRangeMode &&
                  selectionRange.creationState !== selectionRange.creationFinished
         anchors.right: content.right
         anchors.left: buttonsBar.right
@@ -259,19 +237,21 @@ Rectangle {
         hoverEnabled: enabled
         z: 2
 
-        onReleased:  {
-            if (selectionRange.creationState === selectionRange.creationSecondLimit) {
-                content.interactive = true;
-                selectionRange.creationState = selectionRange.creationFinished;
-            }
-        }
-        onPressed:  {
+        function handlePress() {
             if (selectionRange.creationState === selectionRange.creationFirstLimit) {
                 content.interactive = false;
                 selectionRange.setPos(selectionRangeControl.mouseX + content.contentX);
                 selectionRange.creationState = selectionRange.creationSecondLimit;
             }
         }
+
+        onReleased:  {
+            if (selectionRange.creationState === selectionRange.creationSecondLimit) {
+                content.interactive = true;
+                selectionRange.creationState = selectionRange.creationFinished;
+            }
+        }
+        onPressed: handlePress()
         onPositionChanged: {
             if (selectionRange.creationState === selectionRange.creationInactive)
                 selectionRange.creationState = selectionRange.creationFirstLimit;
@@ -280,7 +260,7 @@ Rectangle {
                     selectionRange.creationState !== selectionRange.creationFinished)
                 selectionRange.setPos(selectionRangeControl.mouseX + content.contentX);
         }
-        onCanceled: pressed()
+        onCanceled: handlePress()
     }
 
     Flickable {
@@ -289,7 +269,7 @@ Rectangle {
         interactive: false
         x: content.x
         y: content.y
-        height: (selectionRangeMode &&
+        height: (root.selectionRangeMode &&
                  selectionRange.creationState !== selectionRange.creationInactive) ?
                     content.height : 0
         width: content.width
@@ -348,7 +328,7 @@ Rectangle {
         endTime: zoomControl.selectionEnd
         referenceDuration: zoomControl.rangeDuration
         showDuration: selectionRange.rangeWidth > 1
-        hasContents: selectionRangeMode &&
+        hasContents: root.selectionRangeMode &&
                      selectionRange.creationState !== selectionRange.creationInactive
 
         onRecenter: {
@@ -376,22 +356,19 @@ Rectangle {
         locked: content.selectionLocked
 
         onRecenterOnItem: {
-            content.select(selectedModel, selectedItem)
+            content.select(root.selectedModel, root.selectedItem)
         }
 
         onLockedChanged: {
             content.selectionLocked = locked;
         }
 
-        onClearSelection: {
-            content.propagateSelection(-1, -1);
-        }
-
         onUpdateNote: (text) => {
-            if (timelineModelAggregator.notes && selectedModel != -1 && selectedItem != -1) {
+            if (timelineModelAggregator.notes && root.selectedModel != -1
+                && root.selectedItem != -1) {
                 timelineModelAggregator.notes.setText(
-                            timelineModelAggregator.models[selectedModel].modelId,
-                            selectedItem, text);
+                            timelineModelAggregator.models[root.selectedModel].modelId,
+                            root.selectedItem, text);
             }
         }
 

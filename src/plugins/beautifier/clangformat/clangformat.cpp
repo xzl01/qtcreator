@@ -1,37 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Lorenz Haas
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Lorenz Haas
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 // Tested with version 3.3, 3.4 and 3.4.1
 
 #include "clangformat.h"
 
 #include "clangformatconstants.h"
-#include "clangformatoptionspage.h"
 
 #include "../beautifierconstants.h"
 #include "../beautifierplugin.h"
+#include "../beautifiertr.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -53,13 +31,12 @@
 
 using namespace TextEditor;
 
-namespace Beautifier {
-namespace Internal {
+namespace Beautifier::Internal {
 
 ClangFormat::ClangFormat()
 {
     Core::ActionContainer *menu = Core::ActionManager::createMenu("ClangFormat.Menu");
-    menu->menu()->setTitle(tr("&ClangFormat"));
+    menu->menu()->setTitle(Tr::tr("&ClangFormat"));
 
     m_formatFile = new QAction(BeautifierPlugin::msgFormatCurrentFile(), this);
     Core::Command *cmd
@@ -88,7 +65,7 @@ ClangFormat::ClangFormat()
     Core::ActionManager::actionContainer(Constants::MENU_ID)->addMenu(menu);
 
     connect(&m_settings, &ClangFormatSettings::supportedMimeTypesChanged,
-            [this] { updateActions(Core::EditorManager::currentEditor()); });
+            this, [this] { updateActions(Core::EditorManager::currentEditor()); });
 }
 
 QString ClangFormat::id() const
@@ -210,7 +187,7 @@ void ClangFormat::disableFormattingSelectedText()
 Command ClangFormat::command() const
 {
     Command command;
-    command.setExecutable(m_settings.command().toString());
+    command.setExecutable(m_settings.command());
     command.setProcessing(Command::PipeProcessing);
 
     if (m_settings.usePredefinedStyle()) {
@@ -246,5 +223,4 @@ Command ClangFormat::command(int offset, int length) const
     return c;
 }
 
-} // namespace Internal
-} // namespace Beautifier
+} // Beautifier::Internal

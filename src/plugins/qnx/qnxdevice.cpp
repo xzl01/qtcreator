@@ -1,89 +1,95 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: KDAB (info@kdab.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qnxdevice.h"
 
 #include "qnxconstants.h"
+#include "qnxdeployqtlibrariesdialog.h"
 #include "qnxdevicetester.h"
 #include "qnxdeviceprocesslist.h"
 #include "qnxdeviceprocesssignaloperation.h"
-#include "qnxdeployqtlibrariesdialog.h"
-#include "qnxdeviceprocess.h"
 #include "qnxdevicewizard.h"
+#include "qnxtr.h"
 
-#include <projectexplorer/devicesupport/sshdeviceprocess.h>
-#include <projectexplorer/runcontrol.h>
+#include <remotelinux/sshprocessinterface.h>
 
-#include <ssh/sshconnection.h>
 #include <utils/port.h>
 #include <utils/qtcassert.h>
-#include <utils/stringutils.h>
+#include <utils/qtcprocess.h>
 
-#include <QApplication>
 #include <QRegularExpression>
-#include <QStringList>
-#include <QThread>
 
 using namespace ProjectExplorer;
+using namespace RemoteLinux;
 using namespace Utils;
 
-namespace Qnx {
-namespace Internal {
+namespace Qnx::Internal {
+
+class QnxProcessImpl final : public SshProcessInterface
+{
+public:
+    QnxProcessImpl(const LinuxDevice *linuxDevice);
+    ~QnxProcessImpl() { killIfRunning(); }
+
+private:
+    QString fullCommandLine(const CommandLine &commandLine) const final;
+    void handleSendControlSignal(Utils::ControlSignal controlSignal) final;
+
+    const QString m_pidFile;
+};
+
+static std::atomic_int s_pidFileCounter = 1;
+
+QnxProcessImpl::QnxProcessImpl(const LinuxDevice *linuxDevice)
+    : SshProcessInterface(linuxDevice)
+    , m_pidFile(QString("%1/qtc.%2.pid").arg(Constants::QNX_TMP_DIR).arg(s_pidFileCounter.fetch_add(1)))
+{
+}
+
+QString QnxProcessImpl::fullCommandLine(const CommandLine &commandLine) const
+{
+    QStringList args = ProcessArgs::splitArgs(commandLine.arguments());
+    args.prepend(commandLine.executable().toString());
+    const QString cmd = ProcessArgs::createUnixArgs(args).toString();
+
+    QString fullCommandLine =
+        "test -f /etc/profile && . /etc/profile ; "
+        "test -f $HOME/profile && . $HOME/profile ; ";
+
+    if (!m_setup.m_workingDirectory.isEmpty())
+        fullCommandLine += QString::fromLatin1("cd %1 ; ").arg(
+            ProcessArgs::quoteArg(m_setup.m_workingDirectory.toString()));
+
+    const Environment env = m_setup.m_environment;
+    for (auto it = env.constBegin(); it != env.constEnd(); ++it) {
+        fullCommandLine += QString::fromLatin1("%1='%2' ")
+                .arg(env.key(it)).arg(env.expandedValueForKey(env.key(it)));
+    }
+
+    fullCommandLine += QString::fromLatin1("%1 & echo $! > %2").arg(cmd).arg(m_pidFile);
+
+    return fullCommandLine;
+}
+
+void QnxProcessImpl::handleSendControlSignal(Utils::ControlSignal controlSignal)
+{
+    QTC_ASSERT(controlSignal != ControlSignal::KickOff, return);
+    const QString args = QString::fromLatin1("-%1 `cat %2`")
+            .arg(controlSignalToInt(controlSignal)).arg(m_pidFile);
+    CommandLine command = { "kill", args, CommandLine::Raw };
+    // Note: This blocking call takes up to 2 ms for local remote.
+    runInShell(command);
+}
 
 const char QnxVersionKey[] = "QnxVersion";
 
-class QnxPortsGatheringMethod : public PortsGatheringMethod
-{
-    // TODO: The command is probably needlessly complicated because the parsing method
-    // used to be fixed. These two can now be matched to each other.
-    CommandLine commandLine(QAbstractSocket::NetworkLayerProtocol protocol) const override
-    {
-        Q_UNUSED(protocol)
-        return {"netstat", {"-na"}};
-    }
-
-    QList<Port> usedPorts(const QByteArray &output) const override
-    {
-        QList<Utils::Port> ports;
-        const QList<QByteArray> lines = output.split('\n');
-        for (const QByteArray &line : lines) {
-            const Port port(Utils::parseUsedPortFromNetstatOutput(line));
-            if (port.isValid() && !ports.contains(port))
-                ports.append(port);
-        }
-        return ports;
-    }
-};
-
 QnxDevice::QnxDevice()
 {
-    setDisplayType(tr("QNX"));
-    setDefaultDisplayName(tr("QNX Device"));
+    setDisplayType(Tr::tr("QNX"));
+    setDefaultDisplayName(Tr::tr("QNX Device"));
     setOsType(OsTypeOtherUnix);
 
-    addDeviceAction({tr("Deploy Qt libraries..."), [](const IDevice::Ptr &device, QWidget *parent) {
+    addDeviceAction({Tr::tr("Deploy Qt libraries..."), [](const IDevice::Ptr &device, QWidget *parent) {
         QnxDeployQtLibrariesDialog dialog(device, parent);
         dialog.exec();
     }});
@@ -99,22 +105,12 @@ int QnxDevice::qnxVersion() const
 
 void QnxDevice::updateVersionNumber() const
 {
-    QEventLoop eventLoop;
-    SshDeviceProcess versionNumberProcess(sharedFromThis());
-    QObject::connect(&versionNumberProcess, &SshDeviceProcess::finished, &eventLoop, &QEventLoop::quit);
-    QObject::connect(&versionNumberProcess, &DeviceProcess::errorOccurred, &eventLoop, &QEventLoop::quit);
+    QtcProcess versionNumberProcess;
 
-    Runnable r;
-    r.command = {"uname", {"-r"}};
-    versionNumberProcess.start(r);
+    versionNumberProcess.setCommand({filePath("uname"), {"-r"}});
+    versionNumberProcess.runBlocking(EventLoopMode::On);
 
-    bool isGuiThread = QThread::currentThread() == QCoreApplication::instance()->thread();
-    if (isGuiThread)
-        QApplication::setOverrideCursor(Qt::WaitCursor);
-
-    eventLoop.exec(QEventLoop::ExcludeUserInputEvents);
-
-    QByteArray output = versionNumberProcess.readAllStandardOutput();
+    QByteArray output = versionNumberProcess.readAllRawStandardOutput();
     QString versionMessage = QString::fromLatin1(output);
     const QRegularExpression versionNumberRegExp("(\\d+)\\.(\\d+)\\.(\\d+)");
     const QRegularExpressionMatch match = versionNumberRegExp.match(versionMessage);
@@ -124,27 +120,33 @@ void QnxDevice::updateVersionNumber() const
         int patch = match.captured(3).toInt();
         m_versionNumber = (major << 16)|(minor<<8)|(patch);
     }
-
-    if (isGuiThread)
-        QApplication::restoreOverrideCursor();
 }
 
 void QnxDevice::fromMap(const QVariantMap &map)
 {
     m_versionNumber = map.value(QLatin1String(QnxVersionKey), 0).toInt();
-    RemoteLinux::LinuxDevice::fromMap(map);
+    LinuxDevice::fromMap(map);
 }
 
 QVariantMap QnxDevice::toMap() const
 {
-    QVariantMap map(RemoteLinux::LinuxDevice::toMap());
+    QVariantMap map(LinuxDevice::toMap());
     map.insert(QLatin1String(QnxVersionKey), m_versionNumber);
     return map;
 }
 
-PortsGatheringMethod::Ptr QnxDevice::portsGatheringMethod() const
+PortsGatheringMethod QnxDevice::portsGatheringMethod() const
 {
-    return PortsGatheringMethod::Ptr(new QnxPortsGatheringMethod);
+    return {
+        // TODO: The command is probably needlessly complicated because the parsing method
+        // used to be fixed. These two can now be matched to each other.
+        [this](QAbstractSocket::NetworkLayerProtocol protocol) -> CommandLine {
+            Q_UNUSED(protocol)
+            return {filePath("netstat"), {"-na"}};
+        },
+
+        &Port::parseFromNetstatOutput
+    };
 }
 
 DeviceProcessList *QnxDevice::createProcessListModel(QObject *parent) const
@@ -157,22 +159,21 @@ DeviceTester *QnxDevice::createDeviceTester() const
     return new QnxDeviceTester;
 }
 
-DeviceProcess *QnxDevice::createProcess(QObject *parent) const
+Utils::ProcessInterface *QnxDevice::createProcessInterface() const
 {
-    return new QnxDeviceProcess(sharedFromThis(), parent);
+    return new QnxProcessImpl(this);
 }
 
 DeviceProcessSignalOperation::Ptr QnxDevice::signalOperation() const
 {
-    return DeviceProcessSignalOperation::Ptr(
-                new QnxDeviceProcessSignalOperation(sshParameters()));
+    return DeviceProcessSignalOperation::Ptr(new QnxDeviceProcessSignalOperation(sharedFromThis()));
 }
 
 // Factory
 
 QnxDeviceFactory::QnxDeviceFactory() : IDeviceFactory(Constants::QNX_QNX_OS_TYPE)
 {
-    setDisplayName(QnxDevice::tr("QNX Device"));
+    setDisplayName(Tr::tr("QNX Device"));
     setCombinedIcon(":/qnx/images/qnxdevicesmall.png",
                     ":/qnx/images/qnxdevice.png");
     setConstructionFunction(&QnxDevice::create);
@@ -184,5 +185,4 @@ QnxDeviceFactory::QnxDeviceFactory() : IDeviceFactory(Constants::QNX_QNX_OS_TYPE
     });
 }
 
-} // namespace Internal
-} // namespace Qnx
+} // Qnx::Internal

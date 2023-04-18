@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -33,13 +11,15 @@
 #include <QList>
 
 QT_BEGIN_NAMESPACE
-class QSortFilterProxyModel;
+class QCheckBox;
+class QComboBox;
 class QModelIndex;
-namespace Ui { class CppCodeModelInspectorDialog; }
+class QPlainTextEdit;
+class QSortFilterProxyModel;
+class QTabWidget;
 QT_END_NAMESPACE
 
-namespace CppEditor {
-namespace Internal {
+namespace CppEditor::Internal {
 
 class FilterableView;
 class SnapshotInfo;
@@ -93,7 +73,23 @@ private:
     bool event(QEvent *e) override;
 
 private:
-    QT_PREPEND_NAMESPACE(Ui)::CppCodeModelInspectorDialog *m_ui;
+    QTabWidget *m_projectPartTab;
+    QPlainTextEdit *m_partGeneralCompilerFlagsEdit;
+    QPlainTextEdit *m_partToolchainDefinesEdit;
+    QPlainTextEdit *m_partProjectDefinesEdit;
+    QPlainTextEdit *m_partPrecompiledHeadersEdit;
+    QComboBox *m_snapshotSelector;
+    QTabWidget *m_docTab;
+    QTreeView *m_docGeneralView;
+    QTreeView *m_docIncludesView;
+    QTreeView *m_docDiagnosticMessagesView;
+    QTreeView *m_docDefinedMacrosView;
+    QPlainTextEdit *m_docPreprocessedSourceEdit;
+    QTreeView *m_docSymbolsView;
+    QPlainTextEdit *m_workingCopySourceEdit;
+    QCheckBox *m_selectEditorRelevantEntriesAfterRefreshCheckBox;
+    QTreeView *m_partGeneralView;
+    QTreeView *m_docTokensView;
 
     // Snapshots and Documents
     QList<SnapshotInfo> *m_snapshotInfos;
@@ -121,5 +117,4 @@ private:
     QSortFilterProxyModel *m_proxyWorkingCopyModel;
 };
 
-} // namespace Internal
-} // namespace CppEditor
+} // CppEditor::Internal

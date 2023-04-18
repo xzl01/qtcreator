@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "userfileaccessor.h"
 
@@ -37,8 +15,9 @@
 
 #include <app/app_version.h>
 #include <coreplugin/icore.h>
-#include <utils/persistentsettings.h>
+#include <utils/environment.h>
 #include <utils/hostosinfo.h>
+#include <utils/persistentsettings.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 
@@ -47,6 +26,8 @@
 using namespace Utils;
 using namespace ProjectExplorer;
 using namespace ProjectExplorer::Internal;
+
+using StringVariantPair = std::pair<const QString, QVariant>;
 
 namespace {
 
@@ -204,24 +185,24 @@ static QString generateSuffix(const QString &suffix)
 }
 
 // Return path to shared directory for .user files, create if necessary.
-static inline Utils::optional<QString> defineExternalUserFileDir()
+static inline std::optional<QString> defineExternalUserFileDir()
 {
-    static const char userFilePathVariable[] = "QTC_USER_FILE_PATH";
-    if (Q_LIKELY(!qEnvironmentVariableIsSet(userFilePathVariable)))
-        return nullopt;
-    const QFileInfo fi(QFile::decodeName(qgetenv(userFilePathVariable)));
+    const char userFilePathVariable[] = "QTC_USER_FILE_PATH";
+    if (Q_LIKELY(!qtcEnvironmentVariableIsSet(userFilePathVariable)))
+        return std::nullopt;
+    const QFileInfo fi(qtcEnvironmentVariable(userFilePathVariable));
     const QString path = fi.absoluteFilePath();
     if (fi.isDir() || fi.isSymLink())
         return path;
     if (fi.exists()) {
         qWarning() << userFilePathVariable << '=' << QDir::toNativeSeparators(path)
             << " points to an existing file";
-        return nullopt;
+        return std::nullopt;
     }
     QDir dir;
     if (!dir.mkpath(path)) {
         qWarning() << "Cannot create: " << QDir::toNativeSeparators(path);
-        return nullopt;
+        return std::nullopt;
     }
     return path;
 }
@@ -256,7 +237,7 @@ static QString makeRelative(QString path)
 // Return complete file path of the .user file.
 static FilePath externalUserFilePath(const Utils::FilePath &projectFilePath, const QString &suffix)
 {
-    static const optional<QString> externalUserFileDir = defineExternalUserFileDir();
+    static const std::optional<QString> externalUserFileDir = defineExternalUserFileDir();
 
     if (externalUserFileDir) {
         // Recreate the relative project file hierarchy under the shared directory.
@@ -349,16 +330,16 @@ UserFileAccessor::merge(const MergingSettingsAccessor::SettingsMergeData &global
     const QVariant secondaryValue = local.secondary.value(key);
 
     if (mainValue.isNull() && secondaryValue.isNull())
-        return nullopt;
+        return std::nullopt;
 
     if (isHouseKeepingKey(key) || global.key == USER_STICKY_KEYS_KEY)
-        return qMakePair(key, mainValue);
+        return {{key, mainValue}};
 
     if (!stickyKeys.contains(global.key) && secondaryValue != mainValue && !secondaryValue.isNull())
-        return qMakePair(key, secondaryValue);
+        return {{key, secondaryValue}};
     if (!mainValue.isNull())
-        return qMakePair(key, mainValue);
-    return qMakePair(key, secondaryValue);
+        return {{key, mainValue}};
+    return {{key, secondaryValue}};
 }
 
 // When saving settings...
@@ -378,19 +359,19 @@ SettingsMergeFunction UserFileAccessor::userStickyTrackerFunction(QStringList &s
         const QVariant secondary = local.secondary.value(key);
 
         if (main.isNull()) // skip stuff not in main!
-            return nullopt;
+            return std::nullopt;
 
         if (isHouseKeepingKey(key))
-            return qMakePair(key, main);
+            return {{key, main}};
 
         // Ignore house keeping keys:
         if (key == USER_STICKY_KEYS_KEY)
-            return nullopt;
+            return std::nullopt;
 
         // Track keys that changed in main from the value in secondary:
         if (main != secondary && !secondary.isNull() && !stickyKeys.contains(global.key))
             stickyKeys.append(global.key);
-        return qMakePair(key, main);
+        return {{key, main}};
     };
 }
 
@@ -401,21 +382,21 @@ QVariant UserFileAccessor::retrieveSharedSettings() const
 
 FilePath UserFileAccessor::projectUserFile() const
 {
-    static const QString qtcExt = QLatin1String(qgetenv("QTC_EXTENSION"));
+    static const QString qtcExt = qtcEnvironmentVariable("QTC_EXTENSION");
     return m_project->projectFilePath()
             .stringAppended(generateSuffix(qtcExt.isEmpty() ? FILE_EXTENSION_STR : qtcExt));
 }
 
 FilePath UserFileAccessor::externalUserFile() const
 {
-    static const QString qtcExt = QFile::decodeName(qgetenv("QTC_EXTENSION"));
+    static const QString qtcExt = qtcEnvironmentVariable("QTC_EXTENSION");
     return externalUserFilePath(m_project->projectFilePath(),
                                 generateSuffix(qtcExt.isEmpty() ? FILE_EXTENSION_STR : qtcExt));
 }
 
 FilePath UserFileAccessor::sharedFile() const
 {
-    static const QString qtcExt = QLatin1String(qgetenv("QTC_SHARED_EXTENSION"));
+    static const QString qtcExt = qtcEnvironmentVariable("QTC_SHARED_EXTENSION");
     return m_project->projectFilePath()
             .stringAppended(generateSuffix(qtcExt.isEmpty() ? ".shared" : qtcExt));
 }
@@ -492,15 +473,10 @@ QVariantMap UserFileVersion14Upgrader::upgrade(const QVariantMap &map)
 
 QVariantMap UserFileVersion15Upgrader::upgrade(const QVariantMap &map)
 {
-    QList<Change> changes;
-    changes.append(qMakePair(QLatin1String("ProjectExplorer.Project.Updater.EnvironmentId"),
-                             QLatin1String("EnvironmentId")));
-    // This is actually handled in the SettingsAccessor itself:
-    // changes.append(qMakePair(QLatin1String("ProjectExplorer.Project.Updater.FileVersion"),
-    //                          QLatin1String("Version")));
-    changes.append(qMakePair(QLatin1String("ProjectExplorer.Project.UserStickyKeys"),
-                             QLatin1String("UserStickyKeys")));
-
+    const QList<Change> changes{{QLatin1String("ProjectExplorer.Project.Updater.EnvironmentId"),
+                                 QLatin1String("EnvironmentId")},
+                                {QLatin1String("ProjectExplorer.Project.UserStickyKeys"),
+                                 QLatin1String("UserStickyKeys")}};
     return renameKeys(changes, QVariantMap(map));
 }
 
@@ -704,8 +680,8 @@ QVariantMap UserFileVersion16Upgrader::upgrade(const QVariantMap &data)
 
         NamePolicy policy = oldSteps.size() > 1 ? RenameBuildConfiguration : KeepName;
 
-        foreach (const QVariantMap &oldBuildConfiguration, oldBuildConfigurations) {
-            foreach (const OldStepMaps &oldStep, oldSteps) {
+        for (const QVariantMap &oldBuildConfiguration : std::as_const(oldBuildConfigurations)) {
+            for (const OldStepMaps &oldStep : std::as_const(oldSteps)) {
                 QVariantMap newBuildConfiguration = insertSteps(oldBuildConfiguration, oldStep, policy);
                 if (!newBuildConfiguration.isEmpty())
                     newBuildConfigurations.append(newBuildConfiguration);
@@ -735,7 +711,7 @@ QVariant UserFileVersion17Upgrader::process(const QVariant &entry)
     switch (entry.type()) {
     case QVariant::List: {
         QVariantList result;
-        foreach (const QVariant &item, entry.toList())
+        for (const QVariant &item : entry.toList())
             result.append(process(item));
         return result;
     }
@@ -765,12 +741,12 @@ QVariant UserFileVersion18Upgrader::process(const QVariant &entry)
         return Utils::transform(entry.toList(), &UserFileVersion18Upgrader::process);
     case QVariant::Map:
         return Utils::transform<QMap<QString, QVariant>>(
-            entry.toMap().toStdMap(), [](const std::pair<const QString, QVariant> &item) {
+            entry.toMap().toStdMap(), [](const StringVariantPair &item) -> StringVariantPair {
                 const QString key = (item.first
                                              == "AutotoolsProjectManager.MakeStep.AdditionalArguments"
                                          ? QString("AutotoolsProjectManager.MakeStep.MakeArguments")
                                          : item.first);
-                return qMakePair(key, UserFileVersion18Upgrader::process(item.second));
+                return {key, UserFileVersion18Upgrader::process(item.second)};
             });
     default:
         return entry;
@@ -819,24 +795,24 @@ QVariant UserFileVersion19Upgrader::process(const QVariant &entry, const QString
         return Utils::transform(entry.toList(),
                                 std::bind(&UserFileVersion19Upgrader::process, std::placeholders::_1, path));
     case QVariant::Map:
-        return Utils::transform<QVariantMap>(
-            entry.toMap().toStdMap(), [&](const std::pair<const QString, QVariant> &item) {
-                if (path.size() == 2 && path.at(1).startsWith("ProjectExplorer.Target.RunConfiguration.")) {
-                    if (argsKeys.contains(item.first))
-                        return qMakePair(QString("RunConfiguration.Arguments"), item.second);
-                    if (wdKeys.contains(item.first))
-                        return qMakePair(QString("RunConfiguration.WorkingDirectory"), item.second);
-                    if (termKeys.contains(item.first))
-                        return qMakePair(QString("RunConfiguration.UseTerminal"), item.second);
-                    if (libsKeys.contains(item.first))
-                        return qMakePair(QString("RunConfiguration.UseLibrarySearchPath"), item.second);
-                    if (dyldKeys.contains(item.first))
-                        return qMakePair(QString("RunConfiguration.UseDyldImageSuffix"), item.second);
-                }
-                QStringList newPath = path;
-                newPath.append(item.first);
-                return qMakePair(item.first, UserFileVersion19Upgrader::process(item.second, newPath));
-            });
+        return Utils::transform<QVariantMap>(entry.toMap().toStdMap(),
+                                             [&](const StringVariantPair &item) -> StringVariantPair {
+            if (path.size() == 2 && path.at(1).startsWith("ProjectExplorer.Target.RunConfiguration.")) {
+                if (argsKeys.contains(item.first))
+                    return {"RunConfiguration.Arguments", item.second};
+                if (wdKeys.contains(item.first))
+                    return {"RunConfiguration.WorkingDirectory", item.second};
+                if (termKeys.contains(item.first))
+                    return {"RunConfiguration.UseTerminal", item.second};
+                if (libsKeys.contains(item.first))
+                    return {"RunConfiguration.UseLibrarySearchPath", item.second};
+                if (dyldKeys.contains(item.first))
+                    return {"RunConfiguration.UseDyldImageSuffix", item.second};
+            }
+            QStringList newPath = path;
+            newPath.append(item.first);
+            return {item.first, UserFileVersion19Upgrader::process(item.second, newPath)};
+        });
     default:
         return entry;
     }
@@ -854,8 +830,8 @@ QVariant UserFileVersion20Upgrader::process(const QVariant &entry)
         return Utils::transform(entry.toList(), &UserFileVersion20Upgrader::process);
     case QVariant::Map:
         return Utils::transform<QMap<QString, QVariant>>(
-            entry.toMap().toStdMap(), [](const std::pair<const QString, QVariant> &item) {
-                auto res = qMakePair(item.first, item.second);
+            entry.toMap().toStdMap(), [](const StringVariantPair &item) {
+                StringVariantPair res = {item.first, item.second};
                 if (item.first == "ProjectExplorer.ProjectConfiguration.Id"
                         && item.second == "Qbs.Deploy")
                     res.second = QVariant("ProjectExplorer.DefaultDeployConfiguration");
@@ -886,8 +862,8 @@ QVariant UserFileVersion21Upgrader::process(const QVariant &entry)
             return entryMap;
         }
         return Utils::transform<QVariantMap>(
-            entryMap.toStdMap(), [](const std::pair<const QString, QVariant> &item) {
-                return qMakePair(item.first, UserFileVersion21Upgrader::process(item.second));
+            entryMap.toStdMap(), [](const StringVariantPair &item) -> StringVariantPair{
+                return {item.first, UserFileVersion21Upgrader::process(item.second)};
             });
     }
     default:

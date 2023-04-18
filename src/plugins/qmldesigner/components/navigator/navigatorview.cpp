@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "navigatorview.h"
 #include "navigatortreemodel.h"
@@ -29,6 +7,8 @@
 #include "qmldesignerconstants.h"
 #include "qmldesignericons.h"
 #include "qmldesignerplugin.h"
+#include "assetslibrarywidget.h"
+#include "commontypecache.h"
 
 #include "nameitemdelegate.h"
 #include "iconcheckboxitemdelegate.h"
@@ -36,6 +16,7 @@
 #include <bindingproperty.h>
 #include <designmodecontext.h>
 #include <designersettings.h>
+#include <itemlibraryinfo.h>
 #include <nodeproperty.h>
 #include <nodelistproperty.h>
 #include <variantproperty.h>
@@ -57,8 +38,9 @@
 #include <utils/stylehelper.h>
 
 #include <QHeaderView>
-#include <QTimer>
+#include <QMimeData>
 #include <QPixmap>
+#include <QTimer>
 
 static inline void setScenePos(const QmlDesigner::ModelNode &modelNode,const QPointF &pos)
 {
@@ -108,9 +90,9 @@ static inline void moveNodesDown(const QList<QmlDesigner::ModelNode> &nodes)
 
 namespace QmlDesigner {
 
-NavigatorView::NavigatorView(QObject* parent) :
-    AbstractView(parent),
-    m_blockSelectionChangedSignal(false)
+NavigatorView::NavigatorView(ExternalDependenciesInterface &externalDependencies)
+    : AbstractView{externalDependencies}
+    , m_blockSelectionChangedSignal(false)
 {
 
 }
@@ -132,7 +114,6 @@ WidgetInfo NavigatorView::widgetInfo()
         setupWidget();
 
     return createWidgetInfo(m_widget.data(),
-                            new WidgetInfo::ToolBarWidgetDefaultFactory<NavigatorWidget>(m_widget.data()),
                             QStringLiteral("Navigator"),
                             WidgetInfo::LeftPane,
                             0,
@@ -157,10 +138,10 @@ void NavigatorView::modelAttached(Model *model)
 
     QTimer::singleShot(0, this, [this, treeView]() {
         m_currentModelInterface->setFilter(
-                    DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_SHOW_ONLY_VISIBLE_ITEMS).toBool());
+                    QmlDesignerPlugin::settings().value(DesignerSettingsKey::NAVIGATOR_SHOW_ONLY_VISIBLE_ITEMS).toBool());
 
         m_currentModelInterface->setOrder(
-                    DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool());
+                    QmlDesignerPlugin::settings().value(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool());
 
         // Expand everything to begin with to ensure model node to index cache is populated
         treeView->expandAll();
@@ -229,8 +210,7 @@ void NavigatorView::modelAboutToBeDetached(Model *model)
                 const int rowCount = currentModel()->rowCount(index);
                 for (int i = 0; i < rowCount; ++i) {
                     const QModelIndex childIndex = currentModel()->index(i, 0, index);
-                    const ModelNode node = modelNodeForIndex(childIndex);
-                    if (node.isValid()) {
+                    if (const ModelNode node = modelNodeForIndex(childIndex)) {
                         // Just store collapsed states as everything is expanded by default
                         if (!treeWidget()->isExpanded(childIndex))
                             localExpandMap.insert(node.id(), false);
@@ -264,13 +244,56 @@ void NavigatorView::bindingPropertiesChanged(const QList<BindingProperty> & prop
     }
 }
 
-void NavigatorView::customNotification(const AbstractView *view, const QString &identifier,
-                                       const QList<ModelNode> &nodeList, const QList<QVariant> &data)
+void NavigatorView::dragStarted(QMimeData *mimeData)
 {
-    Q_UNUSED(view)
-    Q_UNUSED(nodeList)
-    Q_UNUSED(data)
+    if (mimeData->hasFormat(Constants::MIME_TYPE_ITEM_LIBRARY_INFO)) {
+        QByteArray data = mimeData->data(Constants::MIME_TYPE_ITEM_LIBRARY_INFO);
+        QDataStream stream(data);
+        ItemLibraryEntry itemLibraryEntry;
+        stream >> itemLibraryEntry;
 
+        m_widget->setDragType(itemLibraryEntry.typeName());
+        m_widget->update();
+    } else if (mimeData->hasFormat(Constants::MIME_TYPE_MATERIAL)) {
+        qint32 internalId = mimeData->data(Constants::MIME_TYPE_MATERIAL).toInt();
+        ModelNode matNode = modelNodeForInternalId(internalId);
+
+        m_widget->setDragType(matNode.metaInfo().typeName());
+        m_widget->update();
+    } else if (mimeData->hasFormat(Constants::MIME_TYPE_BUNDLE_MATERIAL)) {
+        QByteArray data = mimeData->data(Constants::MIME_TYPE_BUNDLE_MATERIAL);
+        QDataStream stream(data);
+        TypeName bundleMatType;
+        stream >> bundleMatType;
+
+        m_widget->setDragType(bundleMatType);
+        m_widget->update();
+    } else if (mimeData->hasFormat(Constants::MIME_TYPE_ASSETS)) {
+        const QStringList assetsPaths = QString::fromUtf8(mimeData->data(Constants::MIME_TYPE_ASSETS)).split(',');
+        if (assetsPaths.count() > 0) {
+            auto assetTypeAndData = AssetsLibraryWidget::getAssetTypeAndData(assetsPaths[0]);
+            QString assetType = assetTypeAndData.first;
+            if (assetType == Constants::MIME_TYPE_ASSET_EFFECT) {
+                // We use arbitrary type name because at this time we don't have effect maker
+                // specific type
+                m_widget->setDragType(Storage::Info::EffectMaker);
+                m_widget->update();
+            }
+        }
+    }
+}
+
+void NavigatorView::dragEnded()
+{
+    m_widget->setDragType("");
+    m_widget->update();
+}
+
+void NavigatorView::customNotification([[maybe_unused]] const AbstractView *view,
+                                       const QString &identifier,
+                                       [[maybe_unused]] const QList<ModelNode> &nodeList,
+                                       [[maybe_unused]] const QList<QVariant> &data)
+{
     if (identifier == "asset_import_update")
         m_currentModelInterface->notifyIconsChanged();
 }
@@ -376,13 +399,17 @@ void NavigatorView::nodeTypeChanged(const ModelNode &modelNode, const TypeName &
 }
 
 void NavigatorView::auxiliaryDataChanged(const ModelNode &modelNode,
-                                         const PropertyName &name,
-                                         const QVariant &data)
+                                         [[maybe_unused]] AuxiliaryDataKeyView key,
+                                         [[maybe_unused]] const QVariant &data)
 {
-    Q_UNUSED(name)
-    Q_UNUSED(data)
-
     m_currentModelInterface->notifyDataChanged(modelNode);
+
+    if (key == lockedProperty) {
+        // Also notify data changed on child nodes to redraw them
+        const QList<ModelNode> childNodes = modelNode.allSubModelNodes();
+        for (const auto &childNode : childNodes)
+            m_currentModelInterface->notifyDataChanged(childNode);
+    }
 }
 
 void NavigatorView::instanceErrorChanged(const QVector<ModelNode> &errorNodeList)
@@ -499,7 +526,7 @@ void NavigatorView::rightButtonClicked()
         return; //Semantics are unclear for multi selection.
 
     bool blocked = blockSelectionChangedSignal(true);
-    bool reverse = DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool();
+    bool reverse = QmlDesignerPlugin::settings().value(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool();
 
     for (const ModelNode &node : selectedModelNodes()) {
         if (!node.isRootNode() && node.parentProperty().isNodeListProperty() && node.parentProperty().count() > 1) {
@@ -539,7 +566,7 @@ void NavigatorView::rightButtonClicked()
 void NavigatorView::upButtonClicked()
 {
     bool blocked = blockSelectionChangedSignal(true);
-    bool reverse = DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool();
+    bool reverse = QmlDesignerPlugin::settings().value(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool();
 
     if (reverse)
         moveNodesDown(selectedModelNodes());
@@ -553,7 +580,7 @@ void NavigatorView::upButtonClicked()
 void NavigatorView::downButtonClicked()
 {
     bool blocked = blockSelectionChangedSignal(true);
-    bool reverse = DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool();
+    bool reverse = QmlDesignerPlugin::settings().value(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool();
 
     if (reverse)
         moveNodesUp(selectedModelNodes());
@@ -568,14 +595,14 @@ void NavigatorView::filterToggled(bool flag)
 {
     m_currentModelInterface->setFilter(flag);
     treeWidget()->expandAll();
-    DesignerSettings::setValue(DesignerSettingsKey::NAVIGATOR_SHOW_ONLY_VISIBLE_ITEMS, flag);
+    QmlDesignerPlugin::settings().insert(DesignerSettingsKey::NAVIGATOR_SHOW_ONLY_VISIBLE_ITEMS, flag);
 }
 
 void NavigatorView::reverseOrderToggled(bool flag)
 {
     m_currentModelInterface->setOrder(flag);
     treeWidget()->expandAll();
-    DesignerSettings::setValue(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER, flag);
+    QmlDesignerPlugin::settings().insert(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER, flag);
 }
 
 void NavigatorView::textFilterChanged(const QString &text)
@@ -694,10 +721,8 @@ void NavigatorView::setupWidget()
     m_widget = new NavigatorWidget(this);
     m_treeModel = new NavigatorTreeModel(this);
 
-#ifndef QMLDESIGNER_TEST
     auto navigatorContext = new Internal::NavigatorContext(m_widget.data());
     Core::ICore::addContextObject(navigatorContext);
-#endif
 
     m_treeModel->setView(this);
     m_widget->setTreeModel(m_treeModel.data());
@@ -714,7 +739,6 @@ void NavigatorView::setupWidget()
 
     connect(m_widget.data(), &NavigatorWidget::textFilterChanged, this, &NavigatorView::textFilterChanged);
 
-#ifndef QMLDESIGNER_TEST
     const QString fontName = "qtds_propertyIconFont.ttf";
     const QSize size = QSize(28, 28);
 
@@ -800,8 +824,6 @@ void NavigatorView::setupWidget()
     treeWidget()->setItemDelegateForColumn(NavigatorTreeModel::ColumnType::Alias, aliasDelegate);
     treeWidget()->setItemDelegateForColumn(NavigatorTreeModel::ColumnType::Visibility, visibilityDelegate);
     treeWidget()->setItemDelegateForColumn(NavigatorTreeModel::ColumnType::Lock, lockDelegate);
-
-#endif //QMLDESIGNER_TEST
 }
 
 } // namespace QmlDesigner

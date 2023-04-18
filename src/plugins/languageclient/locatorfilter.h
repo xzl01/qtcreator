@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,10 +7,12 @@
 #include "languageclient_global.h"
 
 #include <coreplugin/locator/ilocatorfilter.h>
-#include <languageserverprotocol/lsptypes.h>
+
 #include <languageserverprotocol/languagefeatures.h>
+#include <languageserverprotocol/lsptypes.h>
 #include <languageserverprotocol/workspace.h>
 
+#include <QPointer>
 #include <QVector>
 
 namespace Core { class IEditor; }
@@ -87,7 +67,8 @@ private:
     QMutex m_mutex;
     QMetaObject::Connection m_updateSymbolsConnection;
     QMetaObject::Connection m_resetSymbolsConnection;
-    Utils::optional<LanguageServerProtocol::DocumentSymbolsResult> m_currentSymbols;
+    std::optional<LanguageServerProtocol::DocumentSymbolsResult> m_currentSymbols;
+    LanguageServerProtocol::DocumentUri::PathMapper m_pathMapper;
     bool m_forced = false;
 };
 
@@ -100,7 +81,7 @@ public:
     /// request workspace symbols for all clients with enabled locator
     void prepareSearch(const QString &entry) override;
     /// force request workspace symbols for all given clients
-    void prepareSearch(const QString &entry, const QVector<Client *> &clients);
+    void prepareSearch(const QString &entry, const QList<Client *> &clients);
     QList<Core::LocatorFilterEntry> matchesFor(QFutureInterface<Core::LocatorFilterEntry> &future,
                                                const QString &entry) override;
     void accept(const Core::LocatorFilterEntry &selection,
@@ -117,13 +98,20 @@ protected:
     void setMaxResultCount(qint64 limit) { m_maxResultCount = limit; }
 
 private:
-    void prepareSearch(const QString &entry, const QVector<Client *> &clients, bool force);
+    void prepareSearch(const QString &entry, const QList<Client *> &clients, bool force);
     void handleResponse(Client *client,
                         const LanguageServerProtocol::WorkspaceSymbolRequest::Response &response);
 
     QMutex m_mutex;
+
+    struct SymbolInfoWithPathMapper
+    {
+        LanguageServerProtocol::SymbolInformation symbol;
+        LanguageServerProtocol::DocumentUri::PathMapper mapper;
+    };
+
     QMap<Client *, LanguageServerProtocol::MessageId> m_pendingRequests;
-    QVector<LanguageServerProtocol::SymbolInformation> m_results;
+    QVector<SymbolInfoWithPathMapper> m_results;
     QVector<LanguageServerProtocol::SymbolKind> m_filterKinds;
     qint64 m_maxResultCount = 0;
 };

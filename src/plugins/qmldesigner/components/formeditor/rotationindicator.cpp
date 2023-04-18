@@ -1,31 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rotationindicator.h"
 
 #include "formeditoritem.h"
+
+#include <designermcumanager.h>
+#include <nodehints.h>
+#include <nodemetainfo.h>
 
 namespace QmlDesigner {
 
@@ -42,13 +24,13 @@ RotationIndicator::~RotationIndicator()
 
 void RotationIndicator::show()
 {
-    for (RotationController controller : qAsConst(m_itemControllerHash))
+    for (RotationController controller : std::as_const(m_itemControllerHash))
         controller.show();
 }
 
 void RotationIndicator::hide()
 {
-    for (RotationController controller : qAsConst(m_itemControllerHash))
+    for (RotationController controller : std::as_const(m_itemControllerHash))
         controller.hide();
 }
 
@@ -56,16 +38,57 @@ void RotationIndicator::clear()
 {
     m_itemControllerHash.clear();
 }
+namespace {
 
-static bool itemIsRotatable(const QmlItemNode &qmlItemNode)
+bool itemIsResizable(const ModelNode &modelNode)
 {
-    return qmlItemNode.isValid()
-            && qmlItemNode.instanceIsResizable()
-            && qmlItemNode.modelIsMovable()
-            && qmlItemNode.modelIsRotatable()
-            && !qmlItemNode.instanceIsInLayoutable()
-            && !qmlItemNode.isFlowItem();
+    if (modelNode.metaInfo().isQtQuickControlsTab())
+        return false;
+
+    return NodeHints::fromModelNode(modelNode).isResizable();
 }
+
+bool isMcuRotationAllowed([[maybe_unused]] QString itemName, [[maybe_unused]] bool hasChildren)
+{
+    const QString propName = "rotation";
+    const DesignerMcuManager &manager = DesignerMcuManager::instance();
+    if (manager.isMCUProject()) {
+        if (manager.allowedItemProperties().contains(itemName)) {
+            const DesignerMcuManager::ItemProperties properties = manager.allowedItemProperties().value(
+                itemName);
+            if (properties.properties.contains(propName)) {
+                if (hasChildren)
+                    return properties.allowChildren;
+                return true;
+            }
+        }
+
+        if (manager.bannedItems().contains(itemName))
+            return false;
+
+        if (manager.bannedProperties().contains(propName))
+            return false;
+    }
+
+    return true;
+}
+
+bool modelIsRotatable(const QmlItemNode &itemNode)
+{
+    auto modelNode = itemNode.modelNode();
+    return !modelNode.hasBindingProperty("rotation") && itemIsResizable(modelNode)
+           && !itemNode.modelIsInLayout()
+           && isMcuRotationAllowed(QString::fromUtf8(modelNode.type()), itemNode.hasChildren());
+}
+
+bool itemIsRotatable(const QmlItemNode &qmlItemNode)
+{
+    return qmlItemNode.isValid() && qmlItemNode.instanceIsResizable()
+           && qmlItemNode.modelIsMovable() && modelIsRotatable(qmlItemNode)
+           && !qmlItemNode.instanceIsInLayoutable() && !qmlItemNode.isFlowItem();
+}
+
+} // namespace
 
 void RotationIndicator::setItems(const QList<FormEditorItem*> &itemList)
 {
@@ -96,4 +119,4 @@ void RotationIndicator::updateItems(const QList<FormEditorItem*> &itemList)
     }
 }
 
-}
+} // namespace QmlDesigner

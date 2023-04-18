@@ -1,32 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectwizardpage.h"
-#include "ui_projectwizardpage.h"
 
 #include "project.h"
+#include "projectexplorertr.h"
 #include "projectmodels.h"
 #include "session.h"
 
@@ -34,17 +12,24 @@
 #include <coreplugin/iversioncontrol.h>
 #include <coreplugin/iwizardfactory.h>
 #include <coreplugin/vcsmanager.h>
+
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
+#include <utils/layoutbuilder.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
 #include <utils/treemodel.h>
+#include <utils/treeviewcombobox.h>
 #include <utils/wizard.h>
+
 #include <vcsbase/vcsbaseconstants.h>
 
+#include <QComboBox>
 #include <QDir>
+#include <QLabel>
+#include <QPushButton>
+#include <QScrollArea>
 #include <QTextStream>
-#include <QTreeView>
 
 /*!
     \class ProjectExplorer::Internal::ProjectWizardPage
@@ -96,7 +81,7 @@ AddNewTree::AddNewTree(FolderNode *node, QList<AddNewTree *> children, const QSt
 {
     if (node)
         m_toolTip = node->directory().toString();
-    foreach (AddNewTree *child, children)
+    for (AddNewTree *child : std::as_const(children))
         appendChild(child);
 }
 
@@ -108,7 +93,7 @@ AddNewTree::AddNewTree(FolderNode *node, QList<AddNewTree *> children,
 {
     if (node)
         m_toolTip = node->directory().toString();
-    foreach (AddNewTree *child, children)
+    for (AddNewTree *child : std::as_const(children))
         appendChild(child);
 }
 
@@ -141,14 +126,14 @@ Qt::ItemFlags AddNewTree::flags(int) const
 class BestNodeSelector
 {
 public:
-    BestNodeSelector(const QString &commonDirectory, const FilePaths &files);
+    BestNodeSelector(const FilePath &commonDirectory, const FilePaths &files);
     void inspect(AddNewTree *tree, bool isContextNode);
     AddNewTree *bestChoice() const;
     bool deploys();
     QString deployingProjects() const;
 
 private:
-    QString m_commonDirectory;
+    FilePath m_commonDirectory;
     FilePaths m_files;
     bool m_deploys = false;
     QString m_deployText;
@@ -157,10 +142,10 @@ private:
     int m_bestMatchPriority = -1;
 };
 
-BestNodeSelector::BestNodeSelector(const QString &commonDirectory, const FilePaths &files) :
+BestNodeSelector::BestNodeSelector(const FilePath &commonDirectory, const FilePaths &files) :
     m_commonDirectory(commonDirectory),
     m_files(files),
-    m_deployText(QCoreApplication::translate("ProjectWizard", "The files are implicitly added to the projects:") + QLatin1Char('\n'))
+    m_deployText(Tr::tr("The files are implicitly added to the projects:") + QLatin1Char('\n'))
 { }
 
 // Find the project the new files should be added
@@ -172,7 +157,7 @@ void BestNodeSelector::inspect(AddNewTree *tree, bool isContextNode)
 {
     FolderNode *node = tree->node();
     if (node->isProjectNodeType()) {
-        if (static_cast<ProjectNode *>(node)->deploysFolder(m_commonDirectory)) {
+        if (static_cast<ProjectNode *>(node)->deploysFolder(m_commonDirectory.toString())) {
             m_deploys = true;
             m_deployText += tree->displayName() + QLatin1Char('\n');
         }
@@ -180,10 +165,11 @@ void BestNodeSelector::inspect(AddNewTree *tree, bool isContextNode)
     if (m_deploys)
         return;
 
-    const QString projectDirectory = node->directory().toString();
-    const int projectDirectorySize = projectDirectory.size();
+    const FilePath projectDirectory = node->directory();
+    const int projectDirectorySize = projectDirectory.toString().size();
     if (m_commonDirectory != projectDirectory
-            && !m_commonDirectory.startsWith(projectDirectory + QLatin1Char('/'))
+            && !m_commonDirectory.toString().startsWith(
+                projectDirectory.toString() + QLatin1Char('/')) // TODO: still required?
             && !isContextNode)
         return;
 
@@ -224,9 +210,9 @@ QString BestNodeSelector::deployingProjects() const
 
 static inline AddNewTree *createNoneNode(BestNodeSelector *selector)
 {
-    QString displayName = QCoreApplication::translate("ProjectWizard", "<None>");
+    QString displayName = Tr::tr("<None>");
     if (selector->deploys())
-        displayName = QCoreApplication::translate("ProjectWizard", "<Implicitly Add>");
+        displayName = Tr::tr("<Implicitly Add>");
     return new AddNewTree(displayName);
 }
 
@@ -259,7 +245,8 @@ static AddNewTree *buildAddFilesTree(FolderNode *root, const FilePaths &files,
                                      Node *contextNode, BestNodeSelector *selector)
 {
     QList<AddNewTree *> children;
-    foreach (FolderNode *fn, root->folderNodes()) {
+    const QList<FolderNode *> folderNodes = root->folderNodes();
+    for (FolderNode *fn : folderNodes) {
         AddNewTree *child = buildAddFilesTree(fn, files, contextNode, selector);
         if (child)
             children.append(child);
@@ -280,29 +267,56 @@ static AddNewTree *buildAddFilesTree(FolderNode *root, const FilePaths &files,
 // ProjectWizardPage:
 // --------------------------------------------------------------------
 
-ProjectWizardPage::ProjectWizardPage(QWidget *parent) : WizardPage(parent),
-    m_ui(new Ui::WizardPage)
+ProjectWizardPage::ProjectWizardPage(QWidget *parent)
+    : WizardPage(parent)
 {
-    m_ui->setupUi(this);
-    m_ui->vcsManageButton->setText(ICore::msgShowOptionsDialog());
-    connect(m_ui->projectComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    m_projectLabel = new QLabel;
+    m_projectLabel->setObjectName("projectLabel");
+    m_projectComboBox = new Utils::TreeViewComboBox;
+    m_projectComboBox->setObjectName("projectComboBox");
+    m_additionalInfo = new QLabel;
+    m_addToVersionControlLabel = new QLabel(Tr::tr("Add to &version control:"));
+    m_addToVersionControlComboBox = new QComboBox;
+    m_addToVersionControlComboBox->setObjectName("addToVersionControlComboBox");
+    m_vcsManageButton = new QPushButton(ICore::msgShowOptionsDialog());
+    m_vcsManageButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+    m_filesLabel = new QLabel;
+    m_filesLabel->setObjectName("filesLabel");
+    m_filesLabel->setAlignment(Qt::AlignBottom);
+    m_filesLabel->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    auto scrollArea = new QScrollArea;
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setWidget(m_filesLabel);
+
+    using namespace Utils::Layouting;
+    Column {
+        Form {
+            m_projectLabel, m_projectComboBox, br,
+            empty, m_additionalInfo, br,
+            m_addToVersionControlLabel, m_addToVersionControlComboBox, m_vcsManageButton, br,
+        },
+        scrollArea,
+    }.attachTo(this);
+
+    connect(m_projectComboBox, &QComboBox::currentIndexChanged,
             this, &ProjectWizardPage::projectChanged);
-    connect(m_ui->addToVersionControlComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_addToVersionControlComboBox, &QComboBox::currentIndexChanged,
             this, &ProjectWizardPage::versionControlChanged);
-    connect(m_ui->vcsManageButton, &QAbstractButton::clicked, this, &ProjectWizardPage::manageVcs);
-    setProperty(SHORT_TITLE_PROPERTY, tr("Summary"));
+    connect(m_vcsManageButton, &QAbstractButton::clicked, this, &ProjectWizardPage::manageVcs);
+    setProperty(SHORT_TITLE_PROPERTY, Tr::tr("Summary"));
 
     connect(VcsManager::instance(), &VcsManager::configurationChanged,
             this, &ProjectExplorer::Internal::ProjectWizardPage::initializeVersionControls);
 
-    m_ui->projectComboBox->setModel(&m_model);
+    m_projectComboBox->setModel(&m_model);
 }
 
 ProjectWizardPage::~ProjectWizardPage()
 {
-    disconnect(m_ui->projectComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    disconnect(m_projectComboBox, &QComboBox::currentIndexChanged,
                this, &ProjectWizardPage::projectChanged);
-    delete m_ui;
 }
 
 bool ProjectWizardPage::expandTree(const QModelIndex &root)
@@ -320,9 +334,9 @@ bool ProjectWizardPage::expandTree(const QModelIndex &root)
 
     // Apply to self
     if (expand)
-        m_ui->projectComboBox->view()->expand(root);
+        m_projectComboBox->view()->expand(root);
     else
-        m_ui->projectComboBox->view()->collapse(root);
+        m_projectComboBox->view()->collapse(root);
 
     // if we are a high priority node, our *parent* needs to be expanded
     auto tree = static_cast<AddNewTree *>(root.internalPointer());
@@ -335,25 +349,25 @@ bool ProjectWizardPage::expandTree(const QModelIndex &root)
 void ProjectWizardPage::setBestNode(AddNewTree *tree)
 {
     QModelIndex index = tree ? m_model.indexForItem(tree) : QModelIndex();
-    m_ui->projectComboBox->setCurrentIndex(index);
+    m_projectComboBox->setCurrentIndex(index);
 
     while (index.isValid()) {
-        m_ui->projectComboBox->view()->expand(index);
+        m_projectComboBox->view()->expand(index);
         index = index.parent();
     }
 }
 
 FolderNode *ProjectWizardPage::currentNode() const
 {
-    QVariant v = m_ui->projectComboBox->currentData(Qt::UserRole);
+    QVariant v = m_projectComboBox->currentData(Qt::UserRole);
     return v.isNull() ? nullptr : static_cast<FolderNode *>(v.value<void *>());
 }
 
 void ProjectWizardPage::setAddingSubProject(bool addingSubProject)
 {
-    m_ui->projectLabel->setText(addingSubProject ?
-                                    tr("Add as a subproject to project:")
-                                  : tr("Add to &project:"));
+    m_projectLabel->setText(addingSubProject ?
+                                Tr::tr("Add as a subproject to project:")
+                              : Tr::tr("Add to &project:"));
 }
 
 void ProjectWizardPage::initializeVersionControls()
@@ -375,10 +389,10 @@ void ProjectWizardPage::initializeVersionControls()
 
     m_activeVersionControls.clear();
 
-    QStringList versionControlChoices = QStringList(tr("<None>"));
+    QStringList versionControlChoices = QStringList(Tr::tr("<None>"));
     if (!m_commonDirectory.isEmpty()) {
         IVersionControl *managingControl =
-                VcsManager::findVersionControlForDirectory(FilePath::fromString(m_commonDirectory));
+                VcsManager::findVersionControlForDirectory(m_commonDirectory);
         if (managingControl) {
             // Under VCS
             if (managingControl->supportsOperation(IVersionControl::AddOperation)) {
@@ -388,7 +402,8 @@ void ProjectWizardPage::initializeVersionControls()
             }
         } else {
             // Create
-            foreach (IVersionControl *vc, VcsManager::versionControls()) {
+            const QList<IVersionControl *> versionControls = VcsManager::versionControls();
+            for (IVersionControl *vc : versionControls) {
                 if (vc->supportsOperation(IVersionControl::CreateRepositoryOperation)) {
                     versionControlChoices.append(vc->displayName());
                     m_activeVersionControls.append(vc);
@@ -420,16 +435,19 @@ bool ProjectWizardPage::runVersionControl(const QList<GeneratedFile> &files, QSt
     // Create repository?
     if (!m_repositoryExists) {
         QTC_ASSERT(versionControl->supportsOperation(IVersionControl::CreateRepositoryOperation), return false);
-        if (!versionControl->vcsCreateRepository(FilePath::fromString(m_commonDirectory))) {
-            *errorMessage = tr("A version control system repository could not be created in \"%1\".").arg(m_commonDirectory);
+        if (!versionControl->vcsCreateRepository(m_commonDirectory)) {
+            *errorMessage =
+                    Tr::tr("A version control system repository could not be created in \"%1\".").
+                    arg(m_commonDirectory.toUserOutput());
             return false;
         }
     }
     // Add files if supported.
     if (versionControl->supportsOperation(IVersionControl::AddOperation)) {
-        foreach (const GeneratedFile &generatedFile, files) {
+        for (const GeneratedFile &generatedFile : files) {
             if (!versionControl->vcsAdd(generatedFile.filePath())) {
-                *errorMessage = tr("Failed to add \"%1\" to the version control system.").arg(generatedFile.path());
+                *errorMessage = Tr::tr("Failed to add \"%1\" to the version control system.").
+                        arg(generatedFile.filePath().toUserOutput());
                 return false;
             }
         }
@@ -466,73 +484,71 @@ void ProjectWizardPage::initializeProjectTree(Node *context, const FilePaths &pa
     auto predicate = [context](TreeItem *ti) { return static_cast<AddNewTree*>(ti)->node() == context; };
     TreeItem *contextItem = root->findAnyChild(predicate);
     if (contextItem)
-        m_ui->projectComboBox->setCurrentIndex(m_model.indexForItem(contextItem));
+        m_projectComboBox->setCurrentIndex(m_model.indexForItem(contextItem));
 
     setAdditionalInfo(selector.deployingProjects());
     setBestNode(selector.bestChoice());
     setAddingSubProject(action == AddSubProject);
 
-    m_ui->projectComboBox->setEnabled(m_model.rowCount(QModelIndex()) > 1);
+    m_projectComboBox->setEnabled(m_model.rowCount(QModelIndex()) > 1);
 }
 
 void ProjectWizardPage::setNoneLabel(const QString &label)
 {
-    m_ui->projectComboBox->setItemText(0, label);
+    m_projectComboBox->setItemText(0, label);
 }
 
 void ProjectWizardPage::setAdditionalInfo(const QString &text)
 {
-    m_ui->additionalInfo->setText(text);
-    m_ui->additionalInfo->setVisible(!text.isEmpty());
+    m_additionalInfo->setText(text);
+    m_additionalInfo->setVisible(!text.isEmpty());
 }
 
 void ProjectWizardPage::setVersionControls(const QStringList &vcs)
 {
-    m_ui->addToVersionControlComboBox->clear();
-    m_ui->addToVersionControlComboBox->addItems(vcs);
+    m_addToVersionControlComboBox->clear();
+    m_addToVersionControlComboBox->addItems(vcs);
 }
 
 int ProjectWizardPage::versionControlIndex() const
 {
-    return m_ui->addToVersionControlComboBox->currentIndex();
+    return m_addToVersionControlComboBox->currentIndex();
 }
 
 void ProjectWizardPage::setVersionControlIndex(int idx)
 {
-    m_ui->addToVersionControlComboBox->setCurrentIndex(idx);
+    m_addToVersionControlComboBox->setCurrentIndex(idx);
 }
 
 IVersionControl *ProjectWizardPage::currentVersionControl()
 {
-    int index = m_ui->addToVersionControlComboBox->currentIndex() - 1; // Subtract "<None>"
+    int index = m_addToVersionControlComboBox->currentIndex() - 1; // Subtract "<None>"
     if (index < 0 || index > m_activeVersionControls.count())
         return nullptr; // <None>
     return m_activeVersionControls.at(index);
 }
 
-void ProjectWizardPage::setFiles(const QStringList &fileNames)
+void ProjectWizardPage::setFiles(const FilePaths &files)
 {
-    if (fileNames.count() == 1)
-        m_commonDirectory = QFileInfo(fileNames.first()).absolutePath();
-    else
-        m_commonDirectory = Utils::commonPath(fileNames);
+    m_commonDirectory = FileUtils::commonPath(files);
+    const bool hasNoCommonDirectory = m_commonDirectory.isEmpty() || files.size() < 2;
+
     QString fileMessage;
     {
         QTextStream str(&fileMessage);
         str << "<qt>"
-            << (m_commonDirectory.isEmpty() ? tr("Files to be added:") : tr("Files to be added in"))
+            << (hasNoCommonDirectory ? Tr::tr("Files to be added:") : Tr::tr("Files to be added in"))
             << "<pre>";
 
         QStringList formattedFiles;
-        if (m_commonDirectory.isEmpty()) {
-            formattedFiles = fileNames;
+        if (hasNoCommonDirectory) {
+            formattedFiles = Utils::transform(files, &FilePath::toString);
         } else {
-            str << QDir::toNativeSeparators(m_commonDirectory) << ":\n\n";
-            int prefixSize = m_commonDirectory.size();
-            if (!m_commonDirectory.endsWith('/'))
-                ++prefixSize;
-            formattedFiles = Utils::transform(fileNames, [prefixSize](const QString &f)
-                                                         { return f.mid(prefixSize); });
+            str << m_commonDirectory.toUserOutput() << ":\n\n";
+            int prefixSize = m_commonDirectory.toUserOutput().size();
+            formattedFiles = Utils::transform(files, [prefixSize] (const FilePath &f) {
+                return f.toUserOutput().mid(prefixSize + 1); // +1 skips the initial dir separator
+            });
         }
         // Alphabetically, and files in sub-directories first
         Utils::sort(formattedFiles, [](const QString &filePath1, const QString &filePath2) -> bool {
@@ -542,21 +558,20 @@ void ProjectWizardPage::setFiles(const QStringList &fileNames)
             if (filePath1HasDir == filePath2HasDir)
                 return FilePath::fromString(filePath1) < FilePath::fromString(filePath2);
             return filePath1HasDir;
-        }
-);
+        });
 
-        foreach (const QString &f, formattedFiles)
+        for (const QString &f : std::as_const(formattedFiles))
             str << QDir::toNativeSeparators(f) << '\n';
 
         str << "</pre>";
     }
-    m_ui->filesLabel->setText(fileMessage);
+    m_filesLabel->setText(fileMessage);
 }
 
 void ProjectWizardPage::setProjectToolTip(const QString &tt)
 {
-    m_ui->projectComboBox->setToolTip(tt);
-    m_ui->projectLabel->setToolTip(tt);
+    m_projectComboBox->setToolTip(tt);
+    m_projectLabel->setToolTip(tt);
 }
 
 void ProjectWizardPage::projectChanged(int index)
@@ -573,15 +588,15 @@ void ProjectWizardPage::manageVcs()
 
 void ProjectWizardPage::hideVersionControlUiElements()
 {
-    m_ui->addToVersionControlLabel->hide();
-    m_ui->vcsManageButton->hide();
-    m_ui->addToVersionControlComboBox->hide();
+    m_addToVersionControlLabel->hide();
+    m_vcsManageButton->hide();
+    m_addToVersionControlComboBox->hide();
 }
 
 void ProjectWizardPage::setProjectUiVisible(bool visible)
 {
-    m_ui->projectLabel->setVisible(visible);
-    m_ui->projectComboBox->setVisible(visible);
+    m_projectLabel->setVisible(visible);
+    m_projectComboBox->setVisible(visible);
 }
 
 } // namespace Internal

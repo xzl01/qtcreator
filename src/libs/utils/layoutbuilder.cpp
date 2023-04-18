@@ -1,41 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "layoutbuilder.h"
 
-#include <utils/algorithm.h>
-#include <utils/aspects.h>
-#include <utils/qtcassert.h>
+#include "aspects.h"
+#include "qtcassert.h"
 
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QPushButton>
+#include <QStackedLayout>
+#include <QSplitter>
 #include <QStyle>
+#include <QTabWidget>
 #include <QWidget>
 
-namespace Utils {
+namespace Utils::Layouting {
 
 /*!
     \enum Utils::LayoutBuilder::LayoutType
@@ -65,21 +46,21 @@ namespace Utils {
 /*!
     Constructs a layout item instance representing an empty cell.
  */
-LayoutBuilder::LayoutItem::LayoutItem()
+LayoutItem::LayoutItem()
 {}
 
 
 /*!
     Constructs a layout item proxy for \a layout.
  */
-LayoutBuilder::LayoutItem::LayoutItem(QLayout *layout)
+LayoutItem::LayoutItem(QLayout *layout)
     : layout(layout)
 {}
 
 /*!
     Constructs a layout item proxy for \a widget.
  */
-LayoutBuilder::LayoutItem::LayoutItem(QWidget *widget)
+LayoutItem::LayoutItem(QWidget *widget)
     : widget(widget)
 {}
 
@@ -91,18 +72,18 @@ LayoutBuilder::LayoutItem::LayoutItem(QWidget *widget)
 
     \sa BaseAspect::addToLayout()
  */
-LayoutBuilder::LayoutItem::LayoutItem(BaseAspect &aspect)
+LayoutItem::LayoutItem(BaseAspect &aspect)
     : aspect(&aspect)
 {}
 
-LayoutBuilder::LayoutItem::LayoutItem(BaseAspect *aspect)
+LayoutItem::LayoutItem(BaseAspect *aspect)
     : aspect(aspect)
 {}
 
 /*!
     Constructs a layout item containing some static \a text.
  */
-LayoutBuilder::LayoutItem::LayoutItem(const QString &text)
+LayoutItem::LayoutItem(const QString &text)
     : text(text)
 {}
 
@@ -131,6 +112,11 @@ QLayout *LayoutBuilder::createLayout() const
         layout = vboxLayout;
         break;
     }
+    case LayoutBuilder::StackLayout: {
+        auto stackLayout = new QStackedLayout;
+        layout = stackLayout;
+        break;
+    }
     }
     QTC_ASSERT(layout, return nullptr);
     if (m_spacing)
@@ -138,10 +124,46 @@ QLayout *LayoutBuilder::createLayout() const
     return layout;
 }
 
-static void setMargins(bool on, QLayout *layout)
+static QWidget *widgetForItem(QLayoutItem *item)
 {
-    const int d = on ? 9 : 0;
-    layout->setContentsMargins(d, d, d, d);
+    if (QWidget *w = item->widget())
+        return w;
+    if (item->spacerItem())
+        return nullptr;
+    QLayout *l = item->layout();
+    if (!l)
+        return nullptr;
+    for (int i = 0, n = l->count(); i < n; ++i) {
+        if (QWidget *w = widgetForItem(l->itemAt(i)))
+            return w;
+    }
+    return nullptr;
+}
+
+static QLabel *createLabel(const QString &text)
+{
+    auto label = new QLabel(text);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    return label;
+}
+
+static void addItemToBoxLayout(QBoxLayout *layout, const LayoutItem &item)
+{
+    if (QWidget *w = item.widget) {
+        layout->addWidget(w);
+    } else if (QLayout *l = item.layout) {
+        layout->addLayout(l);
+    } else if (item.specialType == LayoutItem::SpecialType::Stretch) {
+        layout->addStretch(item.specialValue.toInt());
+    } else if (item.specialType == LayoutItem::SpecialType::Space) {
+        layout->addSpacing(item.specialValue.toInt());
+    } else if (item.specialType == LayoutItem::SpecialType::HorizontalRule) {
+        layout->addWidget(Layouting::createHr());
+    } else if (!item.text.isEmpty()) {
+        layout->addWidget(createLabel(item.text));
+    } else {
+        QTC_CHECK(false);
+    }
 }
 
 static void flushPendingFormItems(QFormLayout *formLayout,
@@ -155,18 +177,12 @@ static void flushPendingFormItems(QFormLayout *formLayout,
     // If there are more than two items, we cram the last ones in one hbox.
     if (pendingFormItems.size() > 2) {
         auto hbox = new QHBoxLayout;
-        setMargins(false, hbox);
-        for (int i = 1; i < pendingFormItems.size(); ++i) {
-            if (QWidget *w = pendingFormItems.at(i).widget)
-                hbox->addWidget(w);
-            else if (QLayout *l = pendingFormItems.at(i).layout)
-                hbox->addLayout(l);
-            else
-                QTC_CHECK(false);
-        }
+        hbox->setContentsMargins(0, 0, 0, 0);
+        for (int i = 1; i < pendingFormItems.size(); ++i)
+            addItemToBoxLayout(hbox, pendingFormItems.at(i));
         while (pendingFormItems.size() >= 2)
             pendingFormItems.pop_back();
-        pendingFormItems.append(LayoutBuilder::LayoutItem(hbox));
+        pendingFormItems.append(LayoutItem(hbox));
     }
 
     if (pendingFormItems.size() == 1) { // One one item given, so this spans both columns.
@@ -190,11 +206,23 @@ static void flushPendingFormItems(QFormLayout *formLayout,
         QTC_CHECK(false);
     }
 
+    // Set up label as buddy if possible.
+    const int lastRow = formLayout->rowCount() - 1;
+    QLayoutItem *l = formLayout->itemAt(lastRow, QFormLayout::LabelRole);
+    QLayoutItem *f = formLayout->itemAt(lastRow, QFormLayout::FieldRole);
+    if (l && f) {
+        if (QLabel *label = qobject_cast<QLabel *>(l->widget())) {
+            if (QWidget *widget = widgetForItem(f))
+                label->setBuddy(widget);
+        }
+    }
+
     pendingFormItems.clear();
 }
 
 static void doLayoutHelper(QLayout *layout,
                            const LayoutBuilder::LayoutItems &items,
+                           const Layouting::AttachType attachType,
                            int currentGridRow = 0)
 {
     int currentGridColumn = 0;
@@ -203,9 +231,10 @@ static void doLayoutHelper(QLayout *layout,
     auto formLayout = qobject_cast<QFormLayout *>(layout);
     auto gridLayout = qobject_cast<QGridLayout *>(layout);
     auto boxLayout = qobject_cast<QBoxLayout *>(layout);
+    auto stackLayout = qobject_cast<QStackedLayout *>(layout);
 
-    for (const LayoutBuilder::LayoutItem &item : items) {
-        if (item.specialType == LayoutBuilder::SpecialType::Break) {
+    for (const LayoutItem &item : items) {
+        if (item.specialType == LayoutItem::SpecialType::Break) {
             if (formLayout)
                 flushPendingFormItems(formLayout, pendingFormItems);
             else if (gridLayout) {
@@ -220,24 +249,20 @@ static void doLayoutHelper(QLayout *layout,
         QWidget *widget = item.widget;
 
         if (gridLayout) {
-            Qt::Alignment align;
-            if (item.align == LayoutBuilder::AlignmentType::AlignAsFormLabel)
+            Qt::Alignment align = {};
+            if (attachType == Layouting::WithFormAlignment && currentGridColumn == 0)
                 align = Qt::Alignment(widget->style()->styleHint(QStyle::SH_FormLayoutLabelAlignment));
             if (widget)
                 gridLayout->addWidget(widget, currentGridRow, currentGridColumn, 1, item.span, align);
             else if (item.layout)
                 gridLayout->addLayout(item.layout, currentGridRow, currentGridColumn, 1, item.span, align);
+            else if (!item.text.isEmpty())
+                gridLayout->addWidget(createLabel(item.text), currentGridRow, currentGridColumn, 1, 1, align);
             currentGridColumn += item.span;
         } else if (boxLayout) {
-            if (widget) {
-                boxLayout->addWidget(widget);
-            } else if (item.layout) {
-                boxLayout->addLayout(item.layout);
-            } else if (item.specialType == LayoutBuilder::SpecialType::Stretch) {
-                boxLayout->addStretch(item.specialValue.toInt());
-            } else if (item.specialType == LayoutBuilder::SpecialType::Space) {
-                boxLayout->addSpacing(item.specialValue.toInt());
-            }
+            addItemToBoxLayout(boxLayout, item);
+        } else if (stackLayout) {
+            stackLayout->addWidget(item.widget);
         } else {
             pendingFormItems.append(item);
         }
@@ -251,11 +276,10 @@ static void doLayoutHelper(QLayout *layout,
 /*!
     Constructs a layout item from the contents of another LayoutBuilder
  */
-LayoutBuilder::LayoutItem::LayoutItem(const LayoutBuilder &builder)
+LayoutItem::LayoutItem(const LayoutBuilder &builder)
 {
     layout = builder.createLayout();
-    doLayoutHelper(layout, builder.m_items);
-    setMargins(builder.m_withMargins, layout);
+    doLayoutHelper(layout, builder.m_items, Layouting::WithoutMargins);
 }
 
 /*!
@@ -354,13 +378,14 @@ LayoutBuilder &LayoutBuilder::addItem(const LayoutItem &item)
     return *this;
 }
 
-void LayoutBuilder::doLayout(QWidget *parent)
+void LayoutBuilder::doLayout(QWidget *parent, Layouting::AttachType attachType) const
 {
     QLayout *layout = createLayout();
     parent->setLayout(layout);
 
-    doLayoutHelper(layout, m_items);
-    setMargins(m_withMargins, layout);
+    doLayoutHelper(layout, m_items, attachType);
+    if (attachType == Layouting::WithoutMargins)
+        layout->setContentsMargins(0, 0, 0, 0);
 }
 
 /*!
@@ -378,17 +403,15 @@ LayoutBuilder &LayoutBuilder::addItems(const LayoutItems &items)
 
     This operation can only be performed once per LayoutBuilder instance.
  */
-void LayoutBuilder::attachTo(QWidget *w, bool withMargins)
+void LayoutBuilder::attachTo(QWidget *w, Layouting::AttachType attachType) const
 {
-    m_withMargins = withMargins;
-    doLayout(w);
+    doLayout(w, attachType);
 }
 
-QWidget *LayoutBuilder::emerge(bool withMargins)
+QWidget *LayoutBuilder::emerge(Layouting::AttachType attachType)
 {
-    m_withMargins = withMargins;
     auto w = new QWidget;
-    doLayout(w);
+    doLayout(w, attachType);
     return w;
 }
 
@@ -400,8 +423,8 @@ QWidget *LayoutBuilder::emerge(bool withMargins)
     new items will be added below existing ones.
  */
 
-LayoutExtender::LayoutExtender(QLayout *layout)
-    : m_layout(layout)
+LayoutExtender::LayoutExtender(QLayout *layout, Layouting::AttachType attachType)
+    : m_layout(layout), m_attachType(attachType)
 {}
 
 LayoutExtender::~LayoutExtender()
@@ -410,70 +433,159 @@ LayoutExtender::~LayoutExtender()
     int currentGridRow = 0;
     if (auto gridLayout = qobject_cast<QGridLayout *>(m_layout))
         currentGridRow = gridLayout->rowCount();
-    doLayoutHelper(m_layout, m_items, currentGridRow);
+    doLayoutHelper(m_layout, m_items, m_attachType, currentGridRow);
 }
 
 // Special items
 
-LayoutBuilder::Break::Break()
+Break::Break()
 {
     specialType = SpecialType::Break;
 }
 
-LayoutBuilder::Stretch::Stretch(int stretch)
+Stretch::Stretch(int stretch)
 {
     specialType = SpecialType::Stretch;
     specialValue = stretch;
 }
 
-LayoutBuilder::Space::Space(int space)
+Space::Space(int space)
 {
     specialType = SpecialType::Space;
     specialValue = space;
 }
 
-LayoutBuilder::Title::Title(const QString &title, BoolAspect *check)
+Span::Span(int span_, const LayoutItem &item)
 {
-    specialType = SpecialType::Title;
-    specialValue = title;
-    aspect = check;
-}
-
-LayoutBuilder::Span::Span(int span_, const LayoutItem &item)
-{
-    LayoutBuilder::LayoutItem::operator=(item);
+    LayoutItem::operator=(item);
     span = span_;
 }
 
-LayoutBuilder::AlignAsFormLabel::AlignAsFormLabel(const LayoutItem &item)
+Tab::Tab(const QString &tabName, const LayoutBuilder &item)
 {
-    LayoutBuilder::LayoutItem::operator=(item);
-    align = AlignmentType::AlignAsFormLabel;
+    text = tabName;
+    widget = new QWidget;
+    item.attachTo(widget);
 }
 
-namespace Layouting {
+HorizontalRule::HorizontalRule()
+{
+    specialType = SpecialType::HorizontalRule;
+}
+
+// "Widgets"
+
+static void applyItems(QWidget *widget, const QList<LayoutItem> &items)
+{
+    bool hadLayout = false;
+    for (const LayoutItem &item : items) {
+        if (item.setter) {
+            item.setter(widget);
+        } else if (item.layout && !hadLayout) {
+            hadLayout = true;
+            widget->setLayout(item.layout);
+        } else {
+            QTC_CHECK(false);
+        }
+    }
+}
 
 Group::Group(std::initializer_list<LayoutItem> items)
 {
-    auto box = new QGroupBox;
-    Column builder;
-    bool innerMargins = true;
-    for (const LayoutItem &item : items) {
-        if (item.specialType == LayoutBuilder::SpecialType::Title) {
-            box->setTitle(item.specialValue.toString());
-            box->setObjectName(item.specialValue.toString());
-            if (auto check = qobject_cast<BoolAspect *>(item.aspect)) {
-                box->setCheckable(true);
-                box->setChecked(check->value());
-                check->setHandlesGroup(box);
-            }
-        } else {
-            builder.addItem(item);
-        }
-    }
-    builder.attachTo(box, innerMargins);
-    widget = box;
+    widget = new QGroupBox;
+    applyItems(widget, items);
 }
 
-} // Layouting
-} // Utils
+PushButton::PushButton(std::initializer_list<LayoutItem> items)
+{
+    widget = new QPushButton;
+    applyItems(widget, items);
+}
+
+Splitter::Splitter(std::initializer_list<LayoutItem> items)
+    : Splitter(new QSplitter(Qt::Vertical), items) {}
+
+Splitter::Splitter(QSplitter *splitter, std::initializer_list<LayoutItem> items)
+{
+    widget = splitter;
+    for (const LayoutItem &item : items)
+        splitter->addWidget(item.widget);
+}
+
+TabWidget::TabWidget(std::initializer_list<Tab> tabs)
+    : TabWidget(new QTabWidget, tabs) {}
+
+TabWidget::TabWidget(QTabWidget *tabWidget, std::initializer_list<Tab> tabs)
+{
+    widget = tabWidget;
+    for (const Tab &tab : tabs)
+        tabWidget->addTab(tab.widget, tab.text);
+}
+
+// "Properties"
+
+LayoutItem::Setter title(const QString &title, BoolAspect *checker)
+{
+    return [title, checker](QObject *target) {
+        if (auto groupBox = qobject_cast<QGroupBox *>(target)) {
+            groupBox->setTitle(title);
+            groupBox->setObjectName(title);
+            if (checker) {
+                groupBox->setCheckable(true);
+                groupBox->setChecked(checker->value());
+                checker->setHandlesGroup(groupBox);
+            }
+        } else {
+            QTC_CHECK(false);
+        }
+    };
+}
+
+LayoutItem::Setter onClicked(const std::function<void ()> &func, QObject *guard)
+{
+    return [func, guard](QObject *target) {
+        if (auto button = qobject_cast<QAbstractButton *>(target)) {
+            QObject::connect(button, &QAbstractButton::clicked, guard ? guard : target, func);
+        } else {
+            QTC_CHECK(false);
+        }
+    };
+}
+
+LayoutItem::Setter text(const QString &text)
+{
+    return [text](QObject *target) {
+        if (auto button = qobject_cast<QAbstractButton *>(target)) {
+            button->setText(text);
+        } else {
+            QTC_CHECK(false);
+        }
+    };
+}
+
+LayoutItem::Setter tooltip(const QString &toolTip)
+{
+    return [toolTip](QObject *target) {
+        if (auto widget = qobject_cast<QWidget *>(target)) {
+            widget->setToolTip(toolTip);
+        } else {
+            QTC_CHECK(false);
+        }
+    };
+}
+
+QWidget *createHr(QWidget *parent)
+{
+    auto frame = new QFrame(parent);
+    frame->setFrameShape(QFrame::HLine);
+    frame->setFrameShadow(QFrame::Sunken);
+    return frame;
+}
+
+// Singletons.
+Break br;
+Stretch st;
+Space empty(0);
+HorizontalRule hr;
+
+} // Utils::Layouting

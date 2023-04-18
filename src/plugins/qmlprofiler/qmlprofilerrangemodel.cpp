@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "qmlprofilerrangemodel.h"
-#include "qmlprofilermodelmanager.h"
 #include "qmlprofilerbindingloopsrenderpass.h"
+#include "qmlprofilermodelmanager.h"
+#include "qmlprofilerrangemodel.h"
+#include "qmlprofilertr.h"
 
 #include <tracing/timelinenotesrenderpass.h>
 #include <tracing/timelineitemsrenderpass.h>
@@ -44,7 +23,7 @@ namespace Internal {
 
 QmlProfilerRangeModel::QmlProfilerRangeModel(QmlProfilerModelManager *manager, RangeType range,
                                              Timeline::TimelineModelAggregator *parent) :
-    QmlProfilerTimelineModel(manager, MaximumMessage, range, featureFromRangeType(range), parent)
+    QmlProfilerTimelineModel(manager, UndefinedMessage, range, featureFromRangeType(range), parent)
 {
     m_expandedRowTypes << -1;
 }
@@ -224,12 +203,12 @@ QVariantMap QmlProfilerRangeModel::details(int index) const
     int id = selectionId(index);
 
     result.insert(QStringLiteral("displayName"),
-                  tr(QmlProfilerModelManager::featureName(mainFeature())));
-    result.insert(tr("Duration"), Timeline::formatTime(duration(index)));
+                  Tr::tr(QmlProfilerModelManager::featureName(mainFeature())));
+    result.insert(Tr::tr("Duration"), Timeline::formatTime(duration(index)));
 
     const QmlEventType &type = modelManager()->eventType(id);
-    result.insert(tr("Details"), type.data());
-    result.insert(tr("Location"), type.displayName());
+    result.insert(Tr::tr("Details"), type.data());
+    result.insert(Tr::tr("Location"), type.displayName());
     return result;
 }
 

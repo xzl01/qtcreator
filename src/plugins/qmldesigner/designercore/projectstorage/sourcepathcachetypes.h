@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -57,11 +35,6 @@ public:
 class SourceNameEntry
 {
 public:
-    SourceNameEntry(Utils::SmallStringView sourceName, int sourceContextId)
-        : sourceName(sourceName)
-        , sourceContextId(sourceContextId)
-    {}
-
     SourceNameEntry(Utils::SmallStringView sourceName, SourceContextId sourceContextId)
         : sourceName(sourceName)
         , sourceContextId(sourceContextId)
@@ -129,10 +102,6 @@ public:
         : Base{{sourceName, sourceContextId}, sourceId}
     {}
 
-    Source(Utils::SmallStringView sourceName, int sourceContextId, int sourceId)
-        : Base{{sourceName, SourceContextId{sourceContextId}}, SourceId{sourceId}}
-    {}
-
     friend bool operator==(const Source &first, const Source &second)
     {
         return first.id == second.id && first.value == second.value;
@@ -145,10 +114,7 @@ class SourceNameAndSourceContextId
 {
 public:
     constexpr SourceNameAndSourceContextId() = default;
-    SourceNameAndSourceContextId(Utils::SmallStringView sourceName, int sourceContextId)
-        : sourceName(sourceName)
-        , sourceContextId(sourceContextId)
-    {}
+
     SourceNameAndSourceContextId(Utils::SmallStringView sourceName, SourceContextId sourceContextId)
         : sourceName{sourceName}
         , sourceContextId{sourceContextId}

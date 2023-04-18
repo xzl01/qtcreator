@@ -1,27 +1,5 @@
-############################################################################
-#
 # Copyright (C) 2016 The Qt Company Ltd.
-# Contact: https://www.qt.io/licensing/
-#
-# This file is part of Qt Creator.
-#
-# Commercial License Usage
-# Licensees holding valid commercial Qt licenses may use this file in
-# accordance with the commercial license agreement provided with the
-# Software or, alternatively, in accordance with the terms contained in
-# a written agreement between you and The Qt Company. For licensing terms
-# and conditions see https://www.qt.io/terms-conditions. For further
-# information use the contact form at https://www.qt.io/contact-us.
-#
-# GNU General Public License Usage
-# Alternatively, this file may be used under the terms of the GNU
-# General Public License version 3 as published by the Free Software
-# Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-# included in the packaging of this file. Please review the following
-# information to ensure the GNU General Public License requirements will
-# be met: https://www.gnu.org/licenses/gpl-3.0.html.
-#
-############################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 source("../../shared/qtcreator.py")
 
@@ -35,7 +13,7 @@ def main():
     appContext = startQC(['-settingspath', '"%s"' % emptySettings], False)
     if not startedWithoutPluginError():
         return
-    invokeMenuItem("Tools", "Options...")
+    invokeMenuItem("Edit", "Preferences...")
     __checkKits__()
     clickButton(waitForObject(":Options.Cancel_QPushButton"))
     invokeMenuItem("File", "Exit")
@@ -53,6 +31,13 @@ def __checkKits__():
     mouseClick(waitForObjectItem(":Options_QListView", "Kits"))
     # check compilers
     expectedCompilers = __getExpectedCompilers__()
+    llvmForBuild = os.getenv("SYSTEST_LLVM_FROM_BUILD", None)
+    if llvmForBuild is not None:
+        internalClangExe = os.path.join(llvmForBuild, "bin", "clang")
+        if platform.system() in ("Microsoft", "Windows"):
+            internalClangExe.append(".exe")
+        if os.path.exists(internalClangExe):
+            expectedCompilers.append(internalClangExe)
     foundCompilers = []
     foundCompilerNames = []
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Compilers")
@@ -171,37 +156,6 @@ def __kitFunc__(it, foundQt, foundCompNames):
             details = details.replace("<b>", "").replace("</b>", "")
             test.warning("Detected error and/or warning: %s" % details)
 
-def __extendExpectedCompilersWithInternalClang__(expected):
-    global appContext
-    # QC ships a clang itself
-    regex = '^(.*(qtcreator(.exe)?|Qt Creator))( .*)?$' # QC with optional arguments
-    qcPath = re.match(regex, appContext.commandLine)
-    if qcPath is None:
-        test.warning("Regular expression failed.")
-    else:
-        qcPath = qcPath.group(1)
-        if platform.system() == 'Darwin':
-            internalClang = os.path.join(qcPath, '..', '..', 'Resources')
-        elif platform.system() in ('Windows', 'Microsoft'):
-            internalClang = os.path.join(qcPath, '..')
-        else:
-            internalClang = os.path.join(qcPath, '..', '..', 'libexec', 'qtcreator')
-        internalClang = os.path.join(internalClang, 'clang', 'bin', 'clang')
-        if platform.system() in ('Microsoft', 'Windows'):
-            internalClang += '-cl.exe'
-        internalClang = os.path.abspath(internalClang)
-        if os.path.exists(internalClang):
-            if platform.system() in ('Microsoft', 'Windows'):
-                # just add a fuzzy comparable name - everything else is not worth the effort here
-                expected.append({'^Default LLVM \d{2} bit based on MSVC\d{4}$':''})
-            else:
-                expected.append(internalClang)
-        else:
-            test.fail("QC package seems to be faulty - missing internal provided clang.\nIf this "
-                      "is not a package, but a self-compiled QC, just copy the clang executable "
-                      "located inside the LLVM_INSTALL_DIR/bin (used while building) to the "
-                      "expected path.", "Expected '%s'" % internalClang)
-
 def __getExpectedCompilers__():
     # TODO: enhance this to distinguish between C and C++ compilers
     expected = []
@@ -218,8 +172,6 @@ def __getExpectedCompilers__():
             xcodeClang = getOutputFromCmdline(["xcrun", "--find", compilerExe]).strip("\n")
             if xcodeClang and os.path.exists(xcodeClang) and xcodeClang not in expected:
                 expected.append(xcodeClang)
-
-    __extendExpectedCompilersWithInternalClang__(expected)
 
     for compiler in compilers:
         compilerPath = which(compiler)
@@ -308,17 +260,10 @@ def __compareCompilers__(foundCompilers, expectedCompilers):
             for currentExp in expectedCompilers:
                 if isString(currentExp):
                     continue
-                key = currentExp.keys()[0]
-                # special case for (fuzzy) regex comparison on Windows (internal LLVM)
-                if isWin and key.startswith('^') and key.endswith('$'):
-                    if re.match(key, currentFound.keys()[0], flags):
-                        test.verify(os.path.exists(currentFound.values()[0].rsplit(" ", 1)[0]),
-                                    "Verifying whether shipped clang got set up.")
-                        foundExp = True
-                        break
+                key = list(currentExp.keys())[0]
                 # the regex .*? is used for the different possible version strings of the WinSDK
                 # if it's present a regex will be validated otherwise simple string comparison
-                if (((".*?" in key and re.match(key, currentFound.keys()[0], flags))
+                if (((".*?" in key and re.match(key, list(currentFound.keys())[0], flags))
                     or currentFound.keys() == currentExp.keys())):
                     if ((isWin and os.path.abspath(currentFound.values()[0].lower())
                          == os.path.abspath(currentExp.values()[0].lower()))
@@ -377,8 +322,8 @@ def __checkCreatedSettings__(settingsFolder):
         test.verify(os.path.isdir(f),
                     "Verifying whether folder '%s' has been created." % os.path.basename(f))
     for f in files:
-        fName = f.keys()[0]
-        fMinSize = f.values()[0]
+        fName = list(f.keys())[0]
+        fMinSize = list(f.values())[0]
         text = "created non-empty"
         if fMinSize > 0:
             text = "modified"

@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "symbolsfindfilter.h"
 
 #include "cppeditorconstants.h"
+#include "cppeditortr.h"
 #include "cppmodelmanager.h"
 
 #include <coreplugin/icore.h>
@@ -75,7 +54,7 @@ QString SymbolsFindFilter::id() const
 
 QString SymbolsFindFilter::displayName() const
 {
-    return QString(Constants::SYMBOLS_FIND_FILTER_DISPLAY_NAME);
+    return Tr::tr(Constants::SYMBOLS_FIND_FILTER_DISPLAY_NAME);
 }
 
 bool SymbolsFindFilter::isEnabled() const
@@ -83,19 +62,15 @@ bool SymbolsFindFilter::isEnabled() const
     return m_enabled;
 }
 
-void SymbolsFindFilter::cancel()
+void SymbolsFindFilter::cancel(SearchResult *search)
 {
-    auto search = qobject_cast<SearchResult *>(sender());
-    QTC_ASSERT(search, return);
     QFutureWatcher<SearchResultItem> *watcher = m_watchers.key(search);
     QTC_ASSERT(watcher, return);
     watcher->cancel();
 }
 
-void SymbolsFindFilter::setPaused(bool paused)
+void SymbolsFindFilter::setPaused(SearchResult *search, bool paused)
 {
-    auto search = qobject_cast<SearchResult *>(sender());
-    QTC_ASSERT(search, return);
     QFutureWatcher<SearchResultItem> *watcher = m_watchers.key(search);
     QTC_ASSERT(watcher, return);
     if (!paused || watcher->isRunning()) // guard against pausing when the search is finished
@@ -109,9 +84,13 @@ void SymbolsFindFilter::findAll(const QString &txt, FindFlags findFlags)
     search->setSearchAgainSupported(true);
     connect(search, &SearchResult::activated,
             this, &SymbolsFindFilter::openEditor);
-    connect(search, &SearchResult::cancelled, this, &SymbolsFindFilter::cancel);
-    connect(search, &SearchResult::paused, this, &SymbolsFindFilter::setPaused);
-    connect(search, &SearchResult::searchAgainRequested, this, &SymbolsFindFilter::searchAgain);
+    connect(search, &SearchResult::canceled, this, [this, search] { cancel(search); });
+    connect(search, &SearchResult::paused,
+            this, [this, search](bool paused) { setPaused(search, paused); });
+    connect(search, &SearchResult::searchAgainRequested, this, [this, search] {
+        search->restart();
+        startSearch(search);
+    });
     connect(this, &IFindFilter::enabledChanged, search, &SearchResult::setSearchAgainEnabled);
     window->popup(IOutputPane::ModeSwitch | IOutputPane::WithFocus);
 
@@ -135,23 +114,21 @@ void SymbolsFindFilter::startSearch(SearchResult *search)
 
     auto watcher = new QFutureWatcher<SearchResultItem>;
     m_watchers.insert(watcher, search);
-    connect(watcher, &QFutureWatcherBase::finished,
-            this, &SymbolsFindFilter::finish);
-    connect(watcher, &QFutureWatcherBase::resultsReadyAt,
-            this, &SymbolsFindFilter::addResults);
-    SymbolSearcher *symbolSearcher = m_manager->indexingSupport()->createSymbolSearcher(parameters, projectFileNames);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] { finish(watcher); });
+    connect(watcher, &QFutureWatcherBase::resultsReadyAt, this, [this, watcher]
+            (int begin, int end) { addResults(watcher, begin, end); });
+    SymbolSearcher *symbolSearcher = new SymbolSearcher(parameters, projectFileNames);
     connect(watcher, &QFutureWatcherBase::finished,
             symbolSearcher, &QObject::deleteLater);
     watcher->setFuture(Utils::runAsync(m_manager->sharedThreadPool(),
                                        &SymbolSearcher::runSearch, symbolSearcher));
-    FutureProgress *progress = ProgressManager::addTask(watcher->future(), tr("Searching for Symbol"),
+    FutureProgress *progress = ProgressManager::addTask(watcher->future(), Tr::tr("Searching for Symbol"),
                                                         Core::Constants::TASK_SEARCH);
     connect(progress, &FutureProgress::clicked, search, &SearchResult::popup);
 }
 
-void SymbolsFindFilter::addResults(int begin, int end)
+void SymbolsFindFilter::addResults(QFutureWatcher<SearchResultItem> *watcher, int begin, int end)
 {
-    auto watcher = static_cast<QFutureWatcher<SearchResultItem> *>(sender());
     SearchResult *search = m_watchers.value(watcher);
     if (!search) {
         // search was removed from search history while the search is running
@@ -164,9 +141,8 @@ void SymbolsFindFilter::addResults(int begin, int end)
     search->addResults(items, SearchResult::AddSorted);
 }
 
-void SymbolsFindFilter::finish()
+void SymbolsFindFilter::finish(QFutureWatcher<SearchResultItem> *watcher)
 {
-    auto watcher = static_cast<QFutureWatcher<SearchResultItem> *>(sender());
     SearchResult *search = m_watchers.value(watcher);
     if (search)
         search->finishSearch(watcher->isCanceled());
@@ -179,9 +155,7 @@ void SymbolsFindFilter::openEditor(const SearchResultItem &item)
     if (!item.userData().canConvert<IndexItem::Ptr>())
         return;
     IndexItem::Ptr info = item.userData().value<IndexItem::Ptr>();
-    EditorManager::openEditorAt({FilePath::fromString(info->fileName()),
-                                 info->line(),
-                                 info->column()},
+    EditorManager::openEditorAt({info->filePath(), info->line(), info->column()},
                                 {},
                                 Core::EditorManager::AllowExternalEditor);
 }
@@ -228,32 +202,24 @@ void SymbolsFindFilter::onAllTasksFinished(Id type)
     }
 }
 
-void SymbolsFindFilter::searchAgain()
-{
-    auto search = qobject_cast<SearchResult *>(sender());
-    QTC_ASSERT(search, return);
-    search->restart();
-    startSearch(search);
-}
-
 QString SymbolsFindFilter::label() const
 {
-    return tr("C++ Symbols:");
+    return Tr::tr("C++ Symbols:");
 }
 
 QString SymbolsFindFilter::toolTip(FindFlags findFlags) const
 {
     QStringList types;
     if (m_symbolsToSearch & SymbolSearcher::Classes)
-        types.append(tr("Classes"));
+        types.append(Tr::tr("Classes"));
     if (m_symbolsToSearch & SymbolSearcher::Functions)
-        types.append(tr("Functions"));
+        types.append(Tr::tr("Functions"));
     if (m_symbolsToSearch & SymbolSearcher::Enums)
-        types.append(tr("Enums"));
+        types.append(Tr::tr("Enums"));
     if (m_symbolsToSearch & SymbolSearcher::Declarations)
-        types.append(tr("Declarations"));
-    return tr("Scope: %1\nTypes: %2\nFlags: %3")
-        .arg(searchScope() == SymbolSearcher::SearchGlobal ? tr("All") : tr("Projects"),
+        types.append(Tr::tr("Declarations"));
+    return Tr::tr("Scope: %1\nTypes: %2\nFlags: %3")
+        .arg(searchScope() == SymbolSearcher::SearchGlobal ? Tr::tr("All") : Tr::tr("Projects"),
              types.join(", "),
              IFindFilter::descriptionForFindFlags(findFlags));
 }
@@ -270,19 +236,19 @@ SymbolsFindFilterConfigWidget::SymbolsFindFilterConfigWidget(SymbolsFindFilter *
     setLayout(layout);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    auto typeLabel = new QLabel(tr("Types:"));
+    auto typeLabel = new QLabel(Tr::tr("Types:"));
     layout->addWidget(typeLabel, 0, 0);
 
-    m_typeClasses = new QCheckBox(tr("Classes"));
+    m_typeClasses = new QCheckBox(Tr::tr("Classes"));
     layout->addWidget(m_typeClasses, 0, 1);
 
-    m_typeMethods = new QCheckBox(tr("Functions"));
+    m_typeMethods = new QCheckBox(Tr::tr("Functions"));
     layout->addWidget(m_typeMethods, 0, 2);
 
-    m_typeEnums = new QCheckBox(tr("Enums"));
+    m_typeEnums = new QCheckBox(Tr::tr("Enums"));
     layout->addWidget(m_typeEnums, 1, 1);
 
-    m_typeDeclarations = new QCheckBox(tr("Declarations"));
+    m_typeDeclarations = new QCheckBox(Tr::tr("Declarations"));
     layout->addWidget(m_typeDeclarations, 1, 2);
 
     // hacks to fix layouting:
@@ -300,10 +266,10 @@ SymbolsFindFilterConfigWidget::SymbolsFindFilterConfigWidget(SymbolsFindFilter *
     connect(m_typeDeclarations, &QAbstractButton::clicked,
             this, &SymbolsFindFilterConfigWidget::setState);
 
-    m_searchProjectsOnly = new QRadioButton(tr("Projects only"));
+    m_searchProjectsOnly = new QRadioButton(Tr::tr("Projects only"));
     layout->addWidget(m_searchProjectsOnly, 2, 1);
 
-    m_searchGlobal = new QRadioButton(tr("All files"));
+    m_searchGlobal = new QRadioButton(Tr::tr("All files"));
     layout->addWidget(m_searchGlobal, 2, 2);
 
     m_searchGroup = new QButtonGroup(this);

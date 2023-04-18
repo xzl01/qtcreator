@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "assetexporterview.h"
 
 #include "qmlitemnode.h"
@@ -39,14 +17,15 @@ Q_LOGGING_CATEGORY(loggerInfo, "qtc.designer.assetExportPlugin.view", QtInfoMsg)
 Q_LOGGING_CATEGORY(loggerWarn, "qtc.designer.assetExportPlugin.view", QtWarningMsg)
 //Q_LOGGING_CATEGORY(loggerError, "qtc.designer.assetExportPlugin.view", QtCriticalMsg)
 
-static const int RetryIntervalMs = 500;
-static const int MinRetry = 2;
+const int RetryIntervalMs = 500;
+const int MinRetry = 2;
 }
 
 namespace QmlDesigner {
 
-AssetExporterView::AssetExporterView(QObject *parent) : AbstractView(parent),
-    m_timer(this)
+AssetExporterView::AssetExporterView(ExternalDependenciesInterface &externalDependencies)
+    : AbstractView(externalDependencies)
+    , m_timer(this)
 {
     m_timer.setInterval(RetryIntervalMs);
     // We periodically check if file is loaded.
@@ -81,7 +60,7 @@ bool AssetExporterView::saveQmlFile(QString *error) const
 
 void AssetExporterView::modelAttached(Model *model)
 {
-    if (model->rewriterView() && model->rewriterView()->inErrorState())
+    if (model->rewriterView() && !model->rewriterView()->errors().isEmpty())
         setState(LoadState::QmlErrorState);
 
     AbstractView::modelAttached(model);
@@ -103,9 +82,8 @@ instanceInformationsChanged(const QMultiHash<ModelNode, InformationName> &inform
         handleMaybeDone();
 }
 
-void AssetExporterView::instancesPreviewImageChanged(const QVector<ModelNode> &nodeList)
+void AssetExporterView::instancesPreviewImageChanged([[maybe_unused]] const QVector<ModelNode> &nodeList)
 {
-    Q_UNUSED(nodeList);
     emit previewChanged();
 }
 

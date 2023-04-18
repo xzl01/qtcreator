@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppcodemodelinspectordumper.h"
 
@@ -241,6 +219,7 @@ QString Utils::toString(CPlusPlus::Kind kind)
     TOKEN(T_LBRACKET);
     TOKEN(T_LESS);
     TOKEN(T_LESS_EQUAL);
+    TOKEN(T_LESS_EQUAL_GREATER);
     TOKEN(T_LESS_LESS);
     TOKEN(T_LESS_LESS_EQUAL);
     TOKEN(T_LPAREN);
@@ -395,23 +374,23 @@ QString Utils::toString(CPlusPlus::Kind kind)
     return QString();
 }
 
-QString Utils::toString(ProjectPart::ToolChainWordWidth width)
+QString Utils::toString(const ProjectExplorer::Abi &abi)
 {
-    switch (width) {
-    case ProjectPart::ToolChainWordWidth::WordWidth32Bit:
+    switch (abi.wordWidth()) {
+    case 32:
         return QString("32");
-    case ProjectPart::ToolChainWordWidth::WordWidth64Bit:
+    case 64:
         return QString("64");
     }
-    return QString();
+    return QString("??");
 }
 
-QString Utils::partsForFile(const QString &fileName)
+QString Utils::partsForFile(const ::Utils::FilePath &filePath)
 {
     const QList<ProjectPart::ConstPtr> parts
-        = CppModelManager::instance()->projectPart(fileName);
+        = CppModelManager::instance()->projectPart(filePath);
     QString result;
-    foreach (const ProjectPart::ConstPtr &part, parts)
+    for (const ProjectPart::ConstPtr &part : parts)
         result += part->displayName + QLatin1Char(',');
     if (result.endsWith(QLatin1Char(',')))
         result.chop(1);
@@ -429,7 +408,7 @@ QString Utils::unresolvedFileNameWithDelimiters(const CPlusPlus::Document::Inclu
 QString Utils::pathListToString(const QStringList &pathList)
 {
     QStringList result;
-    foreach (const QString &path, pathList)
+    for (const QString &path : pathList)
         result << QDir::toNativeSeparators(path);
     return result.join(QLatin1Char('\n'));
 }
@@ -437,10 +416,10 @@ QString Utils::pathListToString(const QStringList &pathList)
 QString Utils::pathListToString(const ProjectExplorer::HeaderPaths &pathList)
 {
     QStringList result;
-    foreach (const ProjectExplorer::HeaderPath &path, pathList) {
+    for (const ProjectExplorer::HeaderPath &path : pathList)
         result << QString(QLatin1String("%1 (%2 path)")).arg(
                       QDir::toNativeSeparators(path.path), toString(path.type));
-    }
+
     return result.join(QLatin1Char('\n'));
 }
 
@@ -509,12 +488,12 @@ void Dumper::dumpProjectInfos(const QList<ProjectInfo::ConstPtr> &projectInfos)
     const QByteArray i4 = indent(4);
 
     m_out << "Projects loaded: " << projectInfos.size() << "{{{1\n";
-    foreach (const ProjectInfo::ConstPtr &info, projectInfos) {
+    for (const ProjectInfo::ConstPtr &info : projectInfos) {
         m_out << i1 << "Project " << info->projectName()
               << " (" << info->projectFilePath().toUserOutput() << "){{{2\n";
 
         const QVector<ProjectPart::ConstPtr> projectParts = info->projectParts();
-        foreach (const ProjectPart::ConstPtr &part, projectParts) {
+        for (const ProjectPart::ConstPtr &part : projectParts) {
             QString projectName = QLatin1String("<None>");
             QString projectFilePath = "<None>";
             if (part->hasProject()) {
@@ -530,7 +509,7 @@ void Dumper::dumpProjectInfos(const QList<ProjectInfo::ConstPtr> &projectInfos)
             m_out << i3 << "Project File           : " << projectFilePath << "\n";
             m_out << i3 << "ToolChain Type         : " << part->toolchainType.toString() << "\n";
             m_out << i3 << "ToolChain Target Triple: " << part->toolChainTargetTriple << "\n";
-            m_out << i3 << "ToolChain Word Width   : " << part->toolChainWordWidth << "\n";
+            m_out << i3 << "ToolChain Word Width   : " << part->toolChainAbi.wordWidth() << "\n";
             m_out << i3 << "ToolChain Install Dir  : " << part->toolChainInstallDir << "\n";
             m_out << i3 << "Compiler Flags         : " << part->compilerFlags.join(", ") << "\n";
             m_out << i3 << "Selected For Building  : " << part->selectedForBuilding << "\n";
@@ -543,7 +522,7 @@ void Dumper::dumpProjectInfos(const QList<ProjectInfo::ConstPtr> &projectInfos)
 
             if (!part->files.isEmpty()) {
                 m_out << i3 << "Files:{{{4\n";
-                foreach (const ProjectFile &projectFile, part->files) {
+                for (const ProjectFile &projectFile : std::as_const(part->files)) {
                     m_out << i4 << Utils::toString(projectFile.kind) << ": " << projectFile.path;
                     if (!projectFile.active)
                         m_out << " (inactive)";
@@ -555,20 +534,20 @@ void Dumper::dumpProjectInfos(const QList<ProjectInfo::ConstPtr> &projectInfos)
                 m_out << i3 << "Toolchain Defines:{{{4\n";
                 const QList<QByteArray> defineLines =
                         ProjectExplorer::Macro::toByteArray(part->toolChainMacros).split('\n');
-                foreach (const QByteArray &defineLine, defineLines)
+                for (const QByteArray &defineLine : defineLines)
                     m_out << i4 << defineLine << "\n";
             }
             if (!part->projectMacros.isEmpty()) {
                 m_out << i3 << "Project Defines:{{{4\n";
                 const QList<QByteArray> defineLines =
                         ProjectExplorer::Macro::toByteArray(part->projectMacros).split('\n');
-                foreach (const QByteArray &defineLine, defineLines)
+                for (const QByteArray &defineLine : defineLines)
                     m_out << i4 << defineLine << "\n";
             }
 
             if (!part->headerPaths.isEmpty()) {
                 m_out << i3 << "Header Paths:{{{4\n";
-                foreach (const ProjectExplorer::HeaderPath &headerPath, part->headerPaths) {
+                for (const ProjectExplorer::HeaderPath &headerPath : std::as_const(part->headerPaths)) {
                     m_out << i4 << headerPath.path;
                     printIncludeType(m_out, headerPath.type);
                     m_out << "\n";
@@ -577,7 +556,7 @@ void Dumper::dumpProjectInfos(const QList<ProjectInfo::ConstPtr> &projectInfos)
 
             if (!part->precompiledHeaders.isEmpty()) {
                 m_out << i3 << "Precompiled Headers:{{{4\n";
-                foreach (const QString &precompiledHeader, part->precompiledHeaders)
+                for (const QString &precompiledHeader : std::as_const(part->precompiledHeaders))
                     m_out << i4 << precompiledHeader << "\n";
             }
         } // for part
@@ -601,8 +580,8 @@ void Dumper::dumpSnapshot(const CPlusPlus::Snapshot &snapshot, const QString &ti
         // Divide into shared and not shared
         QList<CPlusPlus::Document::Ptr> globallyShared;
         QList<CPlusPlus::Document::Ptr> notGloballyShared;
-        foreach (const CPlusPlus::Document::Ptr &document, documents) {
-            CPlusPlus::Document::Ptr globalDocument = m_globalSnapshot.document(document->fileName());
+        for (const CPlusPlus::Document::Ptr &document : documents) {
+            CPlusPlus::Document::Ptr globalDocument = m_globalSnapshot.document(document->filePath());
             if (globalDocument && globalDocument->fingerprint() == document->fingerprint())
                 globallyShared.append(document);
             else
@@ -641,7 +620,7 @@ void Dumper::dumpMergedEntities(const ProjectExplorer::HeaderPaths &mergedHeader
     const QByteArray i3 = indent(3);
 
     m_out << i2 << "Merged Header Paths{{{2\n";
-    foreach (const ProjectExplorer::HeaderPath &hp, mergedHeaderPaths) {
+    for (const ProjectExplorer::HeaderPath &hp : mergedHeaderPaths) {
         m_out << i3 << hp.path;
         printIncludeType(m_out, hp.type);
         m_out << "\n";
@@ -652,7 +631,7 @@ void Dumper::dumpMergedEntities(const ProjectExplorer::HeaderPaths &mergedHeader
 
 void Dumper::dumpStringList(const QStringList &list, const QByteArray &indent)
 {
-    foreach (const QString &item, list)
+    for (const QString &item : list)
         m_out << indent << item << "\n";
 }
 
@@ -661,26 +640,26 @@ void Dumper::dumpDocuments(const QList<CPlusPlus::Document::Ptr> &documents, boo
     const QByteArray i2 = indent(2);
     const QByteArray i3 = indent(3);
     const QByteArray i4 = indent(4);
-    foreach (const CPlusPlus::Document::Ptr &document, documents) {
+    for (const CPlusPlus::Document::Ptr &document : documents) {
         if (skipDetails) {
-            m_out << i2 << "\"" << document->fileName() << "\"\n";
+            m_out << i2 << "\"" << document->filePath() << "\"\n";
             continue;
         }
 
-        m_out << i2 << "Document \"" << document->fileName() << "\"{{{3\n";
+        m_out << i2 << "Document \"" << document->filePath() << "\"{{{3\n";
         m_out << i3 << "Last Modified  : " << Utils::toString(document->lastModified()) << "\n";
         m_out << i3 << "Revision       : " << Utils::toString(document->revision()) << "\n";
         m_out << i3 << "Editor Revision: " << Utils::toString(document->editorRevision()) << "\n";
         m_out << i3 << "Check Mode     : " << Utils::toString(document->checkMode()) << "\n";
         m_out << i3 << "Tokenized      : " << Utils::toString(document->isTokenized()) << "\n";
         m_out << i3 << "Parsed         : " << Utils::toString(document->isParsed()) << "\n";
-        m_out << i3 << "Project Parts  : " << Utils::partsForFile(document->fileName()) << "\n";
+        m_out << i3 << "Project Parts  : " << Utils::partsForFile(document->filePath()) << "\n";
 
         const QList<CPlusPlus::Document::Include> includes = document->unresolvedIncludes()
                 + document->resolvedIncludes();
         if (!includes.isEmpty()) {
             m_out << i3 << "Includes:{{{4\n";
-            foreach (const CPlusPlus::Document::Include &include, includes) {
+            for (const CPlusPlus::Document::Include &include : includes) {
                 m_out << i4 << "at line " << include.line() << ": "
                       << Utils::unresolvedFileNameWithDelimiters(include) << " ==> "
                       << include.resolvedFileName() << "\n";
@@ -691,7 +670,7 @@ void Dumper::dumpDocuments(const QList<CPlusPlus::Document::Ptr> &documents, boo
                 = document->diagnosticMessages();
         if (!diagnosticMessages.isEmpty()) {
             m_out << i3 << "Diagnostic Messages:{{{4\n";
-            foreach (const CPlusPlus::Document::DiagnosticMessage &msg, diagnosticMessages) {
+            for (const CPlusPlus::Document::DiagnosticMessage &msg : diagnosticMessages) {
                 const auto level =
                     static_cast<CPlusPlus::Document::DiagnosticMessage::Level>(msg.level());
                 m_out << i4 << "at " << msg.line() << ":" << msg.column() << ", " << Utils::toString(level)
@@ -702,14 +681,14 @@ void Dumper::dumpDocuments(const QList<CPlusPlus::Document::Ptr> &documents, boo
         const QList<CPlusPlus::Macro> macroDefinitions = document->definedMacros();
         if (!macroDefinitions.isEmpty()) {
             m_out << i3 << "(Un)Defined Macros:{{{4\n";
-            foreach (const CPlusPlus::Macro &macro, macroDefinitions)
+            for (const CPlusPlus::Macro &macro : macroDefinitions)
                 m_out << i4 << "at line " << macro.line() << ": " << macro.toString() << "\n";
         }
 
         const QList<CPlusPlus::Document::MacroUse> macroUses = document->macroUses();
         if (!macroUses.isEmpty()) {
             m_out << i3 << "Macro Uses:{{{4\n";
-            foreach (const CPlusPlus::Document::MacroUse &use, macroUses) {
+            for (const CPlusPlus::Document::MacroUse &use : macroUses) {
                 const QString type = use.isFunctionLike()
                         ? QLatin1String("function-like") : QLatin1String("object-like");
                 m_out << i4 << "at line " << use.beginLine() << ", "

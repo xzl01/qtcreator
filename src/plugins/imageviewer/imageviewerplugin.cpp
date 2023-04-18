@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Mingulov.
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Mingulov.
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "imageviewerplugin.h"
+
 #include "imageviewer.h"
-#include "imageviewerfactory.h"
 #include "imageviewerconstants.h"
+#include "imageviewertr.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -42,8 +21,7 @@
 using namespace Core;
 using namespace Utils;
 
-namespace ImageViewer {
-namespace Internal {
+namespace ImageViewer::Internal {
 
 class ImageViewerAction final : public QAction
 {
@@ -67,8 +45,6 @@ public:
 
 class ImageViewerPluginPrivate final
 {
-    Q_DECLARE_TR_FUNCTIONS(Imageviewer::Internal::ImageViewerPlugin)
-
 public:
     ImageViewerFactory imageViewerFactory;
 
@@ -90,40 +66,46 @@ public:
     ImageViewerAction fitToScreenAction {
         Constants::ACTION_FIT_TO_SCREEN,
         &ImageViewer::fitToScreen,
-        tr("Fit to Screen"),
-        tr("Ctrl+=")
+        Tr::tr("Fit to Screen"),
+        Tr::tr("Ctrl+=")
     };
 
     ImageViewerAction switchBackgroundAction {
         Constants::ACTION_BACKGROUND,
         &ImageViewer::switchViewBackground,
-        tr("Switch Background"),
-        tr("Ctrl+[")
+        Tr::tr("Switch Background"),
+        Tr::tr("Ctrl+[")
     };
 
     ImageViewerAction switchOutlineAction {
         Constants::ACTION_OUTLINE,
         &ImageViewer::switchViewOutline,
-        tr("Switch Outline"),
-        tr("Ctrl+]")
+        Tr::tr("Switch Outline"),
+        Tr::tr("Ctrl+]")
     };
 
     ImageViewerAction toggleAnimationAction {
         Constants::ACTION_TOGGLE_ANIMATION,
         &ImageViewer::togglePlay,
-        tr("Toggle Animation")
+        Tr::tr("Toggle Animation")
     };
 
     ImageViewerAction exportImageAction {
         Constants::ACTION_EXPORT_IMAGE,
         &ImageViewer::exportImage,
-        tr("Export Image")
+        Tr::tr("Export Image")
     };
 
     ImageViewerAction exportMulitImagesAction {
         Constants::ACTION_EXPORT_MULTI_IMAGES,
         &ImageViewer::exportMultiImages,
-        tr("Export Multiple Images"),
+        Tr::tr("Export Multiple Images"),
+    };
+
+    ImageViewerAction copyDataUrlAction {
+        Constants::ACTION_COPY_DATA_URL,
+        &ImageViewer::copyDataUrl,
+        Tr::tr("Copy as Data URL"),
     };
 };
 
@@ -132,15 +114,9 @@ ImageViewerPlugin::~ImageViewerPlugin()
     delete  d;
 }
 
-bool ImageViewerPlugin::initialize(const QStringList &arguments, QString *errorMessage)
+void ImageViewerPlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorMessage)
-
     d = new ImageViewerPluginPrivate;
-
-    return true;
 }
 
-} // namespace Internal
-} // namespace ImageViewer
+} // ImageViewer::Internal

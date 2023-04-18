@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 import QtQuick.Templates 2.15 as T
@@ -41,9 +19,13 @@ T.SpinBox {
 
     property bool edit: spinBoxInput.activeFocus
     // This property is used to indicate the global hover state
-    property bool hover: (mySpinBox.hovered || actionIndicator.hover) && mySpinBox.enabled
+    property bool hover: (spinBoxInput.hover || actionIndicator.hover || spinBoxIndicatorUp.hover
+                         || spinBoxIndicatorDown.hover || sliderIndicator.hover)
+                         && mySpinBox.enabled
     property bool drag: false
     property bool sliderDrag: sliderPopup.drag
+
+    property bool dirty: false // user modification flag
 
     property alias actionIndicatorVisible: actionIndicator.visible
     property real __actionIndicatorWidth: StudioTheme.Values.actionIndicatorWidth
@@ -57,12 +39,22 @@ T.SpinBox {
     property real __sliderIndicatorWidth: StudioTheme.Values.sliderIndicatorWidth
     property real __sliderIndicatorHeight: StudioTheme.Values.sliderIndicatorHeight
 
+    property alias __devicePixelRatio: spinBoxInput.devicePixelRatio
+    property alias pixelsPerUnit: spinBoxInput.pixelsPerUnit
+
+    property alias compressedValueTimer: myTimer
+
+    property string preFocusText: ""
+
     signal compressedValueModified
+    signal dragStarted
+    signal dragEnded
+    signal dragging
 
     // Use custom wheel handling due to bugs
     property bool __wheelEnabled: false
     wheelEnabled: false
-    hoverEnabled: true // TODO
+    hoverEnabled: true
 
     width: StudioTheme.Values.defaultControlWidth
     height: StudioTheme.Values.defaultControlHeight
@@ -104,12 +96,11 @@ T.SpinBox {
         myControl: mySpinBox
         iconFlip: -1
         visible: mySpinBox.spinBoxIndicatorVisible
-        //hover: mySpinBox.up.hovered // TODO QTBUG-74688
         pressed: mySpinBox.up.pressed
         x: actionIndicator.width + StudioTheme.Values.border
         y: StudioTheme.Values.border
-        width: spinBoxIndicatorVisible ? mySpinBox.__spinBoxIndicatorWidth : 0
-        height: spinBoxIndicatorVisible ? mySpinBox.__spinBoxIndicatorHeight : 0
+        width: mySpinBox.spinBoxIndicatorVisible ? mySpinBox.__spinBoxIndicatorWidth : 0
+        height: mySpinBox.spinBoxIndicatorVisible ? mySpinBox.__spinBoxIndicatorHeight : 0
 
         enabled: (mySpinBox.from < mySpinBox.to) ? mySpinBox.value < mySpinBox.to
                                                  : mySpinBox.value > mySpinBox.to
@@ -119,12 +110,11 @@ T.SpinBox {
         id: spinBoxIndicatorDown
         myControl: mySpinBox
         visible: mySpinBox.spinBoxIndicatorVisible
-        //hover: mySpinBox.down.hovered // TODO QTBUG-74688
         pressed: mySpinBox.down.pressed
         x: actionIndicator.width + StudioTheme.Values.border
         y: spinBoxIndicatorUp.y + spinBoxIndicatorUp.height
-        width: spinBoxIndicatorVisible ? mySpinBox.__spinBoxIndicatorWidth : 0
-        height: spinBoxIndicatorVisible ? mySpinBox.__spinBoxIndicatorHeight : 0
+        width: mySpinBox.spinBoxIndicatorVisible ? mySpinBox.__spinBoxIndicatorWidth : 0
+        height: mySpinBox.spinBoxIndicatorVisible ? mySpinBox.__spinBoxIndicatorHeight : 0
 
         enabled: (mySpinBox.from < mySpinBox.to) ? mySpinBox.value > mySpinBox.from
                                                  : mySpinBox.value < mySpinBox.from
@@ -133,6 +123,23 @@ T.SpinBox {
     contentItem: SpinBoxInput {
         id: spinBoxInput
         myControl: mySpinBox
+
+        function handleEditingFinished() {
+            mySpinBox.focus = false
+
+            // Keep the dirty state before calling setValueFromInput(),
+            // it will be set to false (cleared) internally
+            var valueModified = mySpinBox.dirty
+
+            mySpinBox.setValueFromInput()
+            myTimer.stop()
+
+            // Only trigger the signal, if the value was modified
+            if (valueModified)
+                mySpinBox.compressedValueModified()
+        }
+
+        onEditingFinished: spinBoxInput.handleEditingFinished()
     }
 
     background: Rectangle {
@@ -238,7 +245,7 @@ T.SpinBox {
         id: myTimer
         repeat: false
         running: false
-        interval: 100
+        interval: 400
         onTriggered: mySpinBox.compressedValueModified()
     }
 
@@ -246,9 +253,10 @@ T.SpinBox {
     onFocusChanged: mySpinBox.setValueFromInput()
     onDisplayTextChanged: spinBoxInput.text = mySpinBox.displayText
     onActiveFocusChanged: {
-        if (mySpinBox.activeFocus)
-            // QTBUG-75862 && mySpinBox.focusReason === Qt.TabFocusReason)
+        if (mySpinBox.activeFocus) { // QTBUG-75862 && mySpinBox.focusReason === Qt.TabFocusReason)
+            mySpinBox.preFocusText = spinBoxInput.text
             spinBoxInput.selectAll()
+        }
 
         if (sliderPopup.opened && !mySpinBox.activeFocus)
             sliderPopup.close()
@@ -287,8 +295,11 @@ T.SpinBox {
             mySpinBox.stepSize = currStepSize
         }
 
-        if (event.key === Qt.Key_Escape)
-            mySpinBox.focus = false
+        if (event.key === Qt.Key_Escape) {
+            spinBoxInput.text = mySpinBox.preFocusText
+            mySpinBox.dirty = true
+            spinBoxInput.handleEditingFinished()
+        }
 
         // FIX: This is a temporary fix for QTBUG-74239
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
@@ -296,13 +307,13 @@ T.SpinBox {
     }
 
     function clamp(v, lo, hi) {
-        if (v < lo || v > hi)
-            return Math.min(Math.max(lo, v), hi)
-
-        return v
+        return (v < lo || v > hi) ? Math.min(Math.max(lo, v), hi) : v
     }
 
     function setValueFromInput() {
+        if (!mySpinBox.dirty)
+            return
+
         // FIX: This is a temporary fix for QTBUG-74239
         var currValue = mySpinBox.value
 
@@ -320,5 +331,7 @@ T.SpinBox {
 
         if (mySpinBox.value !== currValue)
             mySpinBox.valueModified()
+
+        mySpinBox.dirty = false
     }
 }

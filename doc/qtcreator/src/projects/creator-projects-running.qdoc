@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // **********************************************************************
 // NOTE: the sections are not ordered by their logical order to avoid
@@ -47,7 +25,7 @@
 
     To run executable files without deploying them first, select \uicontrol Build >
     \uicontrol {Run Without Deployment}. To make this the default option, deselect the
-    \uicontrol Tools > \uicontrol Options > \uicontrol {Build & Run} >
+    \uicontrol Edit > \uicontrol Preferences > \uicontrol {Build & Run} >
     \uicontrol General > \uicontrol {Always deploy project before running it}
     check box.
 
@@ -77,13 +55,13 @@
     Select \uicontrol Manage to manage device settings. For example, you can add
     AVDs or manually start disconnected AVDs.
 
-    The \uicontrol {Application Output} pane displays the status of the
+    \l {Application Output} displays the status of the
     application while it is running. You can select the \uicontrol Run button
-    in the pane to re-run applications without building them first. This is
-    useful when developing Qt Quick applications, because the QML files are
+    to re-run applications without building them first. This is
+    useful when developing Qt Quick applications because the QML files are
     interpreted at runtime. Therefore, the application does not need to be
     built again if you edited only QML files. This saves time especially if
-    the application contains large image files that would need to be bundled
+    the application has large image files that would need to be bundled
     into the resource file before running the application.
 
     \image qtcreator-application-output.png

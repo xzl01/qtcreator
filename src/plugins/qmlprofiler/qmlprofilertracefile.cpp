@@ -1,31 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "qmlprofilertracefile.h"
-#include "qmlprofilernotesmodel.h"
 #include "qmlprofilerconstants.h"
+#include "qmlprofilernotesmodel.h"
+#include "qmlprofilertr.h"
+#include "qmlprofilertracefile.h"
 
 #include <utils/qtcassert.h>
 
@@ -80,7 +59,7 @@ Q_STATIC_ASSERT(sizeof(MESSAGE_STRINGS) == MaximumMessage * sizeof(const char *)
 
 static QPair<Message, RangeType> qmlTypeAsEnum(const QString &typeString)
 {
-    QPair<Message, RangeType> ret(MaximumMessage, MaximumRangeType);
+    QPair<Message, RangeType> ret(UndefinedMessage, UndefinedRangeType);
 
     for (int i = 0; i < MaximumMessage; ++i) {
         if (typeString == _(MESSAGE_STRINGS[i])) {
@@ -96,7 +75,7 @@ static QPair<Message, RangeType> qmlTypeAsEnum(const QString &typeString)
         }
     }
 
-    if (ret.first == MaximumMessage && ret.second == MaximumRangeType) {
+    if (ret.first == UndefinedMessage && ret.second == UndefinedRangeType) {
         bool isNumber = false;
         int type = typeString.toUInt(&isNumber);
         if (isNumber && type < MaximumRangeType)
@@ -191,7 +170,7 @@ void QmlProfilerTraceFile::loadQtd(QIODevice *device)
     }
 
     if (stream.hasError())
-        fail(tr("Error while parsing trace data file: %1").arg(stream.errorString()));
+        fail(Tr::tr("Error while parsing trace data file: %1").arg(stream.errorString()));
     else
         finish();
 }
@@ -204,7 +183,7 @@ void QmlProfilerTraceFile::loadQzt(QIODevice *device)
     QByteArray magic;
     stream >> magic;
     if (magic != QByteArray("QMLPROFILER")) {
-        fail(tr("Invalid magic: %1").arg(QLatin1String(magic)));
+        fail(Tr::tr("Invalid magic: %1").arg(QLatin1String(magic)));
         return;
     }
 
@@ -212,7 +191,7 @@ void QmlProfilerTraceFile::loadQzt(QIODevice *device)
     stream >> dataStreamVersion;
 
     if (dataStreamVersion > QDataStream::Qt_DefaultCompiledVersion) {
-        fail(tr("Unknown data stream version: %1").arg(dataStreamVersion));
+        fail(Tr::tr("Unknown data stream version: %1").arg(dataStreamVersion));
         return;
     }
     stream.setVersion(dataStreamVersion);
@@ -236,7 +215,7 @@ void QmlProfilerTraceFile::loadQzt(QIODevice *device)
         quint32 numEventTypes;
         bufferStream >> numEventTypes;
         if (numEventTypes > quint32(std::numeric_limits<int>::max())) {
-            fail(tr("Excessive number of event types: %1").arg(numEventTypes));
+            fail(Tr::tr("Excessive number of event types: %1").arg(numEventTypes));
             return;
         }
 
@@ -269,7 +248,7 @@ void QmlProfilerTraceFile::loadQzt(QIODevice *device)
             bufferStream >> event;
             if (bufferStream.status() == QDataStream::Ok) {
                 if (event.typeIndex() >= traceManager()->numEventTypes()) {
-                    fail(tr("Invalid type index %1").arg(event.typeIndex()));
+                    fail(Tr::tr("Invalid type index %1").arg(event.typeIndex()));
                     return;
                 }
                 addFeature(manager->eventType(event.typeIndex()).feature());
@@ -278,7 +257,7 @@ void QmlProfilerTraceFile::loadQzt(QIODevice *device)
             } else if (bufferStream.status() == QDataStream::ReadPastEnd) {
                 break; // Apparently EOF is a character so we end up here after the last event.
             } else if (bufferStream.status() == QDataStream::ReadCorruptData) {
-                fail(tr("Corrupt data before position %1.").arg(device->pos()));
+                fail(Tr::tr("Corrupt data before position %1.").arg(device->pos()));
                 return;
             } else {
                 Q_UNREACHABLE();
@@ -309,7 +288,7 @@ void QmlProfilerTraceFile::loadEventTypes(QXmlStreamReader &stream)
 
     int typeIndex = -1;
 
-    QPair<Message, RangeType> messageAndRange(MaximumMessage, MaximumRangeType);
+    QPair<Message, RangeType> messageAndRange(UndefinedMessage, UndefinedRangeType);
     int detailType = -1;
     QString displayName;
     QString data;
@@ -317,7 +296,7 @@ void QmlProfilerTraceFile::loadEventTypes(QXmlStreamReader &stream)
     int line = 0, column = 0;
 
     auto clearType = [&](){
-        messageAndRange = QPair<Message, RangeType>(MaximumMessage, MaximumRangeType);
+        messageAndRange = QPair<Message, RangeType>(UndefinedMessage, UndefinedRangeType);
         detailType = -1;
         displayName.clear();
         data.clear();
@@ -389,7 +368,7 @@ void QmlProfilerTraceFile::loadEventTypes(QXmlStreamReader &stream)
                 // confusing), even though they clearly aren't ranges. Convert that to something
                 // sane here.
                 if (detailType == 4) {
-                    messageAndRange = QPair<Message, RangeType>(Event, MaximumRangeType);
+                    messageAndRange = QPair<Message, RangeType>(Event, UndefinedRangeType);
                     detailType = AnimationFrame;
                 }
             }
@@ -695,13 +674,13 @@ void QmlProfilerTraceFile::saveQtd(QIODevice *device)
     QStack<QmlEvent> stack;
     qint64 lastProgressTimestamp = traceStart();
     modelManager()->replayQmlEvents([&](const QmlEvent &event, const QmlEventType &type) {
-        if (type.rangeType() != MaximumRangeType && event.rangeStage() == RangeStart) {
+        if (type.rangeType() != UndefinedRangeType && event.rangeStage() == RangeStart) {
             stack.push(event);
             return;
         }
 
         stream.writeStartElement(_("range"));
-        if (type.rangeType() != MaximumRangeType && event.rangeStage() == RangeEnd) {
+        if (type.rangeType() != UndefinedRangeType && event.rangeStage() == RangeEnd) {
             QmlEvent start = stack.pop();
             stream.writeAttribute(_("startTime"), QString::number(start.timestamp()));
             stream.writeAttribute(_("duration"),
@@ -788,9 +767,9 @@ void QmlProfilerTraceFile::saveQtd(QIODevice *device)
         stream.writeEndDocument();
 
         if (stream.hasError())
-            fail(tr("Error writing trace file."));
+            fail(Tr::tr("Error writing trace file."));
     }, [this](const QString &message) {
-        fail(tr("Could not re-read events from temporary trace file: %1\nSaving failed.")
+        fail(Tr::tr("Could not re-read events from temporary trace file: %1\nSaving failed.")
              .arg(message));
     }, future());
 }
@@ -858,7 +837,7 @@ void QmlProfilerTraceFile::saveQzt(QIODevice *device)
             addEventsProgress(traceEnd() - lastProgressTimestamp);
         }
     }, [this](const QString &message) {
-        fail(tr("Could not re-read events from temporary trace file: %1\nSaving failed.")
+        fail(Tr::tr("Could not re-read events from temporary trace file: %1\nSaving failed.")
              .arg(message));
     }, future());
 }

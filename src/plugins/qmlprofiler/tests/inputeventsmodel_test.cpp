@@ -1,29 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "inputeventsmodel_test.h"
+#include "../qmlprofilertr.h"
 
 #include <tracing/timelinemodel_p.h>
 #include <tracing/timelineformattime.h>
@@ -41,8 +20,8 @@ static InputEventType inputType(int i)
 InputEventsModelTest::InputEventsModelTest(QObject *parent) :
     QObject(parent), model(&manager, &aggregator)
 {
-    keyTypeId = manager.appendEventType(QmlEventType(Event, MaximumRangeType, Key));
-    mouseTypeId = manager.appendEventType(QmlEventType(Event, MaximumRangeType, Mouse));
+    keyTypeId = manager.appendEventType(QmlEventType(Event, UndefinedRangeType, Key));
+    mouseTypeId = manager.appendEventType(QmlEventType(Event, UndefinedRangeType, Mouse));
 }
 
 void InputEventsModelTest::initTestCase()
@@ -92,11 +71,11 @@ void InputEventsModelTest::testLabels()
 {
     QVariantList labels = model.labels();
     QVariantMap mouseLabel = labels[0].toMap();
-    QCOMPARE(mouseLabel[QString("description")].toString(), model.tr("Mouse Events"));
+    QCOMPARE(mouseLabel[QString("description")].toString(), Tr::tr("Mouse Events"));
     QCOMPARE(mouseLabel[QString("id")].toInt(), static_cast<int>(Mouse));
 
     QVariantMap keyLabel = labels[1].toMap();
-    QCOMPARE(keyLabel[QString("description")].toString(), model.tr("Keyboard Events"));
+    QCOMPARE(keyLabel[QString("description")].toString(), Tr::tr("Keyboard Events"));
     QCOMPARE(keyLabel[QString("id")].toInt(), static_cast<int>(Key));
 }
 
@@ -104,75 +83,75 @@ void InputEventsModelTest::testDetails()
 {
     for (int i = 0; i < 10; ++i) {
         const QVariantMap details = model.details(i);
-        QCOMPARE(details[model.tr("Timestamp")].toString(), Timeline::formatTime(i));
+        QCOMPARE(details[Tr::tr("Timestamp")].toString(), Timeline::formatTime(i));
         QString displayName = details[QString("displayName")].toString();
         QVERIFY(!displayName.isEmpty());
         switch (inputType(i)) {
         case InputKeyPress:
-            QCOMPARE(displayName, model.tr("Key Press"));
+            QCOMPARE(displayName, Tr::tr("Key Press"));
             if (i == 0) {
                 // all the numbers are 0 here, so no other members
-                QVERIFY(!details.contains(model.tr("Key")));
-                QVERIFY(!details.contains(model.tr("Modifiers")));
+                QVERIFY(!details.contains(Tr::tr("Key")));
+                QVERIFY(!details.contains(Tr::tr("Modifiers")));
             } else {
-                QCOMPARE(details[model.tr("Key")].toString(), QString("Key_Space"));
-                QCOMPARE(details[model.tr("Modifiers")].toString(),
+                QCOMPARE(details[Tr::tr("Key")].toString(), QString("Key_Space"));
+                QCOMPARE(details[Tr::tr("Modifiers")].toString(),
                         QString("ShiftModifier|MetaModifier"));
             }
             break;
         case InputKeyRelease:
-            QCOMPARE(displayName, model.tr("Key Release"));
-            QCOMPARE(details[model.tr("Modifiers")].toString(), QString("ShiftModifier"));
-            QCOMPARE(details[model.tr("Key")].toString(), QString("Key_Space"));
+            QCOMPARE(displayName, Tr::tr("Key Release"));
+            QCOMPARE(details[Tr::tr("Modifiers")].toString(), QString("ShiftModifier"));
+            QCOMPARE(details[Tr::tr("Key")].toString(), QString("Key_Space"));
             break;
         case InputKeyUnknown:
-            QCOMPARE(displayName, model.tr("Keyboard Event"));
-            QVERIFY(!details.contains(model.tr("Key")));
-            QVERIFY(!details.contains(model.tr("Modifiers")));
+            QCOMPARE(displayName, Tr::tr("Keyboard Event"));
+            QVERIFY(!details.contains(Tr::tr("Key")));
+            QVERIFY(!details.contains(Tr::tr("Modifiers")));
             break;
         case InputMousePress:
-            QCOMPARE(displayName, model.tr("Mouse Press"));
+            QCOMPARE(displayName, Tr::tr("Mouse Press"));
 
             // 0x60 is not a valid mouse button
-            QVERIFY(details.contains(model.tr("Button")));
-            QVERIFY(details[model.tr("Button")].toString().isEmpty());
+            QVERIFY(details.contains(Tr::tr("Button")));
+            QVERIFY(details[Tr::tr("Button")].toString().isEmpty());
 
-            QCOMPARE(details[model.tr("Result")].toString(),
+            QCOMPARE(details[Tr::tr("Result")].toString(),
                     QString("ExtraButton23|MaxMouseButton"));
             break;
         case InputMouseRelease:
-            QCOMPARE(displayName, model.tr("Mouse Release"));
-            QCOMPARE(details[model.tr("Button")].toString(), QString("ExtraButton5"));
-            QVERIFY(details.contains(model.tr("Result")));
-            QVERIFY(details[model.tr("Result")].toString().isEmpty());
+            QCOMPARE(displayName, Tr::tr("Mouse Release"));
+            QCOMPARE(details[Tr::tr("Button")].toString(), QString("ExtraButton5"));
+            QVERIFY(details.contains(Tr::tr("Result")));
+            QVERIFY(details[Tr::tr("Result")].toString().isEmpty());
             break;
         case InputMouseMove:
-            QCOMPARE(displayName, model.tr("Mouse Move"));
-            QCOMPARE(details[model.tr("X")].toString(), QString("160"));
-            QCOMPARE(details[model.tr("Y")].toString(), QString("167772160"));
+            QCOMPARE(displayName, Tr::tr("Mouse Move"));
+            QCOMPARE(details[Tr::tr("X")].toString(), QString("160"));
+            QCOMPARE(details[Tr::tr("Y")].toString(), QString("167772160"));
             break;
         case InputMouseDoubleClick:
-            QCOMPARE(displayName, model.tr("Double Click"));
-            QVERIFY(details.contains(model.tr("Button")));
-            QVERIFY(details[model.tr("Button")].toString().isEmpty());
-            QCOMPARE(details[model.tr("Result")].toString(), QString("MaxMouseButton"));
+            QCOMPARE(displayName, Tr::tr("Double Click"));
+            QVERIFY(details.contains(Tr::tr("Button")));
+            QVERIFY(details[Tr::tr("Button")].toString().isEmpty());
+            QCOMPARE(details[Tr::tr("Result")].toString(), QString("MaxMouseButton"));
             break;
         case InputMouseWheel:
-            QCOMPARE(displayName, model.tr("Mouse Wheel"));
-            QCOMPARE(details[model.tr("Angle X")].toString(), QString("224"));
-            QCOMPARE(details[model.tr("Angle Y")].toString(), QString("234881024"));
+            QCOMPARE(displayName, Tr::tr("Mouse Wheel"));
+            QCOMPARE(details[Tr::tr("Angle X")].toString(), QString("224"));
+            QCOMPARE(details[Tr::tr("Angle Y")].toString(), QString("234881024"));
             break;
         case InputMouseUnknown:
-            QCOMPARE(displayName, model.tr("Mouse Event"));
-            QVERIFY(!details.contains(model.tr("X")));
-            QVERIFY(!details.contains(model.tr("Y")));
-            QVERIFY(!details.contains(model.tr("Angle X")));
-            QVERIFY(!details.contains(model.tr("Angle Y")));
-            QVERIFY(!details.contains(model.tr("Button")));
-            QVERIFY(!details.contains(model.tr("Result")));
+            QCOMPARE(displayName, Tr::tr("Mouse Event"));
+            QVERIFY(!details.contains(Tr::tr("X")));
+            QVERIFY(!details.contains(Tr::tr("Y")));
+            QVERIFY(!details.contains(Tr::tr("Angle X")));
+            QVERIFY(!details.contains(Tr::tr("Angle Y")));
+            QVERIFY(!details.contains(Tr::tr("Button")));
+            QVERIFY(!details.contains(Tr::tr("Result")));
             break;
         default:
-            QCOMPARE(displayName, model.tr("Unknown"));
+            QCOMPARE(displayName, Tr::tr("Unknown"));
             break;
         }
     }

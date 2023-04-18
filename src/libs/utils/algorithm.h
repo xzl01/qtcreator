@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "predicates.h"
-#include "optional.h"
 
 #include <qcompilerdetection.h> // for Q_REQUIRED_RESULT
 
@@ -44,6 +21,7 @@
 #include <QStringList>
 
 #include <memory>
+#include <optional>
 #include <type_traits>
 
 namespace Utils
@@ -76,6 +54,8 @@ bool allOf(const T &container, F predicate);
 /////////////////////////
 template<typename T, typename F>
 void erase(T &container, F predicate);
+template<typename T, typename F>
+bool eraseOne(T &container, F predicate);
 
 /////////////////////////
 // contains
@@ -207,7 +187,7 @@ auto toConstReferences(const SourceContainer &sources);
 // take
 /////////////////////////
 template<class C, typename P>
-Q_REQUIRED_RESULT optional<typename C::value_type> take(C &container, P predicate);
+Q_REQUIRED_RESULT std::optional<typename C::value_type> take(C &container, P predicate);
 template<typename C, typename R, typename S>
 Q_REQUIRED_RESULT decltype(auto) take(C &container, R S::*member);
 template<typename C, typename R, typename S>
@@ -442,7 +422,15 @@ void erase(T &container, F predicate)
     container.erase(std::remove_if(std::begin(container), std::end(container), predicate),
                     std::end(container));
 }
-
+template<typename T, typename F>
+bool eraseOne(T &container, F predicate)
+{
+    const auto it = std::find_if(std::begin(container), std::end(container), predicate);
+    if (it == std::end(container))
+        return false;
+    container.erase(it);
+    return true;
+}
 
 //////////////////
 // contains
@@ -903,6 +891,17 @@ C filtered(const C &container, R (S::*predicate)() const)
 }
 
 //////////////////
+// filteredCast
+/////////////////
+template<typename R, typename C, typename F>
+Q_REQUIRED_RESULT R filteredCast(const C &container, F predicate)
+{
+    R out;
+    std::copy_if(std::begin(container), std::end(container), inserter(out), predicate);
+    return out;
+}
+
+//////////////////
 // partition
 /////////////////
 
@@ -1006,8 +1005,78 @@ inline void sort(Container &container, Predicate p)
     std::stable_sort(std::begin(container), std::end(container), p);
 }
 
+// const lvalue
+template<typename Container>
+inline Container sorted(const Container &container)
+{
+    Container c = container;
+    sort(c);
+    return c;
+}
+
+// non-const lvalue
+// This is needed because otherwise the "universal" reference below is used, modifying the input
+// container.
+template<typename Container>
+inline Container sorted(Container &container)
+{
+    Container c = container;
+    sort(c);
+    return c;
+}
+
+// non-const rvalue (actually rvalue or lvalue, but lvalue is handled above)
+template<typename Container>
+inline Container sorted(Container &&container)
+{
+    sort(container);
+    return std::move(container);
+}
+
+// const rvalue
+template<typename Container>
+inline Container sorted(const Container &&container)
+{
+    return sorted(container);
+}
+
+// const lvalue
+template<typename Container, typename Predicate>
+inline Container sorted(const Container &container, Predicate p)
+{
+    Container c = container;
+    sort(c, p);
+    return c;
+}
+
+// non-const lvalue
+// This is needed because otherwise the "universal" reference below is used, modifying the input
+// container.
+template<typename Container, typename Predicate>
+inline Container sorted(Container &container, Predicate p)
+{
+    Container c = container;
+    sort(c, p);
+    return c;
+}
+
+// non-const rvalue (actually rvalue or lvalue, but lvalue is handled above)
+template<typename Container, typename Predicate>
+inline Container sorted(Container &&container, Predicate p)
+{
+    sort(container, p);
+    return std::move(container);
+}
+
+// const rvalue
+template<typename Container, typename Predicate>
+inline Container sorted(const Container &&container, Predicate p)
+{
+    return sorted(container, p);
+}
+
 // pointer to member
-template <typename Container, typename R, typename S>
+template<typename Container, typename R, typename S>
 inline void sort(Container &container, R S::*member)
 {
     auto f = std::mem_fn(member);
@@ -1018,8 +1087,43 @@ inline void sort(Container &container, R S::*member)
     });
 }
 
+// const lvalue
+template<typename Container, typename R, typename S>
+inline Container sorted(const Container &container, R S::*member)
+{
+    Container c = container;
+    sort(c, member);
+    return c;
+}
+
+// non-const lvalue
+// This is needed because otherwise the "universal" reference below is used, modifying the input
+// container.
+template<typename Container, typename R, typename S>
+inline Container sorted(Container &container, R S::*member)
+{
+    Container c = container;
+    sort(c, member);
+    return c;
+}
+
+// non-const rvalue (actually rvalue or lvalue, but lvalue is handled above)
+template<typename Container, typename R, typename S>
+inline Container sorted(Container &&container, R S::*member)
+{
+    sort(container, member);
+    return std::move(container);
+}
+
+// const rvalue
+template<typename Container, typename R, typename S>
+inline Container sorted(const Container &&container, R S::*member)
+{
+    return sorted(container, member);
+}
+
 // pointer to member function
-template <typename Container, typename R, typename S>
+template<typename Container, typename R, typename S>
 inline void sort(Container &container, R (S::*function)() const)
 {
     auto f = std::mem_fn(function);
@@ -1028,6 +1132,41 @@ inline void sort(Container &container, R (S::*function)() const)
               [&f](const_ref a, const_ref b) {
         return f(a) < f(b);
     });
+}
+
+// const lvalue
+template<typename Container, typename R, typename S>
+inline Container sorted(const Container &container, R (S::*function)() const)
+{
+    Container c = container;
+    sort(c, function);
+    return c;
+}
+
+// non-const lvalue
+// This is needed because otherwise the "universal" reference below is used, modifying the input
+// container.
+template<typename Container, typename R, typename S>
+inline Container sorted(Container &container, R (S::*function)() const)
+{
+    Container c = container;
+    sort(c, function);
+    return c;
+}
+
+// non-const rvalue (actually rvalue or lvalue, but lvalue is handled above)
+template<typename Container, typename R, typename S>
+inline Container sorted(Container &&container, R (S::*function)() const)
+{
+    sort(container, function);
+    return std::move(container);
+}
+
+// const rvalue
+template<typename Container, typename R, typename S>
+inline Container sorted(const Container &&container, R (S::*function)() const)
+{
+    return sorted(container, function);
 }
 
 //////////////////
@@ -1078,15 +1217,15 @@ auto toConstReferences(const SourceContainer &sources)
 /////////////////
 
 template<class C, typename P>
-Q_REQUIRED_RESULT optional<typename C::value_type> take(C &container, P predicate)
+Q_REQUIRED_RESULT std::optional<typename C::value_type> take(C &container, P predicate)
 {
     const auto end = std::end(container);
 
     const auto it = std::find_if(std::begin(container), end, predicate);
     if (it == end)
-        return nullopt;
+        return std::nullopt;
 
-    optional<typename C::value_type> result = Utils::make_optional(std::move(*it));
+    std::optional<typename C::value_type> result = std::make_optional(std::move(*it));
     container.erase(it);
     return result;
 }
@@ -1286,14 +1425,6 @@ QSet<T> toSet(const QList<T> &list)
     return QSet<T>(list.begin(), list.end());
 }
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-template<class T>
-QSet<T> toSet(const QVector<T> &vec)
-{
-    return QSet<T>(vec.begin(), vec.end());
-}
-#endif
-
 template<class T>
 QList<T> toList(const QSet<T> &set)
 {
@@ -1303,11 +1434,7 @@ QList<T> toList(const QSet<T> &set)
 template <class Key, class T>
 void addToHash(QHash<Key, T> *result, const QHash<Key, T> &additionalContents)
 {
-#if (QT_VERSION < QT_VERSION_CHECK(5, 15, 0))
-    result->unite(additionalContents);
-#else
     result->insert(additionalContents);
-#endif
 }
 
 } // namespace Utils

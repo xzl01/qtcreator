@@ -1,40 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "perfprofilertracemanager.h"
-#include "perfprofilertracefile.h"
-#include "perfprofilerconstants.h"
 #include "perfdatareader.h"
+#include "perfprofilerconstants.h"
+#include "perfprofilertr.h"
+#include "perfprofilertracefile.h"
+#include "perfprofilertracemanager.h"
 
 #include <coreplugin/progressmanager/progressmanager.h>
 #include <coreplugin/progressmanager/futureprogress.h>
 
 #include <utils/qtcassert.h>
 
-#include <QFileInfo>
 #include <QFutureInterface>
+
+using namespace Utils;
 
 namespace PerfProfiler {
 namespace Internal {
@@ -94,13 +74,13 @@ void PerfProfilerEventStorage::clear()
     m_file.clear();
     m_size = 0;
     if (!m_file.open())
-        m_errorHandler(tr("Failed to reset temporary trace file."));
+        m_errorHandler(Tr::tr("Failed to reset temporary trace file."));
 }
 
 void PerfProfilerEventStorage::finalize()
 {
     if (!m_file.flush())
-        m_errorHandler(tr("Failed to flush temporary trace file."));
+        m_errorHandler(Tr::tr("Failed to flush temporary trace file."));
 }
 
 bool PerfProfilerEventStorage::replay(
@@ -110,13 +90,13 @@ bool PerfProfilerEventStorage::replay(
     case Timeline::TraceStashFile<PerfEvent>::ReplaySuccess:
         return true;
     case Timeline::TraceStashFile<PerfEvent>::ReplayOpenFailed:
-        m_errorHandler(tr("Cannot re-open temporary trace file."));
+        m_errorHandler(Tr::tr("Cannot re-open temporary trace file."));
         break;
     case Timeline::TraceStashFile<PerfEvent>::ReplayLoadFailed:
         // Happens if the loader rejects an event. Not an actual error
         break;
     case Timeline::TraceStashFile<PerfEvent>::ReplayReadPastEnd:
-        m_errorHandler(tr("Read past end from temporary trace file."));
+        m_errorHandler(Tr::tr("Read past end from temporary trace file."));
         break;
     }
     return false;
@@ -212,15 +192,15 @@ void PerfProfilerTraceManager::resetAttributes()
 {
     // The "meta" types are useful and also have to be reported to TimelineTraceManager.
     setEventType(PerfEvent::ThreadStartTypeId, PerfEventType(PerfEventType::ThreadStart,
-                                                             tr("Thread started")));
+                                                             Tr::tr("Thread started")));
     setEventType(PerfEvent::ThreadEndTypeId, PerfEventType(PerfEventType::ThreadEnd,
-                                                           tr("Thread ended")));
+                                                           Tr::tr("Thread ended")));
     setEventType(PerfEvent::LostTypeId, PerfEventType(PerfEventType::LostDefinition,
-                                                      tr("Samples lost")));
+                                                      Tr::tr("Samples lost")));
     setEventType(PerfEvent::ContextSwitchTypeId,
-                 PerfEventType(PerfEventType::ContextSwitchDefinition, tr("Context switch")));
+                 PerfEventType(PerfEventType::ContextSwitchDefinition, Tr::tr("Context switch")));
     setEventType(PerfEvent::LastSpecialTypeId,
-                 PerfEventType(PerfEventType::InvalidFeature, tr("Invalid")));
+                 PerfEventType(PerfEventType::InvalidFeature, Tr::tr("Invalid")));
 }
 
 void PerfProfilerTraceManager::finalize()
@@ -289,7 +269,7 @@ void PerfProfilerTraceManager::replayPerfEvents(PerfEventLoader loader, Initiali
 
     if (!result && errorHandler) {
         errorHandler(future.isCanceled() ? QString()
-                                         : tr("Failed to replay Perf events from stash file."));
+                                         : Tr::tr("Failed to replay Perf events from stash file."));
     } else if (result && finalizer) {
         finalizer();
     }
@@ -596,19 +576,19 @@ qint32 PerfProfilerTraceManager::symbolLocation(qint32 locationId) const
     return symbol(locationId).name != -1 ? locationId : location(locationId).parentLocationId;
 }
 
-void PerfProfilerTraceManager::loadFromTraceFile(const QString &filePath)
+void PerfProfilerTraceManager::loadFromTraceFile(const FilePath &filePath)
 {
-    Core::ProgressManager::addTask(load(filePath), tr("Loading Trace Data"),
+    Core::ProgressManager::addTask(load(filePath.toFSPathString()), Tr::tr("Loading Trace Data"),
                                    Constants::PerfProfilerTaskLoadTrace);
 }
 
-void PerfProfilerTraceManager::saveToTraceFile(const QString &filePath)
+void PerfProfilerTraceManager::saveToTraceFile(const FilePath &filePath)
 {
-    Core::ProgressManager::addTask(save(filePath), tr("Saving Trace Data"),
+    Core::ProgressManager::addTask(save(filePath.toFSPathString()), Tr::tr("Saving Trace Data"),
                                    Constants::PerfProfilerTaskSaveTrace);
 }
 
-void PerfProfilerTraceManager::loadFromPerfData(const QString &filePath,
+void PerfProfilerTraceManager::loadFromPerfData(const FilePath &filePath,
                                                 const QString &executableDirPath,
                                                 ProjectExplorer::Kit *kit)
 {
@@ -625,10 +605,10 @@ void PerfProfilerTraceManager::loadFromPerfData(const QString &filePath,
     connect(reader, &QObject::destroyed, this, &TimelineTraceManager::loadFinished);
 
     const int fileMegabytes = static_cast<int>(
-                qMin(QFileInfo(filePath).size() >> 20,
+                qMin(filePath.fileSize() >> 20,
                      static_cast<qint64>(std::numeric_limits<int>::max())));
     Core::FutureProgress *fp = Core::ProgressManager::addTimedTask(
-                reader->future(), tr("Loading Trace Data"), Constants::PerfProfilerTaskLoadPerf,
+                reader->future(), Tr::tr("Loading Trace Data"), Constants::PerfProfilerTaskLoadPerf,
                 fileMegabytes);
 
     connect(fp, &Core::FutureProgress::canceled, reader, [reader]() {

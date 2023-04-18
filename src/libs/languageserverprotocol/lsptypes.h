@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -29,11 +7,10 @@
 #include "jsonobject.h"
 #include "lsputils.h"
 
-#include <utils/fileutils.h>
+#include <utils/filepath.h>
 #include <utils/link.h>
-#include <utils/optional.h>
+#include <utils/mimeutils.h>
 #include <utils/textutils.h>
-#include <utils/variant.h>
 
 #include <QTextCursor>
 #include <QJsonObject>
@@ -41,6 +18,8 @@
 #include <QList>
 
 #include <functional>
+#include <optional>
+#include <variant>
 
 namespace LanguageServerProtocol {
 
@@ -48,16 +27,17 @@ class LANGUAGESERVERPROTOCOL_EXPORT DocumentUri : public QUrl
 {
 public:
     DocumentUri() = default;
-    Utils::FilePath toFilePath() const;
+    using PathMapper = std::function<Utils::FilePath(const Utils::FilePath &)>;
+    Utils::FilePath toFilePath(const PathMapper &mapToHostPath) const;
 
-    static DocumentUri fromProtocol(const QString &uri) { return DocumentUri(uri); }
-    static DocumentUri fromFilePath(const Utils::FilePath &file) { return DocumentUri(file); }
+    static DocumentUri fromProtocol(const QString &uri);
+    static DocumentUri fromFilePath(const Utils::FilePath &file, const PathMapper &mapToServerPath);
 
     operator QJsonValue() const { return QJsonValue(toString()); }
 
 private:
     DocumentUri(const QString &other);
-    DocumentUri(const Utils::FilePath &other);
+    DocumentUri(const Utils::FilePath &other, const PathMapper &mapToServerPath);
 
     friend class LanguageClientValue<QString>;
 };
@@ -151,7 +131,6 @@ class LANGUAGESERVERPROTOCOL_EXPORT Location : public JsonObject
 {
 public:
     using JsonObject::JsonObject;
-    Location &operator=(const Location &) = default;
 
     DocumentUri uri() const { return DocumentUri::fromProtocol(typedValue<QString>(uriKey)); }
     void setUri(const DocumentUri &uri) { insert(uriKey, uri); }
@@ -159,7 +138,7 @@ public:
     Range range() const { return typedValue<Range>(rangeKey); }
     void setRange(const Range &range) { insert(rangeKey, range); }
 
-    Utils::Link toLink() const;
+    Utils::Link toLink(const DocumentUri::PathMapper &mapToHostPath) const;
 
     bool isValid() const override { return contains(uriKey) && contains(rangeKey); }
 };
@@ -184,20 +163,20 @@ public:
 
     // The diagnostic's severity. Can be omitted. If omitted it is up to the
     // client to interpret diagnostics as error, warning, info or hint.
-    Utils::optional<DiagnosticSeverity> severity() const;
+    std::optional<DiagnosticSeverity> severity() const;
     void setSeverity(const DiagnosticSeverity &severity)
     { insert(severityKey, static_cast<int>(severity)); }
     void clearSeverity() { remove(severityKey); }
 
     // The diagnostic's code, which might appear in the user interface.
-    using Code = Utils::variant<int, QString>;
-    Utils::optional<Code> code() const;
+    using Code = std::variant<int, QString>;
+    std::optional<Code> code() const;
     void setCode(const Code &code);
     void clearCode() { remove(codeKey); }
 
     // A human-readable string describing the source of this
     // diagnostic, e.g. 'typescript' or 'super lint'.
-    Utils::optional<QString> source() const
+    std::optional<QString> source() const
     { return optionalValue<QString>(sourceKey); }
     void setSource(const QString &source) { insert(sourceKey, source); }
     void clearSource() { remove(sourceKey); }
@@ -226,7 +205,7 @@ public:
     void clearCommand() { remove(commandKey); }
 
     // Arguments that the command handler should be invoked with.
-    Utils::optional<QJsonArray> arguments() const { return typedValue<QJsonArray>(argumentsKey); }
+    std::optional<QJsonArray> arguments() const { return typedValue<QJsonArray>(argumentsKey); }
     void setArguments(const QJsonArray &arguments) { insert(argumentsKey, arguments); }
     void clearArguments() { remove(argumentsKey); }
 
@@ -313,7 +292,7 @@ public:
 
     // Holds changes to existing resources.
     using Changes = QMap<DocumentUri, QList<TextEdit>>;
-    Utils::optional<Changes> changes() const;
+    std::optional<Changes> changes() const;
     void setChanges(const Changes &changes);
 
     /*
@@ -325,7 +304,7 @@ public:
      * Note: If the client can handle versioned document edits and if documentChanges are present,
      * the latter are preferred over changes.
      */
-    Utils::optional<QList<TextDocumentEdit>> documentChanges() const
+    std::optional<QList<TextDocumentEdit>> documentChanges() const
     { return optionalArray<TextDocumentEdit>(documentChangesKey); }
     void setDocumentChanges(const QList<TextDocumentEdit> &changes)
     { insertArray(documentChangesKey, changes); }
@@ -385,12 +364,12 @@ public:
     using JsonObject::JsonObject;
 
     // A language id, like `typescript`.
-    Utils::optional<QString> language() const { return optionalValue<QString>(languageKey); }
+    std::optional<QString> language() const { return optionalValue<QString>(languageKey); }
     void setLanguage(const QString &language) { insert(languageKey, language); }
     void clearLanguage() { remove(languageKey); }
 
     // A Uri [scheme](#Uri.scheme), like `file` or `untitled`.
-    Utils::optional<QString> scheme() const { return optionalValue<QString>(schemeKey); }
+    std::optional<QString> scheme() const { return optionalValue<QString>(schemeKey); }
     void setScheme(const QString &scheme) { insert(schemeKey, scheme); }
     void clearScheme() { remove(schemeKey); }
 
@@ -409,7 +388,7 @@ public:
      *   (e.g., `example.[!0-9]` to match on `example.a`, `example.b`, but
      *   not `example.0`)
      */
-    Utils::optional<QString> pattern() const { return optionalValue<QString>(patternKey); }
+    std::optional<QString> pattern() const { return optionalValue<QString>(patternKey); }
     void setPattern(const QString &pattern) { insert(patternKey, pattern); }
     void clearPattern() { remove(patternKey); }
 
@@ -456,11 +435,11 @@ public:
     { return contains(kindKey) && contains(contentKey); }
 };
 
-class LANGUAGESERVERPROTOCOL_EXPORT MarkupOrString : public Utils::variant<QString, MarkupContent>
+class LANGUAGESERVERPROTOCOL_EXPORT MarkupOrString : public std::variant<QString, MarkupContent>
 {
 public:
     MarkupOrString() = default;
-    explicit MarkupOrString(const Utils::variant<QString, MarkupContent> &val);
+    explicit MarkupOrString(const std::variant<QString, MarkupContent> &val);
     explicit MarkupOrString(const QString &val);
     explicit MarkupOrString(const MarkupContent &val);
     MarkupOrString(const QJsonValue &val);
@@ -500,14 +479,14 @@ public:
     int kind() const { return typedValue<int>(kindKey); }
     void setKind(int kind) { insert(kindKey, kind); }
 
-    Utils::optional<bool> deprecated() const { return optionalValue<bool>(deprecatedKey); }
+    std::optional<bool> deprecated() const { return optionalValue<bool>(deprecatedKey); }
     void setDeprecated(bool deprecated) { insert(deprecatedKey, deprecated); }
     void clearDeprecated() { remove(deprecatedKey); }
 
     Location location() const { return typedValue<Location>(locationKey); }
     void setLocation(const Location &location) { insert(locationKey, location); }
 
-    Utils::optional<QString> containerName() const
+    std::optional<QString> containerName() const
     { return optionalValue<QString>(containerNameKey); }
     void setContainerName(const QString &containerName) { insert(containerNameKey, containerName); }
     void clearContainerName() { remove(containerNameKey); }
@@ -524,14 +503,14 @@ public:
     QString name() const { return typedValue<QString>(nameKey); }
     void setName(const QString &name) { insert(nameKey, name); }
 
-    Utils::optional<QString> detail() const { return optionalValue<QString>(detailKey); }
+    std::optional<QString> detail() const { return optionalValue<QString>(detailKey); }
     void setDetail(const QString &detail) { insert(detailKey, detail); }
     void clearDetail() { remove(detailKey); }
 
     int kind() const { return typedValue<int>(kindKey); }
     void setKind(int kind) { insert(kindKey, kind); }
 
-    Utils::optional<bool> deprecated() const { return optionalValue<bool>(deprecatedKey); }
+    std::optional<bool> deprecated() const { return optionalValue<bool>(deprecatedKey); }
     void setDeprecated(bool deprecated) { insert(deprecatedKey, deprecated); }
     void clearDeprecated() { remove(deprecatedKey); }
 
@@ -541,7 +520,7 @@ public:
     Range selectionRange() const { return typedValue<Range>(selectionRangeKey); }
     void setSelectionRange(Range selectionRange) { insert(selectionRangeKey, selectionRange); }
 
-    Utils::optional<QList<DocumentSymbol>> children() const
+    std::optional<QList<DocumentSymbol>> children() const
     { return optionalArray<DocumentSymbol>(childrenKey); }
     void setChildren(QList<DocumentSymbol> children) { insertArray(childrenKey, children); }
     void clearChildren() { remove(childrenKey); }

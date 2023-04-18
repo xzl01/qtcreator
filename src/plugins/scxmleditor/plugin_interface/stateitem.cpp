@@ -1,29 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "stateitem.h"
 #include "finalstateitem.h"
 #include "graphicsitemprovider.h"
 #include "graphicsscene.h"
@@ -33,8 +10,10 @@
 #include "parallelitem.h"
 #include "sceneutils.h"
 #include "scxmleditorconstants.h"
+#include "scxmleditortr.h"
 #include "scxmltagutils.h"
 #include "scxmluifactory.h"
+#include "stateitem.h"
 #include "statewarningitem.h"
 #include "textitem.h"
 #include "transitionitem.h"
@@ -207,7 +186,8 @@ void StateItem::updateBoundingRect()
 void StateItem::shrink()
 {
     QRectF trect;
-    foreach (TransitionItem *item, outputTransitions()) {
+    const QVector<TransitionItem *> items = outputTransitions();
+    for (TransitionItem *item : items) {
         if (item->targetType() == TransitionItem::InternalSameTarget || item->targetType() == TransitionItem::InternalNoTarget) {
             trect = trect.united(item->wholeBoundingRect());
         }
@@ -239,8 +219,8 @@ void StateItem::transitionsChanged()
 {
     QRectF rr = boundingRect();
     QRectF rectInternalTransitions;
-    QVector<TransitionItem*> internalTransitions = outputTransitions();
-    foreach (TransitionItem *item, internalTransitions) {
+    const QVector<TransitionItem*> internalTransitions = outputTransitions();
+    for (TransitionItem *item : internalTransitions) {
         if (item->targetType() <= TransitionItem::InternalNoTarget) {
             QRectF br = mapFromItem(item, item->boundingRect()).boundingRect();
             br.setLeft(rr.left() + 20);
@@ -300,15 +280,15 @@ void StateItem::createContextMenu(QMenu *menu)
     QVariantMap data;
     if (!m_parallelState) {
         data[Constants::C_SCXMLTAG_ACTIONTYPE] = TagUtils::SetAsInitial;
-        menu->addAction(tr("Set as Initial"))->setData(data);
+        menu->addAction(Tr::tr("Set as Initial"))->setData(data);
     }
 
     data[Constants::C_SCXMLTAG_ACTIONTYPE] = TagUtils::ZoomToState;
-    menu->addAction(tr("Zoom to State"))->setData(data);
+    menu->addAction(Tr::tr("Zoom to State"))->setData(data);
 
     if (type() == ParallelType) {
         data[Constants::C_SCXMLTAG_ACTIONTYPE] = TagUtils::Relayout;
-        menu->addAction(tr("Re-Layout"))->setData(data);
+        menu->addAction(Tr::tr("Re-Layout"))->setData(data);
     }
 
     menu->addSeparator();
@@ -331,7 +311,7 @@ void StateItem::selectedMenuAction(const QAction *action)
         case TagUtils::SetAsInitial: {
             ScxmlTag *parentTag = tag->parentTag();
             if (parentTag) {
-                document->undoStack()->beginMacro(tr("Change initial state"));
+                document->undoStack()->beginMacro(Tr::tr("Change initial state"));
 
                 ScxmlTag *initialTag = parentTag->child("initial");
                 if (initialTag) {
@@ -352,7 +332,7 @@ void StateItem::selectedMenuAction(const QAction *action)
             break;
         }
         case TagUtils::Relayout: {
-            document->undoStack()->beginMacro(tr("Re-Layout"));
+            document->undoStack()->beginMacro(Tr::tr("Re-Layout"));
             doLayout(depth());
             document->undoStack()->endMacro();
             break;

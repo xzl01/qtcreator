@@ -1,36 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "searchresultwindow.h"
+
 #include "searchresultwidget.h"
 #include "textfindconstants.h"
+#include "../actionmanager/actionmanager.h"
+#include "../actionmanager/command.h"
+#include "../coreplugintr.h"
+#include "../icontext.h"
+#include "../icore.h"
 
-#include <coreplugin/icore.h>
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/actionmanager/command.h>
-#include <coreplugin/icontext.h>
 #include <utils/qtcassert.h>
 #include <utils/styledbar.h>
 #include <utils/utilsicons.h>
@@ -100,15 +80,14 @@ namespace Internal {
 
     class SearchResultWindowPrivate : public QObject
     {
-        Q_DECLARE_TR_FUNCTIONS(Core::SearchResultWindow)
     public:
         SearchResultWindowPrivate(SearchResultWindow *window, QWidget *newSearchPanel);
         bool isSearchVisible() const { return m_currentIndex > 0; }
         int visibleSearchIndex() const { return m_currentIndex - 1; }
         void setCurrentIndex(int index, bool focus);
         void setCurrentIndexWithFocus(int index) { setCurrentIndex(index, true); }
-        void moveWidgetToTop();
-        void popupRequested(bool focus);
+        void moveWidgetToTop(SearchResultWidget *widget);
+        void popupRequested(SearchResultWidget *widget, bool focus);
         void handleExpandCollapseToolButton(bool checked);
         void updateFilterButton();
         QList<QWidget *> toolBarWidgets();
@@ -138,7 +117,7 @@ namespace Internal {
     SearchResultWindowPrivate::SearchResultWindowPrivate(SearchResultWindow *window, QWidget *nsp) :
         q(window),
         m_expandCollapseButton(nullptr),
-        m_expandCollapseAction(new QAction(tr("Expand All"), window)),
+        m_expandCollapseAction(new QAction(Tr::tr("Expand All"), window)),
         m_spacer(new QWidget),
         m_spacer2(new QWidget),
         m_widget(new QStackedWidget),
@@ -165,11 +144,11 @@ namespace Internal {
         m_expandCollapseButton->setDefaultAction(cmd->action());
 
         m_filterButton = new QToolButton(m_widget);
-        m_filterButton->setText(tr("Filter Results"));
+        m_filterButton->setText(Tr::tr("Filter Results"));
         m_filterButton->setIcon(Utils::Icons::FILTER.icon());
         m_filterButton->setEnabled(false);
 
-        QAction *newSearchAction = new QAction(tr("New Search"), this);
+        QAction *newSearchAction = new QAction(Tr::tr("New Search"), this);
         newSearchAction->setIcon(Utils::Icons::NEWSEARCH_TOOLBAR.icon());
         cmd = ActionManager::command(Constants::ADVANCED_FIND);
         m_newSearchButton = Command::toolButtonWithAppendedShortcut(newSearchAction, cmd);
@@ -210,11 +189,9 @@ namespace Internal {
         updateFilterButton();
     }
 
-    void SearchResultWindowPrivate::moveWidgetToTop()
+    void SearchResultWindowPrivate::moveWidgetToTop(SearchResultWidget *widget)
     {
-        QTC_ASSERT(m_recentSearchesBox, return );
-        auto widget = qobject_cast<SearchResultWidget *>(sender());
-        QTC_ASSERT(widget, return);
+        QTC_ASSERT(m_recentSearchesBox, return);
         const int index = m_searchResultWidgets.indexOf(widget);
         if (index == 0)
             return; // nothing to do
@@ -245,10 +222,8 @@ namespace Internal {
         }
     }
 
-    void SearchResultWindowPrivate::popupRequested(bool focus)
+    void SearchResultWindowPrivate::popupRequested(SearchResultWidget *widget, bool focus)
     {
-        auto widget = qobject_cast<SearchResultWidget *>(sender());
-        QTC_ASSERT(widget, return);
         int internalIndex = m_searchResultWidgets.indexOf(widget) + 1/*account for "new search" entry*/;
         setCurrentIndex(internalIndex, focus);
         q->popup(focus ? IOutputPane::ModeSwitch | IOutputPane::WithFocus
@@ -504,7 +479,7 @@ SearchResult *SearchResultWindow::startNewSearch(const QString &label,
             delete d->m_searchResults.takeLast();
             d->m_recentSearchesBox->removeItem(d->m_recentSearchesBox->count() - 1);
         }
-        d->m_recentSearchesBox->insertItem(1, tr("%1 %2").arg(label, searchTerm));
+        d->m_recentSearchesBox->insertItem(1, Tr::tr("%1 %2").arg(label, searchTerm));
     }
     auto widget = new SearchResultWidget;
     connect(widget, &SearchResultWidget::filterInvalidated, this, [this, widget] {
@@ -517,10 +492,10 @@ SearchResult *SearchResultWindow::startNewSearch(const QString &label,
     d->m_widget->insertWidget(1, widget);
     connect(widget, &SearchResultWidget::navigateStateChanged,
             this, &SearchResultWindow::navigateStateChanged);
-    connect(widget, &SearchResultWidget::restarted,
-            d, &SearchResultWindowPrivate::moveWidgetToTop);
-    connect(widget, &SearchResultWidget::requestPopup,
-            d, &SearchResultWindowPrivate::popupRequested);
+    connect(widget, &SearchResultWidget::restarted, d,
+            [this, widget] { d->moveWidgetToTop(widget); });
+    connect(widget, &SearchResultWidget::requestPopup, d,
+            [this, widget](bool focus) { d->popupRequested(widget, focus); });
     widget->setTextEditorFont(d->m_font, d->m_colors);
     widget->setTabWidth(d->m_tabWidth);
     widget->setSupportPreserveCase(preserveCaseMode == PreserveCaseEnabled);
@@ -545,7 +520,7 @@ void SearchResultWindow::clearContents()
         for (int i = d->m_recentSearchesBox->count() - 1; i > 0 /* don't want i==0 */; --i)
             d->m_recentSearchesBox->removeItem(i);
     }
-    foreach (Internal::SearchResultWidget *widget, d->m_searchResultWidgets)
+    for (Internal::SearchResultWidget *widget : std::as_const(d->m_searchResultWidgets))
         widget->notifyVisibilityChanged(false);
     qDeleteAll(d->m_searchResultWidgets);
     d->m_searchResultWidgets.clear();
@@ -599,7 +574,7 @@ void SearchResultWindow::setTextEditorFont(const QFont &font, const SearchResult
 {
     d->m_font = font;
     d->m_colors = colors;
-    foreach (Internal::SearchResultWidget *widget, d->m_searchResultWidgets)
+    for (Internal::SearchResultWidget *widget : std::as_const(d->m_searchResultWidgets))
         widget->setTextEditorFont(font, colors);
 }
 
@@ -609,7 +584,7 @@ void SearchResultWindow::setTextEditorFont(const QFont &font, const SearchResult
 void SearchResultWindow::setTabWidth(int tabWidth)
 {
     d->m_tabWidth = tabWidth;
-    foreach (Internal::SearchResultWidget *widget, d->m_searchResultWidgets)
+    for (Internal::SearchResultWidget *widget : std::as_const(d->m_searchResultWidgets))
         widget->setTabWidth(tabWidth);
 }
 /*!
@@ -627,10 +602,10 @@ void SearchResultWindowPrivate::handleExpandCollapseToolButton(bool checked)
         return;
     m_searchResultWidgets.at(visibleSearchIndex())->setAutoExpandResults(checked);
     if (checked) {
-        m_expandCollapseAction->setText(tr("Collapse All"));
+        m_expandCollapseAction->setText(Tr::tr("Collapse All"));
         m_searchResultWidgets.at(visibleSearchIndex())->expandAll();
     } else {
-        m_expandCollapseAction->setText(tr("Expand All"));
+        m_expandCollapseAction->setText(Tr::tr("Expand All"));
         m_searchResultWidgets.at(visibleSearchIndex())->collapseAll();
     }
 }
@@ -644,16 +619,14 @@ void SearchResultWindowPrivate::updateFilterButton()
 QList<QWidget *> SearchResultWindowPrivate::toolBarWidgets()
 {
     if (!m_historyLabel)
-        m_historyLabel = new QLabel(tr("History:"));
+        m_historyLabel = new QLabel(Tr::tr("History:"));
     if (!m_recentSearchesBox) {
         m_recentSearchesBox = new QComboBox;
         m_recentSearchesBox->setProperty("drawleftborder", true);
         m_recentSearchesBox->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-        m_recentSearchesBox->addItem(tr("New Search"));
-        connect(m_recentSearchesBox,
-                QOverload<int>::of(&QComboBox::activated),
-                this,
-                &SearchResultWindowPrivate::setCurrentIndexWithFocus);
+        m_recentSearchesBox->addItem(Tr::tr("New Search"));
+        connect(m_recentSearchesBox, &QComboBox::activated,
+                this, &SearchResultWindowPrivate::setCurrentIndexWithFocus);
     }
     return {m_expandCollapseButton,
             m_filterButton,
@@ -746,6 +719,14 @@ bool SearchResultWindow::canNavigate() const
 /*!
     \internal
 */
+QString SearchResultWindow::displayName() const
+{
+    return Tr::tr("Search Results");
+}
+
+/*!
+    \internal
+*/
 SearchResult::SearchResult(SearchResultWidget *widget)
     : m_widget(widget)
 {
@@ -754,7 +735,7 @@ SearchResult::SearchResult(SearchResultWidget *widget)
             this, &SearchResult::replaceButtonClicked);
     connect(widget, &SearchResultWidget::replaceTextChanged,
             this, &SearchResult::replaceTextChanged);
-    connect(widget, &SearchResultWidget::cancelled, this, &SearchResult::cancelled);
+    connect(widget, &SearchResultWidget::canceled, this, &SearchResult::canceled);
     connect(widget, &SearchResultWidget::paused, this, &SearchResult::paused);
     connect(widget, &SearchResultWidget::visibilityChanged,
             this, &SearchResult::visibilityChanged);
@@ -866,9 +847,15 @@ void SearchResult::setFilter(SearchResultFilter *filter)
     Notifies the \uicontrol {Search Results} output pane that the current search
     has been \a canceled, and the UI should reflect that.
 */
-void SearchResult::finishSearch(bool canceled)
+void SearchResult::finishSearch(bool canceled, const QString &reason)
 {
-    m_widget->finishSearch(canceled);
+    m_widget->finishSearch(canceled, reason);
+    if (m_finishedHandler) {
+        if (!canceled)
+            m_widget->triggerReplace();
+        m_finishedHandler();
+        m_finishedHandler = {};
+    }
 }
 
 /*!
@@ -910,6 +897,13 @@ void SearchResult::setSearchAgainEnabled(bool enabled)
 void SearchResult::popup()
 {
     m_widget->sendRequestPopup();
+}
+
+void Core::SearchResult::makeNonInteractive(const std::function<void ()> &callback)
+{
+    QTC_ASSERT(callback, return);
+    m_widget->setEnabled(false);
+    m_finishedHandler = callback;
 }
 
 } // namespace Core

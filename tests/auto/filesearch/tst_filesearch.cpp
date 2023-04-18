@@ -1,32 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <utils/filesearch.h>
 
 #include <QTextCodec>
 #include <QtTest>
+
+using namespace Utils;
 
 class tst_FileSearch : public QObject
 {
@@ -51,7 +31,10 @@ namespace {
                      const QString &term,
                      QTextDocument::FindFlags flags, tst_FileSearch::RegExpFlag regexp = tst_FileSearch::NoRegExp)
     {
-        Utils::FileIterator *it = new Utils::FileListIterator(QStringList(QLatin1String(FILENAME)), QList<QTextCodec *>() << QTextCodec::codecForLocale());
+        Utils::FileIterator *it = new Utils::FileListIterator(FilePaths{FilePath::fromString(
+                                                                  FILENAME)},
+                                                              QList<QTextCodec *>()
+                                                                  << QTextCodec::codecForLocale());
         QFutureWatcher<Utils::FileSearchResultList> watcher;
         QSignalSpy ready(&watcher, SIGNAL(resultsReadyAt(int,int)));
         if (regexp == tst_FileSearch::NoRegExp)
@@ -72,34 +55,34 @@ namespace {
 void tst_FileSearch::multipleResults()
 {
     Utils::FileSearchResultList expectedResults;
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 2, QLatin1String("search to find multiple find results"), 10, 4, QStringList());
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 2, QLatin1String("search to find multiple find results"), 24, 4, QStringList());
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 4, QLatin1String("here you find another result"), 9, 4, QStringList());
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 2, QLatin1String("search to find multiple find results"), 10, 4, QStringList());
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 2, QLatin1String("search to find multiple find results"), 24, 4, QStringList());
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 4, QLatin1String("here you find another result"), 9, 4, QStringList());
     test_helper(expectedResults, QLatin1String("find"), QTextDocument::FindFlags());
 
     expectedResults.clear();
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 5, QLatin1String("aaaaaaaa this line has 2 results for four a in a row"), 0, 4, QStringList());
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 5, QLatin1String("aaaaaaaa this line has 2 results for four a in a row"), 4, 4, QStringList());
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 5, QLatin1String("aaaaaaaa this line has 2 results for four a in a row"), 0, 4, QStringList());
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 5, QLatin1String("aaaaaaaa this line has 2 results for four a in a row"), 4, 4, QStringList());
     test_helper(expectedResults, QLatin1String("aaaa"), QTextDocument::FindFlags());
 
     expectedResults.clear();
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 5, QLatin1String("aaaaaaaa this line has 2 results for four a in a row"), 0, 4, QStringList() << QLatin1String("aaaa"));
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 5, QLatin1String("aaaaaaaa this line has 2 results for four a in a row"), 4, 4, QStringList() << QLatin1String("aaaa"));
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 5, QLatin1String("aaaaaaaa this line has 2 results for four a in a row"), 0, 4, QStringList() << QLatin1String("aaaa"));
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 5, QLatin1String("aaaaaaaa this line has 2 results for four a in a row"), 4, 4, QStringList() << QLatin1String("aaaa"));
     test_helper(expectedResults, QLatin1String("aaaa"), QTextDocument::FindFlags(), RegExp);
 }
 
 void tst_FileSearch::caseSensitive()
 {
     Utils::FileSearchResultList expectedResults;
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 3, QLatin1String("search CaseSensitively for casesensitive"), 7, 13, QStringList());
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 3, QLatin1String("search CaseSensitively for casesensitive"), 7, 13, QStringList());
     test_helper(expectedResults, QLatin1String("CaseSensitive"), QTextDocument::FindCaseSensitively);
 }
 
 void tst_FileSearch::caseInSensitive()
 {
     Utils::FileSearchResultList expectedResults;
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 3, QLatin1String("search CaseSensitively for casesensitive"), 7, 13, QStringList());
-    expectedResults << Utils::FileSearchResult(QLatin1String(FILENAME), 3, QLatin1String("search CaseSensitively for casesensitive"), 27, 13, QStringList());
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 3, QLatin1String("search CaseSensitively for casesensitive"), 7, 13, QStringList());
+    expectedResults << FileSearchResult(FilePath::fromString(FILENAME), 3, QLatin1String("search CaseSensitively for casesensitive"), 27, 13, QStringList());
     test_helper(expectedResults, QLatin1String("CaseSensitive"), QTextDocument::FindFlags());
 }
 
@@ -146,6 +129,6 @@ void tst_FileSearch::matchCaseReplacement()
     QCOMPARE(Utils::matchCaseReplacement("pReFiXTeStPaDSuFfIx", "prefixfoobarsuffix"), QString("pReFiXfoobarSuFfIx"));   //mixed case, use replacement as specified
 }
 
-QTEST_MAIN(tst_FileSearch)
+QTEST_GUILESS_MAIN(tst_FileSearch)
 
 #include "tst_filesearch.moc"

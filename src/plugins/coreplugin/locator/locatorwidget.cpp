@@ -1,44 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "locatorwidget.h"
 
 #include "ilocatorfilter.h"
 #include "locator.h"
 #include "locatorconstants.h"
+#include "locatormanager.h"
 #include "locatorsearchutils.h"
+#include "../actionmanager/actionmanager.h"
+#include "../coreplugintr.h"
+#include "../icore.h"
+#include "../modemanager.h"
 
-#include <coreplugin/icore.h>
-#include <coreplugin/modemanager.h>
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/fileiconprovider.h>
-#include <coreplugin/icontext.h>
-#include <coreplugin/mainwindow.h>
 #include <utils/algorithm.h>
 #include <utils/appmainwindow.h>
 #include <utils/fancylineedit.h>
+#include <utils/fsengine/fileiconprovider.h>
 #include <utils/highlightingitemdelegate.h>
 #include <utils/hostosinfo.h>
 #include <utils/itemviews.h>
@@ -222,17 +200,28 @@ QVariant LocatorModel::data(const QModelIndex &index, int role) const
         return QVariant::fromValue(mEntries.at(index.row()));
     case int(HighlightingItemRole::StartColumn):
     case int(HighlightingItemRole::Length): {
-        LocatorFilterEntry &entry = mEntries[index.row()];
-        const int highlightColumn = entry.highlightInfo.dataType == LocatorFilterEntry::HighlightInfo::DisplayName
-                                                                 ? DisplayNameColumn
-                                                                 : ExtraInfoColumn;
-        if (highlightColumn == index.column()) {
+        const LocatorFilterEntry &entry = mEntries[index.row()];
+        auto highlights = [&](LocatorFilterEntry::HighlightInfo::DataType type){
             const bool startIndexRole = role == int(HighlightingItemRole::StartColumn);
-            return startIndexRole ? QVariant::fromValue(entry.highlightInfo.starts)
-                                  : QVariant::fromValue(entry.highlightInfo.lengths);
+            return startIndexRole ? QVariant::fromValue(entry.highlightInfo.starts(type))
+                                  : QVariant::fromValue(entry.highlightInfo.lengths(type));
+        };
+        switch (index.column()) {
+        case DisplayNameColumn: return highlights(LocatorFilterEntry::HighlightInfo::DisplayName);
+        case ExtraInfoColumn: return highlights(LocatorFilterEntry::HighlightInfo::ExtraInfo);
         }
         break;
     }
+    case int(HighlightingItemRole::DisplayExtra): {
+        if (index.column() == LocatorFilterEntry::HighlightInfo::DisplayName) {
+            LocatorFilterEntry &entry = mEntries[index.row()];
+            if (!entry.displayExtra.isEmpty())
+                return QString("   (" + entry.displayExtra + ')');
+        }
+        break;
+    }
+    case int(HighlightingItemRole::DisplayExtraForeground):
+        return QColor(Qt::darkGray);
     case int(HighlightingItemRole::Background):
         return mBackgroundColor;
     case int(HighlightingItemRole::Foreground):
@@ -328,7 +317,7 @@ void CenteredLocatorPopup::doUpdateGeometry()
     const QSize size = preferredSize();
     const QSize parentSize = parentWidget()->size();
     const QPoint local((parentSize.width() - size.width()) / 2,
-                        parentSize.height() / 2 - size.height());
+                       (parentSize.height() - size.height()) / 2);
     const QPoint pos = parentWidget()->mapToGlobal(local);
     QRect rect(pos, size);
     // invisible widget doesn't have the right screen set yet, so use the parent widget to
@@ -568,12 +557,13 @@ bool CompletionList::eventFilter(QObject *watched, QEvent *event)
 
 // =========== LocatorWidget ===========
 
-LocatorWidget::LocatorWidget(Locator *locator) :
-    m_locatorModel(new LocatorModel(this)),
-    m_filterMenu(new QMenu(this)),
-    m_refreshAction(new QAction(tr("Refresh"), this)),
-    m_configureAction(new QAction(ICore::msgShowOptionsDialog(), this)),
-    m_fileLineEdit(new Utils::FancyLineEdit)
+LocatorWidget::LocatorWidget(Locator *locator)
+    : m_locatorModel(new LocatorModel(this))
+    , m_filterMenu(new QMenu(this))
+    , m_centeredPopupAction(new QAction(Tr::tr("Open as Centered Popup"), this))
+    , m_refreshAction(new QAction(Tr::tr("Refresh"), this))
+    , m_configureAction(new QAction(ICore::msgShowOptionsDialog(), this))
+    , m_fileLineEdit(new Utils::FancyLineEdit)
 {
     setAttribute(Qt::WA_Hover);
     setFocusProxy(m_fileLineEdit);
@@ -592,7 +582,7 @@ LocatorWidget::LocatorWidget(Locator *locator) :
     const QIcon icon = Utils::Icons::MAGNIFIER.icon();
     m_fileLineEdit->setFiltering(true);
     m_fileLineEdit->setButtonIcon(Utils::FancyLineEdit::Left, icon);
-    m_fileLineEdit->setButtonToolTip(Utils::FancyLineEdit::Left, tr("Options"));
+    m_fileLineEdit->setButtonToolTip(Utils::FancyLineEdit::Left, Tr::tr("Options"));
     m_fileLineEdit->setFocusPolicy(Qt::ClickFocus);
     m_fileLineEdit->setButtonVisible(Utils::FancyLineEdit::Left, true);
     // We set click focus since otherwise you will always get two popups
@@ -602,12 +592,25 @@ LocatorWidget::LocatorWidget(Locator *locator) :
     m_fileLineEdit->installEventFilter(this);
     this->installEventFilter(this);
 
+    m_centeredPopupAction->setCheckable(true);
+    m_centeredPopupAction->setChecked(Locator::useCenteredPopupForShortcut());
+    connect(m_filterMenu, &QMenu::aboutToShow, this, [this] {
+        m_centeredPopupAction->setChecked(Locator::useCenteredPopupForShortcut());
+    });
+    connect(m_centeredPopupAction, &QAction::toggled, locator, [locator](bool toggled) {
+        if (toggled != Locator::useCenteredPopupForShortcut()) {
+            Locator::setUseCenteredPopupForShortcut(toggled);
+            QMetaObject::invokeMethod(locator, [] { LocatorManager::show({}); });
+        }
+    });
+
+    m_filterMenu->addAction(m_centeredPopupAction);
     m_filterMenu->addAction(m_refreshAction);
     m_filterMenu->addAction(m_configureAction);
 
     m_fileLineEdit->setButtonMenu(Utils::FancyLineEdit::Left, m_filterMenu);
 
-    connect(m_refreshAction, &QAction::triggered, locator, [locator]() {
+    connect(m_refreshAction, &QAction::triggered, locator, [locator] {
         locator->refresh(Locator::filters());
     });
     connect(m_configureAction, &QAction::triggered, this, &LocatorWidget::showConfigureDialog);
@@ -630,7 +633,8 @@ LocatorWidget::LocatorWidget(Locator *locator) :
     m_progressIndicator->hide();
     m_showProgressTimer.setSingleShot(true);
     m_showProgressTimer.setInterval(50); // don't show progress for < 50ms tasks
-    connect(&m_showProgressTimer, &QTimer::timeout, [this]() { setProgressIndicatorVisible(true);});
+    connect(&m_showProgressTimer, &QTimer::timeout,
+            this, [this] { setProgressIndicatorVisible(true); });
 
     Command *locateCmd = ActionManager::command(Constants::LOCATE);
     if (QTC_GUARD(locateCmd)) {
@@ -657,9 +661,9 @@ void LocatorWidget::updatePlaceholderText(Command *command)
 {
     QTC_ASSERT(command, return);
     if (command->keySequence().isEmpty())
-        m_fileLineEdit->setPlaceholderText(tr("Type to locate"));
+        m_fileLineEdit->setPlaceholderText(Tr::tr("Type to locate"));
     else
-        m_fileLineEdit->setPlaceholderText(tr("Type to locate (%1)").arg(
+        m_fileLineEdit->setPlaceholderText(Tr::tr("Type to locate (%1)").arg(
                                         command->keySequence().toString(QKeySequence::NativeText)));
 }
 
@@ -668,11 +672,16 @@ void LocatorWidget::updateFilterList()
     m_filterMenu->clear();
     const QList<ILocatorFilter *> filters = Locator::filters();
     for (ILocatorFilter *filter : filters) {
-        Command *cmd = ActionManager::command(filter->actionId());
-        if (cmd)
-            m_filterMenu->addAction(cmd->action());
+        if (filter->shortcutString().isEmpty() || filter->isHidden())
+            continue;
+        QAction *action = m_filterMenu->addAction(filter->displayName());
+        action->setToolTip(filter->description());
+        connect(action, &QAction::triggered, this, [this, filter] {
+            Locator::showFilter(filter, this);
+        });
     }
     m_filterMenu->addSeparator();
+    m_filterMenu->addAction(m_centeredPopupAction);
     m_filterMenu->addAction(m_refreshAction);
     m_filterMenu->addAction(m_configureAction);
 }
@@ -718,6 +727,39 @@ bool LocatorWidget::eventFilter(QObject *obj, QEvent *event)
             QToolTip::hideText();
 
         auto keyEvent = static_cast<QKeyEvent *>(event);
+
+        if (keyEvent->matches(QKeySequence::MoveToStartOfBlock)
+            || keyEvent->matches(QKeySequence::SelectStartOfBlock)
+            || keyEvent->matches(QKeySequence::MoveToStartOfLine)
+            || keyEvent->matches(QKeySequence::SelectStartOfLine)) {
+            const int filterEndIndex = currentText().indexOf(' ');
+            if (filterEndIndex > 0 && filterEndIndex < currentText().length() - 1) {
+                const bool startsWithShortcutString
+                    = Utils::anyOf(Locator::filters(),
+                                   [shortcutString = currentText().left(filterEndIndex)](
+                                       const ILocatorFilter *filter) {
+                                       return filter->isEnabled() && !filter->isHidden()
+                                              && filter->shortcutString() == shortcutString;
+                                   });
+                if (startsWithShortcutString) {
+                    const int cursorPosition = m_fileLineEdit->cursorPosition();
+                    const int patternStart = filterEndIndex + 1;
+                    const bool mark = keyEvent->matches(QKeySequence::SelectStartOfBlock)
+                                      || keyEvent->matches(QKeySequence::SelectStartOfLine);
+                    if (cursorPosition == patternStart) {
+                        m_fileLineEdit->home(mark);
+                    } else {
+                        const int diff = m_fileLineEdit->cursorPosition() - patternStart;
+                        if (diff < 0)
+                            m_fileLineEdit->cursorForward(mark, qAbs(diff));
+                        else
+                            m_fileLineEdit->cursorBackward(mark, diff);
+                    }
+                    return true;
+                }
+            }
+        }
+
         switch (keyEvent->key()) {
         case Qt::Key_PageUp:
         case Qt::Key_PageDown:
@@ -1037,9 +1079,12 @@ LocatorPopup *createLocatorPopup(Locator *locator, QWidget *parent)
 {
     auto widget = new LocatorWidget(locator);
     auto popup = new CenteredLocatorPopup(widget, parent);
-    popup->layout()->addWidget(widget);
+    auto layout = qobject_cast<QVBoxLayout *>(popup->layout());
+    if (QTC_GUARD(layout))
+        layout->insertWidget(0, widget);
+    else
+        popup->layout()->addWidget(widget);
     popup->setWindowFlags(Qt::Popup);
-    popup->setAttribute(Qt::WA_DeleteOnClose);
     return popup;
 }
 

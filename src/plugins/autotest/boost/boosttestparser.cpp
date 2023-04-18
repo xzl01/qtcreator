@@ -1,31 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "boosttestparser.h"
+
 #include "boostcodeparser.h"
-#include "boosttestframework.h"
 #include "boosttesttreeitem.h"
 
 #include <cppeditor/cppmodelmanager.h>
@@ -33,6 +11,8 @@
 #include <QMap>
 #include <QRegularExpression>
 #include <QRegularExpressionMatch>
+
+using namespace Utils;
 
 namespace Autotest {
 namespace Internal {
@@ -75,18 +55,16 @@ static bool includesBoostTest(const CPlusPlus::Document::Ptr &doc,
 {
     static const QRegularExpression boostTestHpp("^.*/boost/test/.*\\.hpp$");
     for (const CPlusPlus::Document::Include &inc : doc->resolvedIncludes()) {
-        if (boostTestHpp.match(inc.resolvedFileName()).hasMatch())
+        if (boostTestHpp.match(inc.resolvedFileName().path()).hasMatch())
             return true;
     }
 
-    for (const QString &include : snapshot.allIncludesForDocument(doc->fileName())) {
-        if (boostTestHpp.match(include).hasMatch())
+    for (const FilePath &include : snapshot.allIncludesForDocument(doc->filePath())) {
+        if (boostTestHpp.match(include.path()).hasMatch())
             return true;
     }
 
-    return CppParser::precompiledHeaderContains(snapshot,
-                                                Utils::FilePath::fromString(doc->fileName()),
-                                                boostTestHpp);
+    return CppParser::precompiledHeaderContains(snapshot, doc->filePath(), boostTestHpp);
 }
 
 static bool hasBoostTestMacros(const CPlusPlus::Document::Ptr &doc)
@@ -100,8 +78,8 @@ static bool hasBoostTestMacros(const CPlusPlus::Document::Ptr &doc)
     return false;
 }
 
-static BoostTestParseResult *createParseResult(const QString &name, const Utils::FilePath &filePath,
-                                               const Utils::FilePath &projectFile,
+static BoostTestParseResult *createParseResult(const QString &name, const FilePath &filePath,
+                                               const FilePath &projectFile,
                                                ITestFramework *framework,
                                                TestTreeItem::Type type, const BoostTestInfo &info)
 {
@@ -119,7 +97,7 @@ static BoostTestParseResult *createParseResult(const QString &name, const Utils:
 }
 
 bool BoostTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futureInterface,
-                                      const Utils::FilePath &fileName)
+                                      const FilePath &fileName)
 {
     CPlusPlus::Document::Ptr doc = document(fileName);
     if (doc.isNull() || !includesBoostTest(doc, m_cppSnapshot) || !hasBoostTestMacros(doc))
@@ -131,7 +109,7 @@ bool BoostTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futu
     if (projectParts.isEmpty()) // happens if shutting down while parsing
         return false;
     const CppEditor::ProjectPart::ConstPtr projectPart = projectParts.first();
-    const auto projectFile = Utils::FilePath::fromString(projectPart->projectFile);
+    const auto projectFile = FilePath::fromString(projectPart->projectFile);
     const QByteArray &fileContent = getFileContent(fileName);
 
     BoostCodeParser codeParser(fileContent, projectPart->languageFeatures, doc, m_cppSnapshot);

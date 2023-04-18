@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Canonical Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Canonical Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -32,11 +10,11 @@
 #include <projectexplorer/kitmanager.h>
 
 namespace CMakeProjectManager {
+
 class CMakeTool;
 
 class CMAKE_EXPORT CMakeKitAspect : public ProjectExplorer::KitAspect
 {
-    Q_OBJECT
 public:
     CMakeKitAspect();
 
@@ -62,7 +40,6 @@ public:
 
 class CMAKE_EXPORT CMakeGeneratorKitAspect : public ProjectExplorer::KitAspect
 {
-    Q_OBJECT
 public:
     CMakeGeneratorKitAspect();
 
@@ -95,7 +72,6 @@ private:
 
 class CMAKE_EXPORT CMakeConfigurationKitAspect : public ProjectExplorer::KitAspect
 {
-    Q_OBJECT
 public:
     CMakeConfigurationKitAspect();
 
@@ -112,6 +88,14 @@ public:
 
     static CMakeConfig defaultConfiguration(const ProjectExplorer::Kit *k);
 
+    static void setCMakePreset(ProjectExplorer::Kit *k, const QString &presetName);
+    static CMakeConfigItem cmakePresetConfigItem(const ProjectExplorer::Kit *k);
+
+    static void setKitDefaultConfigHash(ProjectExplorer::Kit *k);
+    static CMakeConfigItem kitDefaultConfigHashItem(const ProjectExplorer::Kit *k);
+    static QByteArray computeDefaultConfigHash(const CMakeConfig &config,
+                                               const Utils::FilePath &cmakeBinary);
+
     // KitAspect interface
     ProjectExplorer::Tasks validate(const ProjectExplorer::Kit *k) const final;
     void setup(ProjectExplorer::Kit *k) final;
@@ -123,4 +107,4 @@ private:
     QVariant defaultValue(const ProjectExplorer::Kit *k) const;
 };
 
-} // namespace CMakeProjectManager
+} // CMakeProjectManager

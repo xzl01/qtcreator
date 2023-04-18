@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Lorenz Haas
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Lorenz Haas
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
+
+#include <utils/filepath.h>
 
 #include <QCoreApplication>
 #include <QDir>
@@ -35,11 +15,18 @@
 #include <QStringList>
 #include <QVector>
 
-namespace Core { class IDocument; }
-namespace Utils { class FilePath; }
+#include <memory>
 
-namespace Beautifier {
-namespace Internal {
+QT_BEGIN_NAMESPACE
+class QRegularExpression;
+class QVersionNumber;
+QT_END_NAMESPACE
+
+namespace Core { class IDocument; }
+
+namespace Beautifier::Internal {
+
+class VersionUpdater;
 
 class AbstractSettings : public QObject
 {
@@ -66,9 +53,8 @@ public:
     virtual QString styleFileName(const QString &key) const;
 
     Utils::FilePath command() const;
-    void setCommand(const QString &command);
-    int version() const;
-    virtual void updateVersion();
+    void setCommand(const Utils::FilePath &cmd);
+    QVersionNumber version() const;
 
     QString supportedMimeTypesAsString() const;
     void setSupportedMimeTypes(const QString &mimes);
@@ -81,9 +67,10 @@ signals:
     void supportedMimeTypesChanged();
 
 protected:
+    void setVersionRegExp(const QRegularExpression &versionRegExp);
+
     QMap<QString, QString> m_styles;
     QMap<QString, QVariant> m_settings;
-    int m_version = 0;
     QString m_ending;
     QDir m_styleDir;
 
@@ -92,13 +79,13 @@ protected:
 
 private:
     QString m_name;
+    std::unique_ptr<VersionUpdater> m_versionUpdater;
     QStringList m_stylesToRemove;
     QSet<QString> m_changedStyles;
-    QString m_command;
+    Utils::FilePath m_command;
     QHash<QString, int> m_options;
     QStringList m_docu;
     QStringList m_supportedMimeTypes;
 };
 
-} // namespace Internal
-} // namespace Beautifier
+} // Beautifier::Internal

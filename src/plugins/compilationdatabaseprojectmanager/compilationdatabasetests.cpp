@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "compilationdatabasetests.h"
 
@@ -30,20 +8,24 @@
 #include <coreplugin/icore.h>
 #include <cppeditor/cpptoolstestcase.h>
 #include <cppeditor/projectinfo.h>
+
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/projectexplorer.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/toolchain.h>
 #include <projectexplorer/toolchainmanager.h>
+
 #include <utils/algorithm.h>
+#include <utils/hostosinfo.h>
 
 #include <QtTest>
 
 using namespace CppEditor;
 using namespace ProjectExplorer;
+using namespace Utils;
 
-namespace CompilationDatabaseProjectManager {
-namespace Internal {
+namespace CompilationDatabaseProjectManager::Internal {
 
 CompilationDatabaseTests::CompilationDatabaseTests(QObject *parent)
     : QObject(parent)
@@ -74,7 +56,7 @@ void CompilationDatabaseTests::cleanupTestCase()
 
 void CompilationDatabaseTests::testProject()
 {
-    QFETCH(QString, projectFilePath);
+    QFETCH(FilePath, projectFilePath);
 
     CppEditor::Tests::ProjectOpenerAndCloser projectManager;
     const CppEditor::ProjectInfo::ConstPtr projectInfo = projectManager.open(projectFilePath, true);
@@ -92,7 +74,7 @@ void CompilationDatabaseTests::testProject()
 
 void CompilationDatabaseTests::testProject_data()
 {
-    QTest::addColumn<QString>("projectFilePath");
+    QTest::addColumn<FilePath>("projectFilePath");
 
     addTestRow("qtc/compile_commands.json");
     addTestRow("llvm/compile_commands.json");
@@ -120,7 +102,7 @@ public:
     QStringList flags;
     QString fileName;
     QString workingDir;
-    QString sysRoot;
+    FilePath sysRoot;
 };
 }
 
@@ -131,7 +113,7 @@ void CompilationDatabaseTests::testFilterEmptyFlags()
 
 void CompilationDatabaseTests::testFilterFromFilename()
 {
-    QCOMPARE(filterFromFileName(QStringList{"-o", "foo.o"}, "foo"), QStringList{"-o"});
+    QCOMPARE(filterFromFileName(QStringList{"-o", "foo.o"}, "foo.c"), QStringList());
 }
 
 void CompilationDatabaseTests::testFilterArguments()
@@ -164,8 +146,10 @@ void CompilationDatabaseTests::testFilterArguments()
                     "c++",
                     QString("--sysroot=") + (HostOsInfo::isWindowsHost()
                         ? "C:\\sysroot\\embedded" : "/opt/sysroot/embedded"),
-                    "C:\\qt-creator\\src\\plugins\\cpptools\\compileroptionsbuilder.cpp"},
-        "compileroptionsbuilder");
+                    QLatin1String(HostOsInfo::isWindowsHost()
+                        ? "C:\\qt-creator\\src\\plugins\\cpptools\\compileroptionsbuilder.cpp"
+                        : "/opt/qt-creator/src/plugins/cpptools/compileroptionsbuilder.cpp")},
+        "compileroptionsbuilder.cpp");
 
     testData.getFilteredFlags();
 
@@ -179,8 +163,8 @@ void CompilationDatabaseTests::testFilterArguments()
                                       {"RELATIVE_PLUGIN_PATH", "\"../lib/qtcreator/plugins\""},
                                       {"QT_CREATOR", "1"}}));
     QCOMPARE(testData.fileKind, CppEditor::ProjectFile::Kind::CXXSource);
-    QCOMPARE(testData.sysRoot, HostOsInfo::isWindowsHost() ? QString("C:\\sysroot\\embedded")
-                                                           : QString("/opt/sysroot/embedded"));
+    QCOMPARE(testData.sysRoot.toUserOutput(), HostOsInfo::isWindowsHost()
+             ? QString("C:\\sysroot\\embedded") : QString("/opt/sysroot/embedded"));
 }
 
 static QString kCmakeCommand
@@ -236,16 +220,18 @@ void CompilationDatabaseTests::testFilterCommand()
     testData.fileName = "SemaCodeComplete.cpp";
     testData.workingDir = "C:/build-qt_llvm-msvc2017_64bit-Debug";
     testData.flags = filterFromFileName(testData.getSplitCommandLine(kCmakeCommand),
-                                        "SemaCodeComplete");
+                                        "SemaCodeComplete.cpp");
     testData.getFilteredFlags();
 
-    QCOMPARE(testData.flags,
-             (QStringList{"/Zc:inline", "/Zc:strictStrings", "/Zc:rvalueCast", "/Zi"}));
-    QCOMPARE(testData.headerPaths,
-             toUserHeaderPaths(QStringList{"C:/build-qt_llvm-msvc2017_64bit-Debug/tools\\clang\\lib\\Sema"}));
-    QCOMPARE(testData.macros, (Macros{{"UNICODE", "1"}, {"_HAS_EXCEPTIONS", "0"}, {"WIN32", "1"},
-                                      {"_WINDOWS", "1"}}));
-    QCOMPARE(testData.fileKind, CppEditor::ProjectFile::Kind::CXXSource);
+    if (Utils::HostOsInfo::isWindowsHost()) {
+        QCOMPARE(testData.flags,
+                 (QStringList{"/Zc:inline", "/Zc:strictStrings", "/Zc:rvalueCast", "/Zi"}));
+        QCOMPARE(testData.headerPaths,
+                 toUserHeaderPaths(QStringList{"C:/build-qt_llvm-msvc2017_64bit-Debug/tools\\clang\\lib\\Sema"}));
+        QCOMPARE(testData.macros, (Macros{{"UNICODE", "1"}, {"_HAS_EXCEPTIONS", "0"}, {"WIN32", "1"},
+                                          {"_WINDOWS", "1"}}));
+        QCOMPARE(testData.fileKind, CppEditor::ProjectFile::Kind::CXXSource);
+    }
 }
 
 void CompilationDatabaseTests::testFileKindDifferentFromExtension()
@@ -271,17 +257,16 @@ void CompilationDatabaseTests::testFileKindDifferentFromExtension2()
 void CompilationDatabaseTests::testSkipOutputFiles()
 {
     CompilationDatabaseUtilsTestData testData;
-    testData.flags = filterFromFileName(QStringList{"-o", "foo.o"}, "foo");
+    testData.flags = filterFromFileName(QStringList{"-o", "foo.o"}, "foo.cpp");
 
     QVERIFY(testData.getFilteredFlags().isEmpty());
 }
 
-void CompilationDatabaseTests::addTestRow(const QByteArray &relativeFilePath)
+void CompilationDatabaseTests::addTestRow(const QString &relativeFilePath)
 {
-    const QString absoluteFilePath = m_tmpDir->absolutePath(relativeFilePath);
+    const FilePath absoluteFilePath = m_tmpDir->absolutePath(relativeFilePath);
 
-    QTest::newRow(relativeFilePath.constData()) << absoluteFilePath;
+    QTest::newRow(qPrintable(relativeFilePath)) << absoluteFilePath;
 }
 
-} // namespace Internal
-} // namespace CompilationDatabaseProjectManager
+} // CompilationDatabaseProjectManager::Internal

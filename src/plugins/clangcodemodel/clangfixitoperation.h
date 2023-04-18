@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include <texteditor/quickfix.h>
+#include "clangutils.h"
 
-#include <clangsupport/fixitcontainer.h>
+#include <texteditor/quickfix.h>
 
 #include <utils/changeset.h>
 
@@ -45,8 +23,7 @@ namespace Internal {
 class ClangFixItOperation : public TextEditor::QuickFixOperation
 {
 public:
-    ClangFixItOperation(const Utf8String &fixItText,
-                        const QVector<ClangBackEnd::FixItContainer> &fixItContainers);
+    ClangFixItOperation(const QString &fixItText, const QList<ClangFixIt> &fixIts);
 
     int priority() const override;
     QString description() const override;
@@ -56,15 +33,14 @@ public:
 
 private:
     void applyFixitsToFile(TextEditor::RefactoringFile &refactoringFile,
-                           const QVector<ClangBackEnd::FixItContainer> fixItContainers);
-    ::Utils::ChangeSet toChangeSet(
-            TextEditor::RefactoringFile &refactoringFile,
-            const QVector<ClangBackEnd::FixItContainer> fixItContainers) const;
+                           const QList<ClangFixIt> fixIts);
+    Utils::ChangeSet toChangeSet(TextEditor::RefactoringFile &refactoringFile,
+            const QList<ClangFixIt> fixIts) const;
 
 private:
-    Utf8String fixItText;
+    QString fixItText;
     QVector<QSharedPointer<TextEditor::RefactoringFile>> refactoringFiles;
-    QVector<ClangBackEnd::FixItContainer> fixItContainers;
+    QList<ClangFixIt> fixIts;
 };
 
 } // namespace Internal

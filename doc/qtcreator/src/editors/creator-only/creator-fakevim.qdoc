@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Creator documentation.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \previouspage creator-editor-options-text.html
@@ -92,7 +70,7 @@
 
     \list
         \li \c :map, \c :unmap, \c :inoremap, and so on
-        \li \c :source provides very basic line-by-line sourcing of vimrc files
+        \li \c :source sources vimrc files line-by-line
         \li \c :substitute substitutes an expression in a range
         \li \c :'<,'>!cmd filters through an external command (for example,
             sorts the lines in a file with \c :%!sort)
@@ -115,10 +93,10 @@
     \section2 Plugin Emulation
 
     FakeVim also emulates some popular vim plugins. To enable plugin emulation
-    for particular plugins, select \uicontrol Tools > \uicontrol Options >
+    for particular plugins, select \uicontrol Edit > \uicontrol Preferences >
     \uicontrol FakeVim > \uicontrol General > \uicontrol {Plugin Emulation}.
 
-    \image qtcreator-fakevim-options-general-plugin-emulation.png "FakeVim Plugin Emulation options"
+    \image qtcreator-fakevim-options-general-plugin-emulation.png "FakeVim Plugin Emulation preferences"
 
     Currently emulated plugins:
     \list
@@ -291,12 +269,12 @@
     \section1 Mapping FakeVim Commands
 
     To map commands entered on the \uicontrol FakeVim command line to
-    \QC functions, select \uicontrol Tools > \uicontrol Options >
+    \QC functions, select \uicontrol Edit > \uicontrol Preferences >
     \uicontrol FakeVim > \uicontrol {Ex Command Mapping}.
     Enter a string in the \uicontrol Filter field to search for a specific
     \QC function.
 
-    \image qtcreator-fakevim-options-ex-command-mapping.png "FakeVim Ex Command Mapping options"
+    \image qtcreator-fakevim-options-ex-command-mapping.png "FakeVim Ex Command Mapping preferences"
 
     Select a function in the list, and enter a string that will trigger the
     function in the \uicontrol {Regular expression} field. You can view the
@@ -306,19 +284,19 @@
     To reset the trigger expressions for all functions, select
     \uicontrol {Reset All}.
 
-    To map \e {user commands} to keyboard shortcuts, select \uicontrol Tools >
-    \uicontrol Options > \uicontrol FakeVim >
+    To map \e {user commands} to keyboard shortcuts, select \uicontrol Edit >
+    \uicontrol Preferences > \uicontrol FakeVim >
     \uicontrol {User Command Mapping}. The user command mapped to the shortcut
     is executed by FakeVim as if you were typing it (as when replaying a macro).
 
-    \image qtcreator-fakevim-options-user-command-mapping.png "FakeVim User Command Mapping options"
+    \image qtcreator-fakevim-options-user-command-mapping.png "FakeVim User Command Mapping preferences"
 
-    \section1 Specifying FakeVim Options
+    \section1 Setting FakeVim Preferences
 
-    To make changes to the Vim-style settings, select \uicontrol Tools >
-    \uicontrol Options > \uicontrol FakeVim > \uicontrol General.
+    To make changes to the Vim-style settings, select \uicontrol Edit >
+    \uicontrol Preferences > \uicontrol FakeVim > \uicontrol General.
 
-    \image qtcreator-fakevim-options.png "FakeVim options"
+    \image qtcreator-fakevim-options.png "FakeVim preferences"
 
     To preselect the indentation settings specified for the text editor, select
     \uicontrol {Copy Text Editor Settings}. To preselect the Qt coding style,
@@ -326,13 +304,13 @@
     select \uicontrol {Set Plain Style}. You can then change any of the
     preselected settings.
 
-    To use a Vim-style color scheme, select \uicontrol Tools >
-    \uicontrol Options > \uicontrol {Text Editor} > \uicontrol {Fonts & Color}.
+    To use a Vim-style color scheme, select \uicontrol Edit >
+    \uicontrol Preferences > \uicontrol {Text Editor} > \uicontrol {Fonts & Color}.
     In the \uicontrol {Color Scheme} list, select \uicontrol {Vim (dark)}.
 
     \section1 Quitting FakeVim Mode
 
-    To quit the FakeVim mode, unselect \uicontrol Tools > \uicontrol Options >
+    To quit the FakeVim mode, deselect \uicontrol Edit > \uicontrol Preferences >
     \uicontrol FakeVim > \uicontrol {Use FakeVim} or press \key {Alt+V,Alt+V}.
 
     You can temporarily escape FakeVim mode to access the normal \QC keyboard

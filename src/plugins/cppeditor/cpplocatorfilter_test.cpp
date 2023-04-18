@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cpplocatorfilter_test.h"
 
@@ -31,9 +9,10 @@
 #include "cpptoolstestcase.h"
 
 #include <coreplugin/editormanager/editormanager.h>
+#include <coreplugin/locator/locatorfiltertest.h>
 #include <coreplugin/testdatadir.h>
 #include <extensionsystem/pluginmanager.h>
-#include <coreplugin/locator/locatorfiltertest.h>
+#include <utils/environment.h>
 #include <utils/fileutils.h>
 
 #include <QDebug>
@@ -48,7 +27,7 @@ using namespace Utils;
 namespace CppEditor::Internal {
 namespace {
 
-const bool debug = qEnvironmentVariable("QTC_DEBUG_CPPLOCATORFILTERTESTCASE") == "1";
+const bool debug = qtcEnvironmentVariable("QTC_DEBUG_CPPLOCATORFILTERTESTCASE") == "1";
 
 QTC_DECLARE_MYTESTDATADIR("../../../tests/cpplocators/")
 
@@ -90,14 +69,14 @@ class CppCurrentDocumentFilterTestCase
     , public CppEditor::Tests::TestCase
 {
 public:
-    CppCurrentDocumentFilterTestCase(const QString &fileName,
+    CppCurrentDocumentFilterTestCase(const FilePath &filePath,
                                      const ResultDataList &expectedResults,
                                      const QString &searchText = QString())
         : BasicLocatorFilterTest(CppModelManager::instance()->currentDocumentFilter())
-        , m_fileName(fileName)
+        , m_filePath(filePath)
     {
         QVERIFY(succeededSoFar());
-        QVERIFY(!m_fileName.isEmpty());
+        QVERIFY(!m_filePath.isEmpty());
 
         ResultDataList results = ResultData::fromFilterEntryList(matchesFor(searchText));
         if (debug) {
@@ -114,10 +93,10 @@ private:
         QVERIFY(DocumentModel::openedDocuments().isEmpty());
         QVERIFY(garbageCollectGlobalSnapshot());
 
-        m_editor = EditorManager::openEditor(FilePath::fromString(m_fileName));
+        m_editor = EditorManager::openEditor(m_filePath);
         QVERIFY(m_editor);
 
-        QVERIFY(waitForFileInGlobalSnapshot(m_fileName));
+        QVERIFY(waitForFileInGlobalSnapshot(m_filePath));
     }
 
     void doAfterLocatorRun() override
@@ -130,7 +109,7 @@ private:
 
 private:
     IEditor *m_editor = nullptr;
-    const QString m_fileName;
+    const FilePath m_filePath;
 };
 
 } // anonymous namespace
@@ -322,7 +301,7 @@ void LocatorFilterTest::testLocatorFilter_data()
 void LocatorFilterTest::testCurrentDocumentFilter()
 {
     MyTestDataDir testDirectory("testdata_basic");
-    const QString testFile = testDirectory.file("file1.cpp");
+    const FilePath testFile = testDirectory.filePath("file1.cpp");
 
     auto expectedResults = ResultDataList{
         ResultData("int myVariable", ""),
@@ -376,7 +355,7 @@ void LocatorFilterTest::testCurrentDocumentFilter()
 void LocatorFilterTest::testCurrentDocumentHighlighting()
 {
     MyTestDataDir testDirectory("testdata_basic");
-    const QString testFile = testDirectory.file("file1.cpp");
+    const FilePath testFile = testDirectory.filePath("file1.cpp");
 
     const QString searchText = "pos";
     const ResultDataList expectedResults{

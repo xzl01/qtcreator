@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "clangtoolsutils.h"
 
@@ -29,6 +7,7 @@
 #include "clangtoolsconstants.h"
 #include "clangtoolsdiagnostic.h"
 #include "clangtoolssettings.h"
+#include "clangtoolstr.h"
 
 #include <coreplugin/icore.h>
 #include <cppeditor/cppeditorconstants.h>
@@ -39,6 +18,7 @@
 #include <utils/environment.h>
 #include <utils/filepath.h>
 #include <utils/hostosinfo.h>
+#include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 
 #include <cppeditor/clangdiagnosticconfigsmodel.h>
@@ -58,59 +38,55 @@ static QString fixitStatus(FixitStatus status)
 {
     switch (status) {
     case FixitStatus::NotAvailable:
-        return QCoreApplication::translate("ClangToolsDiagnosticModel", "No Fixits");
+        return Tr::tr("No Fixits");
     case FixitStatus::NotScheduled:
-        return QCoreApplication::translate("ClangToolsDiagnosticModel", "Not Scheduled");
+        return Tr::tr("Not Scheduled");
     case FixitStatus::Invalidated:
-        return QCoreApplication::translate("ClangToolsDiagnosticModel", "Invalidated");
+        return Tr::tr("Invalidated");
     case FixitStatus::Scheduled:
-        return QCoreApplication::translate("ClangToolsDiagnosticModel", "Scheduled");
+        return Tr::tr("Scheduled");
     case FixitStatus::FailedToApply:
-        return QCoreApplication::translate("ClangToolsDiagnosticModel", "Failed to Apply");
+        return Tr::tr("Failed to Apply");
     case FixitStatus::Applied:
-        return QCoreApplication::translate("ClangToolsDiagnosticModel", "Applied");
+        return Tr::tr("Applied");
     }
     return QString();
 }
 
 QString createDiagnosticToolTipString(
     const Diagnostic &diagnostic,
-    Utils::optional<FixitStatus> status,
+    std::optional<FixitStatus> status,
     bool showSteps)
 {
     using StringPair = QPair<QString, QString>;
     QList<StringPair> lines;
 
     if (!diagnostic.category.isEmpty()) {
-        lines << qMakePair(
-                     QCoreApplication::translate("ClangTools::Diagnostic", "Category:"),
-                     diagnostic.category.toHtmlEscaped());
+        lines.push_back({Tr::tr("Category:"),
+                         diagnostic.category.toHtmlEscaped()});
     }
 
     if (!diagnostic.type.isEmpty()) {
-        lines << qMakePair(
-                     QCoreApplication::translate("ClangTools::Diagnostic", "Type:"),
-                     diagnostic.type.toHtmlEscaped());
+        lines.push_back({Tr::tr("Type:"),
+                         diagnostic.type.toHtmlEscaped()});
     }
 
     if (!diagnostic.description.isEmpty()) {
-        lines << qMakePair(
-                     QCoreApplication::translate("ClangTools::Diagnostic", "Description:"),
-                     diagnostic.description.toHtmlEscaped());
+        lines.push_back({Tr::tr("Description:"),
+                         diagnostic.description.toHtmlEscaped()});
     }
 
-    lines << qMakePair(
-                 QCoreApplication::translate("ClangTools::Diagnostic", "Location:"),
-                 createFullLocationString(diagnostic.location));
+    lines.push_back({Tr::tr("Location:"),
+                     createFullLocationString(diagnostic.location)});
 
     if (status) {
-        lines << qMakePair(QCoreApplication::translate("ClangTools::Diagnostic", "Fixit status:"),
-                           fixitStatus(*status));
+        lines.push_back({Tr::tr("Fixit status:"),
+                         fixitStatus(*status)});
     }
 
     if (showSteps && !diagnostic.explainingSteps.isEmpty()) {
         StringPair steps;
-        steps.first = QCoreApplication::translate("ClangTools::Diagnostic", "Steps:");
+        steps.first = Tr::tr("Steps:");
         for (const ExplainingStep &step : diagnostic.explainingSteps) {
             if (!steps.second.isEmpty())
                 steps.second += "<br>";
@@ -124,8 +100,8 @@ QString createDiagnosticToolTipString(
 
     const QString url = documentationUrl(diagnostic.name);
     if (!url.isEmpty()) {
-        lines << qMakePair(QCoreApplication::translate("ClangTools::Diagnostic", "Documentation:"),
-                           QString("<a href=\"%1\">%1</a>").arg(url));
+        lines.push_back({Tr::tr("Documentation:"),
+                         QString("<a href=\"%1\">%1</a>").arg(url)});
     }
 
     QString html = QLatin1String("<html>"
@@ -134,7 +110,7 @@ QString createDiagnosticToolTipString(
                                  "</head>\n"
                                  "<body><dl>");
 
-    for (const StringPair &pair : qAsConst(lines)) {
+    for (const StringPair &pair : std::as_const(lines)) {
         html += QLatin1String("<dt>");
         html += pair.first;
         html += QLatin1String("</dt><dd>");
@@ -153,7 +129,7 @@ QString createFullLocationString(const Debugger::DiagnosticLocation &location)
 
 QString hintAboutBuildBeforeAnalysis()
 {
-    return ClangTool::tr(
+    return Tr::tr(
         "In general, the project should be built before starting the analysis to ensure that the "
         "code to analyze is valid.<br/><br/>"
         "Building the project might also run code generators that update the source files as "
@@ -164,26 +140,10 @@ void showHintAboutBuildBeforeAnalysis()
 {
     Utils::CheckableMessageBox::doNotShowAgainInformation(
         Core::ICore::dialogParent(),
-        ClangTool::tr("Info About Build the Project Before Analysis"),
+        Tr::tr("Info About Build the Project Before Analysis"),
         hintAboutBuildBeforeAnalysis(),
         Core::ICore::settings(),
         "ClangToolsDisablingBuildBeforeAnalysisHint");
-}
-
-FilePath shippedClangTidyExecutable()
-{
-    const FilePath shippedExecutable = Core::ICore::clangTidyExecutable(CLANG_BINDIR);
-    if (shippedExecutable.isExecutableFile())
-        return shippedExecutable;
-    return {};
-}
-
-FilePath shippedClazyStandaloneExecutable()
-{
-    const FilePath shippedExecutable = Core::ICore::clazyStandaloneExecutable(CLANG_BINDIR);
-    if (shippedExecutable.isExecutableFile())
-        return shippedExecutable;
-    return {};
 }
 
 FilePath fullPath(const FilePath &executable)
@@ -215,36 +175,48 @@ static FilePath findValidExecutable(const FilePaths &candidates)
     return {};
 }
 
-FilePath clangTidyFallbackExecutable()
+FilePath toolShippedExecutable(ClangToolType tool)
 {
-    return findValidExecutable({
-        shippedClangTidyExecutable(),
-        Constants::CLANG_TIDY_EXECUTABLE_NAME,
-    });
+    const FilePath shippedExecutable = tool == ClangToolType::Tidy
+                                     ? Core::ICore::clangTidyExecutable(CLANG_BINDIR)
+                                     : Core::ICore::clazyStandaloneExecutable(CLANG_BINDIR);
+    if (shippedExecutable.isExecutableFile())
+        return shippedExecutable;
+    return {};
 }
 
-FilePath clangTidyExecutable()
+FilePath toolExecutable(ClangToolType tool)
 {
-    const FilePath fromSettings = ClangToolsSettings::instance()->clangTidyExecutable();
+    const FilePath fromSettings = ClangToolsSettings::instance()->executable(tool);
     if (!fromSettings.isEmpty())
         return fullPath(fromSettings);
-    return clangTidyFallbackExecutable();
+    return toolFallbackExecutable(tool);
 }
 
-FilePath clazyStandaloneFallbackExecutable()
+FilePath toolFallbackExecutable(ClangToolType tool)
 {
-    return findValidExecutable({
-        shippedClazyStandaloneExecutable(),
-        Constants::CLAZY_STANDALONE_EXECUTABLE_NAME,
-    });
+    const FilePath fallback = tool == ClangToolType::Tidy
+                            ? FilePath(Constants::CLANG_TIDY_EXECUTABLE_NAME)
+                            : FilePath(Constants::CLAZY_STANDALONE_EXECUTABLE_NAME);
+    return findValidExecutable({toolShippedExecutable(tool), fallback});
 }
 
-FilePath clazyStandaloneExecutable()
+QString clangToolName(CppEditor::ClangToolType tool)
 {
-    const FilePath fromSettings = ClangToolsSettings::instance()->clazyStandaloneExecutable();
-    if (!fromSettings.isEmpty())
-        return fullPath(fromSettings);
-    return clazyStandaloneFallbackExecutable();
+    return tool == ClangToolType::Tidy ? Tr::tr("Clang-Tidy") : Tr::tr("Clazy");
+}
+
+bool isVFSOverlaySupported(const FilePath &executable)
+{
+    static QMap<FilePath, bool> vfsCapabilities;
+    auto it = vfsCapabilities.find(executable);
+    if (it == vfsCapabilities.end()) {
+        QtcProcess p;
+        p.setCommand({executable, {"--help"}});
+        p.runBlocking();
+        it = vfsCapabilities.insert(executable, p.allOutput().contains("vfsoverlay"));
+    }
+    return it.value();
 }
 
 static void addBuiltinConfigs(ClangDiagnosticConfigsModel &model)
@@ -256,8 +228,7 @@ ClangDiagnosticConfig builtinConfig()
 {
     ClangDiagnosticConfig config;
     config.setId(Constants::DIAG_CONFIG_TIDY_AND_CLAZY);
-    config.setDisplayName(QCoreApplication::translate("ClangDiagnosticConfigsModel",
-                                                      "Default Clang-Tidy and Clazy checks"));
+    config.setDisplayName(Tr::tr("Default Clang-Tidy and Clazy checks"));
     config.setIsReadOnly(true);
     config.setClangOptions({"-w"}); // Do not emit any clang-only warnings
     config.setClangTidyMode(ClangDiagnosticConfig::TidyMode::UseDefaultChecks);
@@ -308,11 +279,11 @@ ClangDiagnosticConfig diagnosticConfig(const Utils::Id &diagConfigId)
     return configs.configWithId(diagConfigId);
 }
 
-static QStringList extraOptions(const char *envVar)
+static QStringList extraOptions(const QString &envVar)
 {
-    if (!qEnvironmentVariableIsSet(envVar))
+    if (!qtcEnvironmentVariableIsSet(envVar))
         return QStringList();
-    QString arguments = qEnvironmentVariable(envVar);
+    QString arguments = qtcEnvironmentVariable(envVar);
     return Utils::ProcessArgs::splitArgs(arguments);
 }
 
@@ -340,13 +311,25 @@ QStringList extraClangToolsAppendOptions()
 
 QString clangTidyDocUrl(const QString &check)
 {
-    QVersionNumber version = ClangToolsSettings::clangTidyVersion();
-    version = QVersionNumber(version.majorVersion(), 0, 0);
-    if (version == QVersionNumber(0))
-        version = QVersionNumber(12);
-    static const char urlTemplate[]
-            = "https://releases.llvm.org/%1/tools/clang/tools/extra/docs/clang-tidy/checks/%2.html";
-    return QString::fromLatin1(urlTemplate).arg(version.toString(), check);
+    VersionAndSuffix version = ClangToolsSettings::clangTidyVersion();
+    version.first = QVersionNumber(version.first.majorVersion(), 0, 0);
+    if (version.first == QVersionNumber(0))
+        version.first = QVersionNumber(12);
+    static const char versionedUrlPrefix[]
+            = "https://releases.llvm.org/%1/tools/clang/tools/extra/docs/";
+    static const char unversionedUrlPrefix[] = "https://clang.llvm.org/extra/";
+    QString url = version.second.contains("git")
+            ? QString::fromLatin1(unversionedUrlPrefix)
+            : QString::fromLatin1(versionedUrlPrefix).arg(version.first.toString());
+    url.append("clang-tidy/checks/");
+    if (version.first.majorVersion() < 15) {
+        url.append(check);
+    } else {
+        const int hyphenIndex = check.indexOf('-');
+        QTC_ASSERT(hyphenIndex != -1, return {});
+        url.append(check.left(hyphenIndex)).append('/').append(check.mid(hyphenIndex + 1));
+    }
+    return url.append(".html");
 }
 
 QString clazyDocUrl(const QString &check)

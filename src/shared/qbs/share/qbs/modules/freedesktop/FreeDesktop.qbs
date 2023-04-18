@@ -33,22 +33,21 @@ import qbs.TextFile
 import "freedesktop.js" as Fdo
 
 Module {
-    id: fdoModule
-
     property string name: product.name
+    property string appName: name
 
     property var desktopKeys
 
     readonly property var defaultDesktopKeys: {
         return {
             'Type': 'Application',
-            'Name': product.freedesktop.name,
+            'Name': product.freedesktop.appName,
             'Exec': product.targetName,
             'Terminal': 'false',
             'Version': '1.1',
         }
     }
-    property bool _fdoSupported: qbs.targetOS.contains("unix") && !qbs.targetOS.contains("darwin")
+    property bool _fdoSupported: qbs.targetOS.includes("unix") && !qbs.targetOS.includes("darwin")
 
     additionalProductTypes: "freedesktop.desktopfile"
 
@@ -96,14 +95,14 @@ Module {
     }
 
     Group {
-        condition: fdoModule._fdoSupported
+        condition: product.freedesktop._fdoSupported
         fileTagsFilter: [ "freedesktop.desktopfile" ]
         qbs.install: true
         qbs.installDir: "share/applications"
     }
 
     Group {
-        condition: fdoModule._fdoSupported
+        condition: product.freedesktop._fdoSupported
         fileTagsFilter: [ "freedesktop.appIcon" ]
         qbs.install: true
         qbs.installDir: "share/icons/hicolor/scalable/apps"
@@ -115,7 +114,7 @@ Module {
     }
 
     Group {
-        condition: fdoModule._fdoSupported
+        condition: product.freedesktop._fdoSupported
         fileTagsFilter: [ "freedesktop.appstream" ]
         qbs.install: true
         qbs.installDir: "share/metainfo"

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 import QtQuick.Templates 2.15 as T
@@ -59,7 +37,7 @@ TextInput {
         y: StudioTheme.Values.border
         z: -1
         width: textInput.width
-        height: StudioTheme.Values.height - (StudioTheme.Values.border * 2)
+        height: StudioTheme.Values.height - StudioTheme.Values.border * 2
         color: StudioTheme.Values.themeControlBackground
         border.width: 0
     }
@@ -73,13 +51,13 @@ TextInput {
         acceptedButtons: Qt.LeftButton
         cursorShape: Qt.PointingHandCursor
         onPressed: function(mouse) {
-            if (textInput.readOnly) {
+            if (!textInput.myControl.editable) {
                 if (myControl.popup.opened) {
                     myControl.popup.close()
                     myControl.focus = false
                 } else {
-                    myControl.forceActiveFocus()
                     myControl.popup.open()
+                    //myControl.forceActiveFocus()
                 }
             } else {
                 textInput.forceActiveFocus()
@@ -93,7 +71,7 @@ TextInput {
         State {
             name: "default"
             when: myControl.enabled && !textInput.edit && !textInput.hover && !myControl.hover
-                  && !myControl.open
+                  && !myControl.open && !myControl.hasActiveDrag
             PropertyChanges {
                 target: textInputBackground
                 color: StudioTheme.Values.themeControlBackground
@@ -102,6 +80,14 @@ TextInput {
                 target: mouseArea
                 cursorShape: Qt.PointingHandCursor
                 acceptedButtons: Qt.LeftButton
+            }
+        },
+        State {
+            name: "dragHover"
+            when: myControl.enabled && myControl.hasActiveHoverDrag
+            PropertyChanges {
+                target: textInputBackground
+                color: StudioTheme.Values.themeControlBackgroundInteraction
             }
         },
         State {

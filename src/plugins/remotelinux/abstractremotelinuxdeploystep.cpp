@@ -1,40 +1,38 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "abstractremotelinuxdeploystep.h"
 
-#include "abstractremotelinuxdeployservice.h"
-#include "remotelinuxdeployconfiguration.h"
+#include "deploymenttimeinfo.h"
+#include "remotelinuxtr.h"
 
-#include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/deployablefile.h>
+#include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/kitinformation.h>
+#include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/target.h>
+
+#include <utils/qtcassert.h>
+#include <utils/tasktree.h>
+
+#include <QDateTime>
+#include <QPointer>
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace RemoteLinux {
 namespace Internal {
+
+class AbstractRemoteLinuxDeployServicePrivate
+{
+public:
+    IDevice::ConstPtr deviceConfiguration;
+    QPointer<Target> target;
+
+    DeploymentTimeInfo deployTimes;
+    std::unique_ptr<TaskTree> m_taskTree;
+};
 
 class AbstractRemoteLinuxDeployStepPrivate
 {
@@ -45,7 +43,112 @@ public:
     AbstractRemoteLinuxDeployService *deployService = nullptr;
 };
 
-} // namespace Internal
+} // Internal
+
+using namespace Internal;
+
+AbstractRemoteLinuxDeployService::AbstractRemoteLinuxDeployService(QObject *parent)
+    : QObject(parent), d(new AbstractRemoteLinuxDeployServicePrivate)
+{
+}
+
+AbstractRemoteLinuxDeployService::~AbstractRemoteLinuxDeployService()
+{
+    delete d;
+}
+
+const Target *AbstractRemoteLinuxDeployService::target() const
+{
+    return d->target;
+}
+
+const Kit *AbstractRemoteLinuxDeployService::kit() const
+{
+    return d->target ? d->target->kit() : nullptr;
+}
+
+IDevice::ConstPtr AbstractRemoteLinuxDeployService::deviceConfiguration() const
+{
+    return d->deviceConfiguration;
+}
+
+void AbstractRemoteLinuxDeployService::saveDeploymentTimeStamp(const DeployableFile &deployableFile,
+                                                               const QDateTime &remoteTimestamp)
+{
+    d->deployTimes.saveDeploymentTimeStamp(deployableFile, kit(), remoteTimestamp);
+}
+
+bool AbstractRemoteLinuxDeployService::hasLocalFileChanged(
+        const DeployableFile &deployableFile) const
+{
+    return d->deployTimes.hasLocalFileChanged(deployableFile, kit());
+}
+
+bool AbstractRemoteLinuxDeployService::hasRemoteFileChanged(
+        const DeployableFile &deployableFile, const QDateTime &remoteTimestamp) const
+{
+    return d->deployTimes.hasRemoteFileChanged(deployableFile, kit(), remoteTimestamp);
+}
+
+void AbstractRemoteLinuxDeployService::setTarget(Target *target)
+{
+    d->target = target;
+    d->deviceConfiguration = DeviceKitAspect::device(kit());
+}
+
+void AbstractRemoteLinuxDeployService::start()
+{
+    QTC_ASSERT(!d->m_taskTree, return);
+
+    const CheckResult check = isDeploymentPossible();
+    if (!check) {
+        emit errorMessage(check.errorMessage());
+        emit finished();
+        return;
+    }
+
+    if (!isDeploymentNecessary()) {
+        emit progressMessage(Tr::tr("No deployment action necessary. Skipping."));
+        emit finished();
+        return;
+    }
+
+    d->m_taskTree.reset(new TaskTree(deployRecipe()));
+    const auto endHandler = [this] {
+        d->m_taskTree.release()->deleteLater();
+        emit finished();
+    };
+    connect(d->m_taskTree.get(), &TaskTree::done, this, endHandler);
+    connect(d->m_taskTree.get(), &TaskTree::errorOccurred, this, endHandler);
+    d->m_taskTree->start();
+}
+
+void AbstractRemoteLinuxDeployService::stop()
+{
+    if (!d->m_taskTree)
+        return;
+    d->m_taskTree.reset();
+    emit finished();
+}
+
+CheckResult AbstractRemoteLinuxDeployService::isDeploymentPossible() const
+{
+    if (!deviceConfiguration())
+        return CheckResult::failure(Tr::tr("No device configuration set."));
+    return CheckResult::success();
+}
+
+QVariantMap AbstractRemoteLinuxDeployService::exportDeployTimes() const
+{
+    return d->deployTimes.exportDeployTimes();
+}
+
+void AbstractRemoteLinuxDeployService::importDeployTimes(const QVariantMap &map)
+{
+    d->deployTimes.importDeployTimes(map);
+}
+
+
 
 AbstractRemoteLinuxDeployStep::AbstractRemoteLinuxDeployStep(BuildStepList *bsl, Utils::Id id)
     : BuildStep(bsl, id), d(new Internal::AbstractRemoteLinuxDeployStepPrivate)
@@ -83,13 +186,9 @@ bool AbstractRemoteLinuxDeployStep::fromMap(const QVariantMap &map)
 
 QVariantMap AbstractRemoteLinuxDeployStep::toMap() const
 {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     QVariantMap map = BuildStep::toMap();
     map.insert(d->deployService->exportDeployTimes());
     return map;
-#else
-    return BuildStep::toMap().unite(d->deployService->exportDeployTimes());
-#endif
 }
 
 bool AbstractRemoteLinuxDeployStep::init()
@@ -99,7 +198,7 @@ bool AbstractRemoteLinuxDeployStep::init()
     QTC_ASSERT(d->internalInit, return false);
     const CheckResult canDeploy = d->internalInit();
     if (!canDeploy) {
-        emit addOutput(tr("Cannot deploy: %1").arg(canDeploy.errorMessage()),
+        emit addOutput(Tr::tr("Cannot deploy: %1").arg(canDeploy.errorMessage()),
                        OutputFormat::ErrorMessage);
     }
     return canDeploy;
@@ -132,7 +231,7 @@ void AbstractRemoteLinuxDeployStep::doCancel()
     if (d->hasError)
         return;
 
-    emit addOutput(tr("User requests deployment to stop; cleaning up."),
+    emit addOutput(Tr::tr("User requests deployment to stop; cleaning up."),
                    OutputFormat::NormalMessage);
     d->hasError = true;
     d->deployService->stop();
@@ -159,9 +258,9 @@ void AbstractRemoteLinuxDeployStep::handleWarningMessage(const QString &message)
 void AbstractRemoteLinuxDeployStep::handleFinished()
 {
     if (d->hasError)
-        emit addOutput(tr("Deploy step failed."), OutputFormat::ErrorMessage);
+        emit addOutput(Tr::tr("Deploy step failed."), OutputFormat::ErrorMessage);
     else
-        emit addOutput(tr("Deploy step finished."), OutputFormat::NormalMessage);
+        emit addOutput(Tr::tr("Deploy step finished."), OutputFormat::NormalMessage);
     disconnect(d->deployService, nullptr, this, nullptr);
     emit finished(!d->hasError);
 }

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jochen Becher
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Jochen Becher
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "classitem.h"
 
@@ -66,6 +44,8 @@
 #include <algorithm>
 
 #include <qmt/stereotype/customrelation.h>
+
+#include "../../modelinglibtr.h"
 
 namespace qmt {
 
@@ -400,7 +380,7 @@ bool ClassItem::extendContextMenu(QMenu *menu)
 {
     bool extended = false;
     if (diagramSceneModel()->diagramSceneController()->elementTasks()->hasClassDefinition(object(), diagramSceneModel()->diagram())) {
-        menu->addAction(new ContextMenuAction(tr("Show Definition"), "showDefinition", menu));
+        menu->addAction(new ContextMenuAction(Tr::tr("Show Definition"), "showDefinition", menu));
         extended = true;
     }
     return extended;
@@ -425,7 +405,7 @@ QString ClassItem::buildDisplayName() const
         name = object()->name();
         name += QLatin1Char('<');
         bool first = true;
-        foreach (const QString &p, diagramClass->templateParameters()) {
+        for (const QString &p : diagramClass->templateParameters()) {
             if (!first)
                 name += QLatin1Char(',');
             name += p;
@@ -466,11 +446,11 @@ void ClassItem::addRelationStarterTool(const QString &id)
     if (id == INHERITANCE)
         relationStarter()->addArrow(INHERITANCE, ArrowItem::ShaftSolid,
                                     ArrowItem::HeadNone, ArrowItem::HeadTriangle,
-                                    tr("Inheritance"));
+                                    Tr::tr("Inheritance"));
     else if (id == ASSOCIATION)
         relationStarter()->addArrow(ASSOCIATION, ArrowItem::ShaftSolid,
                                     ArrowItem::HeadNone, ArrowItem::HeadFilledTriangle,
-                                    tr("Association"));
+                                    Tr::tr("Association"));
     else
         ObjectItem::addRelationStarterTool(id);
 }
@@ -768,7 +748,7 @@ void ClassItem::updateMembers(const Style *style)
     auto dclass = dynamic_cast<DClass *>(object());
     QMT_ASSERT(dclass, return);
 
-    foreach (const MClassMember &member, dclass->members()) {
+    for (const MClassMember &member : dclass->members()) {
         switch (member.memberType()) {
         case MClassMember::MemberUndefined:
             QMT_ASSERT(false, return);

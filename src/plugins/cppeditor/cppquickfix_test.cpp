@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "cppquickfix_test.h"
 
@@ -47,6 +25,7 @@
 using namespace Core;
 using namespace CPlusPlus;
 using namespace TextEditor;
+using namespace Utils;
 
 using CppEditor::Tests::TemporaryDir;
 using CppEditor::Tests::Internal::TestIncludePaths;
@@ -91,7 +70,7 @@ BaseQuickFixTestCase::BaseQuickFixTestCase(const QList<TestDocumentPtr> &testDoc
 
     // Check if there is exactly one cursor marker
     unsigned cursorMarkersCount = 0;
-    foreach (const TestDocumentPtr document, m_testDocuments) {
+    for (const TestDocumentPtr &document : std::as_const(m_testDocuments)) {
         if (document->hasCursorMarker())
             ++cursorMarkersCount;
     }
@@ -100,7 +79,7 @@ BaseQuickFixTestCase::BaseQuickFixTestCase(const QList<TestDocumentPtr> &testDoc
     // Write documents to disk
     m_temporaryDirectory.reset(new TemporaryDir);
     QVERIFY(m_temporaryDirectory->isValid());
-    foreach (TestDocumentPtr document, m_testDocuments) {
+    for (const TestDocumentPtr &document : std::as_const(m_testDocuments)) {
         if (QFileInfo(document->m_fileName).isRelative())
             document->setBaseDirectory(m_temporaryDirectory->path());
         document->writeToDisk();
@@ -114,13 +93,13 @@ BaseQuickFixTestCase::BaseQuickFixTestCase(const QList<TestDocumentPtr> &testDoc
     }
 
     // Update Code Model
-    QSet<QString> filePaths;
-    foreach (const TestDocumentPtr &document, m_testDocuments)
+    QSet<FilePath> filePaths;
+    for (const TestDocumentPtr &document : std::as_const(m_testDocuments))
         filePaths << document->filePath();
     QVERIFY(parseFiles(filePaths));
 
     // Open Files
-    foreach (TestDocumentPtr document, m_testDocuments) {
+    for (const TestDocumentPtr &document : std::as_const(m_testDocuments)) {
         QVERIFY(openCppEditor(document->filePath(), &document->m_editor,
                               &document->m_editorWidget));
         closeEditorAtEndOfTestCase(document->m_editor);
@@ -149,7 +128,7 @@ BaseQuickFixTestCase::BaseQuickFixTestCase(const QList<TestDocumentPtr> &testDoc
     m_cppCodeStylePreferences->setCurrentDelegate("qt");
 
     // Find the document having the cursor marker
-    foreach (const TestDocumentPtr document, m_testDocuments) {
+    for (const TestDocumentPtr &document : std::as_const(m_testDocuments)) {
         if (document->hasCursorMarker()){
             m_documentWithMarker = document;
             break;
@@ -171,8 +150,8 @@ BaseQuickFixTestCase::~BaseQuickFixTestCase()
         m_modelManager->setHeaderPaths(m_headerPathsToRestore);
 
     // Remove created files from file system
-    foreach (const TestDocumentPtr &testDocument, m_testDocuments)
-        QVERIFY(QFile::remove(testDocument->filePath()));
+    for (const TestDocumentPtr &testDocument : std::as_const(m_testDocuments))
+        QVERIFY(testDocument->filePath().removeFile());
 }
 
 /// Leading whitespace is not removed, so we can check if the indetation ranges
@@ -223,7 +202,7 @@ QuickFixOperationTest::QuickFixOperationTest(const QList<TestDocumentPtr> &testD
     operation->perform();
 
     // Compare all files
-    foreach (const TestDocumentPtr testDocument, m_testDocuments) {
+    for (const TestDocumentPtr &testDocument : std::as_const(m_testDocuments)) {
         // Check
         QString result = testDocument->m_editorWidget->document()->toPlainText();
         removeTrailingWhitespace(result);
@@ -269,7 +248,7 @@ QuickFixOfferedOperationsTest::QuickFixOfferedOperationsTest(
 
     // Convert to QStringList
     QStringList actualOperationsAsStringList;
-    foreach (const QuickFixOperation::Ptr &operation, actualOperations)
+    for (const QuickFixOperation::Ptr &operation : std::as_const(actualOperations))
         actualOperationsAsStringList << operation->description();
 
     QCOMPARE(actualOperationsAsStringList, expectedOperations);
@@ -1077,7 +1056,7 @@ void QuickfixTest::testGeneric_data()
         "void bar() {fo@o();}\n"
         ) << _(
         "int foo() {return 1;}\n"
-        "void bar() {int localFoo = foo();}\n"
+        "void bar() {auto localFoo = foo();}\n"
     );
 
     // Check: Add local variable for a member function.
@@ -1092,7 +1071,7 @@ void QuickfixTest::testGeneric_data()
         "class Foo {public: int* fooFunc();}\n"
         "void bar() {\n"
         "    Foo *f = new Foo;\n"
-        "    int *localFooFunc = f->fooFunc();\n"
+        "    auto localFooFunc = f->fooFunc();\n"
         "}\n"
     );
 
@@ -1110,7 +1089,7 @@ void QuickfixTest::testGeneric_data()
         "struct Baz {Foo* foo();};\n"
         "void bar() {\n"
         "    Baz *b = new Baz;\n"
-        "    int *localFunc = b->foo()->func();\n"
+        "    auto localFunc = b->foo()->func();\n"
         "}"
     );
 
@@ -1128,7 +1107,7 @@ void QuickfixTest::testGeneric_data()
         "struct Baz {Foo* foo();};\n"
         "void bar() {\n"
         "    Baz *b = new Baz;\n"
-        "    int *localFunc = b->foo()->func();\n"
+        "    auto localFunc = b->foo()->func();\n"
         "}"
     );
 
@@ -1142,7 +1121,7 @@ void QuickfixTest::testGeneric_data()
         ) << _(
         "class Foo {public: static int* fooFunc();}\n"
         "void bar() {\n"
-        "    int *localFooFunc = Foo::fooFunc();\n"
+        "    auto localFooFunc = Foo::fooFunc();\n"
         "}"
     );
 
@@ -1156,7 +1135,7 @@ void QuickfixTest::testGeneric_data()
         ) << _(
         "class Foo {}\n"
         "void bar() {\n"
-        "    Foo *localFoo = new Foo;\n"
+        "    auto localFoo = new Foo;\n"
         "}"
     );
 
@@ -1745,6 +1724,16 @@ void QuickfixTest::testGeneric_data()
         << CppQuickFixFactoryPtr(new EscapeStringLiteral)
         << _(R"(const char *str = @"\xc3\xa0""f23\xd0\xb1g\xd0\xb1""1";)")
         << _(R"(const char *str = "àf23бgб1";)");
+    QTest::newRow("AddLocalDeclaration_QTCREATORBUG-26004")
+        << CppQuickFixFactoryPtr(new AddLocalDeclaration)
+        << _("void func() {\n"
+             "  QStringList list;\n"
+             "  @it = list.cbegin();\n"
+             "}\n")
+        << _("void func() {\n"
+             "  QStringList list;\n"
+             "  auto it = list.cbegin();\n"
+             "}\n");
 }
 
 void QuickfixTest::testGeneric()
@@ -2734,6 +2723,7 @@ void QuickfixTest::testGenerateGetterSetterValueTypes()
     s->getterInCppFileFrom = 0;
     s->getterNameTemplate = "get<Name>";
     s->valueTypes << "Value";
+    s->returnByConstRef = true;
 
     GenerateGetterSetter factory;
     QuickFixOperationTest(testDocuments, &factory, ProjectExplorer::HeaderPaths(), operation);
@@ -3446,6 +3436,7 @@ public:
     s->getterOutsideClassFrom = 0;
     s->getterInCppFileFrom = 0;
     s->getterNameTemplate = "get<Name>";
+    s->returnByConstRef = true;
 
     GenerateGetterSetter factory;
     QuickFixOperationTest(testDocuments, &factory, ProjectExplorer::HeaderPaths(), 1);
@@ -3627,6 +3618,7 @@ void QuickfixTest::testGenerateGettersSetters()
     s->setterParameterNameTemplate = "value";
     s->setterOutsideClassFrom = 1;
     s->getterOutsideClassFrom = 1;
+    s->returnByConstRef = true;
 
     TestFactory factory;
     QuickFixOperationTest({CppTestDocument::create("file.h", original, expected)}, &factory);
@@ -4563,6 +4555,39 @@ D::D()
 )";
     testDocuments << CppTestDocument::create("file.cpp", original, expected);
     QuickFixOperationTest(testDocuments, &factory);
+
+    testDocuments.clear();
+    original = R"(
+namespace ns1 { template<typename T> class span {}; }
+
+namespace ns {
+using ns1::span;
+class foo
+{
+    void @bar(ns::span<int>);
+};
+}
+)";
+    expected = R"(
+namespace ns1 { template<typename T> class span {}; }
+
+namespace ns {
+using ns1::span;
+class foo
+{
+    void bar(ns::span<int>);
+};
+
+void foo::bar(ns::span<int>)
+{
+
+}
+
+}
+)";
+    // TODO: Unneeded namespace gets inserted in RewriteName::visit(const QualifiedNameId *)
+    testDocuments << CppTestDocument::create("file.cpp", original, expected);
+    QuickFixOperationTest(testDocuments, &factory);
 }
 
 /// Find right implementation file. (QTCREATORBUG-10728)
@@ -4719,6 +4744,95 @@ void QuickfixTest::testInsertDefFromDeclTemplateFunction()
         "}\n";
 
     InsertDefFromDecl factory;
+    QuickFixOperationTest(singleDocument(original, expected), &factory);
+}
+
+void QuickfixTest::testInsertDefFromDeclFunctionWithSignedUnsignedArgument()
+{
+    QByteArray original;
+    QByteArray expected;
+    InsertDefFromDecl factory;
+
+    original =R"--(
+class myclass
+{
+    myc@lass(QVector<signed> g);
+    myclass(QVector<unsigned> g);
+}
+)--";
+    expected =R"--(
+class myclass
+{
+    myclass(QVector<signed> g);
+    myclass(QVector<unsigned> g);
+}
+
+myclass::myclass(QVector<signed int> g)
+{
+
+}
+)--";
+
+    QuickFixOperationTest(singleDocument(original, expected), &factory);
+
+    original =R"--(
+class myclass
+{
+    myclass(QVector<signed> g);
+    myc@lass(QVector<unsigned> g);
+}
+)--";
+    expected =R"--(
+class myclass
+{
+    myclass(QVector<signed> g);
+    myclass(QVector<unsigned> g);
+}
+
+myclass::myclass(QVector<unsigned int> g)
+{
+
+}
+)--";
+
+    QuickFixOperationTest(singleDocument(original, expected), &factory);
+
+    original =R"--(
+class myclass
+{
+    unsigned f@oo(unsigned);
+}
+)--";
+    expected =R"--(
+class myclass
+{
+    unsigned foo(unsigned);
+}
+
+unsigned int myclass::foo(unsigned int)
+{
+
+}
+)--";
+    QuickFixOperationTest(singleDocument(original, expected), &factory);
+
+    original =R"--(
+class myclass
+{
+    signed f@oo(signed);
+}
+)--";
+    expected =R"--(
+class myclass
+{
+    signed foo(signed);
+}
+
+signed int myclass::foo(signed int)
+{
+
+}
+)--";
     QuickFixOperationTest(singleDocument(original, expected), &factory);
 }
 
@@ -5874,7 +5988,7 @@ void QuickfixTest::testAddIncludeForUndefinedIdentifier()
 
     TemporaryDir temporaryDir;
     QVERIFY(temporaryDir.isValid());
-    foreach (TestDocumentPtr testDocument, testDocuments)
+    for (const TestDocumentPtr &testDocument : std::as_const(testDocuments))
         testDocument->setBaseDirectory(temporaryDir.path());
 
     QScopedPointer<CppQuickFixFactory> factory;
@@ -6755,6 +6869,28 @@ void QuickfixTest::testMoveFuncDefOutsideTemplate()
     QuickFixOperationTest(singleDocument(original, expected), &factory);
 }
 
+void QuickfixTest::testMoveFuncDefOutsideMemberFunctionTemplate()
+{
+    const QByteArray original = R"(
+struct S {
+    template<typename In>
+    void @foo(In in) { (void)in; }
+};
+)";
+    const QByteArray expected = R"(
+struct S {
+    template<typename In>
+    void foo(In in);
+};
+
+template<typename In>
+void S::foo(In in) { (void)in; }
+)";
+
+    MoveFuncDefOutside factory;
+    QuickFixOperationTest(singleDocument(original, expected), &factory);
+}
+
 void QuickfixTest::testMoveFuncDefOutsideTemplateSpecializedClass()
 {
     QByteArray original = R"(
@@ -7384,7 +7520,7 @@ void QuickfixTest::testAssignToLocalVariableTemplates()
         "#include \"file.h\"\n"
         "void foo() {\n"
         "    List<int> list;\n"
-        "    int localFirst = list.first();\n"
+        "    auto localFirst = list.first();\n"
         "}\n";
     testDocuments << CppTestDocument::create("file.cpp", original, expected);
 

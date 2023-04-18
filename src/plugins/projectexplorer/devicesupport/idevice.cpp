@@ -1,40 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "idevice.h"
 
 #include "devicemanager.h"
 #include "deviceprocesslist.h"
 #include "idevicefactory.h"
+#include "sshparameters.h"
 
 #include "../kit.h"
 #include "../kitinformation.h"
-#include "../runconfiguration.h"
+#include "../projectexplorertr.h"
+#include "../target.h"
 
 #include <coreplugin/icore.h>
-#include <ssh/sshconnection.h>
+
+#include <utils/devicefileaccess.h>
 #include <utils/displayname.h>
 #include <utils/icon.h>
 #include <utils/portlist.h>
@@ -45,6 +26,7 @@
 #include <QStandardPaths>
 
 #include <QDateTime>
+#include <QReadWriteLock>
 #include <QString>
 #include <QUuid>
 
@@ -129,8 +111,8 @@ const char HostKeyCheckingKey[] = "HostKeyChecking";
 const char DebugServerKey[] = "DebugServerKey";
 const char QmlRuntimeKey[] = "QmlsceneKey";
 
-using AuthType = QSsh::SshConnectionParameters::AuthenticationType;
-const AuthType DefaultAuthType = QSsh::SshConnectionParameters::AuthenticationTypeAll;
+using AuthType = SshParameters::AuthenticationType;
+const AuthType DefaultAuthType = SshParameters::AuthenticationTypeAll;
 const IDevice::MachineType DefaultMachineType = IDevice::Hardware;
 
 const int DefaultTimeout = 10;
@@ -149,9 +131,11 @@ public:
     IDevice::DeviceState deviceState = IDevice::DeviceStateUnknown;
     IDevice::MachineType machineType = IDevice::Hardware;
     OsType osType = OsTypeOther;
+    DeviceFileAccess *fileAccess = nullptr;
     int version = 0; // This is used by devices that have been added by the SDK.
 
-    QSsh::SshConnectionParameters sshParameters;
+    QReadWriteLock lock; // Currently used to protect sshParameters only
+    SshParameters sshParameters;
     PortList freePorts;
     FilePath debugServerPath;
     FilePath debugDumperPath = Core::ICore::resourcePath("debugger/");
@@ -170,6 +154,8 @@ DeviceTester::DeviceTester(QObject *parent) : QObject(parent) { }
 IDevice::IDevice() : d(new Internal::IDevicePrivate)
 {
 }
+
+IDevice::~IDevice() = default;
 
 void IDevice::setOpenTerminal(const IDevice::OpenTerminal &openTerminal)
 {
@@ -209,134 +195,29 @@ bool IDevice::isAnyUnixDevice() const
     return d->osType == OsTypeLinux || d->osType == OsTypeMac || d->osType == OsTypeOtherUnix;
 }
 
-FilePath IDevice::mapToGlobalPath(const FilePath &pathOnDevice) const
+DeviceFileAccess *IDevice::fileAccess() const
 {
-    return pathOnDevice;
+    return d->fileAccess;
 }
 
-QString IDevice::mapToDevicePath(const FilePath &globalPath) const
+FilePath IDevice::filePath(const QString &pathOnDevice) const
 {
-    return globalPath.path();
+    // match DeviceManager::deviceForPath
+    return FilePath::fromParts(u"device", id().toString(), pathOnDevice);
 }
 
 bool IDevice::handlesFile(const FilePath &filePath) const
 {
-    Q_UNUSED(filePath);
-    return false;
-}
-
-bool IDevice::isExecutableFile(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::isReadableFile(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::isWritableFile(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::isReadableDirectory(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::isWritableDirectory(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::isFile(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::isDirectory(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::ensureWritableDirectory(const FilePath &filePath) const
-{
-    if (isWritableDirectory(filePath))
+    if (filePath.scheme() == u"device" && filePath.host() == id().toString())
         return true;
-    return createDirectory(filePath);
-}
-
-bool IDevice::ensureExistingFile(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::createDirectory(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::exists(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::removeFile(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::removeRecursively(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::copyFile(const FilePath &filePath, const FilePath &target) const
-{
-    Q_UNUSED(filePath);
-    Q_UNUSED(target);
-    QTC_CHECK(false);
-    return false;
-}
-
-bool IDevice::renameFile(const FilePath &filePath, const FilePath &target) const
-{
-    Q_UNUSED(filePath);
-    Q_UNUSED(target);
-    QTC_CHECK(false);
     return false;
 }
 
 FilePath IDevice::searchExecutableInPath(const QString &fileName) const
 {
     FilePaths paths;
-    for (const FilePath &path : systemEnvironment().path())
-        paths.append(mapToGlobalPath(path));
+    for (const FilePath &pathEntry : systemEnvironment().path())
+        paths.append(filePath(pathEntry.path()));
     return searchExecutable(fileName, paths);
 }
 
@@ -344,111 +225,36 @@ FilePath IDevice::searchExecutable(const QString &fileName, const FilePaths &dir
 {
     for (FilePath dir : dirs) {
         if (!handlesFile(dir)) // Allow device-local dirs to be used.
-            dir = mapToGlobalPath(dir);
+            dir = filePath(dir.path());
         QTC_CHECK(handlesFile(dir));
         const FilePath candidate = dir / fileName;
-        if (isExecutableFile(candidate))
+        if (candidate.isExecutableFile())
             return candidate;
     }
 
     return {};
 }
 
-FilePath IDevice::symLinkTarget(const FilePath &filePath) const
+ProcessInterface *IDevice::createProcessInterface() const
 {
-    Q_UNUSED(filePath);
     QTC_CHECK(false);
-    return {};
+    return nullptr;
 }
 
-void IDevice::iterateDirectory(const FilePath &filePath,
-                               const std::function<bool(const FilePath &)> &callBack,
-                               const FileFilter &filter) const
+FileTransferInterface *IDevice::createFileTransferInterface(
+        const FileTransferSetupData &setup) const
 {
-    Q_UNUSED(filePath);
-    Q_UNUSED(callBack);
-    Q_UNUSED(filter);
+    Q_UNUSED(setup)
     QTC_CHECK(false);
-}
-
-QByteArray IDevice::fileContents(const FilePath &filePath, qint64 limit, qint64 offset) const
-{
-    Q_UNUSED(filePath);
-    Q_UNUSED(limit);
-    Q_UNUSED(offset);
-    QTC_CHECK(false);
-    return {};
-}
-
-void IDevice::asyncFileContents(const Continuation<QByteArray> &cont,
-                                const FilePath &filePath,
-                                qint64 limit, qint64 offset) const
-{
-    cont(fileContents(filePath, limit, offset));
-}
-
-bool IDevice::writeFileContents(const FilePath &filePath, const QByteArray &data) const
-{
-    Q_UNUSED(filePath);
-    Q_UNUSED(data);
-    QTC_CHECK(false);
-    return {};
-}
-
-void IDevice::asyncWriteFileContents(const Continuation<bool> &cont,
-                                     const FilePath &filePath,
-                                     const QByteArray &data) const
-{
-    cont(writeFileContents(filePath, data));
-}
-
-QDateTime IDevice::lastModified(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    return {};
-}
-
-QFileDevice::Permissions IDevice::permissions(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return {};
-}
-
-bool IDevice::setPermissions(const FilePath &filePath, QFile::Permissions) const
-{
-    Q_UNUSED(filePath);
-    QTC_CHECK(false);
-    return false;
-}
-
-void IDevice::runProcess(QtcProcess &process) const
-{
-    Q_UNUSED(process);
-    QTC_CHECK(false);
+    return nullptr;
 }
 
 Environment IDevice::systemEnvironment() const
 {
-    QTC_CHECK(false);
-    return Environment::systemEnvironment();
+    DeviceFileAccess *access = fileAccess();
+    QTC_ASSERT(access, return Environment::systemEnvironment());
+    return access->deviceEnvironment();
 }
-
-qint64 IDevice::fileSize(const FilePath &filePath) const
-{
-    Q_UNUSED(filePath)
-    QTC_CHECK(false);
-    return -1;
-}
-
-qint64 IDevice::bytesAvailable(const Utils::FilePath &filePath) const
-{
-    Q_UNUSED(filePath)
-    QTC_CHECK(false);
-    return -1;
-}
-
-IDevice::~IDevice() = default;
 
 /*!
     Specifies a free-text name for the device to be displayed in GUI elements.
@@ -484,9 +290,14 @@ void IDevice::setOsType(OsType osType)
     d->osType = osType;
 }
 
+void IDevice::setFileAccess(DeviceFileAccess *fileAccess)
+{
+    d->fileAccess = fileAccess;
+}
+
 IDevice::DeviceInfo IDevice::deviceInformation() const
 {
-    const QString key = QCoreApplication::translate("ProjectExplorer::IDevice", "Device");
+    const QString key = Tr::tr("Device");
     return DeviceInfo() << IDevice::DeviceInfoItem(key, deviceStateToString());
 }
 
@@ -558,11 +369,6 @@ const QList<IDevice::DeviceAction> IDevice::deviceActions() const
     return d->deviceActions;
 }
 
-PortsGatheringMethod::Ptr IDevice::portsGatheringMethod() const
-{
-    return PortsGatheringMethod::Ptr();
-}
-
 DeviceProcessList *IDevice::createProcessListModel(QObject *parent) const
 {
     Q_UNUSED(parent)
@@ -581,15 +387,9 @@ OsType IDevice::osType() const
     return d->osType;
 }
 
-DeviceProcess *IDevice::createProcess(QObject * /* parent */) const
+DeviceProcessSignalOperation::Ptr IDevice::signalOperation() const
 {
-    QTC_CHECK(false);
-    return nullptr;
-}
-
-DeviceEnvironmentFetcher::Ptr IDevice::environmentFetcher() const
-{
-    return DeviceEnvironmentFetcher::Ptr();
+    return {};
 }
 
 IDevice::DeviceState IDevice::deviceState() const
@@ -629,6 +429,7 @@ void IDevice::fromMap(const QVariantMap &map)
         d->id = newId();
     d->origin = static_cast<Origin>(map.value(QLatin1String(OriginKey), ManuallyAdded).toInt());
 
+    QWriteLocker locker(&d->lock);
     d->sshParameters.setHost(map.value(QLatin1String(HostKey)).toString());
     d->sshParameters.setPort(map.value(QLatin1String(SshPortKey), 22).toInt());
     d->sshParameters.setUserName(map.value(QLatin1String(UserNameKey)).toString());
@@ -636,16 +437,16 @@ void IDevice::fromMap(const QVariantMap &map)
     // Pre-4.9, the authentication enum used to have more values
     const int storedAuthType = map.value(QLatin1String(AuthKey), DefaultAuthType).toInt();
     const bool outdatedAuthType = storedAuthType
-            > QSsh::SshConnectionParameters::AuthenticationTypeSpecificKey;
+            > SshParameters::AuthenticationTypeSpecificKey;
     d->sshParameters.authenticationType = outdatedAuthType
-            ? QSsh::SshConnectionParameters::AuthenticationTypeAll
+            ? SshParameters::AuthenticationTypeAll
             : static_cast<AuthType>(storedAuthType);
 
     d->sshParameters.privateKeyFile =
-        FilePath::fromVariant(map.value(QLatin1String(KeyFileKey), defaultPrivateKeyFilePath()));
+        FilePath::fromSettings(map.value(QLatin1String(KeyFileKey), defaultPrivateKeyFilePath()));
     d->sshParameters.timeout = map.value(QLatin1String(TimeoutKey), DefaultTimeout).toInt();
-    d->sshParameters.hostKeyCheckingMode = static_cast<QSsh::SshHostKeyCheckingMode>
-            (map.value(QLatin1String(HostKeyCheckingKey), QSsh::SshHostKeyCheckingNone).toInt());
+    d->sshParameters.hostKeyCheckingMode = static_cast<SshHostKeyCheckingMode>
+            (map.value(QLatin1String(HostKeyCheckingKey), SshHostKeyCheckingNone).toInt());
 
     QString portsSpec = map.value(PortsSpecKey).toString();
     if (portsSpec.isEmpty())
@@ -654,8 +455,8 @@ void IDevice::fromMap(const QVariantMap &map)
     d->machineType = static_cast<MachineType>(map.value(QLatin1String(MachineTypeKey), DefaultMachineType).toInt());
     d->version = map.value(QLatin1String(VersionKey), 0).toInt();
 
-    d->debugServerPath = FilePath::fromVariant(map.value(QLatin1String(DebugServerKey)));
-    d->qmlRunCommand = FilePath::fromVariant(map.value(QLatin1String(QmlRuntimeKey)));
+    d->debugServerPath = FilePath::fromSettings(map.value(QLatin1String(DebugServerKey)));
+    d->qmlRunCommand = FilePath::fromSettings(map.value(QLatin1String(QmlRuntimeKey)));
     d->extraData = map.value(ExtraDataKey).toMap();
 }
 
@@ -673,20 +474,21 @@ QVariantMap IDevice::toMap() const
     map.insert(QLatin1String(IdKey), d->id.toSetting());
     map.insert(QLatin1String(OriginKey), d->origin);
 
+    QReadLocker locker(&d->lock);
     map.insert(QLatin1String(MachineTypeKey), d->machineType);
     map.insert(QLatin1String(HostKey), d->sshParameters.host());
     map.insert(QLatin1String(SshPortKey), d->sshParameters.port());
     map.insert(QLatin1String(UserNameKey), d->sshParameters.userName());
     map.insert(QLatin1String(AuthKey), d->sshParameters.authenticationType);
-    map.insert(QLatin1String(KeyFileKey), d->sshParameters.privateKeyFile.toVariant());
+    map.insert(QLatin1String(KeyFileKey), d->sshParameters.privateKeyFile.toSettings());
     map.insert(QLatin1String(TimeoutKey), d->sshParameters.timeout);
     map.insert(QLatin1String(HostKeyCheckingKey), d->sshParameters.hostKeyCheckingMode);
 
     map.insert(QLatin1String(PortsSpecKey), d->freePorts.toString());
     map.insert(QLatin1String(VersionKey), d->version);
 
-    map.insert(QLatin1String(DebugServerKey), d->debugServerPath.toVariant());
-    map.insert(QLatin1String(QmlRuntimeKey), d->qmlRunCommand.toVariant());
+    map.insert(QLatin1String(DebugServerKey), d->debugServerPath.toSettings());
+    map.insert(QLatin1String(QmlRuntimeKey), d->qmlRunCommand.toSettings());
     map.insert(ExtraDataKey, d->extraData);
 
     return map;
@@ -711,30 +513,32 @@ IDevice::Ptr IDevice::clone() const
 
 QString IDevice::deviceStateToString() const
 {
-    const char context[] = "ProjectExplorer::IDevice";
     switch (d->deviceState) {
-    case IDevice::DeviceReadyToUse: return QCoreApplication::translate(context, "Ready to use");
-    case IDevice::DeviceConnected: return QCoreApplication::translate(context, "Connected");
-    case IDevice::DeviceDisconnected: return QCoreApplication::translate(context, "Disconnected");
-    case IDevice::DeviceStateUnknown: return QCoreApplication::translate(context, "Unknown");
-    default: return QCoreApplication::translate(context, "Invalid");
+    case IDevice::DeviceReadyToUse: return Tr::tr("Ready to use");
+    case IDevice::DeviceConnected: return Tr::tr("Connected");
+    case IDevice::DeviceDisconnected: return Tr::tr("Disconnected");
+    case IDevice::DeviceStateUnknown: return Tr::tr("Unknown");
+    default: return Tr::tr("Invalid");
     }
 }
 
-QSsh::SshConnectionParameters IDevice::sshParameters() const
+SshParameters IDevice::sshParameters() const
 {
+    QReadLocker locker(&d->lock);
     return d->sshParameters;
 }
 
-void IDevice::setSshParameters(const QSsh::SshConnectionParameters &sshParameters)
+void IDevice::setSshParameters(const SshParameters &sshParameters)
 {
+    QWriteLocker locker(&d->lock);
     d->sshParameters = sshParameters;
 }
 
 QUrl IDevice::toolControlChannel(const ControlChannelHint &) const
 {
     QUrl url;
-    url.setScheme(Utils::urlTcpScheme());
+    url.setScheme(urlTcpScheme());
+    QReadLocker locker(&d->lock);
     url.setHost(d->sshParameters.host());
     return url;
 }
@@ -759,6 +563,11 @@ void IDevice::setMachineType(MachineType machineType)
     d->machineType = machineType;
 }
 
+FilePath IDevice::rootPath() const
+{
+    return FilePath::fromParts(u"device", id().toString(), u"/");
+}
+
 FilePath IDevice::debugServerPath() const
 {
     return d->debugServerPath;
@@ -774,7 +583,7 @@ FilePath IDevice::debugDumperPath() const
     return d->debugDumperPath;
 }
 
-void IDevice::setDebugDumperPath(const Utils::FilePath &path)
+void IDevice::setDebugDumperPath(const FilePath &path)
 {
     d->debugDumperPath = path;
 }
@@ -815,6 +624,28 @@ QString IDevice::defaultPublicKeyFilePath()
     return defaultPrivateKeyFilePath() + QLatin1String(".pub");
 }
 
+bool IDevice::ensureReachable(const FilePath &other) const
+{
+    return handlesFile(other); // Some first approximation.
+}
+
+expected_str<FilePath> IDevice::localSource(const Utils::FilePath &other) const
+{
+    Q_UNUSED(other);
+    return make_unexpected(Tr::tr("localSource() not implemented for this device type."));
+}
+
+bool IDevice::prepareForBuild(const Target *target)
+{
+    Q_UNUSED(target)
+    return true;
+}
+
+std::optional<Utils::FilePath> IDevice::clangdExecutable() const
+{
+    return std::nullopt;
+}
+
 void DeviceProcessSignalOperation::setDebuggerCommand(const FilePath &cmd)
 {
     m_debuggerCommand = cmd;
@@ -822,6 +653,43 @@ void DeviceProcessSignalOperation::setDebuggerCommand(const FilePath &cmd)
 
 DeviceProcessSignalOperation::DeviceProcessSignalOperation() = default;
 
-DeviceEnvironmentFetcher::DeviceEnvironmentFetcher() = default;
+void DeviceProcessKiller::start()
+{
+    m_signalOperation.reset();
+    m_errorString.clear();
+
+    const IDevice::ConstPtr device = DeviceManager::deviceForPath(m_processPath);
+    if (!device) {
+        m_errorString = Tr::tr("No device for given path: \"%1\".").arg(m_processPath.toUserOutput());
+        emit done(false);
+        return;
+    }
+
+    m_signalOperation = device->signalOperation();
+    if (!m_signalOperation) {
+        m_errorString = Tr::tr("Device for path \"%1\" does not support killing processes.")
+                       .arg(m_processPath.toUserOutput());
+        emit done(false);
+        return;
+    }
+
+    connect(m_signalOperation.get(), &DeviceProcessSignalOperation::finished,
+            this, [this](const QString &errorMessage) {
+        m_errorString = errorMessage;
+        emit done(m_errorString.isEmpty());
+    });
+
+    m_signalOperation->killProcess(m_processPath.path());
+}
+
+KillerAdapter::KillerAdapter()
+{
+    connect(task(), &DeviceProcessKiller::done, this, &KillerAdapter::done);
+}
+
+void KillerAdapter::start()
+{
+    task()->start();
+}
 
 } // namespace ProjectExplorer

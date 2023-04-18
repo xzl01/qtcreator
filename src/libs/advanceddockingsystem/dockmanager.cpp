@@ -1,55 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Uwe Kindler
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or (at your option) any later version.
-** The licenses are as published by the Free Software Foundation
-** and appearing in the file LICENSE.LGPLv21 included in the packaging
-** of this file. Please review the following information to ensure
-** the GNU Lesser General Public License version 2.1 requirements
-** will be met: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Uwe Kindler
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-2.1-or-later OR GPL-3.0-or-later
 
 #include "dockmanager.h"
 
 #include "ads_globals.h"
-#include "dockareatitlebar.h"
 #include "dockareawidget.h"
 #include "dockfocuscontroller.h"
 #include "dockingstatereader.h"
 #include "dockoverlay.h"
 #include "dockwidget.h"
-#include "dockwidgettab.h"
 #include "floatingdockcontainer.h"
 #include "iconprovider.h"
 
 #include "workspacedialog.h"
 
 #include <utils/algorithm.h>
+#include <utils/fileutils.h>
 #include <utils/qtcassert.h>
+#include <utils/utilstr.h>
 
 #include <algorithm>
 #include <iostream>
@@ -70,7 +38,9 @@
 #include <QVariant>
 #include <QXmlStreamWriter>
 
-static Q_LOGGING_CATEGORY(adsLog, "qtc.qmldesigner.advanceddockingsystem", QtWarningMsg)
+static Q_LOGGING_CATEGORY(adsLog, "qtc.qmldesigner.advanceddockingsystem", QtWarningMsg);
+
+using namespace Utils;
 
 namespace ADS
 {
@@ -137,13 +107,15 @@ namespace ADS
         void hideFloatingWidgets()
         {
             // Hide updates of floating widgets from user
-            for (auto floatingWidget : qAsConst(m_floatingWidgets))
-                floatingWidget->hide();
+            for (const auto &floatingWidget : std::as_const(m_floatingWidgets)) {
+                if (floatingWidget)
+                    floatingWidget->hide();
+            }
         }
 
         void markDockWidgetsDirty()
         {
-            for (auto dockWidget : qAsConst(m_dockWidgetsMap))
+            for (const auto &dockWidget : std::as_const(m_dockWidgetsMap))
                 dockWidget->setProperty("dirty", true);
         }
 
@@ -247,7 +219,7 @@ namespace ADS
         // function are invisible to the user now and have no assigned dock area
         // They do not belong to any dock container, until the user toggles the
         // toggle view action the next time
-        for (auto dockWidget : qAsConst(m_dockWidgetsMap)) {
+        for (auto dockWidget : std::as_const(m_dockWidgetsMap)) {
             if (dockWidget->property(internal::dirtyProperty).toBool()) {
                 dockWidget->flagAsUnassigned();
                 emit dockWidget->viewToggled(false);
@@ -264,7 +236,7 @@ namespace ADS
         // The dock areas because the previous toggleView() action has changed
         // the dock area index
         int count = 0;
-        for (auto dockContainer : qAsConst(m_containers)) {
+        for (auto dockContainer : std::as_const(m_containers)) {
             count++;
             for (int i = 0; i < dockContainer->dockAreaCount(); ++i) {
                 DockAreaWidget *dockArea = dockContainer->dockArea(i);
@@ -290,7 +262,7 @@ namespace ADS
     {
         // Finally we need to send the topLevelChanged() signals for all dock
         // widgets if top level changed
-        for (auto dockContainer : qAsConst(m_containers)) {
+        for (auto dockContainer : std::as_const(m_containers)) {
             DockWidget *topLevelDockWidget = dockContainer->topLevelDockWidget();
             if (topLevelDockWidget) {
                 topLevelDockWidget->emitTopLevelChanged(true);
@@ -359,18 +331,11 @@ namespace ADS
 
         // Using a temporal vector since the destructor of
         // FloatingDockWidgetContainer alters d->m_floatingWidgets.
-        std::vector<FloatingDockContainer *> aboutToDeletes;
-        for (auto floatingWidget : qAsConst(d->m_floatingWidgets)) {
+        const auto copy = d->m_floatingWidgets;
+        for (const auto &floatingWidget : copy) {
             if (floatingWidget)
-                aboutToDeletes.push_back(floatingWidget);
+                delete floatingWidget.get();
         }
-
-        for (auto del : aboutToDeletes) {
-            delete del;
-        }
-
-        d->m_floatingWidgets.clear();
-
         delete d;
     }
 
@@ -514,7 +479,7 @@ namespace ADS
         stream.writeAttribute("version", QString::number(CurrentVersion));
         stream.writeAttribute("userVersion", QString::number(version));
         stream.writeAttribute("containers", QString::number(d->m_containers.count()));
-        for (auto container : qAsConst(d->m_containers))
+        for (auto container : std::as_const(d->m_containers))
             container->saveState(stream);
 
         stream.writeEndElement();
@@ -558,7 +523,7 @@ namespace ADS
         if (d->m_uninitializedFloatingWidgets.empty())
             return;
 
-        for (auto floatingWidget : qAsConst(d->m_uninitializedFloatingWidgets))
+        for (auto floatingWidget : std::as_const(d->m_uninitializedFloatingWidgets))
             floatingWidget->show();
 
         d->m_uninitializedFloatingWidgets.clear();
@@ -611,8 +576,8 @@ namespace ADS
             d->m_workspaceDateTimes.insert(activeWorkspace(), QDateTime::currentDateTime());
         else
             QMessageBox::warning(parentWidget(),
-                                 tr("Cannot Save Workspace"),
-                                 tr("Could not save workspace to file %1")
+                                 Tr::tr("Cannot Save Workspace"),
+                                 Tr::tr("Could not save workspace to file %1")
                                      .arg(workspaceNameToFilePath(d->m_workspaceName)
                                               .toUserOutput()));
 
@@ -681,12 +646,12 @@ namespace ADS
         return d->m_workspaceDateTimes.value(workspace);
     }
 
-    Utils::FilePath DockManager::workspaceNameToFilePath(const QString &workspaceName) const
+    FilePath DockManager::workspaceNameToFilePath(const QString &workspaceName) const
     {
         QTC_ASSERT(d->m_settings, return {});
-        return Utils::FilePath::fromString(
-            QFileInfo(d->m_settings->fileName()).path() + QLatin1Char('/') + m_dirName
-            + QLatin1Char('/') + workspaceNameToFileName(workspaceName));
+        return FilePath::fromString(QFileInfo(d->m_settings->fileName()).path() + QLatin1Char('/')
+                                    + m_dirName + QLatin1Char('/')
+                                    + workspaceNameToFileName(workspaceName));
     }
 
     QString DockManager::fileNameToWorkspaceName(const QString &fileName) const
@@ -719,8 +684,8 @@ namespace ADS
             emit workspaceListChanged();
         } else {
             QMessageBox::warning(parentWidget(),
-                                 tr("Cannot Save Workspace"),
-                                 tr("Could not save workspace to file %1")
+                                 Tr::tr("Cannot Save Workspace"),
+                                 Tr::tr("Could not save workspace to file %1")
                                      .arg(workspaceNameToFilePath(d->m_workspaceName)
                                               .toUserOutput()));
         }
@@ -787,11 +752,11 @@ namespace ADS
      */
     bool DockManager::confirmWorkspaceDelete(const QStringList &workspace)
     {
-        const QString title = workspace.size() == 1 ? tr("Delete Workspace")
-                                                    : tr("Delete Workspaces");
+        const QString title = workspace.size() == 1 ? Tr::tr("Delete Workspace")
+                                                    : Tr::tr("Delete Workspaces");
         const QString question = workspace.size() == 1
-                                     ? tr("Delete workspace %1?").arg(workspace.first())
-                                     : tr("Delete these workspaces?\n    %1")
+                                     ? Tr::tr("Delete workspace %1?").arg(workspace.first())
+                                     : Tr::tr("Delete these workspaces?\n    %1")
                                            .arg(workspace.join("\n    "));
         return QMessageBox::question(parentWidget(),
                                      title,
@@ -810,9 +775,9 @@ namespace ADS
             return false;
 
         // Remove corresponding workspace file
-        QFile fi(workspaceNameToFilePath(workspace).toString());
-        if (fi.exists()) {
-            if (fi.remove()) {
+        const FilePath file = workspaceNameToFilePath(workspace);
+        if (file.exists()) {
+            if (file.removeFile()) {
                 d->m_workspaces.removeOne(workspace);
                 emit workspacesRemoved();
                 emit workspaceListChanged();
@@ -834,12 +799,13 @@ namespace ADS
         if (!d->m_workspaces.contains(original))
             return false;
 
-        QFile fi(workspaceNameToFilePath(original).toString());
+        const FilePath originalPath = workspaceNameToFilePath(original);
+        const FilePath clonePath = workspaceNameToFilePath(clone);
+
         // If the file does not exist, we can still clone
-        if (!fi.exists() || fi.copy(workspaceNameToFilePath(clone).toString())) {
+        if (!originalPath.exists() || originalPath.copyFile(clonePath)) {
             d->m_workspaces.insert(1, clone);
-            d->m_workspaceDateTimes
-                .insert(clone, workspaceNameToFilePath(clone).lastModified());
+            d->m_workspaceDateTimes.insert(clone, clonePath.lastModified());
             emit workspaceListChanged();
             return true;
         }
@@ -862,14 +828,14 @@ namespace ADS
         if (!isWorkspacePreset(workspace))
             return false;
 
-        Utils::FilePath fileName = workspaceNameToFilePath(workspace);
+        const FilePath fileName = workspaceNameToFilePath(workspace);
 
-        if (!QFile::remove(fileName.toString()))
+        if (!fileName.removeFile())
             return false;
 
         QDir presetsDir(d->m_workspacePresetsPath);
         bool result = QFile::copy(presetsDir.filePath(workspaceNameToFileName(workspace)),
-                                  fileName.toString());
+                                  fileName.toFSPathString());
         if (result)
             d->m_workspaceDateTimes.insert(workspace, QDateTime::currentDateTime());
 
@@ -930,45 +896,46 @@ namespace ADS
     {
         // If we came this far the user decided that in case the target already exists to overwrite it.
         // We first need to remove the existing file, otherwise QFile::copy() will fail.
-        QFileInfo targetFileInfo(target);
+        const FilePath targetFile = FilePath::fromUserInput(target);
 
         // Remove the file which supposed to be overwritten
-        if (targetFileInfo.exists()) {
-            QFile fi(targetFileInfo.absoluteFilePath());
-            if (!fi.remove()) {
-                qCInfo(adsLog) << QString("Couldn't remove '%1'").arg(targetFileInfo.absoluteFilePath());
+        if (targetFile.exists()) {
+            if (!targetFile.removeFile()) {
+                qCInfo(adsLog) << QString("Couldn't remove '%1'").arg(targetFile.toUserOutput());
                 return;
             }
         }
 
         // Check if the target directory exists
-        if (!targetFileInfo.absoluteDir().exists()) {
-            qCInfo(adsLog) << QString("Directory doesn't exist '%1'").arg(targetFileInfo.dir().dirName());
+        if (!targetFile.parentDir().exists()) {
+            qCInfo(adsLog) << QString("Directory doesn't exist '%1'")
+                                  .arg(targetFile.parentDir().toUserOutput());
             return;
         }
 
         // Check if the workspace exists
-        Utils::FilePath workspaceFilePath = workspaceNameToFilePath(workspace);
-        if (!workspaceFilePath.exists()) {
-           qCInfo(adsLog) << QString("Workspace doesn't exist '%1'").arg(workspaceFilePath.toString());
-           return;
+        FilePath workspaceFile = workspaceNameToFilePath(workspace);
+        if (!workspaceFile.exists()) {
+            qCInfo(adsLog) << QString("Workspace doesn't exist '%1'")
+                                  .arg(workspaceFile.toUserOutput());
+            return;
         }
 
         // Finally copy the workspace to the target
-        QFile workspaceFile(workspaceFilePath.toString());
-        if (!workspaceFile.copy(targetFileInfo.absoluteFilePath())) {
-            qCInfo(adsLog) << QString("Could not copy '%1' to '%2' error: %3").arg(
-                workspace, workspaceFilePath.toString(), workspaceFile.errorString());
+        const expected_str<void> copyResult = workspaceFile.copyFile(targetFile);
+        if (!copyResult) {
+            qCInfo(adsLog) << QString("Could not copy '%1' to '%2' error: %3")
+                                  .arg(workspace, workspaceFile.toUserOutput(), copyResult.error());
         }
     }
 
     bool DockManager::write(const QString &workspace, const QByteArray &data, QString *errorString) const
     {
-        Utils::FilePath fileName = workspaceNameToFilePath(workspace);
+        const FilePath fileName = workspaceNameToFilePath(workspace);
 
         QDir tmp;
         tmp.mkpath(fileName.toFileInfo().path());
-        Utils::FileSaver fileSaver(fileName, QIODevice::Text);
+        FileSaver fileSaver(fileName, QIODevice::Text);
         if (!fileSaver.hasError())
             fileSaver.write(data);
 
@@ -985,29 +952,31 @@ namespace ADS
         QString errorString;
         const bool success = write(workspace, data, &errorString);
         if (!success)
-            QMessageBox::critical(parent,
-                                  QCoreApplication::translate("Utils::FileSaverBase", "File Error"),
-                                  errorString);
+            QMessageBox::critical(parent, ::Utils::Tr::tr("File Error"), errorString);
         return success;
     }
 
     QByteArray DockManager::loadWorkspace(const QString &workspace) const
     {
-        QByteArray data;
-        Utils::FilePath fileName = workspaceNameToFilePath(workspace);
+        const FilePath fileName = workspaceNameToFilePath(workspace);
         if (fileName.exists()) {
-            QFile file(fileName.toString());
-            if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const expected_str<QByteArray> data = fileName.fileContents();
+
+            if (!data) {
                 QMessageBox::warning(parentWidget(),
-                                     tr("Cannot Restore Workspace"),
-                                     tr("Could not restore workspace %1")
+                                     Tr::tr("Cannot Restore Workspace"),
+                                     Tr::tr("Could not restore workspace %1")
                                          .arg(fileName.toUserOutput()));
-                return data;
+
+                qCWarning(adsLog) << QString("Could not restore workspace %1: %2")
+                                         .arg(fileName.toUserOutput())
+                                         .arg(data.error());
+
+                return {};
             }
-            data = file.readAll();
-            file.close();
+            return data.value();
         }
-        return data;
+        return {};
     }
 
     void DockManager::syncWorkspacePresets()

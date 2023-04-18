@@ -1,83 +1,141 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "mcupackage.h"
 #include "mcutarget.h"
-#include "mcusupportoptions.h"
-#include "mcusupportplugin.h"
-#include "mcusupportsdk.h"
+#include "mcutargetfactory.h"
 #include "packagemock.h"
+#include "settingshandlermock.h"
 
 #include <projectexplorer/kit.h>
-#include <projectexplorer/kitinformation.h>
-#include <projectexplorer/projectexplorer.h>
-#include <utils/filepath.h>
-#include <utils/fileutils.h>
+
 #include <QObject>
 #include <QSignalSpy>
 #include <QTest>
 
 namespace McuSupport::Internal::Test {
 
-using ProjectExplorer::Kit;
-
 class McuSupportTest : public QObject
 {
     Q_OBJECT
 
+public:
+    McuSupportTest();
+    std::pair<Targets, Packages> createTestingKitTargetsAndPackages(QByteArray test_file);
+
 private slots:
     void initTestCase();
+    void init();
+    void cleanup();
 
-    void test_addFreeRtosCmakeVarToKit();
     void test_addNewKit();
     void test_parseBasicInfoFromJson();
+    void test_parseCmakeEntries();
+    void test_parseToolchainFromJSON_data();
+    void test_parseToolchainFromJSON();
+    void test_mapParsedToolchainIdToCorrespondingType_data();
+    void test_mapParsedToolchainIdToCorrespondingType();
+    void test_legacy_createPackagesWithCorrespondingSettings();
+    void test_legacy_createPackagesWithCorrespondingSettings_data();
+    void test_legacy_createTargetWithToolchainPackages_data();
+    void test_legacy_createTargetWithToolchainPackages();
+    void test_createTargetWithToolchainPackages_data();
+    void test_createTargetWithToolchainPackages();
+    void test_legacy_createQtMCUsPackage();
+
+    void test_createTargets();
+    void test_createPackages();
+    void test_legacy_createIarToolchain();
+    void test_createIarToolchain();
+    void test_legacy_createDesktopGccToolchain();
+    void test_createDesktopGccToolchain();
+    void test_legacy_createDesktopMsvcToolchain();
+    void test_createDesktopMsvcToolchain();
+    void test_createDesktopMingwToolchain();
+    void test_verifyManuallyCreatedArmGccToolchain();
+    void test_legacy_createArmGccToolchain();
+    void test_createArmGccToolchain_data();
+    void test_createArmGccToolchain();
+    void test_removeRtosSuffixFromEnvironmentVariable_data();
+    void test_removeRtosSuffixFromEnvironmentVariable();
+    void test_useFallbackPathForToolchainWhenPathFromSettingsIsNotAvailable();
+    void test_usePathFromSettingsForToolchainPath();
+
+    void test_twoDotOneUsesLegacyImplementation();
+    void test_addToolchainFileInfoToKit();
+    void test_getFullToolchainFilePathFromTarget();
+    void test_legacy_getPredefinedToolchainFilePackage();
+    void test_legacy_createUnsupportedToolchainFilePackage();
+    void test_legacy_supportMultipleToolchainVersions();
+
+    void test_passExecutableVersionDetectorToToolchainPackage_data();
+    void test_passExecutableVersionDetectorToToolchainPackage();
+    void test_legacy_passExecutableVersionDetectorToToolchainPackage_data();
+    void test_legacy_passExecutableVersionDetectorToToolchainPackage();
+    void test_legacy_passXMLVersionDetectorToNxpAndStmBoardSdkPackage_data();
+    void test_legacy_passXMLVersionDetectorToNxpAndStmBoardSdkPackage();
+    void test_passXMLVersionDetectorToNxpAndStmBoardSdkPackage_data();
+    void test_passXMLVersionDetectorToNxpAndStmBoardSdkPackage();
+    void test_passDirectoryVersionDetectorToRenesasBoardSdkPackage();
+
+    void test_legacy_createBoardSdk_data();
+    void test_legacy_createBoardSdk();
+    void test_createBoardSdk_data();
+    void test_createBoardSdk();
+
+    void test_legacy_doNOTcreateFreeRtosPackageForMetalVariants_data();
+    void test_legacy_doNOTcreateFreeRtosPackageForMetalVariants();
+    void test_legacy_createFreeRtosPackage_data();
+    void test_legacy_createFreeRtosPackage();
+    void test_createFreeRtosPackage_data();
+    void test_createFreeRtosPackage();
+
+    void test_resolveEnvironmentVariablesInDefaultPath();
+    void test_resolveCmakeVariablesInDefaultPath();
+
+    void test_legacy_createThirdPartyPackage_data();
+    void test_legacy_createThirdPartyPackage();
+    void test_createThirdPartyPackage_data();
+    void test_createThirdPartyPackage();
+    void test_legacy_createCypressProgrammer3rdPartyPackage();
+    void test_createJLink3rdPartyPackage();
+
+    void test_differentValueForEachOperationSystem();
+    void test_addToSystemPathFlag();
+    void test_processWildcards_data();
+    void test_processWildcards();
+
+    void test_nonemptyVersionDetector();
+    void test_emptyVersionDetector();
+    void test_emptyVersionDetectorFromJson();
+
+    void test_expectedValueType();
 
 private:
     QVersionNumber currentQulVersion{2, 0};
+    PackageMock *freeRtosPackage{new PackageMock};
+    PackageMock *sdkPackage{new PackageMock};
+    McuPackagePtr freeRtosPackagePtr{freeRtosPackage};
+    McuPackagePtr sdkPackagePtr{sdkPackage};
 
-    const QString id{"target_id"};
-    const QString name{"target_name"};
-    const QString vendor{"target_vendor"};
-
-    const QString freeRtosEnvVar{"EVK_MIMXRT1170_FREERTOS_PATH"};
-    const QString freeRtosCmakeVar{"FREERTOS_DIR"};
-    const QString defaultfreeRtosPath{"/opt/freertos/default"};
-
-    PackageMock freeRtosPackage;
-    Kit kit;
-
-    McuToolChainPackage toolchainPackage{{}, {}, {}, {}, {}};
-    const McuTarget::Platform platform{id, name, vendor};
-    McuTarget mcuTarget{currentQulVersion,
-                        platform,
-                        McuTarget::OS::FreeRTOS,
-                        {&freeRtosPackage},
-                        &toolchainPackage};
+    QSharedPointer<SettingsHandlerMock> settingsMockPtr{new SettingsHandlerMock};
+    McuTargetFactory targetFactory;
+    PackageDescription compilerDescription;
+    PackageDescription toochainFileDescription;
+    McuTargetDescription targetDescription;
+    McuToolChainPackagePtr toolchainPackagePtr;
+    McuToolChainPackagePtr armGccToolchainPackagePtr;
+    McuToolChainPackagePtr iarToolchainPackagePtr;
+    PackageMock *armGccToolchainFilePackage{new PackageMock};
+    McuPackagePtr armGccToolchainFilePackagePtr{armGccToolchainFilePackage};
+    McuTarget::Platform platform;
+    McuTarget mcuTarget;
+    ProjectExplorer::Kit kit;
 
 }; // class McuSupportTest
 
+using PackageCreator = std::function<McuPackagePtr()>;
 } // namespace McuSupport::Internal::Test
+
+Q_DECLARE_METATYPE(McuSupport::Internal::Test::PackageCreator);

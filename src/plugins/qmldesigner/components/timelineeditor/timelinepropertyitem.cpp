@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "timelinepropertyitem.h"
 
@@ -34,6 +12,7 @@
 #include "timelinetoolbar.h"
 #include "timelinetoolbutton.h"
 
+#include <auxiliarydataproperties.h>
 #include <rewritertransaction.h>
 #include <rewritingexception.h>
 #include <theme.h>
@@ -234,9 +213,11 @@ TimelinePropertyItem *TimelinePropertyItem::create(const QmlTimelineKeyframeGrou
     if (!objectNode.isValid())
         return item;
 
-    auto nameOfType = objectNode.modelNode().metaInfo().propertyTypeName(
-        item->m_frames.propertyName());
-    item->m_control = createTimelineControl(nameOfType);
+    auto propertyType = objectNode.modelNode()
+                            .metaInfo()
+                            .property(item->m_frames.propertyName())
+                            .propertyType();
+    item->m_control = createTimelineControl(propertyType);
     if (item->m_control) {
         item->m_control->setSize((TimelineConstants::sectionWidth / 2.6) - 10,
                                  item->size().height() - 2 + 1);
@@ -276,10 +257,7 @@ void TimelinePropertyItem::updateFrames()
 
 bool TimelinePropertyItem::isSelected() const
 {
-    if (m_frames.isValid() && m_frames.target().isValid())
-        return m_frames.target().isSelected();
-
-    return false;
+    return m_frames.target().isSelected();
 }
 
 QString convertVariant(const QVariant &variant)
@@ -340,7 +318,7 @@ void TimelinePropertyItem::changePropertyValue(const QVariant &value)
         QmlTimelineKeyframeGroup frames = m_frames;
         auto deferredFunc = [frames, value, timeline]() {
             auto constFrames = frames;
-            qreal frame = timeline.modelNode().auxiliaryData("currentFrame@NodeInstance").toReal();
+            qreal frame = timeline.modelNode().auxiliaryDataWithDefault(currentFrameProperty).toReal();
             try {
                 constFrames.setValue(value, frame);
             } catch (const RewritingException &e) {
@@ -583,7 +561,7 @@ void TimelineKeyframeItem::enableUpdates()
 
 bool TimelineKeyframeItem::hasManualBezier() const
 {
-    return m_frame.isValid() && m_frame.hasProperty("easing.bezierCurve");
+    return m_frame.hasProperty("easing.bezierCurve");
 }
 
 void TimelineKeyframeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)

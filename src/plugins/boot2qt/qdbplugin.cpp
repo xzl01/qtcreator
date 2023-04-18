@@ -1,38 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdbplugin.h"
 
 #include "device-detection/devicedetector.h"
+#include "qdbconstants.h"
 #include "qdbdeployconfigurationfactory.h"
+#include "qdbdevice.h"
 #include "qdbstopapplicationstep.h"
 #include "qdbmakedefaultappstep.h"
 #include "qdbdevicedebugsupport.h"
 #include "qdbqtversion.h"
 #include "qdbrunconfiguration.h"
 #include "qdbutils.h"
+#include "qdbtr.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -41,13 +22,14 @@
 #include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/kitmanager.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/target.h>
 
 #include <qtsupport/qtversionfactory.h>
 
 #include <remotelinux/genericdirectuploadstep.h>
 #include <remotelinux/makeinstallstep.h>
-#include <remotelinux/remotelinuxcheckforfreediskspacestep.h>
+#include <remotelinux/rsyncdeploystep.h>
 #include <remotelinux/remotelinux_constants.h>
 
 #include <utils/hostosinfo.h>
@@ -55,7 +37,6 @@
 #include <utils/qtcprocess.h>
 
 #include <QAction>
-#include <QFileInfo>
 
 using namespace ProjectExplorer;
 using namespace Utils;
@@ -77,8 +58,7 @@ static void startFlashingWizard()
     } else if (QtcProcess::startDetached({filePath, {}})) {
         return;
     }
-    const QString message =
-            QCoreApplication::translate("Qdb", "Flash wizard \"%1\" failed to start.");
+    const QString message = Tr::tr("Flash wizard \"%1\" failed to start.");
     showMessage(message.arg(filePath.toUserOutput()), true);
 }
 
@@ -97,9 +77,8 @@ void registerFlashAction(QObject *parentForAction)
         return;
     const FilePath fileName = flashWizardFilePath();
     if (!fileName.exists()) {
-        const QString message =
-                QCoreApplication::translate("Qdb", "Flash wizard executable \"%1\" not found.");
-        showMessage(message.arg(fileName.toString()));
+        const QString message = Tr::tr("Flash wizard executable \"%1\" not found.");
+        showMessage(message.arg(fileName.toUserOutput()));
         return;
     }
 
@@ -113,44 +92,13 @@ void registerFlashAction(QObject *parentForAction)
 
     Core::Context globalContext(Core::Constants::C_GLOBAL);
 
-    const QString actionText = QCoreApplication::translate("Qdb", "Flash Boot to Qt Device");
-    QAction *flashAction = new QAction(actionText, parentForAction);
+    QAction *flashAction = new QAction(Tr::tr("Flash Boot to Qt Device"), parentForAction);
     Core::Command *flashCommand = Core::ActionManager::registerAction(flashAction,
                                                                       flashActionId,
                                                                       globalContext);
     QObject::connect(flashAction, &QAction::triggered, startFlashingWizard);
     toolsContainer->addAction(flashCommand, flashActionId);
 }
-
-class QdbQtVersionFactory : public QtSupport::QtVersionFactory
-{
-public:
-    QdbQtVersionFactory()
-    {
-        setQtVersionCreator([] { return new QdbQtVersion; });
-        setSupportedType("Qdb.EmbeddedLinuxQt");
-        setPriority(99);
-        setRestrictionChecker([](const SetupData &setup) {
-            return setup.platforms.contains("boot2qt");
-        });
-    }
-};
-
-class QdbDeviceRunSupport : public SimpleTargetRunner
-{
-public:
-    QdbDeviceRunSupport(RunControl *runControl)
-        : SimpleTargetRunner(runControl)
-    {
-        setStarter([this, runControl] {
-            Runnable r = runControl->runnable();
-            // FIXME: Spaces!
-            r.command.setArguments(r.command.executable().toString() + ' ' + r.command.arguments());
-            r.command.setExecutable(FilePath::fromString(Constants::AppcontrollerFilepath));
-            doStart(r, runControl->device());
-        });
-    }
-};
 
 template <class Step>
 class QdbDeployStepFactory : public ProjectExplorer::BuildStepFactory
@@ -177,10 +125,10 @@ public:
     QdbStopApplicationStepFactory m_stopApplicationStepFactory;
     QdbMakeDefaultAppStepFactory m_makeDefaultAppStepFactory;
 
-    QdbDeployStepFactory<RemoteLinux::RemoteLinuxCheckForFreeDiskSpaceStep>
-        m_checkForFreeDiskSpaceStepFactory{RemoteLinux::Constants::CheckForFreeDiskSpaceId};
     QdbDeployStepFactory<RemoteLinux::GenericDirectUploadStep>
         m_directUploadStepFactory{RemoteLinux::Constants::DirectUploadStepId};
+    QdbDeployStepFactory<RemoteLinux::RsyncDeployStep>
+        m_rsyncDeployStepFactory{RemoteLinux::Constants::RsyncDeployStepId};
     QdbDeployStepFactory<RemoteLinux::MakeInstallStep>
         m_makeInstallStepFactory{RemoteLinux::Constants::MakeInstallStepId};
 
@@ -189,31 +137,10 @@ public:
         "QmlProjectManager.QmlRunConfiguration"
     };
 
-    RunWorkerFactory runWorkerFactory{
-        RunWorkerFactory::make<QdbDeviceRunSupport>(),
-        {ProjectExplorer::Constants::NORMAL_RUN_MODE},
-        supportedRunConfigs,
-        {Qdb::Constants::QdbLinuxOsType}
-    };
-    RunWorkerFactory debugWorkerFactory{
-        RunWorkerFactory::make<QdbDeviceDebugSupport>(),
-        {ProjectExplorer::Constants::DEBUG_RUN_MODE},
-        supportedRunConfigs,
-        {Qdb::Constants::QdbLinuxOsType}
-    };
-    RunWorkerFactory qmlToolWorkerFactory{
-        RunWorkerFactory::make<QdbDeviceQmlToolingSupport>(),
-        {ProjectExplorer::Constants::QML_PROFILER_RUN_MODE,
-         ProjectExplorer::Constants::QML_PREVIEW_RUN_MODE},
-        supportedRunConfigs,
-        {Qdb::Constants::QdbLinuxOsType}
-    };
-    RunWorkerFactory perfRecorderFactory{
-        RunWorkerFactory::make<QdbDevicePerfProfilerSupport>(),
-        {"PerfRecorder"},
-        {},
-        {Qdb::Constants::QdbLinuxOsType}
-    };
+    QdbRunWorkerFactory runWorkerFactory{supportedRunConfigs};
+    QdbDebugWorkerFactory debugWorkerFactory{supportedRunConfigs};
+    QdbQmlToolingWorkerFactory qmlToolingWorkerFactory{supportedRunConfigs};
+    QdbPerfProfilerWorkerFactory perfRecorderWorkerFactory;
 
     DeviceDetector m_deviceDetector;
 };
@@ -223,16 +150,11 @@ QdbPlugin::~QdbPlugin()
     delete d;
 }
 
-bool QdbPlugin::initialize(const QStringList &arguments, QString *errorString)
+void QdbPlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorString)
-
     d = new QdbPluginPrivate;
 
     registerFlashAction(this);
-
-    return true;
 }
 
 void QdbPlugin::extensionsInitialized()

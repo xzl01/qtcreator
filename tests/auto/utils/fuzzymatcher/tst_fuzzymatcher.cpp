@@ -1,28 +1,6 @@
-/**************************************************************************
-**
-** Copyright (C) 2017 BlackBerry Limited <qt@blackberry.com>
-** Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2017 BlackBerry Limited <qt@blackberry.com>
+// Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <utils/fuzzymatcher.h>
 
@@ -35,8 +13,12 @@ class tst_FuzzyMatcher : public QObject
 private slots:
     void fuzzyMatcher();
     void fuzzyMatcher_data();
+    void fuzzyMatcherMultiWord();
+    void fuzzyMatcherMultiWord_data();
     void highlighting();
     void highlighting_data();
+    void highlightingMultiWord();
+    void highlightingMultiWord_data();
 };
 
 void tst_FuzzyMatcher::fuzzyMatcher()
@@ -86,7 +68,38 @@ void tst_FuzzyMatcher::fuzzyMatcher_data()
     QTest::newRow("middle-no-hump") << "window" << "mainwindow.cpp" << 4;
     QTest::newRow("case-insensitive") << "window" << "MAINWINDOW.cpp" << 4;
     QTest::newRow("case-insensitive-2") << "wINDow" << "MainwiNdow.cpp" << 4;
-    QTest::newRow("uppercase-word-and-humps") << "htvideoele" << "HTMLVideoElement" << 0;
+}
+
+void tst_FuzzyMatcher::fuzzyMatcherMultiWord()
+{
+    QFETCH(QString, pattern);
+    QFETCH(QString, candidate);
+    QFETCH(int, expectedIndex);
+
+    const QRegularExpression regExp
+        = FuzzyMatcher::createRegExp(pattern, FuzzyMatcher::CaseSensitivity::CaseInsensitive, true);
+    const QRegularExpressionMatch match = regExp.match(candidate);
+    QCOMPARE(match.capturedStart(), expectedIndex);
+}
+
+void tst_FuzzyMatcher::fuzzyMatcherMultiWord_data()
+{
+    QTest::addColumn<QString>("pattern");
+    QTest::addColumn<QString>("candidate");
+    QTest::addColumn<int>("expectedIndex");
+
+    QTest::newRow("one_word") << "fo" << "foo" << 0;
+    QTest::newRow("one_word_complete") << "foo" << "foo" << 0;
+    QTest::newRow("one_word_mismatch") << "bar" << "foo" << -1;
+    QTest::newRow("two_words") << "fb" << "foo bar" << 0;
+    QTest::newRow("two_wordslU") << "fb" << "Foo Bar" << 0;
+    QTest::newRow("two_wordsUl") << "FB" << "foo bar" << 0;
+    QTest::newRow("two_words_one_match") << "ba" << "foo bar" << 4;
+    QTest::newRow("two_words_complete_match") << "foo bar" << "foo bar" << 0;
+    QTest::newRow("wrong_order") << "bf" << "foo bar" << -1;
+    QTest::newRow("no_space") << "fb" << "foobar" << -1;
+    QTest::newRow("inword_first_match") << "oob" << "foo bar" << -1;
+    QTest::newRow("inword_second_match") << "foar" << "foo bar" << -1;
 }
 
 typedef QVector<QPair<int, int>> Matches;
@@ -162,6 +175,58 @@ void tst_FuzzyMatcher::highlighting_data()
                                     << Matches{{4, 6}};
     QTest::newRow("uppercase-word-and-humps") << "htvideoele" << "HTMLVideoElement"
                                               << Matches{{0, 2}, {4, 8}};
+}
+
+void tst_FuzzyMatcher::highlightingMultiWord()
+{
+    QFETCH(QString, pattern);
+    QFETCH(QString, candidate);
+    QFETCH(Matches, matches);
+
+    const QRegularExpression regExp
+        = FuzzyMatcher::createRegExp(pattern, FuzzyMatcher::CaseSensitivity::CaseInsensitive, true);
+    const QRegularExpressionMatch match = regExp.match(candidate);
+    const FuzzyMatcher::HighlightingPositions positions
+        = FuzzyMatcher::highlightingPositions(match);
+
+    QCOMPARE(positions.starts.size(), matches.size());
+    for (int i = 0; i < positions.starts.size(); ++i) {
+        const QPair<int, int> &match = matches.at(i);
+        QCOMPARE(positions.starts.at(i), match.first);
+        QCOMPARE(positions.lengths.at(i), match.second);
+    }
+}
+
+void tst_FuzzyMatcher::highlightingMultiWord_data()
+{
+    QTest::addColumn<QString>("pattern");
+    QTest::addColumn<QString>("candidate");
+    QTest::addColumn<Matches>("matches");
+
+    QTest::newRow("one_word") << "fo"
+                              << "foo" << Matches{{0, 2}};
+    QTest::newRow("one_word_complete") << "foo"
+                                       << "foo" << Matches{{0, 3}};
+    QTest::newRow("one_word_mismatch") << "bar"
+                                       << "foo" << Matches{};
+    QTest::newRow("two_words") << "fb"
+                               << "foo bar" << Matches{{0, 1}, {4, 1}};
+    QTest::newRow("two_wordslU") << "fb"
+                                 << "Foo Bar" << Matches{{0, 1}, {4, 1}};
+    QTest::newRow("two_wordsUl") << "FB"
+                                 << "foo bar" << Matches{{0, 1}, {4, 1}};
+    QTest::newRow("two_words_one_match") << "ba"
+                                         << "foo bar" << Matches{{4, 2}};
+    QTest::newRow("two_words_complete_match") << "foo bar"
+                                              << "foo bar" << Matches{{0, 7}};
+    QTest::newRow("wrong_order") << "bf"
+                                 << "foo bar" << Matches{};
+    QTest::newRow("no_space") << "fb"
+                              << "foobar" << Matches{};
+    QTest::newRow("inword_first_match") << "oob"
+                                        << "foo bar" << Matches{};
+    QTest::newRow("inword_second_match") << "foar"
+                                         << "foo bar" << Matches{};
 }
 
 QTEST_APPLESS_MAIN(tst_FuzzyMatcher)

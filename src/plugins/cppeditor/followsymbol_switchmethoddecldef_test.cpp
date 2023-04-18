@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "followsymbol_switchmethoddecldef_test.h"
 
@@ -39,6 +17,8 @@
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/projectexplorer.h>
 
+#include <texteditor/codeassist/assistinterface.h>
+#include <texteditor/codeassist/asyncprocessor.h>
 #include <texteditor/codeassist/genericproposalmodel.h>
 #include <texteditor/codeassist/iassistprocessor.h>
 #include <texteditor/codeassist/iassistproposal.h>
@@ -47,6 +27,7 @@
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/idocument.h>
 
+#include <utils/environment.h>
 #include <utils/fileutils.h>
 
 #include <QDebug>
@@ -81,6 +62,7 @@ using namespace CPlusPlus;
 using namespace TextEditor;
 using namespace Core;
 using namespace ProjectExplorer;
+using namespace Utils;
 
 class OverrideItem
 {
@@ -139,13 +121,13 @@ public:
     {
         VirtualFunctionAssistProvider::configure(params);
 
-        AssistInterface *assistInterface
+        std::unique_ptr<AssistInterface> assistInterface
             = m_editorWidget->createAssistInterface(FollowSymbol, ExplicitlyInvoked);
-        const QScopedPointer<IAssistProcessor> processor(createProcessor(assistInterface));
-
-        const QScopedPointer<IAssistProposal> immediateProposal(
-            processor->immediateProposal(assistInterface));
-        const QScopedPointer<IAssistProposal> finalProposal(processor->perform(assistInterface));
+        const QScopedPointer<AsyncProcessor> processor(
+            dynamic_cast<AsyncProcessor *>(createProcessor(assistInterface.get())));
+        processor->setupAssistInterface(std::move(assistInterface));
+        const QScopedPointer<IAssistProposal> immediateProposal(processor->immediateProposal());
+        const QScopedPointer<IAssistProposal> finalProposal(processor->performAsync());
 
         VirtualFunctionAssistProvider::clearParams();
 
@@ -271,11 +253,12 @@ F2TestCase::F2TestCase(CppEditorAction action,
     CppEditor::Tests::TemporaryDir temporaryDir;
     QVERIFY(temporaryDir.isValid());
     QString projectFileContent = "CppApplication { files: [";
-    foreach (TestDocumentPtr testFile, testFiles) {
+   for (TestDocumentPtr testFile : testFiles) {
         QVERIFY(testFile->baseDirectory().isEmpty());
         testFile->setBaseDirectory(temporaryDir.path());
         QVERIFY(testFile->writeToDisk());
-        projectFileContent += QString::fromLatin1("\"%1\",").arg(testFile->filePath());
+        projectFileContent += QString::fromLatin1("\"%1\",")
+                .arg(testFile->filePath().toString());
     }
     projectFileContent += "]}\n";
 
@@ -291,9 +274,7 @@ F2TestCase::F2TestCase(CppEditorAction action,
         CppTestDocument projectFile("project.qbs", projectFileContent.toUtf8());
         projectFile.setBaseDirectory(temporaryDir.path());
         QVERIFY(projectFile.writeToDisk());
-        const auto openProjectResult =
-                ProjectExplorerPlugin::openProject(
-                    Utils::FilePath::fromString(projectFile.filePath()));
+        const auto openProjectResult = ProjectExplorerPlugin::openProject(projectFile.filePath());
         QVERIFY2(openProjectResult && openProjectResult.project(),
                  qPrintable(openProjectResult.errorMessage()));
         projectCloser.setProject(openProjectResult.project());
@@ -305,13 +286,13 @@ F2TestCase::F2TestCase(CppEditorAction action,
     }
 
     // Update Code Model
-    QSet<QString> filePaths;
-    foreach (const TestDocumentPtr &testFile, testFiles)
+    QSet<FilePath> filePaths;
+   for (const TestDocumentPtr &testFile : testFiles)
         filePaths << testFile->filePath();
     QVERIFY(parseFiles(filePaths));
 
     // Open Files
-    foreach (TestDocumentPtr testFile, testFiles) {
+   for (TestDocumentPtr testFile : testFiles) {
         QVERIFY(openCppEditor(testFile->filePath(), &testFile->m_editor,
                               &testFile->m_editorWidget));
         if (!useClangd) // Editors get closed when unloading project.
@@ -350,9 +331,7 @@ F2TestCase::F2TestCase(CppEditorAction action,
     switch (action) {
     case FollowSymbolUnderCursorAction: {
         CppEditorWidget *widget = initialTestFile->m_editorWidget;
-        FollowSymbolInterface &delegate = CppModelManager::instance()->followSymbolInterface();
-        auto* builtinFollowSymbol = dynamic_cast<FollowSymbolUnderCursor *>(&delegate);
-        if (!builtinFollowSymbol) {
+        if (CppModelManager::instance()->isClangCodeModelActive()) {
             if (curTestName == "testFollowSymbolQTCREATORBUG7903")
                 QSKIP((curTestName + " is not supported by Clang FollowSymbol").toLatin1());
             widget->enableTestMode();
@@ -360,6 +339,7 @@ F2TestCase::F2TestCase(CppEditorAction action,
             break;
         }
 
+        FollowSymbolUnderCursor *builtinFollowSymbol = &CppModelManager::builtinFollowSymbol();
         QSharedPointer<VirtualFunctionAssistProvider> original
                 = builtinFollowSymbol->virtualFunctionAssistProvider();
 
@@ -425,7 +405,7 @@ F2TestCase::F2TestCase(CppEditorAction action,
     BaseTextEditor *currentTextEditor = dynamic_cast<BaseTextEditor*>(currentEditor);
     QVERIFY(currentTextEditor);
 
-    QCOMPARE(currentTextEditor->document()->filePath().toString(), targetTestFile->filePath());
+    QCOMPARE(currentTextEditor->document()->filePath(), targetTestFile->filePath());
     int expectedLine, expectedColumn;
     if (useClangd && expectedVirtualFunctionProposal.size() == 1) {
         expectedLine = expectedVirtualFunctionProposal.first().line;
@@ -482,7 +462,7 @@ F2TestCase::F2TestCase(CppEditorAction action,
 
 TestDocumentPtr F2TestCase::testFileWithInitialCursorMarker(const QList<TestDocumentPtr> &testFiles)
 {
-    foreach (const TestDocumentPtr testFile, testFiles) {
+   for (const TestDocumentPtr &testFile : testFiles) {
         if (testFile->hasCursorMarker())
             return testFile;
     }
@@ -491,7 +471,7 @@ TestDocumentPtr F2TestCase::testFileWithInitialCursorMarker(const QList<TestDocu
 
 TestDocumentPtr F2TestCase::testFileWithTargetCursorMarker(const QList<TestDocumentPtr> &testFiles)
 {
-    foreach (const TestDocumentPtr testFile, testFiles) {
+   for (const TestDocumentPtr &testFile : testFiles) {
         if (testFile->hasTargetCursorMarker())
             return testFile;
     }
@@ -506,10 +486,10 @@ namespace CppEditor::Internal::Tests {
 
 void FollowSymbolTest::initTestCase()
 {
-    const QString clangdFromEnv = qEnvironmentVariable("QTC_CLANGD");
+    const QString clangdFromEnv = Utils::qtcEnvironmentVariable("QTC_CLANGD");
     if (clangdFromEnv.isEmpty())
         return;
-    ClangdSettings::setClangdFilePath(Utils::FilePath::fromString(clangdFromEnv));
+    ClangdSettings::setClangdFilePath(Utils::FilePath::fromUserInput(clangdFromEnv));
     const auto clangd = ClangdSettings::instance().clangdFilePath();
     if (clangd.isEmpty() || !clangd.exists())
         return;

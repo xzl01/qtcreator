@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmljshighlighter.h"
 
 #include <QSet>
 
-#include <utils/porting.h>
 #include <utils/qtcassert.h>
 
 using namespace QmlJS;
@@ -77,7 +54,7 @@ void QmlJSHighlighter::highlightBlock(const QString &text)
 
             case Token::Comment:
                 if (m_inMultilineComment
-                    && Utils::midView(text, token.end() - 2, 2) == QLatin1String("*/")) {
+                    && QStringView(text).mid(token.end() - 2, 2) == QLatin1String("*/")) {
                     onClosingParenthesis(QLatin1Char('-'), token.end() - 1, index == tokens.size()-1);
                     m_inMultilineComment = false;
                 } else if (!m_inMultilineComment
@@ -121,7 +98,7 @@ void QmlJSHighlighter::highlightBlock(const QString &text)
                 if (!m_qmlEnabled)
                     break;
 
-                const QStringView spell = Utils::midView(text, token.offset, token.length);
+                const QStringView spell = QStringView(text).mid(token.offset, token.length);
 
                 if (maybeQmlKeyword(spell)) {
                     // check the previous token
@@ -131,7 +108,7 @@ void QmlJSHighlighter::highlightBlock(const QString &text)
                             break;
                         }
                     }
-                    if (Utils::midView(text, token.offset, token.length) == QLatin1String("enum")) {
+                    if (QStringView(text).mid(token.offset, token.length) == QLatin1String("enum")) {
                         setFormat(token.offset, token.length, formatForCategory(C_KEYWORD));
                         break;
                     }
@@ -139,7 +116,7 @@ void QmlJSHighlighter::highlightBlock(const QString &text)
                     const Token &previousToken = tokens.at(index - 1);
                     if (previousToken.is(Token::Identifier)
                         && text.at(previousToken.offset) == QLatin1Char('p')
-                        && Utils::midView(text, previousToken.offset, previousToken.length)
+                        && QStringView(text).mid(previousToken.offset, previousToken.length)
                                == QLatin1String("property")) {
                         setFormat(token.offset, token.length, formatForCategory(C_KEYWORD));
                         break;
@@ -148,7 +125,7 @@ void QmlJSHighlighter::highlightBlock(const QString &text)
                     const Token &previousToken = tokens.at(0);
                     if (previousToken.is(Token::Identifier)
                         && text.at(previousToken.offset) == QLatin1Char('e')
-                        && Utils::midView(text, previousToken.offset, previousToken.length)
+                        && QStringView(text).mid(previousToken.offset, previousToken.length)
                                == QLatin1String("enum")) {
                         setFormat(token.offset, token.length, formatForCategory(C_ENUMERATION));
                         break;

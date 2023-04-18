@@ -31,6 +31,8 @@ Project {
         Group {
             name: "General"
             files: [
+                "actionsfilter.cpp",
+                "actionsfilter.h",
                 "basefilewizard.cpp",
                 "basefilewizard.h",
                 "basefilewizardfactory.cpp",
@@ -45,6 +47,7 @@ Project {
                 "corejsextensions.h",
                 "coreplugin.cpp",
                 "coreplugin.h",
+                "coreplugintr.h",
                 "designmode.cpp",
                 "designmode.h",
                 "diffservice.cpp",
@@ -66,8 +69,6 @@ Project {
                 "fancytabwidget.h",
                 "featureprovider.cpp",
                 "featureprovider.h",
-                "fileiconprovider.cpp",
-                "fileiconprovider.h",
                 "fileutils.cpp",
                 "fileutils.h",
                 "findplaceholder.cpp",
@@ -76,7 +77,6 @@ Project {
                 "foldernavigationwidget.h",
                 "generalsettings.cpp",
                 "generalsettings.h",
-                "generalsettings.ui",
                 "generatedfile.cpp",
                 "generatedfile.h",
                 "helpitem.cpp",
@@ -115,8 +115,6 @@ Project {
                 "mainwindow.h",
                 "manhattanstyle.cpp",
                 "manhattanstyle.h",
-                "menubarfilter.cpp",
-                "menubarfilter.h",
                 "messagebox.cpp",
                 "messagebox.h",
                 "messagemanager.cpp",
@@ -125,10 +123,8 @@ Project {
                 "messageoutputwindow.h",
                 "mimetypemagicdialog.cpp",
                 "mimetypemagicdialog.h",
-                "mimetypemagicdialog.ui",
                 "mimetypesettings.cpp",
                 "mimetypesettings.h",
-                "mimetypesettingspage.ui",
                 "minisplitter.cpp",
                 "minisplitter.h",
                 "modemanager.cpp",
@@ -155,8 +151,6 @@ Project {
                 "rightpane.h",
                 "settingsdatabase.cpp",
                 "settingsdatabase.h",
-                "shellcommand.cpp",
-                "shellcommand.h",
                 "sidebar.cpp",
                 "sidebar.h",
                 "sidebarwidget.cpp",
@@ -167,7 +161,6 @@ Project {
                 "styleanimator.h",
                 "systemsettings.cpp",
                 "systemsettings.h",
-                "systemsettings.ui",
                 "textdocument.cpp",
                 "textdocument.h",
                 "themechooser.cpp",
@@ -206,18 +199,18 @@ Project {
             name: "Dialogs"
             prefix: "dialogs/"
             files: [
-                "addtovcsdialog.cpp", "addtovcsdialog.h", "addtovcsdialog.ui",
+                "addtovcsdialog.cpp", "addtovcsdialog.h",
                 "codecselector.cpp", "codecselector.h",
-                "externaltoolconfig.cpp", "externaltoolconfig.h", "externaltoolconfig.ui",
-                "filepropertiesdialog.cpp", "filepropertiesdialog.h", "filepropertiesdialog.ui",
+                "externaltoolconfig.cpp", "externaltoolconfig.h",
+                "filepropertiesdialog.cpp", "filepropertiesdialog.h",
                 "ioptionspage.cpp", "ioptionspage.h",
-                "newdialog.cpp", "newdialog.h", "newdialog.ui",
+                "newdialog.cpp", "newdialog.h",
                 "newdialogwidget.cpp", "newdialogwidget.h",
-                "openwithdialog.cpp", "openwithdialog.h", "openwithdialog.ui",
+                "openwithdialog.cpp", "openwithdialog.h",
                 "promptoverwritedialog.cpp", "promptoverwritedialog.h",
-                "readonlyfilesdialog.cpp", "readonlyfilesdialog.h", "readonlyfilesdialog.ui",
+                "readonlyfilesdialog.cpp", "readonlyfilesdialog.h",
                 "restartdialog.cpp", "restartdialog.h",
-                "saveitemsdialog.cpp", "saveitemsdialog.h", "saveitemsdialog.ui",
+                "saveitemsdialog.cpp", "saveitemsdialog.h",
                 "settingsdialog.cpp", "settingsdialog.h",
                 "shortcutsettings.cpp", "shortcutsettings.h",
             ]
@@ -246,9 +239,11 @@ Project {
             prefix: "progressmanager/"
             files: [
                 "futureprogress.cpp", "futureprogress.h",
+                "processprogress.cpp", "processprogress.h",
                 "progressbar.cpp", "progressbar.h",
                 "progressmanager.cpp", "progressmanager.h", "progressmanager_p.h",
                 "progressview.cpp", "progressview.h",
+                "taskprogress.cpp", "taskprogress.h",
             ]
         }
 
@@ -299,14 +294,12 @@ Project {
                 "currentdocumentfind.cpp",
                 "currentdocumentfind.h",
                 "find.qrc",
-                "finddialog.ui",
                 "findplugin.cpp",
                 "findplugin.h",
                 "findtoolbar.cpp",
                 "findtoolbar.h",
                 "findtoolwindow.cpp",
                 "findtoolwindow.h",
-                "findwidget.ui",
                 "highlightscrollbarcontroller.cpp",
                 "highlightscrollbarcontroller.h",
                 "ifindfilter.cpp",
@@ -346,14 +339,12 @@ Project {
                 "commandlocator.h",
                 "directoryfilter.cpp",
                 "directoryfilter.h",
-                "directoryfilter.ui",
                 "executefilter.cpp",
                 "executefilter.h",
                 "externaltoolsfilter.cpp",
                 "externaltoolsfilter.h",
                 "filesystemfilter.cpp",
                 "filesystemfilter.h",
-                "filesystemfilter.ui",
                 "ilocatorfilter.cpp",
                 "ilocatorfilter.h",
                 "javascriptfilter.cpp",
@@ -369,7 +360,6 @@ Project {
                 "locatorsearchutils.h",
                 "locatorsettingspage.cpp",
                 "locatorsettingspage.h",
-                "locatorsettingspage.ui",
                 "locatorwidget.cpp",
                 "locatorwidget.h",
                 "opendocumentsfilter.cpp",
@@ -377,8 +367,7 @@ Project {
                 "spotlightlocatorfilter.h",
                 "spotlightlocatorfilter.cpp",
                 "urllocatorfilter.cpp",
-                "urllocatorfilter.h",
-                "urllocatorfilter.ui"
+                "urllocatorfilter.h"
             ]
         }
 

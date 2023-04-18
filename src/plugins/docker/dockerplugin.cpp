@@ -1,55 +1,35 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "dockerplugin.h"
 
+#include "dockerapi.h"
 #include "dockerconstants.h"
-
-#include "dockerbuildstep.h"
 #include "dockerdevice.h"
 #include "dockersettings.h"
 
 #include <projectexplorer/projectexplorerconstants.h>
 
+#include <utils/fsengine/fsengine.h>
+#include <utils/qtcassert.h>
+
 using namespace Core;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace Docker {
-namespace Internal {
+namespace Docker::Internal {
 
 class DockerPluginPrivate
 {
 public:
-//    DockerSettings settings;
-//    DockerOptionsPage optionsPage{&settings};
+    ~DockerPluginPrivate() {
+        m_deviceFactory.shutdownExistingDevices();
+    }
 
-    DockerDeviceFactory deviceFactory;
-
-//    DockerBuildStepFactory buildStepFactory;
-    Utils::optional<bool> daemonRunning;
+    DockerSettings m_settings;
+    DockerDeviceFactory m_deviceFactory{&m_settings};
+    DockerSettingsPage m_settingPage{&m_settings};
+    DockerApi m_dockerApi{&m_settings};
 };
 
 static DockerPlugin *s_instance = nullptr;
@@ -57,35 +37,25 @@ static DockerPlugin *s_instance = nullptr;
 DockerPlugin::DockerPlugin()
 {
     s_instance = this;
+    FSEngine::registerDeviceScheme(Constants::DOCKER_DEVICE_SCHEME);
 }
 
-// Utils::null_opt for not evaluated, true or false if it had been evaluated already
-Utils::optional<bool> DockerPlugin::isDaemonRunning()
+DockerApi *DockerPlugin::dockerApi()
 {
-    return s_instance ? s_instance->d->daemonRunning : Utils::nullopt;
-}
-
-void DockerPlugin::setGlobalDaemonState(Utils::optional<bool> state)
-{
-    QTC_ASSERT(s_instance, return);
-    s_instance->d->daemonRunning = state;
+    QTC_ASSERT(s_instance, return nullptr);
+    return &s_instance->d->m_dockerApi;
 }
 
 DockerPlugin::~DockerPlugin()
 {
+    FSEngine::unregisterDeviceScheme(Constants::DOCKER_DEVICE_SCHEME);
     s_instance = nullptr;
     delete d;
 }
 
-bool DockerPlugin::initialize(const QStringList &arguments, QString *errorString)
+void DockerPlugin::initialize()
 {
-    Q_UNUSED(arguments)
-    Q_UNUSED(errorString)
-
     d = new DockerPluginPrivate;
-
-    return true;
 }
 
-} // namespace Internal
-} // namespace Docker
+} // Docker::Interanl

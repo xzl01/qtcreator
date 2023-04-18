@@ -1,247 +1,212 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
 #include "utils_global.h"
 
-#include "environment.h"
 #include "commandline.h"
-#include "processutils.h"
+#include "processenums.h"
+#include "tasktree.h"
 
 #include <QProcess>
 
-#include <functional>
-
-QT_FORWARD_DECLARE_CLASS(QDebug)
-QT_FORWARD_DECLARE_CLASS(QTextCodec)
+QT_BEGIN_NAMESPACE
+class QDebug;
+class QTextCodec;
+QT_END_NAMESPACE
 
 class tst_QtcProcess;
 
 namespace Utils {
 
-class CommandLine;
-class Environment;
-class QtcProcess;
-
 namespace Internal { class QtcProcessPrivate; }
 
-class DeviceProcessHooks
-{
-public:
-    std::function<void(QtcProcess &)> startProcessHook;
-    std::function<Environment(const FilePath &)> systemEnvironmentForBinary;
-};
+class Environment;
+class DeviceProcessHooks;
+class ProcessInterface;
+class ProcessResultData;
 
-class QTCREATOR_UTILS_EXPORT QtcProcess : public QObject
+class QTCREATOR_UTILS_EXPORT QtcProcess final : public QObject
 {
     Q_OBJECT
 
 public:
-    enum ProcessImpl {
-        QProcessImpl,
-        ProcessLauncherImpl,
-        DefaultImpl,
-    };
-
-    enum TerminalMode {
-        TerminalOff,
-        TerminalRun,
-        TerminalDebug,
-        TerminalSuspend,
-        TerminalOn = TerminalRun // default mode for ON
-    };
-
-    struct Setup {
-        Setup() {}
-        Setup(ProcessImpl processImpl) : processImpl(processImpl) {}
-        Setup(ProcessMode processMode) : processMode(processMode) {}
-        Setup(TerminalMode terminalMode) : terminalMode(terminalMode) {}
-
-        ProcessImpl processImpl = DefaultImpl;
-        ProcessMode processMode = ProcessMode::Reader;
-        TerminalMode terminalMode = TerminalOff;
-    };
-
-    QtcProcess(const Setup &setup = {}, QObject *parent = nullptr);
-    QtcProcess(QObject *parent);
+    explicit QtcProcess(QObject *parent = nullptr);
     ~QtcProcess();
 
-    ProcessMode processMode() const;
-    TerminalMode terminalMode() const;
-
-    enum Result {
-        // Finished successfully. Unless an ExitCodeInterpreter is set
-        // this corresponds to a return code 0.
-        FinishedWithSuccess,
-        Finished = FinishedWithSuccess, // FIXME: Kept to ease downstream transition
-        // Finished unsuccessfully. Unless an ExitCodeInterpreter is set
-        // this corresponds to a return code different from 0.
-        FinishedWithError,
-        FinishedError = FinishedWithError, // FIXME: Kept to ease downstream transition
-        // Process terminated abnormally (kill)
-        TerminatedAbnormally,
-        // Executable could not be started
-        StartFailed,
-        // Hang, no output after time out
-        Hang
-    };
-
-    void setEnvironment(const Environment &env);
-    void unsetEnvironment();
-    const Environment &environment() const;
-    bool hasEnvironment() const;
-
-    void setCommand(const CommandLine &cmdLine);
-    const CommandLine &commandLine() const;
-
-    FilePath workingDirectory() const;
-    void setWorkingDirectory(const FilePath &dir);
-
-    void setUseCtrlCStub(bool enabled);
-    void setLowPriority();
-    void setDisableUnixTerminal();
-    void setRunAsRoot(bool on);
-    bool isRunAsRoot() const;
-
-    void setAbortOnMetaChars(bool abort);
+    // ProcessInterface related
 
     void start();
-    virtual void terminate();
-    virtual void interrupt();
 
-    static bool startDetached(const CommandLine &cmd, const FilePath &workingDirectory = {},
-                              qint64 *pid = nullptr);
-
-    enum EventLoopMode {
-        NoEventLoop,
-        WithEventLoop // Avoid
-    };
-
-    // Starts the command and waits for finish.
-    // User input processing is enabled when WithEventLoop was passed.
-    void runBlocking(EventLoopMode eventLoopMode = NoEventLoop);
-
-    /* Timeout for hanging processes (triggers after no more output
-     * occurs on stderr/stdout). */
-    void setTimeoutS(int timeoutS);
-
-    void setCodec(QTextCodec *c);
-    void setTimeOutMessageBoxEnabled(bool);
-    void setExitCodeInterpreter(const std::function<QtcProcess::Result(int)> &interpreter);
-
-    void setWriteData(const QByteArray &writeData);
-
-    void setStdOutCallback(const std::function<void(const QString &)> &callback);
-    void setStdOutLineCallback(const std::function<void(const QString &)> &callback);
-    void setStdErrCallback(const std::function<void(const QString &)> &callback);
-    void setStdErrLineCallback(const std::function<void(const QString &)> &callback);
-
-    static void setRemoteProcessHooks(const DeviceProcessHooks &hooks);
-
-    bool stopProcess();
-    bool readDataFromProcess(int timeoutS, QByteArray *stdOut, QByteArray *stdErr,
-                             bool showTimeOutMessageBox);
-
-    static QString normalizeNewlines(const QString &text);
-
-    Result result() const;
-    void setResult(Result result);
-
-    QByteArray allRawOutput() const;
-    QString allOutput() const;
-
-    QString stdOut() const;
-    QString stdErr() const;
-
-    QByteArray rawStdOut() const;
-
-    virtual int exitCode() const;
-
-    QString exitMessage();
-
-    // Helpers to find binaries. Do not use it for other path variables
-    // and file types.
-    static QString locateBinary(const QString &binary);
-    static QString locateBinary(const QString &path, const QString &binary);
-
-    static Environment systemEnvironmentForBinary(const FilePath &filePath);
-
+    void terminate();
+    void kill();
+    void interrupt();
     void kickoffProcess();
-    void interruptProcess();
-    qint64 applicationMainThreadID() const;
+    void closeWriteChannel();
+    void close();
+    void stop();
 
-    // FIXME: Cut down the following bits inherited from QProcess and QIODevice.
+    QString readAllStandardOutput();
+    QString readAllStandardError();
 
-    void setProcessChannelMode(QProcess::ProcessChannelMode mode);
+    QByteArray readAllRawStandardOutput();
+    QByteArray readAllRawStandardError();
 
-    QProcess::ProcessError error() const;
-    virtual QProcess::ProcessState state() const;
-    bool isRunning() const; // Short for state() == QProcess::Running.
-
-    virtual QString errorString() const;
-    void setErrorString(const QString &str);
+    qint64 write(const QString &input);
+    qint64 writeRaw(const QByteArray &input);
 
     qint64 processId() const;
+    qint64 applicationMainThreadId() const;
+
+    QProcess::ProcessState state() const;
+    ProcessResultData resultData() const;
+
+    int exitCode() const;
+    QProcess::ExitStatus exitStatus() const;
+
+    QProcess::ProcessError error() const;
+    QString errorString() const;
 
     bool waitForStarted(int msecs = 30000);
     bool waitForReadyRead(int msecs = 30000);
     bool waitForFinished(int msecs = 30000);
 
-    virtual QByteArray readAllStandardOutput();
-    virtual QByteArray readAllStandardError();
+    // ProcessSetupData related
 
-    virtual QProcess::ExitStatus exitStatus() const;
+    void setProcessImpl(ProcessImpl processImpl);
 
-    virtual void kill();
+    void setTerminalMode(TerminalMode mode);
+    TerminalMode terminalMode() const;
+    bool usesTerminal() const { return terminalMode() != TerminalMode::Off; }
 
-    virtual qint64 write(const QByteArray &input);
-    void close();
+    void setProcessMode(ProcessMode processMode);
+    ProcessMode processMode() const;
 
+    void setEnvironment(const Environment &env);  // Main process
+    const Environment &environment() const;
+
+    void setControlEnvironment(const Environment &env); // Possible helper process (ssh on host etc)
+    const Environment &controlEnvironment() const;
+
+    void setCommand(const CommandLine &cmdLine);
+    const CommandLine &commandLine() const;
+
+    void setWorkingDirectory(const FilePath &dir);
+    FilePath workingDirectory() const;
+
+    void setWriteData(const QByteArray &writeData);
+
+    void setUseCtrlCStub(bool enabled); // release only
+    void setLowPriority();
+    void setDisableUnixTerminal();
+    void setRunAsRoot(bool on);
+    bool isRunAsRoot() const;
+    void setAbortOnMetaChars(bool abort);
+
+    QProcess::ProcessChannelMode processChannelMode() const;
+    void setProcessChannelMode(QProcess::ProcessChannelMode mode);
     void setStandardInputFile(const QString &inputFile);
+
+    void setExtraData(const QString &key, const QVariant &value);
+    QVariant extraData(const QString &key) const;
+
+    void setExtraData(const QVariantHash &extraData);
+    QVariantHash extraData() const;
+
+    void setReaperTimeout(int msecs);
+    int reaperTimeout() const;
+
+    static void setRemoteProcessHooks(const DeviceProcessHooks &hooks);
+
+    // TODO: Some usages of this method assume that Starting phase is also a running state
+    // i.e. if isRunning() returns false, they assume NotRunning state, what may be an error.
+    bool isRunning() const; // Short for state() == QProcess::Running.
+
+    // Other enhancements.
+    // These (or some of them) may be potentially moved outside of the class.
+    // For some we may aggregate in another public utils class (or subclass of QtcProcess)?
+
+    // TODO: Unused currently? Should it serve as a compartment for contrary of remoteEnvironment?
+    static Environment systemEnvironmentForBinary(const FilePath &filePath);
+
+    static bool startDetached(const CommandLine &cmd, const FilePath &workingDirectory = {},
+                              qint64 *pid = nullptr);
+
+    // Starts the command and waits for finish.
+    // User input processing is enabled when EventLoopMode::On was passed.
+    void runBlocking(EventLoopMode eventLoopMode = EventLoopMode::Off);
+
+    /* Timeout for hanging processes (triggers after no more output
+     * occurs on stderr/stdout). */
+    void setTimeoutS(int timeoutS);
+    int timeoutS() const;
+
+    // TODO: We should specify the purpose of the codec, e.g. setCodecForStandardChannel()
+    void setCodec(QTextCodec *c);
+    void setTimeOutMessageBoxEnabled(bool);
+    void setExitCodeInterpreter(const ExitCodeInterpreter &interpreter);
+
+    void setStdOutCallback(const TextChannelCallback &callback);
+    void setStdOutLineCallback(const TextChannelCallback &callback);
+    void setStdErrCallback(const TextChannelCallback &callback);
+    void setStdErrLineCallback(const TextChannelCallback &callback);
+
+    void setTextChannelMode(Channel channel, TextChannelMode mode);
+    TextChannelMode textChannelMode(Channel channel) const;
+
+    bool readDataFromProcess(QByteArray *stdOut, QByteArray *stdErr, int timeoutS = 30);
+
+    ProcessResult result() const;
+
+    QByteArray allRawOutput() const;
+    QString allOutput() const;
+
+    QByteArray rawStdOut() const;
+
+    QString stdOut() const; // possibly with CR
+    QString stdErr() const; // possibly with CR
+
+    QString cleanedStdOut() const; // with sequences of CR squashed and CR LF replaced by LF
+    QString cleanedStdErr() const; // with sequences of CR squashed and CR LF replaced by LF
+
+    const QStringList stdOutLines() const; // split, CR removed
+    const QStringList stdErrLines() const; // split, CR removed
+
+    QString exitMessage() const;
 
     QString toStandaloneCommandLine() const;
 
 signals:
-    void started();
-    void finished();
-    void errorOccurred(QProcess::ProcessError error);
+    void starting(); // On NotRunning -> Starting state transition
+    void started();  // On Starting -> Running state transition
+    void done();     // On Starting | Running -> NotRunning state transition
     void readyReadStandardOutput();
     void readyReadStandardError();
+    void textOnStandardOutput(const QString &text);
+    void textOnStandardError(const QString &text);
 
 private:
     friend QTCREATOR_UTILS_EXPORT QDebug operator<<(QDebug str, const QtcProcess &r);
 
+    friend class Internal::QtcProcessPrivate;
     Internal::QtcProcessPrivate *d = nullptr;
-
-    friend tst_QtcProcess;
-    void beginFeed();
-    void feedStdOut(const QByteArray &data);
-    void endFeed();
 };
 
-using ExitCodeInterpreter = std::function<QtcProcess::Result(int /*exitCode*/)>;
+class DeviceProcessHooks
+{
+public:
+    std::function<ProcessInterface *(const FilePath &)> processImplHook;
+    std::function<Environment(const FilePath &)> systemEnvironmentForBinary;
+};
+
+class QTCREATOR_UTILS_EXPORT QtcProcessAdapter : public Tasking::TaskAdapter<QtcProcess>
+{
+public:
+    QtcProcessAdapter();
+    void start() final;
+};
 
 } // namespace Utils
+
+QTC_DECLARE_CUSTOM_TASK(Process, Utils::QtcProcessAdapter);

@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
@@ -41,37 +19,40 @@ class QmlModelStateGroup;
 class QmlAnchors;
 class ItemLibraryEntry;
 
+inline constexpr AuxiliaryDataKeyView invisibleProperty{AuxiliaryDataType::Document, "invisible"};
+
 class QMLDESIGNERCORE_EXPORT QmlVisualNode : public QmlObjectNode
 {
     friend class QmlAnchors;
 public:
 
-    class Position
+    class Position : public QVector3D
     {
         friend class QmlVisualNode;
     public:
         Position() {}
         Position(const QPointF &position) :
-            m_2dPos(position)
+            QVector3D(position)
         {}
         Position(const QVector3D &position) :
-            m_3dPos(position)
+            QVector3D(position),
+            m_is3D(true)
         {}
 
+        bool is3D() const;
         QList<QPair<PropertyName, QVariant>> propertyPairList() const;
 
     private:
-        QPointF m_2dPos;
-        QVector3D m_3dPos;
+        bool m_is3D = false;
     };
 
-    QmlVisualNode() : QmlObjectNode() {}
+    QmlVisualNode() = default;
     QmlVisualNode(const ModelNode &modelNode)  : QmlObjectNode(modelNode) {}
     bool isValid() const override;
+    explicit operator bool() const { return isValid(); }
     static bool isValidQmlVisualNode(const ModelNode &modelNode);
     bool isRootNode() const;
 
-    QmlModelStateGroup states() const;
     QList<QmlVisualNode> children() const;
     QList<QmlObjectNode> resources() const;
     QList<QmlObjectNode> allDirectSubNodes() const;
@@ -85,7 +66,10 @@ public:
     void setVisibilityOverride(bool visible);
     bool visibilityOverride() const;
 
-    void initializePosition(const Position &position);
+    void scatter(const ModelNode &targetNode, const std::optional<int> &offset);
+    void translate(const QVector3D &vector);
+    void setPosition(const Position &position);
+    Position position() const;
 
     static bool isItemOr3DNode(const ModelNode &modelNode);
 
@@ -121,12 +105,14 @@ private:
 
 class QMLDESIGNERCORE_EXPORT QmlModelStateGroup
 {
-    friend class QmlVisualNode;
+    friend class QmlObjectNode;
     friend class StatesEditorView;
+    friend class Experimental::StatesEditorView;
 
 public:
+    QmlModelStateGroup() = default;
 
-    QmlModelStateGroup() : m_modelNode(ModelNode()) {}
+    explicit operator bool() const { return m_modelNode.isValid(); }
 
     ModelNode modelNode() const { return m_modelNode; }
     QStringList names() const;

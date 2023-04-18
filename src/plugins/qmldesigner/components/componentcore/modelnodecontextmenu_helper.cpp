@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "modelnodecontextmenu_helper.h"
 
@@ -54,7 +32,7 @@ static inline bool itemsHaveSameParent(const QList<ModelNode> &siblingList)
     if (!parent.isValid())
         return false;
 
-    foreach (const ModelNode &node, siblingList) {
+    for (const ModelNode &node : siblingList) {
         QmlItemNode currentItem(node);
         if (!currentItem.isValid())
             return false;
@@ -111,15 +89,14 @@ bool fileComponentExists(const ModelNode &modelNode)
 
 bool selectionIsComponent(const SelectionContext &selectionState)
 {
-    return selectionState.currentSingleSelectedNode().isValid()
-            && selectionState.currentSingleSelectedNode().isComponent()
-            && fileComponentExists(selectionState.currentSingleSelectedNode());
+    return selectionState.currentSingleSelectedNode().isComponent()
+           && fileComponentExists(selectionState.currentSingleSelectedNode());
 }
 
 bool selectionIsImported3DAsset(const SelectionContext &selectionState)
 {
     ModelNode node = selectionState.currentSingleSelectedNode();
-    if (selectionState.view() && node.isValid() && node.hasMetaInfo()) {
+    if (selectionState.view() && node.hasMetaInfo()) {
         QString fileName = node.metaInfo().componentFileName(); // absolute path
         if (fileName.isEmpty()) {
             // Node is not a file component, so we have to check if the current doc itself is

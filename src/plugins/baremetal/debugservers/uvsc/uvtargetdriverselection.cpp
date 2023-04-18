@@ -1,29 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2020 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "uvtargetdriverselection.h"
+
+#include <baremetal/baremetaltr.h>
 
 #include <QComboBox>
 #include <QHBoxLayout>
@@ -31,9 +11,7 @@
 
 using namespace Utils;
 
-namespace BareMetal {
-namespace Internal {
-namespace Uv {
+namespace BareMetal::Internal::Uv {
 
 // Driver data keys.
 constexpr char driverIndexKeyC[] = "DriverIndex";
@@ -101,7 +79,7 @@ private:
 DriverSelectionCpuDllModel::DriverSelectionCpuDllModel(DriverSelection &selection, QObject *parent)
     : TreeModel<TreeItem, DriverSelectionCpuDllItem>(parent), m_selection(selection)
 {
-    setHeader({tr("Name")});
+    setHeader({Tr::tr("Name")});
     refresh();
 }
 
@@ -126,13 +104,13 @@ DriverSelectionCpuDllView::DriverSelectionCpuDllView(DriverSelection &selection,
     const auto layout = new QHBoxLayout;
     layout->setContentsMargins(0, 0, 0, 0);
     m_comboBox = new QComboBox;
-    m_comboBox->setToolTip(tr("Debugger CPU library (depends on a CPU core)."));
+    m_comboBox->setToolTip(Tr::tr("Debugger CPU library (depends on a CPU core)."));
     m_comboBox->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_comboBox->setModel(model);
     layout->addWidget(m_comboBox);
     setLayout(layout);
 
-    connect(m_comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(m_comboBox, &QComboBox::currentIndexChanged,
             this, &DriverSelectionCpuDllView::dllChanged);
 }
 
@@ -147,6 +125,4 @@ void DriverSelectionCpuDllView::refresh()
     qobject_cast<DriverSelectionCpuDllModel *>(m_comboBox->model())->refresh();
 }
 
-} // namespace Uv
-} // namespace Internal
-} // namespace BareMetal
+} // BareMetal::Internal::Uv

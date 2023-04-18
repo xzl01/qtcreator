@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "kitchooser.h"
 
-#include "kitinformation.h"
 #include "kitmanager.h"
-#include "project.h"
 #include "projectexplorerconstants.h"
+#include "projectexplorertr.h"
 #include "session.h"
 #include "target.h"
 
@@ -60,10 +37,8 @@ KitChooser::KitChooser(QWidget *parent) :
     layout->addWidget(m_manageButton);
     setFocusProxy(m_manageButton);
 
-    connect(m_chooser, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &KitChooser::onCurrentIndexChanged);
-    connect(m_chooser, QOverload<int>::of(&QComboBox::activated),
-            this, &KitChooser::onActivated);
+    connect(m_chooser, &QComboBox::currentIndexChanged, this, &KitChooser::onCurrentIndexChanged);
+    connect(m_chooser, &QComboBox::activated, this, &KitChooser::onActivated);
     connect(m_manageButton, &QAbstractButton::clicked, this, &KitChooser::onManageButtonClicked);
     connect(KitManager::instance(), &KitManager::kitsChanged, this, &KitChooser::populate);
 }
@@ -116,7 +91,7 @@ void KitChooser::populate()
     if (Target *target = SessionManager::startupTarget()) {
         Kit *kit = target->kit();
         if (m_kitPredicate(kit)) {
-            QString display = tr("Kit of Active Project: %1").arg(kitText(kit));
+            QString display = Tr::tr("Kit of Active Project: %1").arg(kitText(kit));
             m_chooser->addItem(display, kit->id().toSetting());
             m_chooser->setItemData(0, kitToolTip(kit), Qt::ToolTipRole);
             if (!lastKit.isValid()) {
@@ -127,8 +102,8 @@ void KitChooser::populate()
             m_hasStartupKit = true;
         }
     }
-
-    foreach (Kit *kit, KitManager::sortKits(KitManager::kits())) {
+    const QList<Kit *> kits = KitManager::sortKits(KitManager::kits());
+    for (Kit *kit : kits) {
         if (m_kitPredicate(kit)) {
             m_chooser->addItem(kitText(kit), kit->id().toSetting());
             const int pos = m_chooser->count() - 1;

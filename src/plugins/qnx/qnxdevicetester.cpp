@@ -1,43 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: BlackBerry (qt@blackberry.com), KDAB (info@kdab.com)
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qnxdevicetester.h"
+
+#include "qnxconstants.h"
 #include "qnxdevice.h"
+#include "qnxtr.h"
 
-#include <ssh/sshremoteprocessrunner.h>
 #include <utils/qtcassert.h>
-#include <utils/fileutils.h>
+#include <utils/qtcprocess.h>
 
-namespace Qnx {
-namespace Internal {
+using namespace Utils;
+
+namespace Qnx::Internal {
 
 QnxDeviceTester::QnxDeviceTester(QObject *parent)
     : ProjectExplorer::DeviceTester(parent)
-    , m_result(TestSuccess)
-    , m_state(Inactive)
-    , m_currentCommandIndex(-1)
 {
     m_genericTester = new RemoteLinux::GenericLinuxDeviceTester(this);
     connect(m_genericTester, &DeviceTester::progressMessage,
@@ -45,171 +23,68 @@ QnxDeviceTester::QnxDeviceTester(QObject *parent)
     connect(m_genericTester, &DeviceTester::errorMessage,
             this, &DeviceTester::errorMessage);
     connect(m_genericTester, &DeviceTester::finished,
-            this, &QnxDeviceTester::handleGenericTestFinished);
+            this, &QnxDeviceTester::finished);
+}
 
-    m_processRunner = new QSsh::SshRemoteProcessRunner(this);
-    connect(m_processRunner, &QSsh::SshRemoteProcessRunner::connectionError,
-            this, &QnxDeviceTester::handleConnectionError);
-    connect(m_processRunner, &QSsh::SshRemoteProcessRunner::processClosed,
-            this, &QnxDeviceTester::handleProcessFinished);
-
-    m_commandsToTest << QLatin1String("awk")
-                     << QLatin1String("cat")
-                     << QLatin1String("cut")
-                     << QLatin1String("df")
-                     << QLatin1String("grep")
-                     << QLatin1String("kill")
-                     << QLatin1String("netstat")
-                     << QLatin1String("mkdir")
-                     << QLatin1String("print")
-                     << QLatin1String("printf")
-                     << QLatin1String("pidin")
-                     << QLatin1String("read")
-                     << QLatin1String("rm")
-                     << QLatin1String("sed")
-                     << QLatin1String("sleep")
-                     << QLatin1String("tail")
-                     << QLatin1String("uname");
+static QStringList versionSpecificCommandsToTest(int versionNumber)
+{
+    if (versionNumber > 0x060500)
+        return {"slog2info"};
+    return {};
 }
 
 void QnxDeviceTester::testDevice(const ProjectExplorer::IDevice::Ptr &deviceConfiguration)
 {
-    QTC_ASSERT(m_state == Inactive, return);
-
+    static const QStringList s_commandsToTest = {"awk",
+                                                 "cat",
+                                                 "cut",
+                                                 "df",
+                                                 "grep",
+                                                 "kill",
+                                                 "netstat",
+                                                 "mkdir",
+                                                 "print",
+                                                 "printf",
+                                                 "pidin",
+                                                 "read",
+                                                 "rm",
+                                                 "sed",
+                                                 "sleep",
+                                                 "tail",
+                                                 "uname"};
     m_deviceConfiguration = deviceConfiguration;
+    QnxDevice::ConstPtr qnxDevice = m_deviceConfiguration.dynamicCast<const QnxDevice>();
+    m_genericTester->setExtraCommandsToTest(
+                s_commandsToTest + versionSpecificCommandsToTest(qnxDevice->qnxVersion()));
 
-    m_state = GenericTest;
+    using namespace Tasking;
+
+    auto setupHandler = [this](QtcProcess &process) {
+        emit progressMessage(Tr::tr("Checking that files can be created in %1...")
+                .arg(Constants::QNX_TMP_DIR));
+        const QString pidFile = QString("%1/qtc_xxxx.pid").arg(Constants::QNX_TMP_DIR);
+        const CommandLine cmd(m_deviceConfiguration->filePath("/bin/sh"),
+            {"-c", QLatin1String("rm %1 > /dev/null 2>&1; echo ABC > %1 && rm %1").arg(pidFile)});
+        process.setCommand(cmd);
+    };
+    auto doneHandler = [this](const QtcProcess &) {
+        emit progressMessage(Tr::tr("Files can be created in /var/run.") + '\n');
+    };
+    auto errorHandler = [this](const QtcProcess &process) {
+        const QString message = process.result() == ProcessResult::StartFailed
+                ? Tr::tr("An error occurred while checking that files can be created in %1.")
+                    .arg(Constants::QNX_TMP_DIR) + '\n' + process.errorString()
+                : Tr::tr("Files cannot be created in %1.").arg(Constants::QNX_TMP_DIR);
+        emit errorMessage(message + '\n');
+    };
+    m_genericTester->setExtraTests({Process(setupHandler, doneHandler, errorHandler)});
+
     m_genericTester->testDevice(deviceConfiguration);
 }
 
 void QnxDeviceTester::stopTest()
 {
-    QTC_ASSERT(m_state != Inactive, return);
-
-    switch (m_state) {
-    case Inactive:
-        break;
-    case GenericTest:
-        m_genericTester->stopTest();
-        break;
-    case VarRunTest:
-    case CommandsTest:
-        m_processRunner->cancel();
-        break;
-    }
-
-    m_result = TestFailure;
-    setFinished();
+    m_genericTester->stopTest();
 }
 
-void QnxDeviceTester::handleGenericTestFinished(TestResult result)
-{
-    QTC_ASSERT(m_state == GenericTest, return);
-
-    if (result == TestFailure) {
-        m_result = TestFailure;
-        setFinished();
-        return;
-    }
-
-    m_state = VarRunTest;
-    emit progressMessage(tr("Checking that files can be created in /var/run..."));
-    m_processRunner->run(QStringLiteral("rm %1 > /dev/null 2>&1; echo ABC > %1 && rm %1")
-                             .arg("/var/run/qtc_xxxx.pid"),
-                         m_deviceConfiguration->sshParameters());
-}
-
-void QnxDeviceTester::handleVarRunProcessFinished(const QString &error)
-{
-    QTC_ASSERT(m_state == VarRunTest, return);
-
-    if (error.isEmpty()) {
-        if (m_processRunner->processExitCode() == 0) {
-            emit progressMessage(tr("Files can be created in /var/run.") + QLatin1Char('\n'));
-        } else {
-            emit errorMessage(tr("Files cannot be created in /var/run.") + QLatin1Char('\n'));
-            m_result = TestFailure;
-        }
-    } else {
-        emit errorMessage(tr("An error occurred while checking that"
-                             " files can be created in /var/run.")
-                          + QLatin1Char('\n'));
-        m_result = TestFailure;
-    }
-
-    m_state = CommandsTest;
-
-    QnxDevice::ConstPtr qnxDevice = m_deviceConfiguration.dynamicCast<const QnxDevice>();
-    m_commandsToTest.append(versionSpecificCommandsToTest(qnxDevice->qnxVersion()));
-
-    testNextCommand();
-}
-
-void QnxDeviceTester::handleProcessFinished(const QString &error)
-{
-    if (m_state == VarRunTest) {
-        handleVarRunProcessFinished(error);
-        return;
-    }
-
-    QTC_ASSERT(m_state == CommandsTest, return);
-
-    const QString command = m_commandsToTest[m_currentCommandIndex];
-    if (error.isEmpty()) {
-        if (m_processRunner->processExitCode() == 0) {
-            emit progressMessage(tr("%1 found.").arg(command) + QLatin1Char('\n'));
-        } else {
-            emit errorMessage(tr("%1 not found.").arg(command) + QLatin1Char('\n'));
-            m_result = TestFailure;
-        }
-    } else {
-        emit errorMessage(tr("An error occurred while checking for %1.").arg(command)  + QLatin1Char('\n'));
-        m_result = TestFailure;
-    }
-    testNextCommand();
-}
-
-void QnxDeviceTester::handleConnectionError()
-{
-    QTC_ASSERT(m_state == CommandsTest, return);
-
-    m_result = TestFailure;
-    emit errorMessage(tr("SSH connection error: %1").arg(m_processRunner->lastConnectionErrorString()) + QLatin1Char('\n'));
-    setFinished();
-}
-
-void QnxDeviceTester::testNextCommand()
-{
-    ++m_currentCommandIndex;
-
-    if (m_currentCommandIndex >= m_commandsToTest.size()) {
-        setFinished();
-        return;
-    }
-
-    QString command = m_commandsToTest[m_currentCommandIndex];
-    emit progressMessage(tr("Checking for %1...").arg(command));
-
-    m_processRunner->run("command -v " + command, m_deviceConfiguration->sshParameters());
-}
-
-void QnxDeviceTester::setFinished()
-{
-    m_state = Inactive;
-    disconnect(m_genericTester, nullptr, this, nullptr);
-    if (m_processRunner)
-        disconnect(m_processRunner, nullptr, this, nullptr);
-    emit finished(m_result);
-}
-
-QStringList QnxDeviceTester::versionSpecificCommandsToTest(int versionNumber) const
-{
-    QStringList result;
-    if (versionNumber > 0x060500)
-        result << QLatin1String("slog2info");
-
-    return result;
-}
-
-} // namespace Internal
-} // namespace Qnx
+} // Qnx::Internal

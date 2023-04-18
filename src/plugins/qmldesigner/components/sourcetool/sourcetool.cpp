@@ -1,27 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "sourcetool.h"
 
@@ -35,6 +13,7 @@
 
 #include "nodemetainfo.h"
 #include "qmlitemnode.h"
+#include <designeractionmanager.h>
 #include <qmldesignerplugin.h>
 
 #include <abstractaction.h>
@@ -53,74 +32,16 @@ namespace {
 bool modelNodeHasUrlSource(const QmlDesigner::ModelNode &modelNode)
 {
     QmlDesigner::NodeMetaInfo metaInfo = modelNode.metaInfo();
-    if (metaInfo.isValid()) {
-        if (metaInfo.hasProperty("source")) {
-            if (metaInfo.propertyTypeName("source") == "QUrl")
-                return true;
-            if (metaInfo.propertyTypeName("source") == "url")
-                return true;
-        }
-    }
-    return false;
+    return metaInfo.isValid() && metaInfo.hasProperty("source")
+           && metaInfo.property("source").propertyType().isUrl();
 }
 
 } //namespace
 
 namespace QmlDesigner {
 
-class SourceToolAction : public AbstractAction
-{
-public:
-    SourceToolAction() : AbstractAction(QCoreApplication::translate("SourceToolAction","Change Source URL..."))
-    {
-        const Utils::Icon prevIcon({
-                {":/utils/images/fileopen.png", Utils::Theme::OutputPanes_NormalMessageTextColor}}, Utils::Icon::MenuTintedStyle);
-
-        action()->setIcon(prevIcon.icon());
-    }
-
-    QByteArray category() const override
-    {
-        return QByteArray();
-    }
-
-    QByteArray menuId() const override
-    {
-        return "SourceTool";
-    }
-
-    int priority() const override
-    {
-        return CustomActionsPriority;
-    }
-
-    Type type() const override
-    {
-        return FormEditorAction;
-    }
-
-protected:
-    bool isVisible(const SelectionContext &selectionContext) const override
-    {
-        if (selectionContext.singleNodeIsSelected())
-            return modelNodeHasUrlSource(selectionContext.currentSingleSelectedNode());
-        return false;
-    }
-
-    bool isEnabled(const SelectionContext &selectionContext) const override
-    {
-        return isVisible(selectionContext);
-    }
-};
-
-
 SourceTool::SourceTool()
 {
-    auto sourceToolAction = new SourceToolAction;
-    QmlDesignerPlugin::instance()->designerActionManager().addDesignerAction(sourceToolAction);
-    connect(sourceToolAction->action(), &QAction::triggered, [=]() {
-        view()->changeCurrentToolTo(this);
-    });
 }
 
 SourceTool::~SourceTool() = default;

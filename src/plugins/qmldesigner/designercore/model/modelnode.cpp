@@ -1,37 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "modelnode.h"
-#include <abstractproperty.h>
-#include <model.h>
-#include <nodemetainfo.h>
+
 #include "internalnode_p.h"
-#include "invalidargumentexception.h"
-#include "invalididexception.h"
-#include "invalidmodelnodeexception.h"
-#include "invalidpropertyexception.h"
 #include "model_p.h"
 #include "variantproperty.h"
 #include "bindingproperty.h"
@@ -39,8 +11,12 @@
 #include "nodeabstractproperty.h"
 #include "nodelistproperty.h"
 #include "nodeproperty.h"
-#include <rewriterview.h>
 #include "annotation.h"
+
+#include <auxiliarydataproperties.h>
+#include <model.h>
+#include <nodemetainfo.h>
+#include <rewriterview.h>
 
 #include <utils/algorithm.h>
 
@@ -94,24 +70,6 @@ ModelNode::ModelNode(const ModelNode &modelNode, AbstractView *view)
 {
 }
 
-ModelNode::ModelNode(ModelNode &&other)
-    : m_internalNode(std::move(other.m_internalNode))
-    , m_model(std::move(other.m_model))
-    , m_view(std::move(other.m_view))
-{
-    other.m_model = {};
-    other.m_view = {};
-}
-
-ModelNode &ModelNode::operator=(ModelNode &&other)
-{
-    ModelNode newNode = std::move(other);
-
-    swap(*this, newNode);
-
-    return *this;
-}
-
 /*! \brief contructs a invalid model node
 \return invalid node
 \see invalid
@@ -120,10 +78,6 @@ ModelNode::ModelNode():
         m_internalNode(new InternalNode)
 {
 }
-
-ModelNode::ModelNode(const ModelNode &other) = default;
-
-ModelNode& ModelNode::operator=(const ModelNode &other) = default;
 
 /*! \brief does nothing
 */
@@ -135,9 +89,9 @@ ModelNode::~ModelNode() = default;
 QString ModelNode::id() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
-    return m_internalNode->id();
+    return m_internalNode->id;
 }
 
 QString ModelNode::validId()
@@ -197,7 +151,8 @@ static bool isIdToAvoid(const QString& id)
         "shaderInfo",
         "sprite",
         "spriteSequence",
-        "baseState"
+        "baseState",
+        "rect"
     };
 
     return ids.contains(id);
@@ -240,41 +195,39 @@ QString ModelNode::getIdValidityErrorMessage(const QString &id)
 bool ModelNode::hasId() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return false;
 
-    return m_internalNode->hasId();
+    return !m_internalNode->id.isEmpty();
 }
 
 void ModelNode::setIdWithRefactoring(const QString& id)
 {
-    if (model()->rewriterView()
-            && !id.isEmpty()
-            && !m_internalNode->id().isEmpty()) { // refactor the id if they are not empty
-        model()->rewriterView()->renameId(m_internalNode->id(), id);
-    } else {
-        setIdWithoutRefactoring(id);
+    if (isValid()) {
+        if (model()->rewriterView() && !id.isEmpty()
+            && !m_internalNode->id.isEmpty()) { // refactor the id if they are not empty
+            model()->rewriterView()->renameId(m_internalNode->id, id);
+        } else {
+            setIdWithoutRefactoring(id);
+        }
     }
 }
 
 void ModelNode::setIdWithoutRefactoring(const QString &id)
 {
     Internal::WriteLocker locker(m_model.data());
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
-
-    if (!isValidId(id))
-        throw InvalidIdException(__LINE__, __FUNCTION__, __FILE__, id.toUtf8(), InvalidIdException::InvalidCharacters);
-
-    if (id == m_internalNode->id())
+    if (!isValid())
         return;
 
+    if (!isValidId(id))
+        return;
+
+    if (id == m_internalNode->id)
+        return;
 
     if (model()->hasId(id))
-        throw InvalidIdException(__LINE__, __FUNCTION__, __FILE__, id.toUtf8(), InvalidIdException::DuplicateId);
+        return;
 
-    m_model.data()->d->changeNodeId(internalNode(), id);
+    m_model.data()->d->changeNodeId(m_internalNode, id);
 }
 
 /*! \brief the fully-qualified type name of the node is represented as string
@@ -282,11 +235,10 @@ void ModelNode::setIdWithoutRefactoring(const QString &id)
 */
 TypeName ModelNode::type() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
-    return m_internalNode->type();
+    if (!isValid())
+        return {};
+
+    return m_internalNode->typeName;
 }
 
 /*! \brief minor number of the QML type
@@ -294,11 +246,10 @@ TypeName ModelNode::type() const
 */
 int ModelNode::minorVersion() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
-    return m_internalNode->minorVersion();
+    if (!isValid())
+        return {};
+
+    return m_internalNode->minorVersion;
 }
 
 /*! \brief major number of the QML type
@@ -306,20 +257,17 @@ int ModelNode::minorVersion() const
 */
 int ModelNode::majorVersion() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
-    return m_internalNode->majorVersion();
+    if (!isValid())
+        return {};
+
+    return m_internalNode->majorVersion;
 }
 
 /*! \return the short-hand type name of the node. */
 QString ModelNode::simplifiedTypeName() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return {};
 
     return QString::fromUtf8(type().split('.').constLast());
 }
@@ -342,7 +290,7 @@ A node might become invalid if e.g. it or one of its ancestors is deleted.
 */
 bool ModelNode::isValid() const
 {
-    return !m_model.isNull() && !m_view.isNull() && m_internalNode && m_internalNode->isValid();
+    return !m_model.isNull() && !m_view.isNull() && m_internalNode && m_internalNode->isValid;
 }
 
 /*!
@@ -352,10 +300,8 @@ bool ModelNode::isValid() const
   */
 bool ModelNode::isInHierarchy() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return false;
     if (isRootNode())
         return true;
     if (!hasParentProperty())
@@ -374,15 +320,11 @@ bool ModelNode::isInHierarchy() const
   */
 NodeAbstractProperty ModelNode::parentProperty() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return {};
 
-    if (m_internalNode->parentProperty().isNull()) {
-        Q_ASSERT_X(m_internalNode->parentProperty(), Q_FUNC_INFO, "parentProperty is invalid");
-        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "parent");
-    }
+    if (m_internalNode->parentProperty().isNull())
+        return {};
 
     return NodeAbstractProperty(m_internalNode->parentProperty()->name(), m_internalNode->parentProperty()->propertyOwner(), m_model.data(), view());
 }
@@ -408,18 +350,14 @@ parentNode4 == parentNode1; -> true
 
 void ModelNode::setParentProperty(NodeAbstractProperty parent)
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return;
 
     if (!parent.parentModelNode().isValid())
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, "newParentNode");
+        return;
 
-    if (*this == parent.parentModelNode()) {
-        Q_ASSERT_X(*this != parent.parentModelNode(), Q_FUNC_INFO, "cannot set parent to itself");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (*this == parent.parentModelNode())
+        return;
 
     if (hasParentProperty() && parent == parentProperty())
         return;
@@ -429,13 +367,10 @@ void ModelNode::setParentProperty(NodeAbstractProperty parent)
 
 void ModelNode::changeType(const TypeName &typeName, int majorVersion, int minorVersion)
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return;
 
-    model()->d->changeNodeType(internalNode(), typeName, majorVersion, minorVersion);
-
+    model()->d->changeNodeType(m_internalNode, typeName, majorVersion, minorVersion);
 }
 
 void ModelNode::setParentProperty(const ModelNode &newParentNode, const PropertyName &propertyName)
@@ -449,10 +384,8 @@ void ModelNode::setParentProperty(const ModelNode &newParentNode, const Property
 */
 bool ModelNode::hasParentProperty() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return false;
 
     if (m_internalNode->parentProperty().isNull())
         return false;
@@ -473,7 +406,7 @@ bool ModelNode::hasParentProperty() const
 BindingProperty ModelNode::bindingProperty(const PropertyName &name) const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     return BindingProperty(name, m_internalNode, model(), view());
 }
@@ -481,11 +414,18 @@ BindingProperty ModelNode::bindingProperty(const PropertyName &name) const
 SignalHandlerProperty ModelNode::signalHandlerProperty(const PropertyName &name) const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     return SignalHandlerProperty(name, m_internalNode, model(), view());
 }
 
+SignalDeclarationProperty ModelNode::signalDeclarationProperty(const PropertyName &name) const
+{
+    if (!isValid())
+        return {};
+
+    return SignalDeclarationProperty(name, m_internalNode, model(), view());
+}
 
 /*!
   \brief Returns a NodeProperty
@@ -499,12 +439,11 @@ SignalHandlerProperty ModelNode::signalHandlerProperty(const PropertyName &name)
 
 NodeProperty ModelNode::nodeProperty(const PropertyName &name) const
 {
-      if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+    if (!isValid())
+        return {};
 
     return NodeProperty(name, m_internalNode, model(), view());
 }
-
 
 /*!
   \brief Returns a NodeListProperty
@@ -519,17 +458,17 @@ NodeProperty ModelNode::nodeProperty(const PropertyName &name) const
 NodeListProperty ModelNode::nodeListProperty(const PropertyName &name) const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     return NodeListProperty(name, m_internalNode, model(), view());
 }
 
 NodeAbstractProperty ModelNode::nodeAbstractProperty(const PropertyName &name) const
 {
-     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+    if (!isValid())
+        return {};
 
-     return NodeAbstractProperty(name, m_internalNode, model(), view());
+    return NodeAbstractProperty(name, m_internalNode, model(), view());
 }
 
 NodeAbstractProperty ModelNode::defaultNodeAbstractProperty() const
@@ -560,7 +499,7 @@ NodeProperty ModelNode::defaultNodeProperty() const
 VariantProperty ModelNode::variantProperty(const PropertyName &name) const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     return VariantProperty(name, m_internalNode, model(), view());
 }
@@ -568,7 +507,7 @@ VariantProperty ModelNode::variantProperty(const PropertyName &name) const
 AbstractProperty ModelNode::property(const PropertyName &name) const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     return AbstractProperty(name, m_internalNode, model(), view());
 }
@@ -591,12 +530,13 @@ The list of properties
 QList<AbstractProperty> ModelNode::properties() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     QList<AbstractProperty> propertyList;
 
-    foreach (const PropertyName &propertyName, internalNode()->propertyNameList()) {
-        AbstractProperty property(propertyName, internalNode(), model(), view());
+    const QList<PropertyName> propertyNames = m_internalNode->propertyNameList();
+    for (const PropertyName &propertyName : propertyNames) {
+        AbstractProperty property(propertyName, m_internalNode, model(), view());
         propertyList.append(property);
     }
 
@@ -614,7 +554,8 @@ QList<VariantProperty> ModelNode::variantProperties() const
 {
     QList<VariantProperty> propertyList;
 
-    foreach (const AbstractProperty &abstractProperty, properties())
+    const QList<AbstractProperty> abstractProperties = properties();
+    for (const AbstractProperty &abstractProperty : abstractProperties)
         if (abstractProperty.isVariantProperty())
             propertyList.append(abstractProperty.toVariantProperty());
     return propertyList;
@@ -624,7 +565,8 @@ QList<NodeAbstractProperty> ModelNode::nodeAbstractProperties() const
 {
     QList<NodeAbstractProperty> propertyList;
 
-    foreach (const AbstractProperty &nodeAbstractProperty, properties())
+    const QList<AbstractProperty> abstractProperties = properties();
+    for (const AbstractProperty &nodeAbstractProperty : abstractProperties)
         if (nodeAbstractProperty.isNodeAbstractProperty())
             propertyList.append(nodeAbstractProperty.toNodeAbstractProperty());
     return propertyList;
@@ -634,7 +576,8 @@ QList<NodeProperty> ModelNode::nodeProperties() const
 {
     QList<NodeProperty> propertyList;
 
-    foreach (const AbstractProperty &nodeProperty, properties())
+    const QList<AbstractProperty> abstractProperties = properties();
+    for (const AbstractProperty &nodeProperty : abstractProperties)
         if (nodeProperty.isNodeProperty())
             propertyList.append(nodeProperty.toNodeProperty());
     return propertyList;
@@ -644,7 +587,8 @@ QList<NodeListProperty> ModelNode::nodeListProperties() const
 {
     QList<NodeListProperty> propertyList;
 
-    foreach (const AbstractProperty &nodeListProperty, properties())
+    const QList<AbstractProperty> abstractProperties = properties();
+    for (const AbstractProperty &nodeListProperty : abstractProperties)
         if (nodeListProperty.isNodeListProperty())
             propertyList.append(nodeListProperty.toNodeListProperty());
     return propertyList;
@@ -661,7 +605,8 @@ QList<BindingProperty> ModelNode::bindingProperties() const
 {
     QList<BindingProperty> propertyList;
 
-    foreach (const AbstractProperty &bindingProperty, properties())
+    const QList<AbstractProperty> abstractProperties = properties();
+    for (const AbstractProperty &bindingProperty : abstractProperties)
         if (bindingProperty.isBindingProperty())
             propertyList.append(bindingProperty.toBindingProperty());
     return propertyList;
@@ -671,9 +616,22 @@ QList<SignalHandlerProperty> ModelNode::signalProperties() const
 {
     QList<SignalHandlerProperty> propertyList;
 
-    foreach (const AbstractProperty &property, properties())
+    const QList<AbstractProperty> abstractProperties = properties();
+    for (const AbstractProperty &property : abstractProperties)
         if (property.isSignalHandlerProperty())
             propertyList.append(property.toSignalHandlerProperty());
+    return propertyList;
+}
+
+QList<AbstractProperty> ModelNode::dynamicProperties() const
+{
+    QList<AbstractProperty> propertyList;
+
+    const QList<AbstractProperty> abstractProperties = properties();
+    for (const AbstractProperty &abstractProperty : abstractProperties) {
+        if (abstractProperty.isDynamic())
+            propertyList.append(abstractProperty);
+    }
     return propertyList;
 }
 
@@ -688,12 +646,13 @@ Does nothing if the node state does not set this property.
 void ModelNode::removeProperty(const PropertyName &name) const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
-    model()->d->checkPropertyName(name);
+    if (!model()->d->propertyNameIsValid(name))
+        return;
 
-    if (internalNode()->hasProperty(name))
-        model()->d->removeProperty(internalNode()->property(name));
+    if (m_internalNode->hasProperty(name))
+        model()->d->removeProperty(m_internalNode->property(name));
 }
 
 /*! \brief removes this node from the node tree
@@ -726,16 +685,14 @@ static void removeModelNodeFromSelection(const ModelNode &node)
 */
 void ModelNode::destroy()
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return;
 
     if (isRootNode())
-        throw InvalidArgumentException(__LINE__, __FUNCTION__, __FILE__, "rootNode");
+        return;
 
     removeModelNodeFromSelection(*this);
-    model()->d->removeNode(internalNode());
+    model()->d->removeNode(m_internalNode);
 }
 //\}
 
@@ -799,20 +756,23 @@ properties.
 */
 QList<ModelNode> ModelNode::directSubModelNodes() const
 {
-    return toModelNodeList(internalNode()->allDirectSubNodes(), view());
+    if (!isValid())
+        return {};
+
+    return toModelNodeList(m_internalNode->allDirectSubNodes(), view());
 }
 
-QList<ModelNode> ModelNode::directSubModelNodesOfType(const TypeName &typeName) const
+QList<ModelNode> ModelNode::directSubModelNodesOfType(const NodeMetaInfo &type) const
 {
-    return Utils::filtered(directSubModelNodes(), [typeName](const ModelNode &node){
-        return node.metaInfo().isValid() && node.metaInfo().isSubclassOf(typeName);
+    return Utils::filtered(directSubModelNodes(), [&](const ModelNode &node) {
+        return node.metaInfo().isValid() && node.metaInfo().isBasedOn(type);
     });
 }
 
-QList<ModelNode> ModelNode::subModelNodesOfType(const TypeName &typeName) const
+QList<ModelNode> ModelNode::subModelNodesOfType(const NodeMetaInfo &type) const
 {
-    return Utils::filtered(allSubModelNodes(), [typeName](const ModelNode &node){
-        return node.metaInfo().isValid() && node.metaInfo().isSubclassOf(typeName);
+    return Utils::filtered(allSubModelNodes(), [&](const ModelNode &node) {
+        return node.metaInfo().isValid() && node.metaInfo().isBasedOn(type);
     });
 }
 
@@ -825,6 +785,9 @@ All children in this list will be implicitly removed if this ModelNode is destro
 
 QList<ModelNode> ModelNode::allSubModelNodes() const
 {
+    if (!isValid())
+        return {};
+
     return toModelNodeList(internalNode()->allSubNodes(), view());
 }
 
@@ -848,22 +811,25 @@ bool ModelNode::hasAnySubModelNodes() const
     return !nodeAbstractProperties().isEmpty();
 }
 
-const NodeMetaInfo ModelNode::metaInfo() const
+NodeMetaInfo ModelNode::metaInfo() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return {};
 
-    return NodeMetaInfo(model()->metaInfoProxyModel(), type(), majorVersion(), minorVersion());
+    if constexpr (useProjectStorage()) {
+        return NodeMetaInfo(m_internalNode->typeId, m_model->projectStorage());
+    } else {
+        return NodeMetaInfo(m_model->metaInfoProxyModel(),
+                            m_internalNode->typeName,
+                            m_internalNode->majorVersion,
+                            m_internalNode->minorVersion);
+    }
 }
 
 bool ModelNode::hasMetaInfo() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return false;
 
     return model()->hasNodeMetaInfo(type(), majorVersion(), minorVersion());
 }
@@ -873,10 +839,9 @@ bool ModelNode::hasMetaInfo() const
 */
 bool ModelNode::isSelected() const
 {
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
+    if (!isValid())
+        return false;
+
     return view()->selectedModelNodes().contains(ModelNode(m_internalNode, m_model.data(), view()));
 }
 
@@ -901,8 +866,9 @@ The list of properties set in this state.
 PropertyNameList ModelNode::propertyNames() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    return internalNode()->propertyNameList();
+        return {};
+
+    return m_internalNode->propertyNameList();
 }
 
 /*! \brief test a if a property is set for this node
@@ -910,50 +876,58 @@ PropertyNameList ModelNode::propertyNames() const
 */
 bool ModelNode::hasProperty(const PropertyName &name) const
 {
-    if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-
-    return internalNode()->hasProperty(name);
+    return isValid() && m_internalNode->hasProperty(name);
 }
 
 bool ModelNode::hasVariantProperty(const PropertyName &name) const
 {
-    return hasProperty(name) && internalNode()->property(name)->isVariantProperty();
+    return hasProperty(name) && m_internalNode->property(name)->isVariantProperty();
 }
 
 bool ModelNode::hasBindingProperty(const PropertyName &name) const
 {
-    return hasProperty(name) && internalNode()->property(name)->isBindingProperty();
+    return hasProperty(name) && m_internalNode->property(name)->isBindingProperty();
+}
+
+bool ModelNode::hasSignalHandlerProperty(const PropertyName &name) const
+{
+    return hasProperty(name) && m_internalNode->property(name)->isSignalHandlerProperty();
 }
 
 bool ModelNode::hasNodeAbstractProperty(const PropertyName &name) const
 {
-    return hasProperty(name) && internalNode()->property(name)->isNodeAbstractProperty();
+    return hasProperty(name) && m_internalNode->property(name)->isNodeAbstractProperty();
 }
 
 bool ModelNode::hasDefaultNodeAbstractProperty() const
 {
-    return hasProperty(metaInfo().defaultPropertyName()) && internalNode()->property(metaInfo().defaultPropertyName())->isNodeAbstractProperty();
+    auto defaultPropertyName = metaInfo().defaultPropertyName();
+    return hasProperty(defaultPropertyName)
+           && m_internalNode->property(defaultPropertyName)->isNodeAbstractProperty();
 }
 
 bool ModelNode::hasDefaultNodeListProperty() const
 {
-    return hasProperty(metaInfo().defaultPropertyName()) && internalNode()->property(metaInfo().defaultPropertyName())->isNodeListProperty();
+    auto defaultPropertyName = metaInfo().defaultPropertyName();
+    return hasProperty(defaultPropertyName)
+           && m_internalNode->property(defaultPropertyName)->isNodeListProperty();
 }
 
 bool ModelNode::hasDefaultNodeProperty() const
 {
-    return hasProperty(metaInfo().defaultPropertyName()) && internalNode()->property(metaInfo().defaultPropertyName())->isNodeProperty();
+    auto defaultPropertyName = metaInfo().defaultPropertyName();
+    return hasProperty(defaultPropertyName)
+           && m_internalNode->property(defaultPropertyName)->isNodeProperty();
 }
 
 bool ModelNode::hasNodeProperty(const PropertyName &name) const
 {
-    return hasProperty(name) && internalNode()->property(name)->isNodeProperty();
+    return hasProperty(name) && m_internalNode->property(name)->isNodeProperty();
 }
 
 bool ModelNode::hasNodeListProperty(const PropertyName &name) const
 {
-    return hasProperty(name) && internalNode()->property(name)->isNodeListProperty();
+    return hasProperty(name) && m_internalNode->property(name)->isNodeListProperty();
 }
 
 static bool recursiveAncestor(const ModelNode &possibleAncestor, const ModelNode &node)
@@ -1005,7 +979,7 @@ QTextStream& operator<<(QTextStream &stream, const ModelNode &modelNode)
 void ModelNode::selectNode()
 {
     if (!isValid())
-            throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     QList<ModelNode> selectedNodeList;
     selectedNodeList.append(*this);
@@ -1016,7 +990,7 @@ void ModelNode::selectNode()
 void ModelNode::deselectNode()
 {
     if (!isValid())
-            throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return;
 
     QList<ModelNode> selectedNodeList(view()->selectedModelNodes());
     selectedNodeList.removeAll(*this);
@@ -1034,54 +1008,124 @@ QVariant ModelNode::toVariant() const
     return QVariant::fromValue(*this);
 }
 
-QVariant ModelNode::auxiliaryData(const PropertyName &name) const
+std::optional<QVariant> ModelNode::auxiliaryData(AuxiliaryDataKeyView key) const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
-    return internalNode()->auxiliaryData(name);
+    return m_internalNode->auxiliaryData(key);
 }
 
-void ModelNode::setAuxiliaryData(const PropertyName &name, const QVariant &data) const
+std::optional<QVariant> ModelNode::auxiliaryData(AuxiliaryDataType type,
+                                                   Utils::SmallStringView name) const
 {
-    Internal::WriteLocker locker(m_model.data());
-    m_model.data()->d->setAuxiliaryData(internalNode(), name, data);
+    return auxiliaryData({type, name});
 }
 
-void ModelNode::setAuxiliaryDataWithoutLock(const PropertyName &name, const QVariant &data) const
+QVariant ModelNode::auxiliaryDataWithDefault(AuxiliaryDataType type, Utils::SmallStringView name) const
 {
-     m_model.data()->d->setAuxiliaryData(internalNode(), name, data);
+    return auxiliaryDataWithDefault({type, name});
 }
 
-void ModelNode::removeAuxiliaryData(const PropertyName &name) const
-{
-    Internal::WriteLocker locker(m_model.data());
-    m_model.data()->d->removeAuxiliaryData(internalNode(), name);
-}
-
-bool ModelNode::hasAuxiliaryData(const PropertyName &name) const
+QVariant ModelNode::auxiliaryDataWithDefault(AuxiliaryDataKeyView key) const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
-    return internalNode()->hasAuxiliaryData(name);
+    auto data = m_internalNode->auxiliaryData(key);
+
+    if (data)
+        return *data;
+
+    return {};
 }
 
-const QHash<PropertyName, QVariant> &ModelNode::auxiliaryData() const
+QVariant ModelNode::auxiliaryDataWithDefault(AuxiliaryDataKeyDefaultValue key) const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return toQVariant(key.defaultValue);
 
-    return internalNode()->auxiliaryData();
+    auto data = m_internalNode->auxiliaryData(key);
+
+    if (data)
+        return *data;
+
+    return toQVariant(key.defaultValue);
+}
+
+void ModelNode::setAuxiliaryData(AuxiliaryDataType type,
+                                 Utils::SmallStringView name,
+                                 const QVariant &data) const
+{
+    setAuxiliaryData({type, name}, data);
+}
+
+void ModelNode::setAuxiliaryData(AuxiliaryDataKeyView key, const QVariant &data) const
+{
+    if (isValid()) {
+        Internal::WriteLocker locker(m_model.data());
+        m_model->d->setAuxiliaryData(internalNode(), key, data);
+    }
+}
+
+void ModelNode::setAuxiliaryDataWithoutLock(AuxiliaryDataType type,
+                                            Utils::SmallStringView name,
+                                            const QVariant &data) const
+{
+    if (isValid())
+        m_model->d->setAuxiliaryData(internalNode(), {type, name}, data);
+}
+
+void ModelNode::removeAuxiliaryData(AuxiliaryDataKeyView key) const
+{
+    if (isValid()) {
+        Internal::WriteLocker locker(m_model.data());
+        m_model->d->removeAuxiliaryData(internalNode(), key);
+    }
+}
+
+void ModelNode::removeAuxiliaryData(AuxiliaryDataType type, Utils::SmallStringView name) const
+{
+    removeAuxiliaryData({type, name});
+}
+
+bool ModelNode::hasAuxiliaryData(AuxiliaryDataKeyView key) const
+{
+    if (!isValid())
+        return false;
+
+    return m_internalNode->hasAuxiliaryData(key);
+}
+
+bool ModelNode::hasAuxiliaryData(AuxiliaryDataType type, Utils::SmallStringView name) const
+{
+    return hasAuxiliaryData({type, name});
+}
+
+AuxiliaryDatasForType ModelNode::auxiliaryData(AuxiliaryDataType type) const
+{
+    if (!isValid())
+        return {};
+
+    return m_internalNode->auxiliaryData(type);
+}
+
+AuxiliaryDatasView ModelNode::auxiliaryData() const
+{
+    if (!isValid())
+        return {};
+
+    return m_internalNode->auxiliaryData();
 }
 
 QString ModelNode::customId() const
 {
-    QString result;
-    if (hasCustomId())
-        result = auxiliaryData(customIdProperty).value<QString>();
+    auto data = auxiliaryData(customIdProperty);
 
-    return result;
+    if (data)
+        return data->toString();
+
+    return {};
 }
 
 bool ModelNode::hasCustomId() const
@@ -1091,14 +1135,12 @@ bool ModelNode::hasCustomId() const
 
 void ModelNode::setCustomId(const QString &str)
 {
-    setAuxiliaryData(customIdProperty, QVariant::fromValue<QString>(str));
+    setAuxiliaryData(customIdProperty, QVariant::fromValue(str));
 }
 
 void ModelNode::removeCustomId()
 {
-    if (hasCustomId()) {
-        removeAuxiliaryData(customIdProperty);
-    }
+    removeAuxiliaryData(customIdProperty);
 }
 
 QVector<Comment> ModelNode::comments() const
@@ -1144,12 +1186,12 @@ bool ModelNode::updateComment(const Comment &com, int position)
 
 Annotation ModelNode::annotation() const
 {
-    Annotation result;
+    auto data = auxiliaryData(annotationProperty);
 
-    if (hasAnnotation())
-        result.fromQString(auxiliaryData(annotationProperty).value<QString>());
+    if (data)
+        return Annotation(data->toString());
 
-    return result;
+    return {};
 }
 
 bool ModelNode::hasAnnotation() const
@@ -1159,14 +1201,12 @@ bool ModelNode::hasAnnotation() const
 
 void ModelNode::setAnnotation(const Annotation &annotation)
 {
-    setAuxiliaryData(annotationProperty, QVariant::fromValue<QString>(annotation.toQString()));
+    setAuxiliaryData(annotationProperty, QVariant::fromValue(annotation.toQString()));
 }
 
 void ModelNode::removeAnnotation()
 {
-    if (hasAnnotation()) {
-        removeAuxiliaryData(annotationProperty);
-    }
+    removeAuxiliaryData(annotationProperty);
 }
 
 Annotation ModelNode::globalAnnotation() const
@@ -1174,10 +1214,12 @@ Annotation ModelNode::globalAnnotation() const
     Annotation result;
     ModelNode root = view()->rootModelNode();
 
-    if (hasGlobalAnnotation())
-        result.fromQString(root.auxiliaryData(globalAnnotationProperty).value<QString>());
+    auto data = root.auxiliaryData(globalAnnotationProperty);
 
-    return result;
+    if (data)
+        return Annotation(data->toString());
+
+    return {};
 }
 
 bool ModelNode::hasGlobalAnnotation() const
@@ -1188,14 +1230,12 @@ bool ModelNode::hasGlobalAnnotation() const
 void ModelNode::setGlobalAnnotation(const Annotation &annotation)
 {
     view()->rootModelNode().setAuxiliaryData(globalAnnotationProperty,
-                                             QVariant::fromValue<QString>(annotation.toQString()));
+                                             QVariant::fromValue(annotation.toQString()));
 }
 
 void ModelNode::removeGlobalAnnotation()
 {
-    if (hasGlobalAnnotation()) {
-        view()->rootModelNode().removeAuxiliaryData(globalAnnotationProperty);
-    }
+    view()->rootModelNode().removeAuxiliaryData(globalAnnotationProperty);
 }
 
 GlobalAnnotationStatus ModelNode::globalStatus() const
@@ -1203,9 +1243,10 @@ GlobalAnnotationStatus ModelNode::globalStatus() const
     GlobalAnnotationStatus result;
     ModelNode root = view()->rootModelNode();
 
-    if (hasGlobalAnnotation()) {
-        result.fromQString(root.auxiliaryData(globalAnnotationStatus).value<QString>());
-    }
+    auto data = root.auxiliaryData(globalAnnotationStatus);
+
+    if (data)
+        result.fromQString(data->value<QString>());
 
     return result;
 }
@@ -1218,7 +1259,7 @@ bool ModelNode::hasGlobalStatus() const
 void ModelNode::setGlobalStatus(const GlobalAnnotationStatus &status)
 {
     view()->rootModelNode().setAuxiliaryData(globalAnnotationStatus,
-                                             QVariant::fromValue<QString>(status.toQString()));
+                                             QVariant::fromValue(status.toQString()));
 }
 
 void ModelNode::removeGlobalStatus()
@@ -1230,8 +1271,10 @@ void ModelNode::removeGlobalStatus()
 
 bool ModelNode::locked() const
 {
-    if (hasLocked())
-        return auxiliaryData(lockedProperty).toBool();
+    auto data = auxiliaryData(lockedProperty);
+
+    if (data)
+        return data->toBool();
 
     return false;
 }
@@ -1248,8 +1291,8 @@ void ModelNode::setLocked(bool value)
         // Remove newly locked node and all its descendants from potential selection
         for (ModelNode node : allSubModelNodesAndThisNode()) {
             node.deselectNode();
-            node.removeAuxiliaryData("timeline_expanded");
-            node.removeAuxiliaryData("transition_expanded");
+            node.removeAuxiliaryData(timelineExpandedProperty);
+            node.removeAuxiliaryData(transitionExpandedPropery);
         }
     } else {
         removeAuxiliaryData(lockedProperty);
@@ -1270,67 +1313,152 @@ bool ModelNode::isThisOrAncestorLocked(const ModelNode &node)
     return isThisOrAncestorLocked(node.parentProperty().parentModelNode());
 }
 
+/*!
+ * \brief The lowest common ancestor node for node1 and node2. If one of the nodes (Node A) is
+ * the ancestor of the other node, the return value is Node A and not the parent of Node A.
+ * \param node1 First node
+ * \param node2 Second node
+ * \param depthOfLCA Depth of the return value
+ * \param depthOfNode1 Depth of node1. Use this parameter for optimization
+ * \param depthOfNode2 Depth of node2. Use this parameter for optimization
+ */
+static ModelNode lowestCommonAncestor(const ModelNode &node1,
+                                      const ModelNode &node2,
+                                      int &depthOfLCA,
+                                      const int &depthOfNode1 = -1,
+                                      const int &depthOfNode2 = -1)
+{
+    Q_ASSERT(node1.isValid() && node2.isValid());
+
+    auto depthOfNode = [] (const ModelNode &node) -> int {
+        int depth = 0;
+        ModelNode parentNode = node;
+        while (!parentNode.isRootNode()) {
+            depth++;
+            parentNode = parentNode.parentProperty().parentModelNode();
+        }
+        return depth;
+    };
+
+    if (node1 == node2) {
+        depthOfLCA = (depthOfNode1 < 0)
+                ? ((depthOfNode2 < 0) ? depthOfNode(node1) : depthOfNode2)
+                : depthOfNode1;
+        return node1;
+    }
+
+    if (node1.isRootNode()) {
+        depthOfLCA = 0;
+        return node1;
+    }
+
+    if (node2.isRootNode()) {
+        depthOfLCA = 0;
+        return node2;
+    }
+
+    ModelNode nodeLower = node1;
+    ModelNode nodeHigher = node2;
+    int depthLower = (depthOfNode1 < 0) ? depthOfNode(nodeLower) : depthOfNode1;
+    int depthHigher = (depthOfNode2 < 0) ? depthOfNode(nodeHigher) :depthOfNode2;
+
+    if (depthLower > depthHigher) {
+        std::swap(depthLower, depthHigher);
+        std::swap(nodeLower, nodeHigher);
+    }
+
+    int depthDiff = depthHigher - depthLower;
+    while (depthDiff--)
+        nodeHigher = nodeHigher.parentProperty().parentModelNode();
+
+    while (nodeLower != nodeHigher) {
+        nodeLower = nodeLower.parentProperty().parentModelNode();
+        nodeHigher = nodeHigher.parentProperty().parentModelNode();
+        --depthLower;
+    }
+
+    depthOfLCA = depthLower;
+    return nodeLower;
+}
+
+/*!
+ * \brief The lowest common node containing all nodes. If one of the nodes (Node A) is
+ * the ancestor of the other nodes, the return value is Node A and not the parent of Node A.
+ */
+ModelNode ModelNode::lowestCommonAncestor(const QList<ModelNode> &nodes)
+{
+    if (nodes.isEmpty())
+        return {};
+
+    ModelNode accumulatedNode = nodes.first();
+    int accumulatedNodeDepth = -1;
+    for (const ModelNode &node : Utils::span<const ModelNode>(nodes).subspan(1)) {
+        accumulatedNode = QmlDesigner::lowestCommonAncestor(accumulatedNode,
+                                                            node,
+                                                            accumulatedNodeDepth,
+                                                            accumulatedNodeDepth);
+    }
+
+    return accumulatedNode;
+}
+
 void  ModelNode::setScriptFunctions(const QStringList &scriptFunctionList)
 {
-    model()->d->setScriptFunctions(internalNode(), scriptFunctionList);
+    model()->d->setScriptFunctions(m_internalNode, scriptFunctionList);
 }
 
 QStringList  ModelNode::scriptFunctions() const
 {
-    return internalNode()->scriptFunctions();
+    return m_internalNode->scriptFunctions;
 }
 
 qint32 ModelNode::internalId() const
 {
-    if (m_internalNode.isNull())
+    if (!m_internalNode)
         return -1;
 
-    return m_internalNode->internalId();
+    return m_internalNode->internalId;
 }
 
 void ModelNode::setNodeSource(const QString &newNodeSource)
 {
     Internal::WriteLocker locker(m_model.data());
 
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
-
-    if (internalNode()->nodeSource() == newNodeSource)
+    if (!isValid())
         return;
 
-    m_model.data()->d->setNodeSource(internalNode(), newNodeSource);
+    if (m_internalNode->nodeSource == newNodeSource)
+        return;
+
+    m_model.data()->d->setNodeSource(m_internalNode, newNodeSource);
 }
 
 void ModelNode::setNodeSource(const QString &newNodeSource, NodeSourceType type)
 {
     Internal::WriteLocker locker(m_model.data());
 
-    if (!isValid()) {
-        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "model node is invalid");
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
-    }
-
-    if (internalNode()->nodeSourceType() == type && internalNode()->nodeSource() == newNodeSource)
+    if (!isValid())
         return;
 
-    internalNode()->setNodeSourceType(type); // Set type first as it doesn't trigger any notifies
-    m_model.data()->d->setNodeSource(internalNode(), newNodeSource);
+    if (m_internalNode->nodeSourceType == type && m_internalNode->nodeSource == newNodeSource)
+        return;
+
+    m_internalNode->nodeSourceType = type; // Set type first as it doesn't trigger any notifies
+    m_model.data()->d->setNodeSource(m_internalNode, newNodeSource);
 }
 
 QString ModelNode::nodeSource() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
-    return internalNode()->nodeSource();
+    return m_internalNode->nodeSource;
 }
 
 QString ModelNode::convertTypeToImportAlias() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
     if (model()->rewriterView())
         return model()->rewriterView()->convertTypeToImportAlias(QString::fromLatin1(type()));
@@ -1341,16 +1469,15 @@ QString ModelNode::convertTypeToImportAlias() const
 ModelNode::NodeSourceType ModelNode::nodeSourceType() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return {};
 
-    return static_cast<ModelNode::NodeSourceType>(internalNode()->nodeSourceType());
-
+    return static_cast<ModelNode::NodeSourceType>(m_internalNode->nodeSourceType);
 }
 
 bool ModelNode::isComponent() const
 {
     if (!isValid())
-        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+        return false;
 
     if (!metaInfo().isValid())
         return false;
@@ -1374,8 +1501,7 @@ bool ModelNode::isComponent() const
         }
     }
 
-    if (metaInfo().isSubclassOf("QtQuick.Loader")) {
-
+    if (metaInfo().isQtQuickLoader()) {
         if (hasNodeListProperty("component")) {
 
         /*
@@ -1404,14 +1530,6 @@ bool ModelNode::isComponent() const
     return false;
 }
 
-bool ModelNode::isSubclassOf(const TypeName &typeName, int majorVersion, int minorVersion) const
-{
-    if (metaInfo().isValid())
-        return metaInfo().isSubclassOf(typeName, majorVersion, minorVersion);
-
-    return false;
-}
-
 QIcon ModelNode::typeIcon() const
 {
     if (isValid()) {
@@ -1426,6 +1544,14 @@ QIcon ModelNode::typeIcon() const
     }
 
     return QIcon(QStringLiteral(":/ItemLibrary/images/item-invalid-icon.png"));
+}
+
+QString ModelNode::behaviorPropertyName() const
+{
+    if (!m_internalNode)
+        return {};
+
+    return m_internalNode->behaviorPropertyName;
 }
 
 }

@@ -1,58 +1,35 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "locatorsearchutils.h"
 
-#include <QSet>
-#include <QString>
-#include <QVariant>
+#include <utils/link.h>
+
+#include <unordered_set>
 
 void Core::Internal::runSearch(QFutureInterface<Core::LocatorFilterEntry> &future,
                                const QList<ILocatorFilter *> &filters, const QString &searchText)
 {
-    QSet<QString> alreadyAdded;
+    std::unordered_set<Utils::FilePath> addedCache;
     const bool checkDuplicates = (filters.size() > 1);
+    const auto duplicatesRemoved = [&](const QList<LocatorFilterEntry> &entries) {
+        if (!checkDuplicates)
+            return entries;
+        QList<LocatorFilterEntry> results;
+        results.reserve(entries.size());
+        for (const LocatorFilterEntry &entry : entries) {
+            const auto &link = entry.linkForEditor;
+            if (!link || addedCache.emplace(link->targetFilePath).second)
+                results.append(entry);
+        }
+        return results;
+    };
+
     for (ILocatorFilter *filter : filters) {
         if (future.isCanceled())
             break;
-
-        const QList<LocatorFilterEntry> filterResults = filter->matchesFor(future, searchText);
-        QVector<LocatorFilterEntry> uniqueFilterResults;
-        uniqueFilterResults.reserve(filterResults.size());
-        for (const LocatorFilterEntry &entry : filterResults) {
-            if (checkDuplicates) {
-                const QString stringData = entry.internalData.toString();
-                if (!stringData.isEmpty()) {
-                    if (alreadyAdded.contains(stringData))
-                        continue;
-                    alreadyAdded.insert(stringData);
-                }
-            }
-            uniqueFilterResults.append(entry);
-        }
-        if (!uniqueFilterResults.isEmpty())
-            future.reportResults(uniqueFilterResults);
+        const auto results = duplicatesRemoved(filter->matchesFor(future, searchText));
+        if (!results.isEmpty())
+            future.reportResults(results);
     }
 }

@@ -1,98 +1,114 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Brian McGillion
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2016 Brian McGillion
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "authenticationdialog.h"
-#include "srcdestdialog.h"
-#include "ui_srcdestdialog.h"
 
+#include "mercurialtr.h"
+#include "srcdestdialog.h"
+
+#include <utils/layoutbuilder.h>
+
+#include <QCheckBox>
+#include <QDialogButtonBox>
+#include <QLineEdit>
+#include <QRadioButton>
 #include <QSettings>
 #include <QUrl>
 
+using namespace Utils;
 using namespace VcsBase;
 
-namespace Mercurial {
-namespace Internal  {
+namespace Mercurial::Internal {
 
 SrcDestDialog::SrcDestDialog(const VcsBasePluginState &state, Direction dir, QWidget *parent) :
     QDialog(parent),
-    m_ui(new Ui::SrcDestDialog),
     m_direction(dir),
     m_state(state)
 {
-    m_ui->setupUi(this);
-    m_ui->localPathChooser->setExpectedKind(Utils::PathChooser::ExistingDirectory);
-    m_ui->localPathChooser->setHistoryCompleter(QLatin1String("Hg.SourceDir.History"));
-    QUrl repoUrl(getRepoUrl());
-    if (repoUrl.isEmpty())
-        return;
+    resize(400, 187);
+
+    m_defaultButton = new QRadioButton(Tr::tr("Default Location"));
+    m_defaultButton->setChecked(true);
+
+    m_localButton = new QRadioButton(Tr::tr("Local filesystem:"));
+
+    auto urlButton = new QRadioButton(Tr::tr("Specify URL:"));
+    urlButton->setToolTip(Tr::tr("For example: 'https://[user[:pass]@]host[:port]/[path]'."));
+
+    m_localPathChooser = new Utils::PathChooser;
+    m_localPathChooser->setEnabled(false);
+    m_localPathChooser->setExpectedKind(PathChooser::ExistingDirectory);
+    m_localPathChooser->setHistoryCompleter("Hg.SourceDir.History");
+
+    m_urlLineEdit = new QLineEdit;
+    m_urlLineEdit->setToolTip(Tr::tr("For example: 'https://[user[:pass]@]host[:port]/[path]'.", nullptr));
+    m_urlLineEdit->setEnabled(false);
+
+    QUrl repoUrl = getRepoUrl();
     if (!repoUrl.password().isEmpty())
         repoUrl.setPassword(QLatin1String("***"));
-    m_ui->defaultPath->setText(repoUrl.toString());
-    m_ui->promptForCredentials->setChecked(!repoUrl.scheme().isEmpty() && repoUrl.scheme() != QLatin1String("file"));
+
+    m_promptForCredentials = new QCheckBox(Tr::tr("Prompt for credentials"));
+    m_promptForCredentials->setChecked(!repoUrl.scheme().isEmpty() && repoUrl.scheme() != QLatin1String("file"));
+
+    auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+
+    using namespace Layouting;
+
+    Column {
+        Form {
+            m_defaultButton, Column { repoUrl.toString(), m_promptForCredentials }, br,
+            m_localButton, m_localPathChooser, br,
+            urlButton, m_urlLineEdit, br,
+        },
+        st,
+        buttonBox
+    }.attachTo(this);
+
+    connect(urlButton, &QRadioButton::toggled, m_urlLineEdit, &QLineEdit::setEnabled);
+    connect(m_localButton, &QAbstractButton::toggled, m_localPathChooser, &QWidget::setEnabled);
+
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
 }
 
-SrcDestDialog::~SrcDestDialog()
-{
-    delete m_ui;
-}
+SrcDestDialog::~SrcDestDialog() = default;
 
 void SrcDestDialog::setPathChooserKind(Utils::PathChooser::Kind kind)
 {
-    m_ui->localPathChooser->setExpectedKind(kind);
+    m_localPathChooser->setExpectedKind(kind);
 }
 
 QString SrcDestDialog::getRepositoryString() const
 {
-    if (m_ui->defaultButton->isChecked()) {
+    if (m_defaultButton->isChecked()) {
         QUrl repoUrl(getRepoUrl());
-        if (m_ui->promptForCredentials->isChecked() && !repoUrl.scheme().isEmpty() && repoUrl.scheme() != QLatin1String("file")) {
+        if (m_promptForCredentials->isChecked() && !repoUrl.scheme().isEmpty() && repoUrl.scheme() != QLatin1String("file")) {
             QScopedPointer<AuthenticationDialog> authDialog(new AuthenticationDialog(repoUrl.userName(), repoUrl.password()));
             authDialog->setPasswordEnabled(repoUrl.scheme() != QLatin1String("ssh"));
             if (authDialog->exec()== 0)
                 return repoUrl.toString();
 
-            QString user = authDialog->getUserName();
+            const QString user = authDialog->getUserName();
             if (user.isEmpty())
                 return repoUrl.toString();
             if (user != repoUrl.userName())
                 repoUrl.setUserName(user);
 
-            QString pass = authDialog->getPassword();
+            const QString pass = authDialog->getPassword();
             if (!pass.isEmpty() && pass != repoUrl.password())
                 repoUrl.setPassword(pass);
         }
         return repoUrl.toString();
     }
-    if (m_ui->localButton->isChecked())
-        return m_ui->localPathChooser->filePath().toString();
-    return m_ui->urlLineEdit->text();
+    if (m_localButton->isChecked())
+        return m_localPathChooser->filePath().toString();
+    return m_urlLineEdit->text();
 }
 
-Utils::FilePath SrcDestDialog::workingDir() const
+FilePath SrcDestDialog::workingDir() const
 {
-    return Utils::FilePath::fromString(m_workingdir);
+    return FilePath::fromString(m_workingdir);
 }
 
 QUrl SrcDestDialog::getRepoUrl() const
@@ -114,5 +130,4 @@ QUrl SrcDestDialog::getRepoUrl() const
     return url;
 }
 
-} // namespace Internal
-} // namespace Mercurial
+} // Mercurial::Internal

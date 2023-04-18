@@ -1,31 +1,6 @@
 #!/usr/bin/env python3
-################################################################################
 # Copyright (C) The Qt Company Ltd.
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-#   * Redistributions of source code must retain the above copyright notice,
-#     this list of conditions and the following disclaimer.
-#   * Redistributions in binary form must reproduce the above copyright notice,
-#     this list of conditions and the following disclaimer in the documentation
-#     and/or other materials provided with the distribution.
-#   * Neither the name of The Qt Company Ltd, nor the names of its contributors
-#     may be used to endorse or promote products derived from this software
-#     without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-################################################################################
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import argparse
 import collections
@@ -135,9 +110,12 @@ def is_ignored_windows_file(use_debug, basepath, filename):
     return False
 
 def ignored_qt_lib_files(path, filenames):
+    # Qt ships some unneeded object files in the qml plugins
+    # On Windows we also do not want to ship the wrong debug/release .dlls or .lib files etc
     if not common.is_windows_platform():
-        return []
-    return [fn for fn in filenames if is_ignored_windows_file(debug_build, path, fn)]
+        return [fn for fn in filenames if fn.endswith('.cpp.o')]
+    return [fn for fn in filenames
+            if fn.endswith('.cpp.obj') or is_ignored_windows_file(debug_build, path, fn)]
 
 def copy_qt_libs(target_qt_prefix_path, qt_bin_dir, qt_libs_dir, qt_plugin_dir, qt_qml_dir, plugins):
     print("copying Qt libraries...")
@@ -227,7 +205,7 @@ def copyPreservingLinks(source, destination):
     else:
         shutil.copy(source, destination)
 
-def deploy_libclang(install_dir, llvm_install_dir, chrpath_bin):
+def deploy_clang(install_dir, llvm_install_dir, chrpath_bin):
     # contains pairs of (source, target directory)
     deployinfo = []
     resourcesource = os.path.join(llvm_install_dir, 'lib', 'clang')
@@ -238,23 +216,17 @@ def deploy_libclang(install_dir, llvm_install_dir, chrpath_bin):
         clanglibdirtarget = os.path.join(install_dir, 'bin', 'clang', 'lib')
         if not os.path.exists(clanglibdirtarget):
             os.makedirs(clanglibdirtarget)
-        deployinfo.append((os.path.join(llvm_install_dir, 'bin', 'libclang.dll'),
-                           os.path.join(install_dir, 'bin')))
-        for binary in ['clang', 'clang-cl', 'clangd', 'clang-tidy', 'clazy-standalone']:
+        for binary in ['clangd', 'clang-tidy', 'clazy-standalone', 'clang-format']:
             binary_filepath = os.path.join(llvm_install_dir, 'bin', binary + '.exe')
             if os.path.exists(binary_filepath):
                 deployinfo.append((binary_filepath, clangbindirtarget))
         resourcetarget = os.path.join(clanglibdirtarget, 'clang')
     else:
-        # libclang -> Qt Creator libraries
-        libsources = glob(os.path.join(llvm_install_dir, 'lib', 'libclang.so*'))
-        for libsource in libsources:
-            deployinfo.append((libsource, os.path.join(install_dir, 'lib', 'qtcreator')))
         # clang binaries -> clang libexec
         clangbinary_targetdir = os.path.join(install_dir, 'libexec', 'qtcreator', 'clang', 'bin')
         if not os.path.exists(clangbinary_targetdir):
             os.makedirs(clangbinary_targetdir)
-        for binary in ['clang', 'clangd', 'clang-tidy', 'clazy-standalone']:
+        for binary in ['clangd', 'clang-tidy', 'clazy-standalone', 'clang-format']:
             binary_filepath = os.path.join(llvm_install_dir, 'bin', binary)
             if os.path.exists(binary_filepath):
                 deployinfo.append((binary_filepath, clangbinary_targetdir))
@@ -268,12 +240,12 @@ def deploy_libclang(install_dir, llvm_install_dir, chrpath_bin):
         if not os.path.exists(clanglibs_targetdir):
             os.makedirs(clanglibs_targetdir)
         # on RHEL ClazyPlugin is in lib64
-        for lib_pattern in ['lib64/ClazyPlugin.so', 'lib/ClazyPlugin.so', 'lib/libclang-cpp.so*']:
+        for lib_pattern in ['lib64/ClazyPlugin.so', 'lib/ClazyPlugin.so']:
             for lib in glob(os.path.join(llvm_install_dir, lib_pattern)):
                 deployinfo.append((lib, clanglibs_targetdir))
         resourcetarget = os.path.join(install_dir, 'libexec', 'qtcreator', 'clang', 'lib', 'clang')
 
-    print("copying libclang...")
+    print("copying clang...")
     for source, target in deployinfo:
         print(source, '->', target)
         copyPreservingLinks(source, target)
@@ -403,7 +375,7 @@ def main():
         copy_qt_libs(qt_deploy_prefix, qt_install.bin, qt_install.lib, qt_install.plugins, qt_install.qml, plugins)
     copy_translations(install_dir, qt_install.translations)
     if args.llvm_path:
-        deploy_libclang(install_dir, args.llvm_path, chrpath_bin)
+        deploy_clang(install_dir, args.llvm_path, chrpath_bin)
 
     if args.elfutils_path:
         deploy_elfutils(install_dir, chrpath_bin, args)

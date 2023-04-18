@@ -1,37 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Creator.
-**
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #pragma once
 
-#include "icontent.h"
-#include "lsptypes.h"
+#include "basemessage.h"
 #include "jsonkeys.h"
+#include "lsptypes.h"
 
-#include <utils/optional.h>
 #include <utils/qtcassert.h>
-#include <utils/variant.h>
 
 #include <QDebug>
 #include <QElapsedTimer>
@@ -41,48 +17,110 @@
 #include <QCoreApplication>
 #include <QUuid>
 
+#include <optional>
+#include <variant>
+
 namespace LanguageServerProtocol {
 
-class LANGUAGESERVERPROTOCOL_EXPORT JsonRpcMessage : public IContent
+class JsonRpcMessage;
+
+class LANGUAGESERVERPROTOCOL_EXPORT MessageId : public std::variant<int, QString>
+{
+public:
+    MessageId() : variant(QString()) {}
+    explicit MessageId(int id) : variant(id) {}
+    explicit MessageId(const QString &id) : variant(id) {}
+    explicit MessageId(const QJsonValue &value)
+    {
+        if (value.isDouble())
+            emplace<int>(value.toInt());
+        else
+            emplace<QString>(value.toString());
+    }
+
+    operator QJsonValue() const
+    {
+        if (auto id = std::get_if<int>(this))
+            return *id;
+        if (auto id = std::get_if<QString>(this))
+            return *id;
+        return QJsonValue();
+    }
+
+    bool isValid() const
+    {
+        if (std::holds_alternative<int>(*this))
+            return true;
+        const QString *id = std::get_if<QString>(this);
+        QTC_ASSERT(id, return false);
+        return !id->isEmpty();
+    }
+
+    QString toString() const
+    {
+        if (auto id = std::get_if<QString>(this))
+            return *id;
+        if (auto id = std::get_if<int>(this))
+            return QString::number(*id);
+        return {};
+    }
+
+private:
+    friend size_t qHash(const MessageId &id)
+    {
+        if (std::holds_alternative<int>(id))
+            return QT_PREPEND_NAMESPACE(qHash(std::get<int>(id)));
+        if (std::holds_alternative<QString>(id))
+            return QT_PREPEND_NAMESPACE(qHash(std::get<QString>(id)));
+        return QT_PREPEND_NAMESPACE(qHash(0));
+    }
+
+    friend QDebug operator<<(QDebug stream, const MessageId &id)
+    {
+        if (std::holds_alternative<int>(id))
+            stream << std::get<int>(id);
+        else
+            stream << std::get<QString>(id);
+        return stream;
+    }
+};
+
+struct ResponseHandler
+{
+    MessageId id;
+    using Callback = std::function<void(const JsonRpcMessage &)>;
+    Callback callback;
+};
+
+class LANGUAGESERVERPROTOCOL_EXPORT JsonRpcMessage
 {
 public:
     JsonRpcMessage();
+    explicit JsonRpcMessage(const BaseMessage &message);
     explicit JsonRpcMessage(const QJsonObject &jsonObject);
     explicit JsonRpcMessage(QJsonObject &&jsonObject);
 
-    QByteArray toRawData() const final;
-    QByteArray mimeType() const final;
-    bool isValid(QString *errorMessage) const override;
+    virtual ~JsonRpcMessage() = default;
+
+    static QByteArray jsonRpcMimeType();
+
+    QByteArray toRawData() const;
+    virtual bool isValid(QString *errorMessage) const;
+
+    const QJsonObject &toJsonObject() const;
+
+    const QString parseError() { return m_parseError; }
+
+    virtual std::optional<ResponseHandler> responseHandler() const { return std::nullopt; }
+
+    BaseMessage toBaseMessage() const
+    { return BaseMessage(jsonRpcMimeType(), toRawData()); }
 
 protected:
     QJsonObject m_jsonObject;
 
 private:
     QString m_parseError;
-};
-
-class LANGUAGESERVERPROTOCOL_EXPORT JsonRpcMessageHandler
-{
-    Q_DECLARE_TR_FUNCTIONS(JsonRpcMessageHandler)
-
-public:
-    using MessageProvider = std::function<IContent *(const QJsonObject &)>;
-    static void registerMessageProvider(const QString &method, MessageProvider provider);
-    template<typename T>
-    static void registerMessageProvider()
-    {
-        registerMessageProvider(T::methodName, [](const QJsonObject &object){
-            return new T(object);
-        });
-    }
-    static QByteArray jsonRpcMimeType();
-    static void parseContent(const QByteArray &content, QTextCodec *codec, QString &errorMessage,
-                             const ResponseHandlers &responseHandlers,
-                             const MethodHandler &methodHandler);
-    static QJsonObject toJsonObject(const QByteArray &content, QTextCodec *codec, QString &parseError);
-
-private:
-    static QHash<QString, MessageProvider> m_messageProvider;
 };
 
 template <typename Params>
@@ -103,10 +141,10 @@ public:
     void setMethod(const QString &method)
     { m_jsonObject.insert(methodKey, method); }
 
-    Utils::optional<Params> params() const
+    std::optional<Params> params() const
     {
         const QJsonValue &params = m_jsonObject.value(paramsKey);
-        return params.isUndefined() ? Utils::nullopt : Utils::make_optional(Params(params));
+        return params.isUndefined() ? std::nullopt : std::make_optional(Params(params));
     }
     void setParams(const Params &params)
     { m_jsonObject.insert(paramsKey, QJsonValue(params)); }
@@ -122,9 +160,9 @@ public:
     virtual bool parametersAreValid(QString *errorMessage) const
     {
         if (auto parameter = params())
-            return parameter.value().isValid();
+            return parameter->isValid();
         if (errorMessage)
-            *errorMessage = QCoreApplication::translate("LanguageServerProtocol::Notification",
+            *errorMessage = QCoreApplication::translate("QtC::LanguageServerProtocol",
                                                         "No parameters in \"%1\".").arg(method());
         return false;
     }
@@ -147,7 +185,7 @@ public:
     void setMethod(const QString &method)
     { m_jsonObject.insert(methodKey, method); }
 
-    Utils::optional<std::nullptr_t> params() const
+    std::optional<std::nullptr_t> params() const
     { return nullptr; }
     void setParams(const std::nullptr_t &/*params*/)
     { m_jsonObject.insert(paramsKey, QJsonValue::Null); }
@@ -176,7 +214,7 @@ public:
     QString message() const { return typedValue<QString>(messageKey); }
     void setMessage(const QString &message) { insert(messageKey, message); }
 
-    Utils::optional<Error> data() const { return optionalValue<Error>(dataKey); }
+    std::optional<Error> data() const { return optionalValue<Error>(dataKey); }
     void setData(const Error &data) { insert(dataKey, data); }
     void clearData() { remove(dataKey); }
 
@@ -213,11 +251,9 @@ public:
         CASE_ERRORCODES(serverErrorStart);
         CASE_ERRORCODES(serverErrorEnd);
         CASE_ERRORCODES(ServerNotInitialized);
-        CASE_ERRORCODES(UnknownErrorCode);
         CASE_ERRORCODES(RequestCancelled);
         default:
-            return QCoreApplication::translate("LanguageClient::ResponseError",
-                                               "Error %1").arg(code);
+            return QCoreApplication::translate("QtC::LanguageClient", "Error %1").arg(code);
         }
     }
 #undef CASE_ERRORCODES
@@ -235,25 +271,27 @@ public:
     void setId(MessageId id)
     { this->m_jsonObject.insert(idKey, id); }
 
-    Utils::optional<Result> result() const
+    std::optional<Result> result() const
     {
         const QJsonValue &result = m_jsonObject.value(resultKey);
         if (result.isUndefined())
-            return Utils::nullopt;
-        return Utils::make_optional(Result(result));
+            return std::nullopt;
+        return std::make_optional(Result(result));
     }
     void setResult(const Result &result) { m_jsonObject.insert(resultKey, QJsonValue(result)); }
     void clearResult() { m_jsonObject.remove(resultKey); }
 
     using Error = ResponseError<ErrorDataType>;
-    Utils::optional<Error> error() const
+    std::optional<Error> error() const
     {
         const QJsonValue &val = m_jsonObject.value(errorKey);
-        return val.isUndefined() ? Utils::nullopt
-                                 : Utils::make_optional(fromJsonValue<Error>(val));
+        return val.isUndefined() ? std::nullopt : std::make_optional(fromJsonValue<Error>(val));
     }
     void setError(const Error &error)
-    { m_jsonObject.insert(errorKey, QJsonValue(error)); }
+    {
+        QTC_CHECK(error.isValid());
+        m_jsonObject.insert(errorKey, QJsonValue(error));
+    }
     void clearError() { m_jsonObject.remove(errorKey); }
 
     bool isValid(QString *errorMessage) const override
@@ -272,20 +310,18 @@ public:
     void setId(MessageId id)
     { this->m_jsonObject.insert(idKey, id); }
 
-    Utils::optional<std::nullptr_t> result() const
+    std::optional<std::nullptr_t> result() const
     {
-        return m_jsonObject.value(resultKey).isNull() ? Utils::make_optional(nullptr)
-                                                      : Utils::nullopt;
+        return m_jsonObject.value(resultKey).isNull() ? std::make_optional(nullptr) : std::nullopt;
     }
     void setResult(const std::nullptr_t &) { m_jsonObject.insert(resultKey, QJsonValue::Null); }
     void clearResult() { m_jsonObject.remove(resultKey); }
 
     using Error = ResponseError<ErrorDataType>;
-    Utils::optional<Error> error() const
+    std::optional<Error> error() const
     {
         const QJsonValue &val = m_jsonObject.value(errorKey);
-        return val.isUndefined() ? Utils::nullopt
-                                 : Utils::make_optional(fromJsonValue<Error>(val));
+        return val.isUndefined() ? std::nullopt : std::make_optional(fromJsonValue<Error>(val));
     }
     void setError(const Error &error)
     { m_jsonObject.insert(errorKey, QJsonValue(error)); }
@@ -317,28 +353,19 @@ public:
     void setResponseCallback(const ResponseCallback &callback)
     { m_callBack = callback; }
 
-    Utils::optional<ResponseHandler> responseHandler() const final
+    std::optional<ResponseHandler> responseHandler() const final
     {
         QElapsedTimer timer;
         timer.start();
         auto callback = [callback = m_callBack, method = this->method(), t = std::move(timer)]
-                (const QByteArray &content, QTextCodec *codec) {
+                (const JsonRpcMessage &message) {
             if (!callback)
                 return;
             logElapsedTime(method, t);
-            QString parseError;
-            const QJsonObject &object = JsonRpcMessageHandler::toJsonObject(content,
-                                                                            codec,
-                                                                            parseError);
-            Response response(object);
-            if (object.isEmpty()) {
-                ResponseError<ErrorDataType> error;
-                error.setMessage(parseError);
-                response.setError(error);
-            }
-            callback(Response(object));
+
+            callback(Response(message.toJsonObject()));
         };
-        return Utils::make_optional(ResponseHandler{id(), callback});
+        return std::make_optional(ResponseHandler{id(), callback});
     }
 
     bool isValid(QString *errorMessage) const override
@@ -347,10 +374,9 @@ public:
             return false;
         if (id().isValid())
             return true;
-        if (errorMessage) {
-            *errorMessage = QCoreApplication::translate("LanguageServerProtocol::Request",
+        if (errorMessage)
+            *errorMessage = QCoreApplication::translate("QtC::LanguageServerProtocol",
                                                         "No ID set in \"%1\".").arg(this->method());
-        }
         return false;
     }
 
@@ -379,7 +405,7 @@ public:
     constexpr static const char methodName[] = "$/cancelRequest";
 };
 
-} // namespace LanguageClient
+} // namespace LanguageServerProtocol
 
 template <typename Error>
 inline QDebug operator<<(QDebug stream,
@@ -388,3 +414,5 @@ inline QDebug operator<<(QDebug stream,
     stream.nospace() << error.toString();
     return stream;
 }
+
+Q_DECLARE_METATYPE(LanguageServerProtocol::JsonRpcMessage)

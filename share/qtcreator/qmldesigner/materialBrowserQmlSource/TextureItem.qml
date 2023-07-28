@@ -7,6 +7,7 @@ import QtQuick.Layouts
 import QtQuickDesignerTheme
 import HelperWidgets
 import StudioTheme as StudioTheme
+import MaterialBrowserBackend
 
 Rectangle {
     id: root
@@ -14,13 +15,18 @@ Rectangle {
     visible: textureVisible
 
     color: "transparent"
-    border.width: materialBrowserTexturesModel.selectedIndex === index
-                        ? !rootView.materialSectionFocused ? 3 : 1 : 0
-    border.color: materialBrowserTexturesModel.selectedIndex === index
+    border.width: MaterialBrowserBackend.materialBrowserTexturesModel.selectedIndex === index
+                        ? !MaterialBrowserBackend.rootView.materialSectionFocused ? 3 : 1 : 0
+    border.color: MaterialBrowserBackend.materialBrowserTexturesModel.selectedIndex === index
                         ? StudioTheme.Values.themeControlOutlineInteraction
                         : "transparent"
 
     signal showContextMenu()
+
+    function forceFinishEditing()
+    {
+        txtId.commitRename()
+    }
 
     MouseArea {
         id: mouseArea
@@ -30,16 +36,16 @@ Rectangle {
         hoverEnabled: true
 
         onPressed: (mouse) => {
-            rootView.focusMaterialSection(false)
-            materialBrowserTexturesModel.selectTexture(index)
+            MaterialBrowserBackend.materialBrowserTexturesModel.selectTexture(index)
+            MaterialBrowserBackend.rootView.focusMaterialSection(false)
 
             if (mouse.button === Qt.LeftButton)
-                rootView.startDragTexture(index, mapToGlobal(mouse.x, mouse.y))
+                MaterialBrowserBackend.rootView.startDragTexture(index, mapToGlobal(mouse.x, mouse.y))
             else if (mouse.button === Qt.RightButton)
                 root.showContextMenu()
         }
 
-        onDoubleClicked: materialBrowserTexturesModel.openTextureEditor();
+        onDoubleClicked: MaterialBrowserBackend.materialBrowserTexturesModel.openTextureEditor();
     }
 
     ToolTip {
@@ -58,12 +64,43 @@ Rectangle {
         }
     }
 
-    Image {
-        source: "image://materialBrowserTex/" + textureSource
-        asynchronous: true
-        sourceSize.width: root.width - 10
-        sourceSize.height: root.height - 10
-        anchors.centerIn: parent
-        smooth: true
+    Column {
+        anchors.fill: parent
+        spacing: 1
+
+        Item { width: 1; height: 5 } // spacer
+        Image {
+            id: img
+            source: "image://materialBrowserTex/" + textureSource
+            asynchronous: true
+            width: root.width - 10
+            height: img.width
+            anchors.horizontalCenter: parent.horizontalCenter
+            smooth: true
+            fillMode: Image.PreserveAspectFit
+        }
+
+        // Eat keys so they are not passed to parent while editing name
+        Keys.onPressed: (e) => {
+            e.accepted = true;
+        }
+
+        MaterialBrowserItemName {
+            id: txtId
+
+            text: textureId
+            width: img.width
+            anchors.horizontalCenter: parent.horizontalCenter
+
+            onRenamed: (newId) => {
+                MaterialBrowserBackend.materialBrowserTexturesModel.setTextureId(index, newId);
+                mouseArea.forceActiveFocus()
+            }
+
+            onClicked: {
+                MaterialBrowserBackend.materialBrowserTexturesModel.selectTexture(index)
+                MaterialBrowserBackend.rootView.focusMaterialSection(false)
+            }
+        }
     }
 }

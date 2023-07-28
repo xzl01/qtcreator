@@ -5,7 +5,6 @@
 
 #include "../beautifierabstracttool.h"
 
-#include "uncrustifyoptionspage.h"
 #include "uncrustifysettings.h"
 
 namespace Beautifier::Internal {
@@ -23,8 +22,8 @@ public:
 private:
     void formatFile();
     void formatSelectedText();
-    QString configurationFile() const;
-    TextEditor::Command command(const QString &cfgFile, bool fragment = false) const;
+    Utils::FilePath configurationFile() const;
+    TextEditor::Command command(const Utils::FilePath &cfgFile, bool fragment = false) const;
 
     QAction *m_formatFile = nullptr;
     QAction *m_formatRange = nullptr;

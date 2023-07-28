@@ -49,8 +49,6 @@ MesonBuildSettingsWidget::MesonBuildSettingsWidget(MesonBuildConfiguration *buil
 
     auto parametersLineEdit = new QLineEdit;
 
-    auto buildDirWidget = new QWidget;
-
     auto optionsFilterLineEdit = new FancyLineEdit;
 
     auto optionsTreeView = new TreeView;
@@ -61,22 +59,21 @@ MesonBuildSettingsWidget::MesonBuildSettingsWidget(MesonBuildConfiguration *buil
     optionsTreeView->setSortingEnabled(true);
 
     using namespace Layouting;
-
     Column {
-        Form { Tr::tr("Parameters"), parametersLineEdit, br, },
-        buildDirWidget,
+        noMargin,
+        Form {
+            Tr::tr("Parameters:"), parametersLineEdit, br,
+            buildCfg->buildDirectoryAspect(), br
+        },
         optionsFilterLineEdit,
         optionsTreeView,
-    }.attachTo(details, WithoutMargins);
+    }.attachTo(details);
 
     Column {
+        noMargin,
         container,
-        Row { configureButton, wipeButton, }
-    }.attachTo(this, WithoutMargins);
-
-    Form buildDirWBuilder;
-    buildCfg->buildDirectoryAspect()->addToLayout(buildDirWBuilder);
-    buildDirWBuilder.attachTo(buildDirWidget, WithoutMargins);
+        Row { configureButton, wipeButton, noMargin }
+    }.attachTo(this);
 
     parametersLineEdit->setText(buildCfg->parameters());
     optionsFilterLineEdit->setFiltering(true);

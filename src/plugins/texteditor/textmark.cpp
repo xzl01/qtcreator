@@ -12,11 +12,13 @@
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/icore.h>
+#include <utils/outputformatter.h>
 #include <utils/qtcassert.h>
 #include <utils/tooltip/tooltip.h>
 #include <utils/utilsicons.h>
 
 #include <QAction>
+#include <QDesktopServices>
 #include <QGridLayout>
 #include <QPainter>
 #include <QToolButton>
@@ -32,6 +34,7 @@ class TextMarkRegistry : public QObject
     Q_OBJECT
 public:
     static void add(TextMark *mark);
+    static void add(TextMark *mark, TextDocument *document);
     static bool remove(TextMark *mark);
 
 private:
@@ -73,12 +76,24 @@ TextMark::TextMark(const FilePath &filePath, int lineNumber, TextMarkCategory ca
         TextMarkRegistry::add(this);
 }
 
+TextMark::TextMark(TextDocument *document, int lineNumber, TextMarkCategory category)
+    : m_fileName(QTC_GUARD(document) ? document->filePath() : FilePath())
+    , m_lineNumber(lineNumber)
+    , m_visible(true)
+    , m_category(category)
+{
+    if (!m_fileName.isEmpty())
+        TextMarkRegistry::add(this, document);
+}
+
 TextMark::~TextMark()
 {
     if (!m_fileName.isEmpty())
         TextMarkRegistry::remove(this);
     if (m_baseTextDocument)
         m_baseTextDocument->removeMark(this);
+    if (m_deleteCallback)
+        m_deleteCallback();
     m_baseTextDocument = nullptr;
 }
 
@@ -123,6 +138,8 @@ void TextMark::paintAnnotation(QPainter &painter,
                                                    painter.fontMetrics(),
                                                    fadeInOffset,
                                                    fadeOutOffset);
+    if (m_staticAnnotationText.text() != rects.text)
+        m_staticAnnotationText.setText(rects.text);
     annotationRect->setRight(rects.fadeOutRect.right());
     const QRectF eventRectF(eventRect);
     if (!(rects.fadeInRect.intersects(eventRectF) || rects.annotationRect.intersects(eventRectF)
@@ -133,7 +150,7 @@ void TextMark::paintAnnotation(QPainter &painter,
     const QColor &markColor = annotationColor();
 
     const FontSettings &fontSettings = m_baseTextDocument->fontSettings();
-    const AnnotationColors &colors = AnnotationColors::getAnnotationColors(
+    const AnnotationColors colors = AnnotationColors::getAnnotationColors(
                 markColor.isValid() ? markColor : painter.pen().color(),
                 fontSettings.toTextCharFormat(C_TEXT).background().color());
 
@@ -146,7 +163,7 @@ void TextMark::paintAnnotation(QPainter &painter,
     painter.fillRect(rects.annotationRect, colors.rectColor);
     painter.setPen(colors.textColor);
     paintIcon(&painter, rects.iconRect.toAlignedRect());
-    painter.drawText(rects.textRect, Qt::AlignLeft, rects.text);
+    painter.drawStaticText(rects.textRect.topLeft(), m_staticAnnotationText);
     if (rects.fadeOutRect.isValid()) {
         grad = QLinearGradient(rects.fadeOutRect.topLeft() - contentOffset,
                                rects.fadeOutRect.topRight() - contentOffset);
@@ -282,7 +299,7 @@ void TextMark::addToToolTipLayout(QGridLayout *target) const
     if (m_category.id.isValid() && !m_lineAnnotation.isEmpty()) {
         auto visibilityAction = new QAction;
         const bool isHidden = TextDocument::marksAnnotationHidden(m_category.id);
-        visibilityAction->setIcon(Utils::Icons::EYE_OPEN_TOOLBAR.icon());
+        visibilityAction->setIcon(Utils::Icons::EYE_OPEN.icon());
         const QString tooltip = (isHidden ? Tr::tr("Show inline annotations for %1")
                                           : Tr::tr("Temporarily hide inline annotations for %1"))
                                     .arg(m_category.displayName);
@@ -298,7 +315,7 @@ void TextMark::addToToolTipLayout(QGridLayout *target) const
     }
     if (m_settingsPage.isValid()) {
         auto settingsAction = new QAction;
-        settingsAction->setIcon(Utils::Icons::SETTINGS_TOOLBAR.icon());
+        settingsAction->setIcon(Utils::Icons::SETTINGS.icon());
         settingsAction->setToolTip(Tr::tr("Show Diagnostic Settings"));
         QObject::connect(settingsAction, &QAction::triggered, Core::ICore::instance(),
             [id = m_settingsPage] { Core::ICore::showOptionsDialog(id); },
@@ -338,11 +355,18 @@ bool TextMark::addToolTipContent(QLayout *target) const
     }
 
     auto textLabel = new QLabel;
-    textLabel->setOpenExternalLinks(true);
     textLabel->setText(text);
     // Differentiate between tool tips that where explicitly set and default tool tips.
     textLabel->setDisabled(useDefaultToolTip);
     target->addWidget(textLabel);
+    QObject::connect(textLabel, &QLabel::linkActivated, [](const QString &link) {
+        if (OutputLineParser::isLinkTarget(link)) {
+            Core::EditorManager::openEditorAt(OutputLineParser::parseLinkTarget(link), {},
+                                              Core::EditorManager::SwitchSplitIfAlreadyVisible);
+        } else {
+            QDesktopServices::openUrl(link);
+        }
+    });
 
     return true;
 }
@@ -451,8 +475,13 @@ TextMarkRegistry::TextMarkRegistry(QObject *parent)
 
 void TextMarkRegistry::add(TextMark *mark)
 {
+    add(mark, TextDocument::textDocumentForFilePath(mark->filePath()));
+}
+
+void TextMarkRegistry::add(TextMark *mark, TextDocument *document)
+{
     instance()->m_marks[mark->filePath()].insert(mark);
-    if (TextDocument *document = TextDocument::textDocumentForFilePath(mark->filePath()))
+    if (document)
         document->addMark(mark);
 }
 

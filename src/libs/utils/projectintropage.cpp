@@ -22,6 +22,7 @@
 
 /*!
     \class Utils::ProjectIntroPage
+    \inmodule QtCreator
 
     \brief The ProjectIntroPage class is the standard wizard page for a project,
     letting the user choose its name
@@ -66,7 +67,6 @@ ProjectIntroPage::ProjectIntroPage(QWidget *parent) :
     WizardPage(parent),
     d(new ProjectIntroPagePrivate)
 {
-    resize(355, 289);
     setTitle(Tr::tr("Introduction and Project Location"));
 
     d->m_descriptionLabel = new QLabel(this);
@@ -303,7 +303,7 @@ bool ProjectIntroPage::validateProjectName(const QString &name, QString *errorMe
 
         // if pos is set by validate it is cought at the bottom where it shows
         // a more detailed error message
-        if (validatorState != QValidator::Acceptable && (pos == -1 || pos >= name.count())) {
+        if (validatorState != QValidator::Acceptable && (pos == -1 || pos >= name.size())) {
             if (errorMessage) {
                 if (d->m_projectNameValidatorUserMessage.isEmpty())
                     *errorMessage = Tr::tr("Project name is invalid.");

@@ -1070,11 +1070,11 @@ void TestBlackbox::deprecatedProperty()
     QVERIFY(runQbs(params) != 0);
     m_qbsStderr = QDir::fromNativeSeparators(QString::fromLocal8Bit(m_qbsStderr)).toLocal8Bit();
     const bool hasExpiringWarning = m_qbsStderr.contains(QByteArray(
-            "deprecated-property.qbs:6:29 The property 'expiringProp' is "
+            "deprecated-property.qbs:4:29 The property 'expiringProp' is "
             "deprecated and will be removed in Qbs ") + version.toLocal8Bit());
     QVERIFY2(expiringWarning == hasExpiringWarning, m_qbsStderr.constData());
     const bool hasRemovedOutput = m_qbsStderr.contains(
-                "deprecated-property.qbs:7:28 The property 'veryOldProp' can no "
+                "deprecated-property.qbs:5:28 The property 'veryOldProp' can no "
                 "longer be used. It was removed in Qbs 1.3.0.");
     QVERIFY2(hasRemovedOutput == !expiringError, m_qbsStderr.constData());
     QVERIFY2(m_qbsStderr.contains("Property 'forgottenProp' was scheduled for removal in version "
@@ -1719,7 +1719,7 @@ void TestBlackbox::clean()
     QVERIFY(!QFile(appExeFilePath).exists());
     QVERIFY(!QFile(depObjectFilePath).exists());
     QVERIFY(!QFile(depLibFilePath).exists());
-    for (const QString &symLink : qAsConst(symlinks))
+    for (const QString &symLink : std::as_const(symlinks))
         QVERIFY2(!symlinkExists(symLink), qPrintable(symLink));
 
     // Remove all, with a forced re-resolve in between.
@@ -1738,7 +1738,7 @@ void TestBlackbox::clean()
     QVERIFY(!QFile(appExeFilePath).exists());
     QVERIFY(!QFile(depObjectFilePath).exists());
     QVERIFY(!QFile(depLibFilePath).exists());
-    for (const QString &symLink : qAsConst(symlinks))
+    for (const QString &symLink : std::as_const(symlinks))
         QVERIFY2(!symlinkExists(symLink), qPrintable(symLink));
 
     // Dry run.
@@ -1750,7 +1750,7 @@ void TestBlackbox::clean()
     QVERIFY(regularFileExists(appExeFilePath));
     QVERIFY(regularFileExists(depObjectFilePath));
     QVERIFY(regularFileExists(depLibFilePath));
-    for (const QString &symLink : qAsConst(symlinks))
+    for (const QString &symLink : std::as_const(symlinks))
         QVERIFY2(symlinkExists(symLink), qPrintable(symLink));
 
     // Product-wise, dependency only.
@@ -1764,7 +1764,7 @@ void TestBlackbox::clean()
     QVERIFY(regularFileExists(appExeFilePath));
     QVERIFY(!QFile(depObjectFilePath).exists());
     QVERIFY(!QFile(depLibFilePath).exists());
-    for (const QString &symLink : qAsConst(symlinks))
+    for (const QString &symLink : std::as_const(symlinks))
         QVERIFY2(!symlinkExists(symLink), qPrintable(symLink));
 
     // Product-wise, dependent product only.
@@ -1778,7 +1778,7 @@ void TestBlackbox::clean()
     QVERIFY(!QFile(appExeFilePath).exists());
     QVERIFY(regularFileExists(depObjectFilePath));
     QVERIFY(regularFileExists(depLibFilePath));
-    for (const QString &symLink : qAsConst(symlinks))
+    for (const QString &symLink : std::as_const(symlinks))
         QVERIFY2(symlinkExists(symLink), qPrintable(symLink));
 }
 
@@ -1961,6 +1961,42 @@ void TestBlackbox::conanfileProbe()
     QCOMPARE(actualResults, expectedResults);
 }
 
+void TestBlackbox::conflictingPropertyValues_data()
+{
+    QTest::addColumn<bool>("overrideInProduct");
+    QTest::newRow("don't override in product") << false;
+    QTest::newRow("override in product") << true;
+}
+
+void TestBlackbox::conflictingPropertyValues()
+{
+    QFETCH(bool, overrideInProduct);
+
+    QDir::setCurrent(testDataDir + "/conflicting-property-values");
+    if (overrideInProduct)
+        REPLACE_IN_FILE("conflicting-property-values.qbs", "// low.prop: name", "low.prop: name");
+    else
+        REPLACE_IN_FILE("conflicting-property-values.qbs", "low.prop: name", "// low.prop: name");
+    WAIT_FOR_NEW_TIMESTAMP();
+    QCOMPARE(runQbs(QString("resolve")), 0);
+    if (overrideInProduct) {
+        // Binding in product itself overrides everything else, module-level conflicts
+        // are irrelevant.
+        QVERIFY2(m_qbsStdout.contains("final prop value: toplevel"), m_qbsStdout.constData());
+        QVERIFY2(m_qbsStderr.isEmpty(), m_qbsStderr.constData());
+    } else {
+        // Only the conflicts in the highest-level modules are reported, lower-level conflicts
+        // are irrelevant.
+        // prop2 does not cause a conflict, because the values are the same.
+        QVERIFY2(m_qbsStdout.contains("final prop value: highest"), m_qbsStdout.constData());
+        QVERIFY2(m_qbsStderr.contains("Conflicting scalar values for property 'prop'"),
+                 m_qbsStderr.constData());
+        QVERIFY2(m_qbsStderr.count("values.qbs") == 2, m_qbsStderr.constData());
+        QVERIFY2(m_qbsStderr.contains("values.qbs:20:23"), m_qbsStderr.constData());
+        QVERIFY2(m_qbsStderr.contains("values.qbs:30:23"), m_qbsStderr.constData());
+    }
+}
+
 void TestBlackbox::cpuFeatures()
 {
     QDir::setCurrent(testDataDir + "/cpu-features");
@@ -1990,6 +2026,13 @@ void TestBlackbox::cpuFeatures()
         QVERIFY2(!m_qbsStdout.contains("/arch:AVX2"), m_qbsStdout.constData());
         QVERIFY2(m_qbsStdout.contains("/arch:SSE2") == isX86, m_qbsStdout.constData());
     }
+}
+
+void TestBlackbox::dateProperty()
+{
+    QDir::setCurrent(testDataDir + "/date-property");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("The stored date was 1999-12-31"), m_qbsStdout.constData());
 }
 
 void TestBlackbox::renameDependency()
@@ -3395,23 +3438,6 @@ void TestBlackbox::probeInExportedModule()
     QVERIFY2(m_qbsStdout.contains("listProp: myother,my"), m_qbsStdout.constData());
 }
 
-void TestBlackbox::probeInModuleProvider()
-{
-    QDir::setCurrent(testDataDir + "/probe-in-module-provider");
-
-    QbsRunParameters params;
-    params.command = "build";
-    params.arguments << "--force-probe-execution";
-    QCOMPARE(runQbs(params), 0);
-    QVERIFY2(m_qbsStdout.contains("Running probe"), m_qbsStdout);
-    QVERIFY2(m_qbsStdout.contains("p.qbsmetatestmodule.boolProp: true"), m_qbsStdout);
-    WAIT_FOR_NEW_TIMESTAMP();
-    touch("probe-in-module-provider.qbs");
-    QCOMPARE(runQbs(), 0);
-    QVERIFY2(m_qbsStdout.contains("p.qbsmetatestmodule.boolProp: true"), m_qbsStdout);
-    QVERIFY2(!m_qbsStdout.contains("Running probe"), m_qbsStdout);
-}
-
 void TestBlackbox::probesAndArrayProperties()
 {
     QDir::setCurrent(testDataDir + "/probes-and-array-properties");
@@ -3447,7 +3473,7 @@ void TestBlackbox::propertyAssignmentInFailedModule()
     QVERIFY(runQbs(failParams) != 0);
     QCOMPARE(runQbs(QbsRunParameters("resolve", QStringList("modules.m.doFail:true"))), 0);
     QVERIFY2(m_qbsStdout.contains("Resolving"), m_qbsStdout.constData());
-    QEXPECT_FAIL(nullptr, "circular dependency between module merging and validation", Continue);
+    failParams.expectFailure = false;
     QCOMPARE(runQbs(failParams), 0);
 }
 
@@ -4400,7 +4426,7 @@ void TestBlackbox::installPackage()
             cleanOutputLines.push_back(trimmedLine);
     }
     QCOMPARE(cleanOutputLines.size(), 3);
-    for (const QByteArray &line : qAsConst(cleanOutputLines)) {
+    for (const QByteArray &line : std::as_const(cleanOutputLines)) {
         QVERIFY2(line.contains("public_tool") || line.contains("mylib") || line.contains("lib.h"),
                  line.constData());
     }
@@ -4477,7 +4503,7 @@ void TestBlackbox::invalidLibraryNames()
     QbsRunParameters params(QStringList("project.valueIndex:" + index));
     params.expectFailure = !success;
     QCOMPARE(runQbs(params) == 0, success);
-    for (const QString &diag : qAsConst(diagnostics))
+    for (const QString &diag : std::as_const(diagnostics))
         QVERIFY2(m_qbsStderr.contains(diag.toLocal8Bit()), m_qbsStderr.constData());
 }
 
@@ -4806,6 +4832,10 @@ void TestBlackbox::jsExtensionsBinaryFile()
     QCOMPARE(data.at(5), char(0x05));
     QCOMPARE(data.at(6), char(0x06));
     QCOMPARE(data.at(7), char(0xFF));
+    QFile destination2("destination2.dat");
+    QVERIFY(destination2.exists());
+    QVERIFY(destination2.open(QIODevice::ReadOnly));
+    QCOMPARE(destination2.readAll(), data);
 }
 
 void TestBlackbox::lastModuleCandidateBroken()
@@ -5574,11 +5604,7 @@ void TestBlackbox::propertyPrecedence()
     switchProfileContents(profile.p, s.get(), false);
     switchFileContents(nonleafFile, true);
     QCOMPARE(runQbs(resolveParams), 0);
-    QVERIFY2(m_qbsStderr.contains("WARNING: Conflicting scalar values at")
-             && m_qbsStderr.contains("nonleaf.qbs:4:22")
-             && m_qbsStderr.contains("dep.qbs:6:26"),
-             m_qbsStderr.constData());
-    QCOMPARE(runQbs(params), 0);
+    QVERIFY2(m_qbsStderr.isEmpty(), m_qbsStderr.constData()); QCOMPARE(runQbs(params), 0);
     QVERIFY2(m_qbsStdout.contains("scalar prop: export\n")
              && m_qbsStdout.contains("list prop: [\"export\",\"nonleaf\",\"leaf\"]\n"),
              m_qbsStdout.constData());
@@ -5586,10 +5612,7 @@ void TestBlackbox::propertyPrecedence()
     // Case 8: [cmdline=0,prod=0,export=1,nonleaf=1,profile=1]
     switchProfileContents(profile.p, s.get(), true);
     QCOMPARE(runQbs(resolveParams), 0);
-    QVERIFY2(m_qbsStderr.contains("WARNING: Conflicting scalar values at")
-             && m_qbsStderr.contains("nonleaf.qbs:4:22")
-             && m_qbsStderr.contains("dep.qbs:6:26"),
-             m_qbsStderr.constData());
+    QVERIFY2(m_qbsStderr.isEmpty(), m_qbsStderr.constData());
     QCOMPARE(runQbs(params), 0);
     QVERIFY2(m_qbsStdout.contains("scalar prop: export\n")
              && m_qbsStdout.contains("list prop: [\"export\",\"nonleaf\",\"profile\"]\n"),
@@ -5977,19 +6000,6 @@ void TestBlackbox::protobufLibraryInstall()
             QFileInfo::exists(installRootInclude + "/hello/world.pb.h"));
 }
 
-// Tests whether it is possible to set providers properties in a Product or from command-line
-void TestBlackbox::providersProperties()
-{
-    QDir::setCurrent(testDataDir + "/providers-properties");
-
-    QbsRunParameters params("build");
-    params.arguments = QStringList("moduleProviders.provider_b.someProp: \"first,second\"");
-    QCOMPARE(runQbs(params), 0);
-    QVERIFY2(m_qbsStdout.contains("p.qbsmetatestmodule.listProp: [\"someValue\"]"), m_qbsStdout);
-    QVERIFY2(m_qbsStdout.contains(
-            "p.qbsothermodule.listProp: [\"first\",\"second\"]"), m_qbsStdout);
-}
-
 void TestBlackbox::pseudoMultiplexing()
 {
     // This is "pseudo-multiplexing" on all platforms that initialize qbs.architectures
@@ -6099,6 +6109,10 @@ void TestBlackbox::qbsConfig()
     if (!canWriteToSystemSettings) {
         QVERIFY2(m_qbsStderr.contains("You do not have permission to write to that location."),
                  m_qbsStderr.constData());
+    } else {
+        // cleanup system settings
+        params.arguments = QStringList{"--system", "--unset", "key.subkey.scalar"};
+        QCOMPARE(runQbs(params) == 0, canWriteToSystemSettings);
     }
 }
 
@@ -6163,160 +6177,90 @@ void TestBlackbox::qbsConfigAddProfile_data()
                                     << QString("Profile properties must be key/value pairs");
 }
 
-// checks that we can set qbs module properties in providers and provider cache works corectly
-void TestBlackbox::qbsModulePropertiesInProviders()
+void TestBlackbox::qbsConfigImport()
 {
-    QDir::setCurrent(testDataDir + "/qbs-module-properties-in-providers");
+    QFETCH(QString, format);
 
-    QbsRunParameters params("resolve");
+    QDir::setCurrent(testDataDir + "/qbs-config-import-export");
+
+    QbsRunParameters params("config");
+    QTemporaryDir settingsDir;
+    QVERIFY(settingsDir.isValid());
+    const QStringList settingsDirArgs = QStringList{"--settings-dir", settingsDir.path()};
+    params.arguments = settingsDirArgs;
+    params.arguments << "--import" << "config." + format;
 
     QCOMPARE(runQbs(params), 0);
 
-    // We have 2 products in 2 configurations, but second product should use the cached value
-    // so we should have only 2 copies of the module, not 4.
-    QCOMPARE(m_qbsStdout.count("Running setup script for qbsmetatestmodule"), 2);
-
-    // Check that products get correct values from modules
-    QVERIFY2(m_qbsStdout.contains(("product1.qbsmetatestmodule.prop: sysroot1")), m_qbsStdout);
-    QVERIFY2(m_qbsStdout.contains(("product1.qbsmetatestmodule.prop: sysroot2")), m_qbsStdout);
-
-    QVERIFY2(m_qbsStdout.contains(("product2.qbsmetatestmodule.prop: sysroot1")), m_qbsStdout);
-    QVERIFY2(m_qbsStdout.contains(("product2.qbsmetatestmodule.prop: sysroot2")), m_qbsStdout);
-}
-
-// Tests whether it is possible to set qbsModuleProviders in Product and Project items
-// and that the order of providers results in correct priority
-void TestBlackbox::qbsModuleProviders()
-{
-    QFETCH(QStringList, arguments);
-    QFETCH(QString, firstProp);
-    QFETCH(QString, secondProp);
-
-    QDir::setCurrent(testDataDir + "/qbs-module-providers");
-
-    QbsRunParameters params("resolve");
-    params.arguments = arguments;
+    params.arguments = settingsDirArgs;
+    params.arguments << "--list";
     QCOMPARE(runQbs(params), 0);
-    QVERIFY2(m_qbsStdout.contains(("p1.qbsmetatestmodule.prop: " + firstProp).toUtf8()),
-             m_qbsStdout);
-    QVERIFY2(m_qbsStdout.contains(("p1.qbsothermodule.prop: " + secondProp).toUtf8()),
-             m_qbsStdout);
-    QVERIFY2(m_qbsStdout.contains(("p2.qbsmetatestmodule.prop: " + firstProp).toUtf8()),
-             m_qbsStdout);
-    QVERIFY2(m_qbsStdout.contains(("p2.qbsothermodule.prop: " + secondProp).toUtf8()),
-             m_qbsStdout);
+    const QByteArray output = m_qbsStdout;
+    const auto lines = output.split('\n');
+    QCOMPARE(lines.count(), 5);
+    QCOMPARE(lines[0], "group.key1: \"value1\"");
+    QCOMPARE(lines[1], "group.key2: \"value2\"");
+    QCOMPARE(lines[2], "key: \"value\"");
+    QCOMPARE(lines[3], "listKey: [\"valueOne\", \"valueTwo\"]");
+    QCOMPARE(lines[4], "");
 }
 
-void TestBlackbox::qbsModuleProviders_data()
+void TestBlackbox::qbsConfigImport_data()
 {
-    QTest::addColumn<QStringList>("arguments");
-    QTest::addColumn<QString>("firstProp");
-    QTest::addColumn<QString>("secondProp");
+    QTest::addColumn<QString>("format");
 
-    QTest::newRow("default") << QStringList() << "from_provider_a" << "undefined";
-    QTest::newRow("override")
-            << QStringList("projects.project.qbsModuleProviders:provider_b")
-            << "from_provider_b"
-            << "from_provider_b";
-    QTest::newRow("override list a")
-            << QStringList("projects.project.qbsModuleProviders:provider_a,provider_b")
-            << "from_provider_a"
-            << "from_provider_b";
-    QTest::newRow("override list b")
-            << QStringList("projects.project.qbsModuleProviders:provider_b,provider_a")
-            << "from_provider_b"
-            << "from_provider_b";
+    QTest::newRow("text") << QStringLiteral("txt");
+    QTest::newRow("json") << QStringLiteral("json");
 }
 
-// Tests possible use-cases how to override providers from command-line
-void TestBlackbox::qbsModuleProvidersCliOverride()
+void TestBlackbox::qbsConfigExport()
 {
-    QFETCH(QStringList, arguments);
-    QFETCH(QString, propertyValue);
+    QFETCH(QString, format);
 
-    QDir::setCurrent(testDataDir + "/qbs-module-providers-cli-override");
+    QDir::setCurrent(testDataDir + "/qbs-config-import-export");
 
-    QbsRunParameters params("resolve");
-    params.arguments = arguments;
+    QbsRunParameters params("config");
+    QTemporaryDir settingsDir;
+    const QString fileName = "config." + format;
+    const QString filePath = settingsDir.path() + "/" + fileName;
+    QVERIFY(settingsDir.isValid());
+    const QStringList commonArgs = QStringList{"--settings-dir", settingsDir.path(), "--user"};
+
+    std::pair<QString, QString> values[] = {
+        {"key", "value"},
+        {"listKey", "[\"valueOne\",\"valueTwo\"]"},
+        {"group.key1", "value1"},
+        {"group.key2", "value2"}
+    };
+
+    for (const auto &value: values) {
+        params.arguments = commonArgs;
+        params.arguments << value.first << value.second;
+        QCOMPARE(runQbs(params), 0);
+    }
+
+    params.arguments = commonArgs;
+    params.arguments << "--export" << filePath;
+
     QCOMPARE(runQbs(params), 0);
-    QVERIFY2(m_qbsStdout.contains(("qbsmetatestmodule.prop: " + propertyValue).toUtf8()),
-             m_qbsStdout);
+
+    QVERIFY(QFileInfo(filePath).canonicalPath() != QFileInfo(fileName).canonicalPath());
+
+    QFile exported(filePath);
+    QFile expected(fileName);
+
+    QVERIFY(exported.open(QIODevice::ReadOnly | QIODevice::Text));
+    QVERIFY(expected.open(QIODevice::ReadOnly | QIODevice::Text));
+
+    QCOMPARE(exported.readAll(), expected.readAll());
 }
 
-void TestBlackbox::qbsModuleProvidersCliOverride_data()
+void TestBlackbox::qbsConfigExport_data()
 {
-    QTest::addColumn<QStringList>("arguments");
-    QTest::addColumn<QString>("propertyValue");
+    QTest::addColumn<QString>("format");
 
-    QTest::newRow("default") << QStringList() << "undefined";
-    QTest::newRow("project-wide")
-            << QStringList("project.qbsModuleProviders:provider_a")
-            << "from_provider_a";
-    QTest::newRow("concrete project")
-            << QStringList("projects.innerProject.qbsModuleProviders:provider_a")
-            << "from_provider_a";
-    QTest::newRow("concrete product")
-            << QStringList("products.product.qbsModuleProviders:provider_a")
-            << "from_provider_a";
-    QTest::newRow("concrete project override project-wide")
-            << QStringList({
-                    "project.qbsModuleProviders:provider_a",
-                    "projects.innerProject.qbsModuleProviders:provider_b"})
-            << "from_provider_b";
-    QTest::newRow("concrete product override project-wide")
-            << QStringList({
-                    "project.qbsModuleProviders:provider_a",
-                    "products.product.qbsModuleProviders:provider_b"})
-            << "from_provider_b";
-}
-
-// Tests whether scoped providers can be used as named, i.e. new provider machinery
-// is compatible with the old one
-void TestBlackbox::qbsModuleProvidersCompatibility()
-{
-    QFETCH(QStringList, arguments);
-    QFETCH(QString, propertyValue);
-
-    QDir::setCurrent(testDataDir + "/qbs-module-providers-compatibility");
-
-    QbsRunParameters params("resolve");
-    params.arguments = arguments;
-    QCOMPARE(runQbs(params), 0);
-    QVERIFY2(m_qbsStdout.contains(("qbsmetatestmodule.prop: " + propertyValue).toUtf8()),
-             m_qbsStdout);
-}
-
-void TestBlackbox::qbsModuleProvidersCompatibility_data()
-{
-    QTest::addColumn<QStringList>("arguments");
-    QTest::addColumn<QString>("propertyValue");
-
-    QTest::newRow("default") << QStringList() << "from_scoped_provider";
-    QTest::newRow("scoped by name") << QStringList("project.qbsModuleProviders:qbsmetatestmodule") << "from_scoped_provider";
-    QTest::newRow("named") << QStringList("project.qbsModuleProviders:named_provider") << "from_named_provider";
-}
-
-void TestBlackbox::qbspkgconfigModuleProvider()
-{
-    QDir::setCurrent(testDataDir + "/qbspkgconfig-module-provider/libs");
-    rmDirR(relativeBuildDir());
-
-    const auto commonParams = QbsRunParameters(QStringLiteral("install"), {
-            QStringLiteral("--install-root"),
-            QStringLiteral("install-root")
-    });
-    auto dynamicParams = commonParams;
-    dynamicParams.arguments << "config:library" << "projects.libs.isBundle:false";
-    QCOMPARE(runQbs(dynamicParams), 0);
-
-    QDir::setCurrent(testDataDir + "/qbspkgconfig-module-provider");
-    rmDirR(relativeBuildDir());
-
-    const auto sysroot = testDataDir + "/qbspkgconfig-module-provider/libs/install-root";
-
-    QbsRunParameters params;
-    params.arguments << "moduleProviders.qbspkgconfig.sysroot:" + sysroot;
-    QCOMPARE(runQbs(params), 0);
+    QTest::newRow("text") << QStringLiteral("txt");
+    QTest::newRow("json") << QStringLiteral("json");
 }
 
 static QJsonObject getNextSessionPacket(QProcess &session, QByteArray &data)
@@ -7490,7 +7434,7 @@ static bool haveMakeNsis()
     QStringList paths = QProcessEnvironment::systemEnvironment().value("PATH")
             .split(HostOsInfo::pathListSeparator(), QBS_SKIP_EMPTY_PARTS);
 
-    for (const QString &key : qAsConst(regKeys)) {
+    for (const QString &key : std::as_const(regKeys)) {
         QSettings settings(key, QSettings::NativeFormat);
         QString str = settings.value(QStringLiteral(".")).toString();
         if (!str.isEmpty())
@@ -7498,7 +7442,7 @@ static bool haveMakeNsis()
     }
 
     bool haveMakeNsis = false;
-    for (const QString &path : qAsConst(paths)) {
+    for (const QString &path : std::as_const(paths)) {
         if (regularFileExists(QDir::fromNativeSeparators(path) +
                           HostOsInfo::appendExecutableSuffix(QStringLiteral("/makensis")))) {
             haveMakeNsis = true;
@@ -8024,112 +7968,6 @@ void TestBlackbox::maximumCxxLanguageVersion()
              m_qbsStdout.constData());
 }
 
-void TestBlackbox::moduleProviders()
-{
-    QDir::setCurrent(testDataDir + "/module-providers");
-
-    // Resolving in dry-run mode must not leave any data behind.
-    QCOMPARE(runQbs(QbsRunParameters("resolve", QStringList("-n"))), 0);
-    if (m_qbsStdout.contains("targetPlatform differs from hostPlatform"))
-        QSKIP("Cannot run binaries in cross-compiled build");
-    QCOMPARE(m_qbsStdout.count("Running setup script for mygenerator"), 2);
-    QVERIFY(!QFile::exists(relativeBuildDir()));
-
-    // Initial build.
-    QCOMPARE(runQbs(QbsRunParameters("run", QStringList{"-p", "app1"})), 0);
-    QVERIFY(QFile::exists(relativeBuildDir()));
-    QCOMPARE(m_qbsStdout.count("Running setup script for mygenerator"), 2);
-    QVERIFY2(m_qbsStdout.contains("The letters are A and B"), m_qbsStdout.constData());
-    QVERIFY2(m_qbsStdout.contains("The MY_DEFINE is app1"), m_qbsStdout.constData());
-    QCOMPARE(runQbs(QbsRunParameters("run", QStringList{"-p", "app2"})), 0);
-    QVERIFY2(m_qbsStdout.contains("The letters are Z and Y"), m_qbsStdout.constData());
-    QVERIFY2(m_qbsStdout.contains("The MY_DEFINE is app2"), m_qbsStdout.constData());
-
-    // Rebuild with overridden module provider config. The output for product 2 must change,
-    // but no setup script must be re-run, because both config values have already been
-    // handled in the first run.
-    const QStringList resolveArgs("moduleProviders.mygenerator.chooseLettersFrom:beginning");
-    QCOMPARE(runQbs(QbsRunParameters("resolve", resolveArgs)), 0);
-    QVERIFY2(!m_qbsStdout.contains("Running setup script"), m_qbsStdout.constData());
-    QCOMPARE(runQbs(QbsRunParameters("run", QStringList{"-p", "app1"})), 0);
-    QVERIFY2(m_qbsStdout.contains("The letters are A and B"), m_qbsStdout.constData());
-    QCOMPARE(runQbs(QbsRunParameters("run", QStringList{"-p", "app2"})), 0);
-    QVERIFY2(m_qbsStdout.contains("The letters are A and B"), m_qbsStdout.constData());
-
-    // Forcing Probe execution triggers a re-run of the setup script. But only once,
-    // because the module provider config is the same now.
-    QCOMPARE(runQbs(QbsRunParameters("resolve", QStringList(resolveArgs)
-                                     << "--force-probe-execution")), 0);
-    QCOMPARE(m_qbsStdout.count("Running setup script for mygenerator"), 1);
-    QCOMPARE(runQbs(QbsRunParameters("run", QStringList{"-p", "app1"})), 0);
-    QVERIFY2(m_qbsStdout.contains("The letters are A and B"), m_qbsStdout.constData());
-    QCOMPARE(runQbs(QbsRunParameters("run", QStringList{"-p", "app2"})), 0);
-    QVERIFY2(m_qbsStdout.contains("The letters are A and B"), m_qbsStdout.constData());
-
-    // Now re-run without the module provider config override. Again, the setup script must
-    // run once, for the config value that was not present in the last run.
-    QCOMPARE(runQbs(QbsRunParameters("resolve")), 0);
-    QCOMPARE(m_qbsStdout.count("Running setup script for mygenerator"), 1);
-    QCOMPARE(runQbs(QbsRunParameters("run", QStringList{"-p", "app1"})), 0);
-    QVERIFY2(m_qbsStdout.contains("The letters are A and B"), m_qbsStdout.constData());
-    QCOMPARE(runQbs(QbsRunParameters("run", QStringList{"-p", "app2"})), 0);
-    QVERIFY2(m_qbsStdout.contains("The letters are Z and Y"), m_qbsStdout.constData());
-}
-
-void TestBlackbox::fallbackModuleProvider_data()
-{
-    QTest::addColumn<bool>("fallbacksEnabledGlobally");
-    QTest::addColumn<bool>("fallbacksEnabledInProduct");
-    QTest::addColumn<QStringList>("pkgConfigLibDirs");
-    QTest::addColumn<bool>("successExpected");
-    QTest::newRow("without custom lib dir, fallbacks disabled globally and in product")
-            << false << false << QStringList() << false;
-    QTest::newRow("without custom lib dir, fallbacks disabled globally, enabled in product")
-            << false << true << QStringList() << false;
-    QTest::newRow("without custom lib dir, fallbacks enabled globally, disabled in product")
-            << true << false << QStringList() << false;
-    QTest::newRow("without custom lib dir, fallbacks enabled globally and in product")
-            << true << true << QStringList() << false;
-    QTest::newRow("with custom lib dir, fallbacks disabled globally and in product")
-            << false << false << QStringList(testDataDir + "/fallback-module-provider/libdir")
-            << false;
-    QTest::newRow("with custom lib dir, fallbacks disabled globally, enabled in product")
-            << false << true << QStringList(testDataDir + "/fallback-module-provider/libdir")
-            << false;
-    QTest::newRow("with custom lib dir, fallbacks enabled globally, disabled in product")
-            << true << false << QStringList(testDataDir + "/fallback-module-provider/libdir")
-            << false;
-    QTest::newRow("with custom lib dir, fallbacks enabled globally and in product")
-            << true << true << QStringList(testDataDir + "/fallback-module-provider/libdir")
-            << true;
-}
-
-void TestBlackbox::fallbackModuleProvider()
-{
-    QFETCH(bool, fallbacksEnabledInProduct);
-    QFETCH(bool, fallbacksEnabledGlobally);
-    QFETCH(QStringList, pkgConfigLibDirs);
-    QFETCH(bool, successExpected);
-
-    QDir::setCurrent(testDataDir + "/fallback-module-provider");
-    static const auto b2s = [](bool b) { return QString(b ? "true" : "false"); };
-    QbsRunParameters resolveParams("resolve",
-        QStringList{"modules.pkgconfig.libDirs:" + pkgConfigLibDirs.join(','),
-                    "products.p.fallbacksEnabled:" + b2s(fallbacksEnabledInProduct),
-                    "--force-probe-execution"});
-    if (!fallbacksEnabledGlobally)
-        resolveParams.arguments << "--no-fallback-module-provider";
-    QCOMPARE(runQbs(resolveParams), 0);
-    const bool pkgConfigPresent = m_qbsStdout.contains("pkg-config present: true");
-    const bool pkgConfigNotPresent = m_qbsStdout.contains("pkg-config present: false");
-    QVERIFY(pkgConfigPresent != pkgConfigNotPresent);
-    if (pkgConfigNotPresent)
-        successExpected = false;
-    QbsRunParameters buildParams;
-    buildParams.expectFailure = !successExpected;
-    QCOMPARE(runQbs(buildParams) == 0, successExpected);
-}
-
 void TestBlackbox::minimumSystemVersion()
 {
     rmDirR(relativeBuildDir());
@@ -8222,7 +8060,7 @@ void TestBlackbox::minimumSystemVersion_data()
             return "__MAC_OS_X_VERSION_MIN_REQUIRED=1070\nversion 10.7\n";
 
         if (HostOsInfo::isWindowsHost())
-            return "WINVER=1536\n6.00 operating system version\n6.00 subsystem version\n";
+            return "WINVER=1538\n6.02 operating system version\n6.02 subsystem version\n";
 
         return "";
     }();
@@ -8250,7 +8088,7 @@ void TestBlackbox::missingBuildGraph()
     QbsRunParameters params;
     params.expectFailure = true;
     params.arguments << QLatin1String("config:") + actualConfigName;
-    for (const QString &command : qAsConst(commands)) {
+    for (const QString &command : std::as_const(commands)) {
         params.command = command;
         QVERIFY2(runQbs(params) != 0, qPrintable(command));
         const QString expectedErrorMessage = QString("Build graph not found for "

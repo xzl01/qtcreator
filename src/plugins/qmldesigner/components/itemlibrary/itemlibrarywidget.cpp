@@ -18,6 +18,7 @@
 #include <itemlibrarymodel.h>
 #include <metainfo.h>
 #include <model.h>
+#include <model/modelutils.h>
 #include <rewritingexception.h>
 #include <qmldesignerconstants.h>
 #include <qmldesignerplugin.h>
@@ -59,7 +60,7 @@ namespace QmlDesigner {
 static QString propertyEditorResourcesPath()
 {
 #ifdef SHARE_QML_PATH
-    if (Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
+    if (::Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
         return QLatin1String(SHARE_QML_PATH) + "/propertyEditorQmlSources";
 #endif
     return Core::ICore::resourcePath("qmldesigner/propertyEditorQmlSources").toString();
@@ -71,40 +72,34 @@ bool ItemLibraryWidget::eventFilter(QObject *obj, QEvent *event)
     Model *model = document ? document->documentModel() : nullptr;
 
     if (event->type() == QEvent::FocusOut) {
-        if (obj == m_itemsWidget.data())
+        if (obj == m_itemsWidget->quickWidget())
             QMetaObject::invokeMethod(m_itemsWidget->rootObject(), "closeContextMenu");
     } else if (event->type() == QMouseEvent::MouseMove) {
         if (m_itemToDrag.isValid()) {
             QMouseEvent *me = static_cast<QMouseEvent *>(event);
-            if ((me->globalPos() - m_dragStartPoint).manhattanLength() > 10) {
+            if ((me->globalPosition().toPoint() - m_dragStartPoint).manhattanLength() > 10) {
                 ItemLibraryEntry entry = m_itemToDrag.value<ItemLibraryEntry>();
                 // For drag to be handled correctly, we must have the component properly imported
                 // beforehand, so we import the module immediately when the drag starts
-                if (!entry.requiredImport().isEmpty()) {
-                    // We don't know if required import is library of file import, so try both.
-                    Import libImport = Import::createLibraryImport(entry.requiredImport());
-                    Import fileImport = Import::createFileImport(entry.requiredImport());
-                    if (!m_model->hasImport(libImport, true, true)
-                            && !m_model->hasImport(fileImport, true, true)) {
-                        const QList<Import> possImports = m_model->possibleImports();
-                        for (const auto &possImport : possImports) {
-                            if ((!possImport.url().isEmpty() && possImport.url() == libImport.url())
-                                || (!possImport.file().isEmpty() && possImport.file() == fileImport.file())) {
-                                m_model->changeImports({possImport}, {});
-                                break;
-                            }
-                        }
-                    }
+                if (!entry.requiredImport().isEmpty()
+                    && !Utils::addImportWithCheck(entry.requiredImport(), m_model)) {
+                    qWarning() << __FUNCTION__ << "Required import adding failed:"
+                               << entry.requiredImport();
                 }
 
                 if (model) {
                     model->startDrag(m_itemLibraryModel->getMimeData(entry),
-                                     Utils::StyleHelper::dpiSpecificImageFile(entry.libraryEntryIconPath()));
+                                     ::Utils::StyleHelper::dpiSpecificImageFile(
+                                         entry.libraryEntryIconPath()));
                 }
 
                 m_itemToDrag = {};
             }
         }
+    } else if (event->type() == QMouseEvent::MouseButtonRelease) {
+        m_itemToDrag = {};
+
+        setIsDragging(false);
     }
 
     return QObject::eventFilter(obj, event);
@@ -119,7 +114,7 @@ ItemLibraryWidget::ItemLibraryWidget(AsynchronousImageCache &imageCache)
     : m_itemIconSize(24, 24)
     , m_itemLibraryModel(new ItemLibraryModel(this))
     , m_addModuleModel(new ItemLibraryAddImportModel(this))
-    , m_itemsWidget(new QQuickWidget(this))
+    , m_itemsWidget(new StudioQuickWidget(this))
     , m_imageCache{imageCache}
 {
     m_compressionTimer.setInterval(1000);
@@ -130,27 +125,17 @@ ItemLibraryWidget::ItemLibraryWidget(AsynchronousImageCache &imageCache)
     setMinimumWidth(100);
 
     // set up Component Library view and model
+    m_itemsWidget->quickWidget()->setObjectName(Constants::OBJECT_NAME_COMPONENT_LIBRARY);
     m_itemsWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
     m_itemsWidget->engine()->addImportPath(propertyEditorResourcesPath() + "/imports");
 
-    m_itemsWidget->rootContext()->setContextProperties({
-        {"itemLibraryModel", QVariant::fromValue(m_itemLibraryModel.data())},
-        {"addModuleModel", QVariant::fromValue(m_addModuleModel.data())},
-        {"itemLibraryIconWidth", m_itemIconSize.width()},
-        {"itemLibraryIconHeight", m_itemIconSize.height()},
-        {"rootView", QVariant::fromValue(this)},
-        {"widthLimit", HORIZONTAL_LAYOUT_WIDTH_LIMIT},
-        {"highlightColor", Utils::StyleHelper::notTooBrightHighlightColor()},
-    });
-
     m_previewTooltipBackend = std::make_unique<PreviewTooltipBackend>(m_imageCache);
-    m_itemsWidget->rootContext()->setContextProperty("tooltipBackend", m_previewTooltipBackend.get());
 
     m_itemsWidget->setClearColor(Theme::getColor(Theme::Color::DSpanelBackground));
     m_itemsWidget->engine()->addImageProvider(QStringLiteral("qmldesigner_itemlibrary"),
                                                       new Internal::ItemLibraryImageProvider);
     Theme::setupTheme(m_itemsWidget->engine());
-    m_itemsWidget->installEventFilter(this);
+    m_itemsWidget->quickWidget()->installEventFilter(this);
 
     auto layout = new QVBoxLayout(this);
     layout->setContentsMargins({});
@@ -160,7 +145,7 @@ ItemLibraryWidget::ItemLibraryWidget(AsynchronousImageCache &imageCache)
     updateSearch();
 
     setStyleSheet(Theme::replaceCssColors(
-        QString::fromUtf8(Utils::FileReader::fetchQrc(":/qmldesigner/stylesheet.css"))));
+        QString::fromUtf8(::Utils::FileReader::fetchQrc(":/qmldesigner/stylesheet.css"))));
 
     m_qmlSourceUpdateShortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_F5), this);
     connect(m_qmlSourceUpdateShortcut, &QShortcut::activated, this, &ItemLibraryWidget::reloadQmlSource);
@@ -173,6 +158,18 @@ ItemLibraryWidget::ItemLibraryWidget(AsynchronousImageCache &imageCache)
     QmlDesignerPlugin::trackWidgetFocusTime(this, Constants::EVENT_ITEMLIBRARY_TIME);
 
     // init the first load of the QML UI elements
+
+    auto map = m_itemsWidget->registerPropertyMap("ItemLibraryBackend");
+
+    map->setProperties({{"itemLibraryModel", QVariant::fromValue(m_itemLibraryModel.data())},
+                        {"addModuleModel", QVariant::fromValue(m_addModuleModel.data())},
+                        {"itemLibraryIconWidth", m_itemIconSize.width()},
+                        {"itemLibraryIconHeight", m_itemIconSize.height()},
+                        {"rootView", QVariant::fromValue(this)},
+                        {"widthLimit", HORIZONTAL_LAYOUT_WIDTH_LIMIT},
+                        {"highlightColor", ::Utils::StyleHelper::notTooBrightHighlightColor()},
+                        {"tooltipBackend", QVariant::fromValue(m_previewTooltipBackend.get())}});
+
     reloadQmlSource();
 }
 
@@ -239,7 +236,7 @@ void ItemLibraryWidget::handleAddImport(int index)
                                                + importStr);
     }
 
-    QList<Import> imports;
+    Imports imports;
     const QString dependency = getDependencyImport(import);
 
     auto document = QmlDesignerPlugin::instance()->currentDesignDocument();
@@ -296,7 +293,7 @@ void ItemLibraryWidget::setModel(Model *model)
 QString ItemLibraryWidget::qmlSourcesPath()
 {
 #ifdef SHARE_QML_PATH
-    if (Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
+    if (::Utils::qtcEnvironmentVariableIsSet("LOAD_QML_FROM_SOURCE"))
         return QLatin1String(SHARE_QML_PATH) + "/itemLibraryQmlSources";
 #endif
     return Core::ICore::resourcePath("qmldesigner/itemLibraryQmlSources").toString();
@@ -316,7 +313,6 @@ void ItemLibraryWidget::reloadQmlSource()
 {
     const QString itemLibraryQmlPath = qmlSourcesPath() + "/ItemsView.qml";
     QTC_ASSERT(QFileInfo::exists(itemLibraryQmlPath), return);
-    m_itemsWidget->engine()->clearComponentCache();
     m_itemsWidget->setSource(QUrl::fromLocalFile(itemLibraryQmlPath));
 }
 
@@ -340,13 +336,13 @@ void ItemLibraryWidget::updateModel()
     updateSearch();
 }
 
-void ItemLibraryWidget::updatePossibleImports(const QList<Import> &possibleImports)
+void ItemLibraryWidget::updatePossibleImports(const Imports &possibleImports)
 {
-    m_addModuleModel->update(possibleImports);
+    m_addModuleModel->update(difference(possibleImports, m_model->imports()));
     delayedUpdateModel();
 }
 
-void ItemLibraryWidget::updateUsedImports(const QList<Import> &usedImports)
+void ItemLibraryWidget::updateUsedImports(const Imports &usedImports)
 {
     m_itemLibraryModel->updateUsedImports(usedImports);
 }
@@ -362,7 +358,15 @@ void ItemLibraryWidget::handlePriorityImportsChanged()
 {
     if (!m_itemLibraryInfo.isNull()) {
         m_addModuleModel->setPriorityImports(m_itemLibraryInfo->priorityImports());
-        m_addModuleModel->update(m_model->possibleImports());
+        m_addModuleModel->update(difference(m_model->possibleImports(), m_model->imports()));
+    }
+}
+
+void ItemLibraryWidget::setIsDragging(bool val)
+{
+    if (m_isDragging != val) {
+        m_isDragging = val;
+        emit isDraggingChanged();
     }
 }
 
@@ -372,6 +376,7 @@ void ItemLibraryWidget::startDragAndDrop(const QVariant &itemLibEntry, const QPo
     // active (and blocks mouse release) if mouse is released at the same spot of the drag start.
     m_itemToDrag = itemLibEntry;
     m_dragStartPoint = mousePos.toPoint();
+    setIsDragging(true);
 }
 
 bool ItemLibraryWidget::subCompEditMode() const

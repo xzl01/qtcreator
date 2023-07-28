@@ -150,7 +150,7 @@ void XcodeProbe::detectDeveloperPaths()
     if (!selectedXcode.waitForFinished(-1) || selectedXcode.exitCode()) {
         qbsInfo() << Tr::tr("Could not detect selected Xcode with /usr/bin/xcode-select");
     } else {
-        QString path = QString::fromLocal8Bit(selectedXcode.readAllStandardOutput());
+        QString path = QString::fromLocal8Bit(selectedXcode.readAllStandardOutput().trimmed());
         addDeveloperPath(path);
     }
     addDeveloperPath(defaultDeveloperPath);
@@ -188,7 +188,7 @@ void XcodeProbe::setupDefaultToolchains(const QString &devPath, const QString &x
               << QStringLiteral("appletvsimulator")
               << QStringLiteral("watchos")
               << QStringLiteral("watchsimulator");
-    for (const QString &platform : qAsConst(platforms)) {
+    for (const QString &platform : std::as_const(platforms)) {
         Profile platformProfile(xcodeName + QLatin1Char('-') + platform, settings);
         platformProfile.removeProfile();
         platformProfile.setBaseProfile(installationProfile.name());
@@ -212,7 +212,7 @@ void XcodeProbe::detectAll()
 {
     int i = 1;
     detectDeveloperPaths();
-    for (const QString &developerPath : qAsConst(developerPaths)) {
+    for (const QString &developerPath : std::as_const(developerPaths)) {
         QString profileName = QStringLiteral("xcode");
         if (developerPath != defaultDeveloperPath) {
             const auto devPath = developerPath.toStdString();

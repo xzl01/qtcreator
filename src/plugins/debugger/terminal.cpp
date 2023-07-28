@@ -8,11 +8,12 @@
 #include <coreplugin/icore.h>
 
 #include <projectexplorer/runconfiguration.h>
+#include <projectexplorer/runconfigurationaspects.h>
 
 #include <utils/environment.h>
 #include <utils/hostosinfo.h>
+#include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
 
 #include <QDebug>
 #include <QIODevice>
@@ -38,12 +39,6 @@ using namespace Utils;
 
 namespace Debugger::Internal {
 
-static QString currentError()
-{
-    int err = errno;
-    return QString::fromLatin1(strerror(err));
-}
-
 Terminal::Terminal(QObject *parent)
    : QObject(parent)
 {
@@ -52,6 +47,10 @@ Terminal::Terminal(QObject *parent)
 void Terminal::setup()
 {
 #ifdef DEBUGGER_USE_TERMINAL
+    const auto currentError = [] {
+        int err = errno;
+        return QString::fromLatin1(strerror(err));
+    };
     if (!qtcEnvironmentVariableIsSet("QTC_USE_PTY"))
         return;
 
@@ -174,13 +173,21 @@ void TerminalRunner::start()
     QTC_ASSERT(!m_stubProc, reportFailure({}); return);
     Runnable stub = m_stubRunnable();
 
-    m_stubProc = new QtcProcess(this);
-    m_stubProc->setTerminalMode(HostOsInfo::isWindowsHost()
-            ? TerminalMode::Suspend : TerminalMode::Debug);
+    bool runAsRoot = false;
+    if (auto runAsRootAspect = runControl()->aspect<RunAsRootAspect>())
+        runAsRoot = runAsRootAspect->value;
 
-    connect(m_stubProc, &QtcProcess::started,
+    m_stubProc = new Process(this);
+    m_stubProc->setTerminalMode(TerminalMode::Debug);
+
+    if (runAsRoot) {
+        m_stubProc->setRunAsRoot(runAsRoot);
+        RunControl::provideAskPassEntry(stub.environment);
+    }
+
+    connect(m_stubProc, &Process::started,
             this, &TerminalRunner::stubStarted);
-    connect(m_stubProc, &QtcProcess::done,
+    connect(m_stubProc, &Process::done,
             this, &TerminalRunner::stubDone);
 
     m_stubProc->setEnvironment(stub.environment);

@@ -8,7 +8,7 @@
 #include "../autotesttr.h"
 
 #include <utils/hostosinfo.h>
-#include <utils/qtcprocess.h>
+#include <utils/process.h>
 
 #include <QRegularExpression>
 
@@ -17,25 +17,12 @@ using namespace Utils;
 namespace Autotest {
 namespace Internal {
 
-GTestOutputReader::GTestOutputReader(const QFutureInterface<TestResult> &futureInterface,
-                                     QtcProcess *testApplication,
+GTestOutputReader::GTestOutputReader(Process *testApplication,
                                      const FilePath &buildDirectory,
                                      const FilePath &projectFile)
-    : TestOutputReader(futureInterface, testApplication, buildDirectory)
+    : TestOutputReader(testApplication, buildDirectory)
     , m_projectFile(projectFile)
 {
-    if (testApplication) {
-        connect(testApplication, &QtcProcess::done, this, [this, testApplication] {
-            const int exitCode = testApplication->exitCode();
-            if (exitCode == 1 && !m_description.isEmpty()) {
-                createAndReportResult(Tr::tr("Running tests failed.\n %1\nExecutable: %2")
-                                      .arg(m_description).arg(id()), ResultType::MessageFatal);
-            }
-            // on Windows abort() will result in normal termination, but exit code will be set to 3
-            if (HostOsInfo::isWindowsHost() && exitCode == 3)
-                reportCrash();
-        });
-    }
 }
 
 void GTestOutputReader::processOutputLine(const QByteArray &outputLine)
@@ -82,7 +69,7 @@ void GTestOutputReader::processOutputLine(const QByteArray &outputLine)
     if (ExactMatch match = testEnds.match(line)) {
         TestResult testResult = createDefaultResult();
         testResult.setResult(ResultType::TestEnd);
-        testResult.setDescription(Tr::tr("Test execution took %1").arg(match.captured(2)));
+        testResult.setDescription(Tr::tr("Test execution took %1.").arg(match.captured(2)));
         reportResult(testResult);
         m_currentTestSuite.clear();
         m_currentTestCase.clear();
@@ -116,7 +103,7 @@ void GTestOutputReader::processOutputLine(const QByteArray &outputLine)
         testResult.setResult(ResultType::MessageInternal);
         testResult.setDescription(Tr::tr("Execution took %1.").arg(match.captured(2)));
         reportResult(testResult);
-        m_futureInterface.setProgressValue(m_futureInterface.progressValue() + 1);
+        // TODO: bump progress?
     } else if (ExactMatch match = testSetFail.match(line)) {
         m_testSetStarted = false;
         TestResult testResult = createDefaultResult();
@@ -127,7 +114,7 @@ void GTestOutputReader::processOutputLine(const QByteArray &outputLine)
         testResult.setResult(ResultType::MessageInternal);
         testResult.setDescription(Tr::tr("Execution took %1.").arg(match.captured(2)));
         reportResult(testResult);
-        m_futureInterface.setProgressValue(m_futureInterface.progressValue() + 1);
+        // TODO: bump progress?
     } else if (ExactMatch match = testSetSkipped.match(line)) {
         if (!m_testSetStarted)  // ignore SKIPPED at summary
             return;
@@ -183,6 +170,17 @@ TestResult GTestOutputReader::createDefaultResult() const
     return result;
 }
 
+void GTestOutputReader::onDone(int exitCode)
+{
+    if (exitCode == 1 && !m_description.isEmpty()) {
+        createAndReportResult(Tr::tr("Running tests failed.\n %1\nExecutable: %2")
+                              .arg(m_description).arg(id()), ResultType::MessageFatal);
+    }
+    // on Windows abort() will result in normal termination, but exit code will be set to 3
+    if (HostOsInfo::isWindowsHost() && exitCode == 3)
+        reportCrash();
+}
+
 void GTestOutputReader::setCurrentTestCase(const QString &testCase)
 {
     m_currentTestCase = testCase;
@@ -210,7 +208,7 @@ void GTestOutputReader::handleDescriptionAndReportResult(const TestResult &testR
              }
         }
         result.setDescription(resultDescription.join('\n'));
-        reportResult(testResult);
+        reportResult(result);
         resultDescription.clear();
 
         result = createDefaultResult();

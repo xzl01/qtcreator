@@ -12,6 +12,7 @@
 
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
+#include <utils/qtcsettings.h>
 
 #include <QColor>
 #include <QDir>
@@ -639,7 +640,47 @@ Q_GLOBAL_STATIC(UnsupportedRootObjectTypesByVisualDesigner, unsupportedRootObjec
 Q_GLOBAL_STATIC(UnsupportedRootObjectTypesByQmlUi, unsupportedRootObjectTypesByQmlUi)
 Q_GLOBAL_STATIC(UnsupportedTypesByQmlUi, unsupportedTypesByQmlUi)
 
-Check::Check(Document::Ptr doc, const ContextPtr &context)
+QList<StaticAnalysis::Type> Check::defaultDisabledMessages()
+{
+    static const QList<StaticAnalysis::Type> disabled = Utils::sorted(QList<StaticAnalysis::Type>{
+        HintAnonymousFunctionSpacing,
+        HintDeclareVarsInOneLine,
+        HintDeclarationsShouldBeAtStartOfFunction,
+        HintBinaryOperatorSpacing,
+        HintOneStatementPerLine,
+        HintExtraParentheses,
+        WarnAliasReferRootHierarchy,
+
+        // QmlDesigner related
+        WarnImperativeCodeNotEditableInVisualDesigner,
+        WarnUnsupportedTypeInVisualDesigner,
+        WarnReferenceToParentItemNotSupportedByVisualDesigner,
+        WarnUndefinedValueForVisualDesigner,
+        WarnStatesOnlyInRootItemForVisualDesigner,
+        ErrUnsupportedRootTypeInVisualDesigner,
+        ErrInvalidIdeInVisualDesigner,
+
+    });
+    return disabled;
+}
+
+QList<StaticAnalysis::Type> Check::defaultDisabledMessagesForNonQuickUi()
+{
+    static const QList<StaticAnalysis::Type> disabled = Utils::sorted(QList<StaticAnalysis::Type>{
+        // QmlDesigner related
+        ErrUnsupportedRootTypeInQmlUi,
+        ErrUnsupportedTypeInQmlUi,
+        ErrFunctionsNotSupportedInQmlUi,
+        ErrBlocksNotSupportedInQmlUi,
+        ErrBehavioursNotSupportedInQmlUi,
+        ErrStatesOnlyInRootItemInQmlUi,
+        ErrReferenceToParentItemNotSupportedInQmlUi,
+        ErrDoNotMixTranslationFunctionsInQmlUi,
+    });
+    return disabled;
+}
+
+Check::Check(Document::Ptr doc, const ContextPtr &context, Utils::QtcSettings *qtcSettings)
     : _doc(doc)
     , _context(context)
     , _scopeChain(doc, _context)
@@ -655,16 +696,32 @@ Check::Check(Document::Ptr doc, const ContextPtr &context)
     }
 
     _enabledMessages = Utils::toSet(Message::allMessageTypes());
-    disableMessage(HintAnonymousFunctionSpacing);
-    disableMessage(HintDeclareVarsInOneLine);
-    disableMessage(HintDeclarationsShouldBeAtStartOfFunction);
-    disableMessage(HintBinaryOperatorSpacing);
-    disableMessage(HintOneStatementPerLine);
-    disableMessage(HintExtraParentheses);
+    if (qtcSettings && qtcSettings->value("J.QtQuick/QmlJSEditor.useCustomAnalyzer").toBool()) {
+        auto toIntList = [](const QList<StaticAnalysis::Type> list) {
+            return Utils::transform(list, [](StaticAnalysis::Type t) { return int(t); });
+        };
+        auto disabled = qtcSettings->value("J.QtQuick/QmlJSEditor.disabledMessages",
+                                           QVariant::fromValue(
+                                               toIntList(defaultDisabledMessages()))).toList();
+        for (const QVariant &disabledNumber : disabled)
+            disableMessage(StaticAnalysis::Type(disabledNumber.toInt()));
 
-    disableQmlDesignerChecks();
-    if (!isQtQuick2Ui())
-        disableQmlDesignerUiFileChecks();
+        if (!isQtQuick2Ui()) {
+            auto disabled = qtcSettings->value("J.QtQuick/QmlJSEditor.disabledMessagesNonQuickUI",
+                                               QVariant::fromValue(
+                                                   toIntList(defaultDisabledMessagesForNonQuickUi()))).toList();
+            for (const QVariant &disabledNumber : disabled)
+                disableMessage(StaticAnalysis::Type(disabledNumber.toInt()));
+        }
+    } else {
+        for (auto type : defaultDisabledMessages())
+            disableMessage(type);
+
+        if (!isQtQuick2Ui()) {
+            for (auto type : defaultDisabledMessagesForNonQuickUi())
+                disableMessage(type);
+        }
+    }
 }
 
 Check::~Check()
@@ -699,18 +756,8 @@ void Check::enableQmlDesignerChecks()
     enableMessage(WarnReferenceToParentItemNotSupportedByVisualDesigner);
     enableMessage(ErrUnsupportedRootTypeInVisualDesigner);
     enableMessage(ErrInvalidIdeInVisualDesigner);
+    enableMessage(WarnAliasReferRootHierarchy);
     //## triggers too often ## check.enableMessage(StaticAnalysis::WarnUndefinedValueForVisualDesigner);
-}
-
-void Check::disableQmlDesignerChecks()
-{
-    disableMessage(WarnImperativeCodeNotEditableInVisualDesigner);
-    disableMessage(WarnUnsupportedTypeInVisualDesigner);
-    disableMessage(WarnReferenceToParentItemNotSupportedByVisualDesigner);
-    disableMessage(WarnUndefinedValueForVisualDesigner);
-    disableMessage(WarnStatesOnlyInRootItemForVisualDesigner);
-    disableMessage(ErrUnsupportedRootTypeInVisualDesigner);
-    disableMessage(ErrInvalidIdeInVisualDesigner);
 }
 
 void Check::enableQmlDesignerUiFileChecks()
@@ -1838,16 +1885,32 @@ bool Check::visit(CallExpression *ast)
     static const QStringList translationFunctions = {"qsTr", "qsTrId", "qsTranslate",
                                                      "qsTrNoOp", "qsTrIdNoOp", "qsTranslateNoOp"};
 
-    static const QStringList whiteListedFunctions = {"toString", "toFixed", "toExponential", "toPrecision", "isFinite", "isNaN", "valueOf",
-                                                     "toLowerCase", "toLocaleString", "toLocaleLowerCase", "toUpperCase", "toLocaleUpperCase",
-                                                     "substring" , "charAt", "charCodeAt", "concat", "endsWith", "includes", "indexOf", "lastIndexOf"};
+    static const QStringList whiteListedFunctions = {
+        "toString",    "toFixed",           "toExponential", "toPrecision",    "isFinite",
+        "isNaN",       "valueOf",           "toLowerCase",   "toLocaleString", "toLocaleLowerCase",
+        "toUpperCase", "toLocaleUpperCase", "substring",     "charAt",         "charCodeAt",
+        "concat",      "endsWith",          "includes",      "indexOf",        "lastIndexOf",
+        "arg"};
 
     static const QStringList colorFunctions = {"lighter", "darker", "rgba",  "tint", "hsla", "hsva"};
 
-    static const QStringList qtFunction = {"point", "rect", "size", "vector2d", "vector3d", "vector4d", "quaternion" "matrix4x4", "formatDate",
-                                           "formatDateTime", "formatTime", "resolvedUrl"};
+    static const QStringList qtFunction = {"point",
+                                           "rect",
+                                           "size",
+                                           "vector2d",
+                                           "vector3d",
+                                           "vector4d",
+                                           "quaternion",
+                                           "matrix4x4",
+                                           "formatDate",
+                                           "formatDateTime",
+                                           "formatTime",
+                                           "resolvedUrl"};
 
-    const bool whiteListedFunction =  translationFunctions.contains(name) || whiteListedFunctions.contains(name) || colorFunctions.contains(name) || qtFunction.contains(name);
+    const bool whiteListedFunction = translationFunctions.contains(name)
+                                     || whiteListedFunctions.contains(name)
+                                     || colorFunctions.contains(name) || qtFunction.contains(name);
+
 
     // We allow the Math. functions
     const bool isMathFunction = namespaceName == "Math";
@@ -1940,9 +2003,19 @@ bool Check::visit(TypeOfExpression *ast)
 /// ### Maybe put this into the context as a helper function.
 const Value *Check::checkScopeObjectMember(const UiQualifiedId *id)
 {
-
     if (!_importsOk)
         return nullptr;
+
+    if (!id)
+        return nullptr; // ### error?
+
+    if (id->name.isEmpty()) // possible after error recovery
+        return nullptr;
+
+    QString propertyName = id->name.toString();
+
+    if (propertyName == "id" && !id->next)
+        return nullptr; // ### should probably be a special value
 
     QList<const ObjectValue *> scopeObjects = _scopeChain.qmlScopeObjects();
     if (scopeObjects.isEmpty())
@@ -1958,23 +2031,8 @@ const Value *Check::checkScopeObjectMember(const UiQualifiedId *id)
         return isAttachedProperty;
     };
 
-
-    if (! id)
-        return nullptr; // ### error?
-
-    if (id->name.isEmpty()) // possible after error recovery
-        return nullptr;
-
-    QString propertyName = id->name.toString();
-
-    if (propertyName == "id" && !id->next)
-        return nullptr; // ### should probably be a special value
-
     // attached properties
     bool isAttachedProperty = getAttachedTypes(propertyName);
-
-    if (scopeObjects.isEmpty())
-        return nullptr;
 
     // global lookup for first part of id
     const Value *value = nullptr;
@@ -1990,7 +2048,14 @@ const Value *Check::checkScopeObjectMember(const UiQualifiedId *id)
         return nullptr;
 
     if (!value) {
-        addMessage(ErrInvalidPropertyName, id->identifierToken, propertyName);
+        // We omit M16 messages if the type using ImmediateProperties
+        // Ideally, we should obtain them through metaobject information
+        const bool omitMessage = !m_typeStack.isEmpty()
+                                 && ((m_typeStack.last() == "PropertyChanges")
+                                     || m_typeStack.last() == "Binding")
+                                 && !m_idStack.isEmpty() && m_idStack.last().contains(propertyName);
+        if (!omitMessage)
+            addMessage(ErrInvalidPropertyName, id->identifierToken, propertyName);
         return nullptr;
     }
 

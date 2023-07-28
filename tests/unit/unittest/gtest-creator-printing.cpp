@@ -12,6 +12,7 @@
 #include <clangtools/clangtoolsdiagnostic.h>
 #include <debugger/analyzer/diagnosticlocation.h>
 #include <imagecacheauxiliarydata.h>
+#include <import.h>
 #include <modelnode.h>
 #include <projectstorage/filestatus.h>
 #include <projectstorage/projectstoragepathwatchertypes.h>
@@ -21,7 +22,6 @@
 #include <sqlitesessionchangeset.h>
 #include <sqlitevalue.h>
 #include <utils/fileutils.h>
-#include <utils/linecolumn.h>
 #include <variantproperty.h>
 #include <qmldesigner/designercore/imagecache/imagecachestorageinterface.h>
 
@@ -42,11 +42,6 @@ std::ostream &operator<<(std::ostream &out, const monostate &)
 } // namespace std
 
 namespace Utils {
-
-std::ostream &operator<<(std::ostream &out, const LineColumn &lineColumn)
-{
-    return out << "(" << lineColumn.line << ", " << lineColumn.column << ")";
-}
 namespace {
 const char * toText(Utils::Language language)
 {
@@ -454,6 +449,8 @@ const char *sourceTypeToText(SourceType sourceType)
         return "QmlDir";
     case SourceType::QmlTypes:
         return "QmlTypes";
+    case SourceType::Directory:
+        return "Directory";
     }
 
     return "";
@@ -465,6 +462,11 @@ std::ostream &operator<<(std::ostream &out, const FileStatus &fileStatus)
 {
     return out << "(" << fileStatus.sourceId << ", " << fileStatus.size << ", "
                << fileStatus.lastModified << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const Import &import)
+{
+    return out << "(" << import.url() << ", " << import.version() << ")";
 }
 
 std::ostream &operator<<(std::ostream &out, SourceType sourceType)
@@ -575,6 +577,17 @@ std::ostream &operator<<(std::ostream &out, PropertyDeclarationTraits traits)
 
     return out << ")";
 }
+
+std::ostream &operator<<(std::ostream &out, VersionNumber versionNumber)
+{
+    return out << versionNumber.value;
+}
+
+std::ostream &operator<<(std::ostream &out, Version version)
+{
+    return out << "(" << version.major << ", " << version.minor << ")";
+}
+
 } // namespace Storage
 
 namespace Storage::Info {
@@ -693,16 +706,6 @@ std::ostream &operator<<(std::ostream &out, const ProjectData &data)
 std::ostream &operator<<(std::ostream &out, IsQualified isQualified)
 {
     return out << isQualifiedToString(isQualified);
-}
-
-std::ostream &operator<<(std::ostream &out, VersionNumber versionNumber)
-{
-    return out << versionNumber.value;
-}
-
-std::ostream &operator<<(std::ostream &out, Version version)
-{
-    return out << "(" << version.major << ", " << version.minor << ")";
 }
 
 std::ostream &operator<<(std::ostream &out, const ExportedType &exportedType)

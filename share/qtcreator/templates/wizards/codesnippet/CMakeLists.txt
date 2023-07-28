@@ -24,11 +24,14 @@ endif()
 
 target_link_libraries(%{ProjectName} PRIVATE Qt${QT_VERSION_MAJOR}::%{QtModule})
 
+include(GNUInstallDirs)
 install(TARGETS %{ProjectName}
 @if %{MacOSBundle}
     BUNDLE DESTINATION .
 @endif
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
 set_target_properties(%{ProjectName} PROPERTIES MACOSX_BUNDLE %{MacOSBundleValue})
 

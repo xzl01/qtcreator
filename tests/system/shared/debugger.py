@@ -113,8 +113,7 @@ def doSimpleDebugging(currentKit, currentConfigName, expectedBPOrder=[], enableQ
         expectedLabelTexts.append("Running\.")
     switchViewTo(ViewConstants.PROJECTS)
     switchToBuildOrRunSettingsFor(currentKit, ProjectSettings.RUN)
-    ensureChecked(waitForObject("{container=':Qt Creator_Core::Internal::MainWindow' text='Enable QML' "
-                                "type='QCheckBox' unnamed='1' visible='1'}"), enableQml)
+    selectFromCombo(":EnableQMLDebugger_ComboBox", "Enabled" if enableQml else "Disabled")
     switchViewTo(ViewConstants.EDIT)
     if not __startDebugger__(currentKit, currentConfigName):
         return False
@@ -239,7 +238,7 @@ def __logDebugResult__():
 
 def verifyBreakPoint(bpToVerify):
     if isinstance(bpToVerify, dict):
-        fileName = list(bpToVerify.keys())[0]
+        fileName = next(iter(bpToVerify.keys()))
         editor = getEditorForFileSuffix(fileName)
         if editor:
             test.compare(waitForObject(":DebugModeWidget_QComboBox").toolTip, fileName,
@@ -248,7 +247,7 @@ def verifyBreakPoint(bpToVerify):
             windowTitle = str(waitForObject(":Qt Creator_Core::Internal::MainWindow").windowTitle)
             test.verify(windowTitle.startswith(os.path.basename(fileName) + " "),
                         "Verify that Creator's window title changed according to current file")
-            return test.compare(line, bpToVerify.values()[0],
+            return test.compare(line, next(iter(bpToVerify.values())),
                                 "Compare hit breakpoint to expected line number in %s" % fileName)
     else:
         test.fatal("Expected a dict for bpToVerify - got '%s'" % className(bpToVerify))

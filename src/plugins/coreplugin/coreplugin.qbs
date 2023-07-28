@@ -149,6 +149,15 @@ Project {
                 "plugininstallwizard.h",
                 "rightpane.cpp",
                 "rightpane.h",
+                "session.cpp",
+                "session.h",
+                "session_p.h",
+                "sessiondialog.cpp",
+                "sessiondialog.h",
+                "sessionmodel.cpp",
+                "sessionmodel.h",
+                "sessionview.cpp",
+                "sessionview.h",
                 "settingsdatabase.cpp",
                 "settingsdatabase.h",
                 "sidebar.cpp",
@@ -157,8 +166,6 @@ Project {
                 "sidebarwidget.h",
                 "statusbarmanager.cpp",
                 "statusbarmanager.h",
-                "styleanimator.cpp",
-                "styleanimator.h",
                 "systemsettings.cpp",
                 "systemsettings.h",
                 "textdocument.cpp",
@@ -271,9 +278,7 @@ Project {
             ]
         }
 
-        Group {
-            name: "Tests"
-            condition: qtc.testsEnabled
+        QtcTestFiles {
             files: [
                 "testdatadir.cpp",
                 "testdatadir.h",
@@ -310,8 +315,6 @@ Project {
                 "itemviewfind.h",
                 "optionspopup.cpp",
                 "optionspopup.h",
-                "searchresultcolor.h",
-                "searchresultitem.h",
                 "searchresulttreeitemdelegate.cpp",
                 "searchresulttreeitemdelegate.h",
                 "searchresulttreeitemroles.h",
@@ -333,8 +336,6 @@ Project {
             name: "Locator"
             prefix: "locator/"
             files: [
-                "basefilefilter.cpp",
-                "basefilefilter.h",
                 "commandlocator.cpp",
                 "commandlocator.h",
                 "directoryfilter.cpp",
@@ -356,8 +357,6 @@ Project {
                 "locatormanager.h",
                 "locator.cpp",
                 "locator.h",
-                "locatorsearchutils.cpp",
-                "locatorsearchutils.h",
                 "locatorsettingspage.cpp",
                 "locatorsettingspage.h",
                 "locatorwidget.cpp",

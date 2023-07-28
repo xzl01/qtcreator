@@ -4,13 +4,12 @@
 #include "qmltypesparser.h"
 
 #include "projectstorage.h"
-#include "sourcepathcache.h"
 
 #include <sqlitedatabase.h>
 
-#ifdef QDS_HAS_QMLDOM
-#include <qmlcompiler/qqmljstypedescriptionreader_p.h>
-#include <qmldom/qqmldomtop_p.h>
+#ifdef QDS_BUILD_QMLPARSER
+#include <private/qqmldomtop_p.h>
+#include <private/qqmljstypedescriptionreader_p.h>
 #endif
 
 #include <QDateTime>
@@ -20,29 +19,31 @@
 
 namespace QmlDesigner {
 
-#ifdef QDS_HAS_QMLDOM
+#ifdef QDS_BUILD_QMLPARSER
+
 namespace QmlDom = QQmlJS::Dom;
 
 namespace {
 
 using ComponentWithoutNamespaces = QMap<QString, QString>;
 
-ComponentWithoutNamespaces createComponentNameWithoutNamespaces(
-    const QHash<QString, QQmlJSExportedScope> &objects)
+using Storage::TypeNameString;
+
+ComponentWithoutNamespaces createComponentNameWithoutNamespaces(const QList<QQmlJSExportedScope> &objects)
 {
     ComponentWithoutNamespaces componentWithoutNamespaces;
 
-    for (auto current = objects.keyBegin(), end = objects.keyEnd(); current != end; ++current) {
-        const QString &key = *current;
+    for (const auto &object : objects) {
+        const QString &name = object.scope->internalName();
         QString searchTerm{"::"};
 
-        auto found = std::search(key.cbegin(), key.cend(), searchTerm.cbegin(), searchTerm.cend());
+        auto found = std::search(name.cbegin(), name.cend(), searchTerm.cbegin(), searchTerm.cend());
 
-        if (found == key.cend())
+        if (found == name.cend())
             continue;
 
-        componentWithoutNamespaces.insert(QStringView{std::next(found, 2), key.cend()}.toString(),
-                                          key);
+        componentWithoutNamespaces.insert(QStringView{std::next(found, 2), name.cend()}.toString(),
+                                          name);
     }
 
     return componentWithoutNamespaces;
@@ -61,7 +62,7 @@ void appendImports(Storage::Synchronization::Imports &imports,
     moduleName.append("-cppnative");
     ModuleId cppModuleId = storage.moduleId(moduleName);
 
-    imports.emplace_back(cppModuleId, Storage::Synchronization::Version{}, sourceId);
+    imports.emplace_back(cppModuleId, Storage::Version{}, sourceId);
 }
 
 void addImports(Storage::Synchronization::Imports &imports,
@@ -73,32 +74,31 @@ void addImports(Storage::Synchronization::Imports &imports,
     for (const QString &dependency : dependencies)
         appendImports(imports, dependency, sourceId, storage);
 
-    imports.emplace_back(cppModuleId, Storage::Synchronization::Version{}, sourceId);
+    imports.emplace_back(cppModuleId, Storage::Version{}, sourceId);
 
     if (ModuleId qmlCppModuleId = storage.moduleId("QML-cppnative"); cppModuleId != qmlCppModuleId)
-        imports.emplace_back(qmlCppModuleId, Storage::Synchronization::Version{}, sourceId);
+        imports.emplace_back(qmlCppModuleId, Storage::Version{}, sourceId);
 }
 
-Storage::Synchronization::TypeTraits createTypeTraits(
-    QQmlJSScope::AccessSemantics accessSematics)
+Storage::TypeTraits createTypeTraits(QQmlJSScope::AccessSemantics accessSematics)
 {
     switch (accessSematics) {
     case QQmlJSScope::AccessSemantics::Reference:
-        return Storage::Synchronization::TypeTraits::Reference;
+        return Storage::TypeTraits::Reference;
     case QQmlJSScope::AccessSemantics::Value:
-        return Storage::Synchronization::TypeTraits::Value;
+        return Storage::TypeTraits::Value;
     case QQmlJSScope::AccessSemantics::None:
-        return Storage::Synchronization::TypeTraits::None;
+        return Storage::TypeTraits::None;
     case QQmlJSScope::AccessSemantics::Sequence:
-        return Storage::Synchronization::TypeTraits::Sequence;
+        return Storage::TypeTraits::Sequence;
     }
 
-    return Storage::Synchronization::TypeTraits::None;
+    return Storage::TypeTraits::None;
 }
 
-Storage::Synchronization::Version createVersion(QTypeRevision qmlVersion)
+Storage::Version createVersion(QTypeRevision qmlVersion)
 {
-    return Storage::Synchronization::Version{qmlVersion.majorVersion(), qmlVersion.minorVersion()};
+    return Storage::Version{qmlVersion.majorVersion(), qmlVersion.minorVersion()};
 }
 
 Storage::Synchronization::ExportedTypes createExports(const QList<QQmlJSScope::Export> &qmlExports,
@@ -227,16 +227,9 @@ Storage::Synchronization::ParameterDeclarations createParameters(
 {
     Storage::Synchronization::ParameterDeclarations parameterDeclarations;
 
-    const QStringList &parameterNames = qmlMethod.parameterNames();
-    const QStringList &parameterTypeNames = qmlMethod.parameterTypeNames();
-    auto currentName = parameterNames.begin();
-    auto currentType = parameterTypeNames.begin();
-    auto nameEnd = parameterNames.end();
-    auto typeEnd = parameterTypeNames.end();
-
-    for (; currentName != nameEnd && currentType != typeEnd; ++currentName, ++currentType) {
-        parameterDeclarations.emplace_back(Utils::SmallString{*currentName},
-                                           fullyQualifiedTypeName(*currentType,
+    for (const auto &parameter : qmlMethod.parameters()) {
+        parameterDeclarations.emplace_back(Utils::SmallString{parameter.name()},
+                                           fullyQualifiedTypeName(parameter.typeName(),
                                                                   componentNameWithoutNamespace));
     }
 
@@ -347,8 +340,8 @@ void addEnumerationType(EnumerationTypes &enumerationTypes,
     auto fullTypeName = addEnumerationType(enumerationTypes, typeName, enumerationName);
     types.emplace_back(fullTypeName,
                        Storage::Synchronization::ImportedType{TypeNameString{}},
-                       Storage::Synchronization::TypeTraits::Value
-                           | Storage::Synchronization::TypeTraits::IsEnum,
+                       Storage::Synchronization::ImportedType{},
+                       Storage::TypeTraits::Value | Storage::TypeTraits::IsEnum,
                        sourceId,
                        createCppEnumerationExports(typeName,
                                                    cppModuleId,
@@ -416,22 +409,22 @@ void addType(Storage::Synchronization::Types &types,
     auto exports = exportScope.exports;
 
     auto enumerationTypes = addEnumerationTypes(types, typeName, sourceId, cppModuleId, enumerations);
-    types.emplace_back(Utils::SmallStringView{typeName},
-                       Storage::Synchronization::ImportedType{TypeNameString{component.baseTypeName()}},
-                       createTypeTraits(component.traits()),
-                       sourceId,
-                       createExports(exports, typeName, storage, cppModuleId),
-                       createProperties(component.ownProperties(),
-                                        enumerationTypes,
-                                        componentNameWithoutNamespace),
-                       std::move(functionsDeclarations),
-                       std::move(signalDeclarations),
-                       createEnumeration(enumerations));
+    types.emplace_back(
+        Utils::SmallStringView{typeName},
+        Storage::Synchronization::ImportedType{TypeNameString{component.baseTypeName()}},
+        Storage::Synchronization::ImportedType{TypeNameString{component.extensionTypeName()}},
+        createTypeTraits(component.accessSemantics()),
+        sourceId,
+        createExports(exports, typeName, storage, cppModuleId),
+        createProperties(component.ownProperties(), enumerationTypes, componentNameWithoutNamespace),
+        std::move(functionsDeclarations),
+        std::move(signalDeclarations),
+        createEnumeration(enumerations));
 }
 
 void addTypes(Storage::Synchronization::Types &types,
               const Storage::Synchronization::ProjectData &projectData,
-              const QHash<QString, QQmlJSExportedScope> &objects,
+              const QList<QQmlJSExportedScope> &objects,
               QmlTypesParser::ProjectStorage &storage,
               const ComponentWithoutNamespaces &componentNameWithoutNamespaces)
 {
@@ -454,7 +447,7 @@ void QmlTypesParser::parse(const QString &sourceContent,
                            const Storage::Synchronization::ProjectData &projectData)
 {
     QQmlJSTypeDescriptionReader reader({}, sourceContent);
-    QHash<QString, QQmlJSExportedScope> components;
+    QList<QQmlJSExportedScope> components;
     QStringList dependencies;
     bool isValid = reader(&components, &dependencies);
     if (!isValid)

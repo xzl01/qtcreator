@@ -22,8 +22,6 @@
 
 namespace QmlDesigner {
 
-namespace  Internal {
-
 ConnectionView::ConnectionView(ExternalDependenciesInterface &externalDependencies)
     : AbstractView{externalDependencies}
     , m_connectionViewWidget(new ConnectionViewWidget())
@@ -185,7 +183,7 @@ void ConnectionView::auxiliaryDataChanged([[maybe_unused]] const ModelNode &node
         selectionModel->clearSelection();
 }
 
-void ConnectionView::importsChanged(const QList<Import> & /*addedImports*/, const QList<Import> & /*removedImports*/)
+void ConnectionView::importsChanged(const Imports & /*addedImports*/, const Imports & /*removedImports*/)
 {
     backendModel()->resetModel();
 }
@@ -277,7 +275,5 @@ ConnectionView *ConnectionView::instance()
     QTC_ASSERT(s_instance, return nullptr);
     return s_instance;
 }
-
-} // namesapce Internal
 
 } // namespace QmlDesigner

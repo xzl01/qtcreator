@@ -3,8 +3,8 @@
 
 #include "stylemodel.h"
 
-#include "utils/algorithm.h"
-#include "utils/qtcassert.h"
+#include <utils/algorithm.h>
+#include <utils/qtcassert.h>
 
 #include <QRegularExpression>
 
@@ -62,6 +62,8 @@ int StyleModel::filteredIndex(int actualIndex)
 {
     if (actualIndex < 0)
         return actualIndex;
+
+    QTC_ASSERT(actualIndex < Utils::ssize(m_items), return -1);
 
     QStandardItem *item = m_items.at(actualIndex);
     // TODO: perhaps should add this kind of find to utils/algorithm.h

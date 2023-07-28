@@ -24,6 +24,7 @@ QT_END_NAMESPACE
 
 namespace Core { class IEditor; }
 namespace CppEditor { class RefactoringEngineInterface; }
+namespace LanguageClient { class Client; }
 namespace TextEditor { class TextEditorWidget; }
 
 namespace ClangCodeModel {
@@ -45,6 +46,7 @@ public:
                 TextEditor::TextDocument *baseTextDocument) override;
     bool usesClangd(const TextEditor::TextDocument *document) const override;
 
+    static QList<LanguageClient::Client *> clientsForOpenProjects();
     static ClangdClient *clientForProject(const ProjectExplorer::Project *project);
     static ClangdClient *clientForFile(const Utils::FilePath &file);
 
@@ -79,11 +81,7 @@ private:
                                         int lineNumber,
                                         QMenu *menu);
 
-    void onProjectPartsUpdated(ProjectExplorer::Project *project);
-    void onProjectPartsRemoved(const QStringList &projectPartIds);
     void onClangdSettingsChanged();
-
-    void reinitializeBackendDocuments(const QStringList &projectPartIds);
 
     void connectTextDocumentToTranslationUnit(TextEditor::TextDocument *textDocument);
     void connectToWidgetsMarkContextMenuRequested(QWidget *editorWidget);

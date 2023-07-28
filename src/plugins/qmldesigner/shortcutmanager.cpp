@@ -5,6 +5,8 @@
 
 #include <designersettings.h>
 
+#include <toolbarbackend.h>
+
 #include <viewmanager.h>
 #include <designeractionmanagerview.h>
 #include <componentcore_constants.h>
@@ -12,11 +14,12 @@
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/command.h>
-#include <coreplugin/icore.h>
-#include <coreplugin/idocument.h>
 #include <coreplugin/editormanager/documentmodel.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/coreconstants.h>
+#include <coreplugin/icore.h>
+#include <coreplugin/idocument.h>
+#include <coreplugin/modemanager.h>
 #include <qmljseditor/qmljseditorconstants.h>
 
 #include <qmlprojectmanager/qmlprojectmanagerconstants.h>
@@ -37,21 +40,24 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QMainWindow>
+#include <QStandardPaths>
 
 namespace QmlDesigner {
 
 ShortCutManager::ShortCutManager()
-    : QObject(),
-    m_exportAsImageAction(tr("Export as &Image...")),
-    m_undoAction(tr("&Undo")),
-    m_redoAction(tr("&Redo")),
-    m_deleteAction(tr("Delete")),
-    m_cutAction(tr("Cu&t")),
-    m_copyAction(tr("&Copy")),
-    m_pasteAction(tr("&Paste")),
-    m_duplicateAction(tr("&Duplicate")),
-    m_selectAllAction(tr("Select &All")),
-    m_escapeAction(this)
+    : QObject()
+    , m_exportAsImageAction(tr("Export as &Image..."))
+    , m_takeScreenshotAction(tr("Take Screenshot"))
+    , m_undoAction(tr("&Undo"))
+    , m_redoAction(tr("&Redo"))
+    , m_deleteAction(tr("Delete"))
+    , m_cutAction(tr("Cu&t"))
+    , m_copyAction(tr("&Copy"))
+    , m_pasteAction(tr("&Paste"))
+    , m_duplicateAction(tr("&Duplicate"))
+    , m_selectAllAction(tr("Select &All"))
+    , m_escapeAction(this)
 {
 
 }
@@ -59,11 +65,8 @@ ShortCutManager::ShortCutManager()
 void ShortCutManager::registerActions(const Core::Context &qmlDesignerMainContext,
                                       const Core::Context &qmlDesignerFormEditorContext,
                                       const Core::Context &qmlDesignerEditor3DContext,
-                                      const Core::Context &qmlDesignerNavigatorContext,
-                                      const Core::Context &qmlDesignerMaterialBrowserContext)
+                                      const Core::Context &qmlDesignerNavigatorContext)
 {
-    Q_UNUSED(qmlDesignerMaterialBrowserContext)
-
     Core::ActionContainer *editMenu = Core::ActionManager::actionContainer(Core::Constants::M_EDIT);
 
     connect(&m_undoAction, &QAction::triggered, this, &ShortCutManager::undo);
@@ -107,6 +110,34 @@ void ShortCutManager::registerActions(const Core::Context &qmlDesignerMainContex
         QmlDesignerPlugin::instance()->viewManager().exportAsImage();
     });
 
+    // Edit Global Annotations
+    QAction *action = new QAction(tr("Edit Global Annotations..."), this);
+    command = Core::ActionManager::registerAction(action, "Edit.Annotations", qmlDesignerMainContext);
+    Core::ActionManager::actionContainer(Core::Constants::M_EDIT)
+        ->addAction(command, Core::Constants::G_EDIT_OTHER);
+    connect(action, &QAction::triggered, this, [] { ToolBarBackend::launchGlobalAnnotations(); });
+    connect(Core::ModeManager::instance(), &Core::ModeManager::currentModeChanged, this, [action] {
+        action->setEnabled(Core::ModeManager::currentModeId() == Core::Constants::MODE_DESIGN);
+    });
+    action->setEnabled(false);
+
+    command = Core::ActionManager::registerAction(&m_takeScreenshotAction,
+                                                  QmlDesigner::Constants::TAKE_SCREENSHOT);
+    connect(&m_takeScreenshotAction, &QAction::triggered, [] {
+        const auto folder = Utils::FilePath::fromString(
+                                QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
+                                .pathAppended("QtDesignStudio/screenshots/");
+        folder.createDir();
+
+        const auto file = folder.pathAppended(QDateTime::currentDateTime().toString("dddd-hh-mm-ss")
+                                              + ".png");
+
+        QPixmap pixmap = Core::ICore::mainWindow()->grab();
+
+        const bool b = pixmap.save(file.toString(), "PNG");
+        qWarning() << "screenshot" << file << b << pixmap;
+    });
+
     Core::ActionContainer *exportMenu = Core::ActionManager::actionContainer(
         QmlProjectManager::Constants::EXPORT_MENU);
 
@@ -136,7 +167,7 @@ void ShortCutManager::registerActions(const Core::Context &qmlDesignerMainContex
     command->setDefaultKeySequence(QKeySequence::Redo);
     designerActionManager.addCreatorCommand(command, ComponentCoreConstants::editCategory, 2, Utils::Icons::REDO_TOOLBAR.icon());
 
-    designerActionManager.addDesignerAction(new SeperatorDesignerAction(ComponentCoreConstants::editCategory, 10));
+    designerActionManager.addDesignerAction(new SeparatorDesignerAction(ComponentCoreConstants::editCategory, 10));
     //Edit Menu
 
     m_deleteAction.setIcon(QIcon::fromTheme(QLatin1String("edit-cut"), Utils::Icons::EDIT_CLEAR_TOOLBAR.icon()));
@@ -196,10 +227,11 @@ void ShortCutManager::registerActions(const Core::Context &qmlDesignerMainContex
 
     connect(Core::ICore::instance(), &Core::ICore::contextChanged, this, [&](const Core::Context &context) {
         isMatBrowserActive = context.contains(Constants::C_QMLMATERIALBROWSER);
+        isAssetsLibraryActive = context.contains(Constants::C_QMLASSETSLIBRARY);
 
         if (!context.contains(Constants::C_QMLFORMEDITOR) && !context.contains(Constants::C_QMLEDITOR3D)
          && !context.contains(Constants::C_QMLNAVIGATOR)) {
-            m_deleteAction.setEnabled(isMatBrowserActive);
+            m_deleteAction.setEnabled(isMatBrowserActive || isAssetsLibraryActive);
             m_cutAction.setEnabled(false);
             m_copyAction.setEnabled(false);
             m_pasteAction.setEnabled(false);
@@ -254,6 +286,9 @@ void ShortCutManager::deleteSelected()
    if (isMatBrowserActive) {
        DesignerActionManager &designerActionManager = QmlDesignerPlugin::instance()->viewManager().designerActionManager();
        designerActionManager.view()->emitCustomNotification("delete_selected_material");
+   } else if (isAssetsLibraryActive) {
+       DesignerActionManager &designerActionManager = QmlDesignerPlugin::instance()->viewManager().designerActionManager();
+       designerActionManager.view()->emitCustomNotification("delete_selected_assets");
    } else if (currentDesignDocument()) {
         currentDesignDocument()->deleteSelected();
    }

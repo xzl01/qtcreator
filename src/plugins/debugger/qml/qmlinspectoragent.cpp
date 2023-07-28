@@ -32,6 +32,7 @@
 
 using namespace QmlDebug;
 using namespace QmlDebug::Constants;
+using namespace Utils;
 
 namespace Debugger::Internal {
 
@@ -220,7 +221,7 @@ void QmlInspectorAgent::onResult(quint32 queryId, const QVariant &value,
 
     if (m_objectTreeQueryIds.contains(queryId)) {
         m_objectTreeQueryIds.removeOne(queryId);
-        if (value.type() == QVariant::List) {
+        if (value.typeId() == QVariant::List) {
             const QVariantList objList = value.toList();
             for (const QVariant &var : objList) {
                 // TODO: check which among the list is the actual
@@ -288,7 +289,7 @@ static void sortChildrenIfNecessary(WatchItem *propertiesWatch)
 
 static bool insertChildren(WatchItem *parent, const QVariant &value)
 {
-    switch (value.type()) {
+    switch (value.typeId()) {
     case QVariant::Map: {
         const QVariantMap map = value.toMap();
         for (auto it = map.begin(), end = map.end(); it != end; ++it) {
@@ -541,8 +542,8 @@ void QmlInspectorAgent::buildDebugIdHashRecursive(const ObjectReference &ref)
         lineNum += match.captured(3).toInt() - 1;
     }
 
-    const QString filePath = m_qmlEngine->toFileInProject(fileUrl);
-    m_debugIdLocations.insert(ref.debugId(), FileReference(filePath, lineNum, colNum));
+    const FilePath filePath = m_qmlEngine->toFileInProject(fileUrl);
+    m_debugIdLocations.insert(ref.debugId(), FileReference(filePath.toFSPathString(), lineNum, colNum));
 
     const auto children = ref.children();
     for (const ObjectReference &it : children)
@@ -735,7 +736,7 @@ void QmlInspectorAgent::onShowAppOnTopChanged(bool checked)
 
 void QmlInspectorAgent::jumpToObjectDefinitionInEditor(const FileReference &objSource)
 {
-    const auto filePath = Utils::FilePath::fromString(m_qmlEngine->toFileInProject(objSource.url()));
+    const FilePath filePath = m_qmlEngine->toFileInProject(objSource.url());
     Core::EditorManager::openEditorAt({filePath, objSource.lineNumber()});
 }
 

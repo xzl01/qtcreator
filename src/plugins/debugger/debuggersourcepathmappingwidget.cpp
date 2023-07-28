@@ -12,8 +12,8 @@
 #include <utils/hostosinfo.h>
 #include <utils/layoutbuilder.h>
 #include <utils/pathchooser.h>
+#include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
 #include <utils/variablechooser.h>
 
 #include <QFileDialog>
@@ -415,47 +415,18 @@ void DebuggerSourcePathMappingWidget::slotEditTargetFieldChanged()
     }
 }
 
-// Find Qt installation by running qmake
-static QString findQtInstallPath(const FilePath &qmakePath)
-{
-    if (qmakePath.isEmpty())
-        return QString();
-    QtcProcess proc;
-    proc.setCommand({qmakePath, {"-query", "QT_INSTALL_HEADERS"}});
-    proc.start();
-    if (!proc.waitForFinished()) {
-        qWarning("%s: Timeout running '%s'.", Q_FUNC_INFO, qPrintable(qmakePath.toString()));
-        return QString();
-    }
-    if (proc.exitStatus() != QProcess::NormalExit) {
-        qWarning("%s: '%s' crashed.", Q_FUNC_INFO, qPrintable(qmakePath.toString()));
-        return QString();
-    }
-    const QByteArray ba = proc.readAllRawStandardOutput().trimmed();
-    QDir dir(QString::fromLocal8Bit(ba));
-    if (dir.exists() && dir.cdUp())
-        return dir.absolutePath();
-    return QString();
-}
-
 /* Merge settings for an installed Qt (unless another setting is already in the map. */
 SourcePathMap mergePlatformQtPath(const DebuggerRunParameters &sp, const SourcePathMap &in)
 {
-    const FilePath qmake = BuildableHelperLibrary::findSystemQt(sp.inferior.environment);
-    // FIXME: Get this from the profile?
-    //        We could query the QtVersion for this information directly, but then we
-    //        will need to add a dependency on QtSupport to the debugger.
-    //
-    //        The profile could also get a function to extract the required information from
-    //        its information to avoid this dependency (as we do for the environment).
-    const QString qtInstallPath = findQtInstallPath(qmake);
-    if (qtInstallPath.isEmpty())
+    static const QString qglobal = "qtbase/src/corelib/global/qglobal.h";
+    const FilePath sourceLocation = sp.qtSourceLocation;
+    if (!(sourceLocation / qglobal).exists())
         return in;
 
     SourcePathMap rc = in;
     for (const QString &buildPath : qtBuildPaths()) {
         if (!rc.contains(buildPath)) // Do not overwrite user settings.
-            rc.insert(buildPath, qtInstallPath + "/../Src");
+            rc.insert(buildPath, sourceLocation.path());
     }
     return rc;
 }
@@ -491,12 +462,12 @@ void SourcePathMapAspect::toMap(QVariantMap &) const
     QTC_CHECK(false);
 }
 
-void SourcePathMapAspect::addToLayout(Layouting::LayoutBuilder &builder)
+void SourcePathMapAspect::addToLayout(Layouting::LayoutItem &parent)
 {
     QTC_CHECK(!d->m_widget);
     d->m_widget = createSubWidget<DebuggerSourcePathMappingWidget>();
     d->m_widget->setSourcePathMap(value());
-    builder.addRow(d->m_widget.data());
+    parent.addItem(d->m_widget.data());
 }
 
 QVariant SourcePathMapAspect::volatileValue() const

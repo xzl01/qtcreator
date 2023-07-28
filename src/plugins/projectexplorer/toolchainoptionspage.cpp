@@ -3,10 +3,11 @@
 
 #include "toolchainoptionspage.h"
 
-#include "toolchain.h"
 #include "abi.h"
+#include "devicesupport/devicemanager.h"
 #include "projectexplorerconstants.h"
 #include "projectexplorertr.h"
+#include "toolchain.h"
 #include "toolchainconfigwidget.h"
 #include "toolchainmanager.h"
 
@@ -48,20 +49,8 @@ class ToolChainTreeItem : public TreeItem
 {
 public:
     ToolChainTreeItem(QStackedWidget *parentWidget, ToolChain *tc, bool c) :
-        toolChain(tc), changed(c)
-    {
-        widget = tc->createConfigurationWidget().release();
-        if (widget) {
-            parentWidget->addWidget(widget);
-            if (tc->isAutoDetected())
-                widget->makeReadOnly();
-            QObject::connect(widget, &ToolChainConfigWidget::dirty,
-                             [this] {
-                changed = true;
-                update();
-            });
-        }
-    }
+        toolChain(tc), changed(c), m_parentWidget(parentWidget)
+    {}
 
     QVariant data(int column, int role) const override
     {
@@ -93,9 +82,30 @@ public:
         return QVariant();
     }
 
+    ToolChainConfigWidget *widget()
+    {
+        if (!m_widget) {
+           m_widget = toolChain->createConfigurationWidget().release();
+           if (m_widget) {
+                m_parentWidget->addWidget(m_widget);
+                if (toolChain->isAutoDetected())
+                    m_widget->makeReadOnly();
+                QObject::connect(m_widget, &ToolChainConfigWidget::dirty,
+                                 [this] {
+                    changed = true;
+                    update();
+                });
+            }
+        }
+        return m_widget;
+    }
+
     ToolChain *toolChain;
-    ToolChainConfigWidget *widget;
     bool changed;
+
+private:
+    ToolChainConfigWidget *m_widget = nullptr;
+    QStackedWidget *m_parentWidget = nullptr;
 };
 
 class DetectionSettingsDialog : public QDialog
@@ -395,7 +405,7 @@ void ToolChainOptionsWidget::redetectToolchains()
     QSet<ToolChain *> toDelete;
     ToolChainManager::resetBadToolchains();
     for (ToolChainFactory *f : ToolChainFactory::allToolChainFactories()) {
-        const ToolchainDetector detector(knownTcs, {}, {});  // FIXME: Pass device and search paths
+        const ToolchainDetector detector(knownTcs, DeviceManager::defaultDesktopDevice(), {});  // FIXME: Pass search paths
         for (ToolChain * const tc : f->autoDetect(detector)) {
             if (knownTcs.contains(tc) || toDelete.contains(tc))
                 continue;
@@ -423,7 +433,7 @@ void ToolChainOptionsWidget::toolChainSelectionChanged()
 {
     ToolChainTreeItem *item = currentTreeItem();
 
-    QWidget *currentTcWidget = item ? item->widget : nullptr;
+    QWidget *currentTcWidget = item ? item->widget() : nullptr;
     if (currentTcWidget)
         m_widgetStack->setCurrentWidget(currentTcWidget);
     m_container->setVisible(currentTcWidget);
@@ -447,8 +457,8 @@ void ToolChainOptionsWidget::apply()
             for (TreeItem *item : *parent) {
                 auto tcItem = static_cast<ToolChainTreeItem *>(item);
                 Q_ASSERT(tcItem->toolChain);
-                if (!tcItem->toolChain->isAutoDetected() && tcItem->widget && tcItem->changed)
-                    tcItem->widget->apply();
+                if (!tcItem->toolChain->isAutoDetected() && tcItem->widget() && tcItem->changed)
+                    tcItem->widget()->apply();
                 tcItem->changed = false;
                 tcItem->update();
             }

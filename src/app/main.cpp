@@ -22,29 +22,20 @@
 
 #include <QDebug>
 #include <QDir>
-#include <QFontDatabase>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QLibraryInfo>
-#include <QScopeGuard>
-#include <QStyle>
-#include <QTextStream>
-#include <QThreadPool>
-#include <QTimer>
-#include <QTranslator>
-#include <QUrl>
-#include <QVariant>
-
-#include <QSysInfo>
-
-#include <QNetworkProxyFactory>
-
-#include <QApplication>
 #include <QMessageBox>
+#include <QNetworkProxyFactory>
 #include <QPixmapCache>
 #include <QProcess>
+#include <QScopeGuard>
 #include <QStandardPaths>
-#include <QTemporaryDir>
+#include <QStyle>
 #include <QTextCodec>
+#include <QTextStream>
+#include <QThreadPool>
+#include <QTranslator>
 
 #include <iterator>
 #include <optional>
@@ -287,7 +278,6 @@ static Utils::QtcSettings *createUserSettings()
 
 static void setHighDpiEnvironmentVariable()
 {
-
     if (Utils::HostOsInfo::isMacHost())
         return;
 
@@ -302,10 +292,12 @@ static void setHighDpiEnvironmentVariable()
             && !qEnvironmentVariableIsSet("QT_AUTO_SCREEN_SCALE_FACTOR")
             && !qEnvironmentVariableIsSet("QT_SCALE_FACTOR")
             && !qEnvironmentVariableIsSet("QT_SCREEN_SCALE_FACTORS")) {
-    } else {
+        return;
+    }
+
+    if (!qEnvironmentVariableIsSet("QT_SCALE_FACTOR_ROUNDING_POLICY"))
         QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
             Qt::HighDpiScaleFactorRoundingPolicy::Floor);
-    }
 }
 
 void setPixmapCacheLimit()
@@ -425,13 +417,26 @@ QStringList lastSessionArgument()
     return hasProjectExplorer ? QStringList({"-lastsession"}) : QStringList();
 }
 
+// should be in sync with src/plugins/coreplugin/icore.cpp -> FilePath ICore::crashReportsPath()
+// and src\tools\qml2puppet\qml2puppet\qmlpuppet.cpp -> QString crashReportsPath()
+QString crashReportsPath()
+{
+    std::unique_ptr<QSettings> settings(createUserSettings());
+    QFileInfo(settings->fileName()).path() + "/crashpad_reports";
+    if (Utils::HostOsInfo::isMacHost())
+        return QFileInfo(createUserSettings()->fileName()).path() + "/crashpad_reports";
+    else
+        return QCoreApplication::applicationDirPath()
+                + '/' + RELATIVE_LIBEXEC_PATH + "crashpad_reports";
+}
+
 #ifdef ENABLE_CRASHPAD
 bool startCrashpad(const QString &libexecPath, bool crashReportingEnabled)
 {
     using namespace crashpad;
 
     // Cache directory that will store crashpad information and minidumps
-    QString databasePath = QDir::cleanPath(libexecPath + "/crashpad_reports");
+    QString databasePath = QDir::cleanPath(crashReportsPath());
     QString handlerPath = QDir::cleanPath(libexecPath + "/crashpad_handler");
 #ifdef Q_OS_WIN
     handlerPath += ".exe";
@@ -453,6 +458,9 @@ bool startCrashpad(const QString &libexecPath, bool crashReportingEnabled)
     std::map<std::string, std::string> annotations;
     annotations["app-version"] = Core::Constants::IDE_VERSION_DISPLAY;
     annotations["qt-version"] = QT_VERSION_STR;
+#ifdef IDE_REVISION
+    annotations["sha1"] = Core::Constants::IDE_REVISION_STR;
+#endif
 
     // Optional arguments to pass to the handler
     std::vector<std::string> arguments;
@@ -487,10 +495,29 @@ int main(int argc, char **argv)
     Options options = parseCommandLine(argc, argv);
     applicationDirPath(argv[0]);
 
+    const bool hasStyleOption = Utils::findOrDefault(options.appArguments, [](char *arg) {
+        return strcmp(arg, "-style") == 0;
+    });
+
     if (qEnvironmentVariableIsSet("QTC_DO_NOT_PROPAGATE_LD_PRELOAD")) {
         Utils::Environment::modifySystemEnvironment(
             {{"LD_PRELOAD", "", Utils::EnvironmentItem::Unset}});
     }
+
+    auto restoreEnvVarFromSquish = [](const QByteArray &squishVar, const QString &var) {
+        if (qEnvironmentVariableIsSet(squishVar)) {
+            Utils::Environment::modifySystemEnvironment(
+                {{var, "", Utils::EnvironmentItem::Unset}});
+            const QString content = qEnvironmentVariable(squishVar);
+            if (!content.isEmpty()) {
+                Utils::Environment::modifySystemEnvironment(
+                    {{var, content, Utils::EnvironmentItem::Prepend}});
+            }
+        }
+    };
+
+    restoreEnvVarFromSquish("SQUISH_SHELL_ORIG_DYLD_LIBRARY_PATH", "DYLD_LIBRARY_PATH");
+    restoreEnvVarFromSquish("SQUISH_ORIG_DYLD_FRAMEWORK_PATH", "DYLD_FRAMEWORK_PATH");
 
     if (options.userLibraryPath) {
         if ((*options.userLibraryPath).isEmpty()) {
@@ -509,11 +536,6 @@ int main(int argc, char **argv)
     if (qEnvironmentVariableIsSet("QTCREATOR_DISABLE_NATIVE_MENUBAR")
             || qgetenv("XDG_CURRENT_DESKTOP").startsWith("Unity")) {
         QApplication::setAttribute(Qt::AA_DontUseNativeMenuBar);
-    }
-
-    if (Utils::HostOsInfo::isRunningUnderRosetta()) {
-        // work around QTBUG-97085: QRegularExpression jitting is not reentrant under Rosetta
-        qputenv("QT_ENABLE_REGEXP_JIT", "0");
     }
 
     if (Utils::HostOsInfo::isLinuxHost() && !qEnvironmentVariableIsSet("GTK_THEME"))
@@ -573,17 +595,18 @@ int main(int argc, char **argv)
 
     SharedTools::QtSingleApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 
-    int numberofArguments = static_cast<int>(options.appArguments.size());
+    int numberOfArguments = static_cast<int>(options.appArguments.size());
 
-    SharedTools::QtSingleApplication app((QLatin1String(Core::Constants::IDE_DISPLAY_NAME)),
-                                         numberofArguments,
-                                         options.appArguments.data());
+    std::unique_ptr<SharedTools::QtSingleApplication>
+        appPtr(SharedTools::createApplication(QLatin1String(Core::Constants::IDE_DISPLAY_NAME),
+                                              numberOfArguments, options.appArguments.data()));
+    SharedTools::QtSingleApplication &app = *appPtr;
     QCoreApplication::setApplicationName(Core::Constants::IDE_CASED_ID);
     QCoreApplication::setApplicationVersion(QLatin1String(Core::Constants::IDE_VERSION_LONG));
     QCoreApplication::setOrganizationName(QLatin1String(Core::Constants::IDE_SETTINGSVARIANT_STR));
     QGuiApplication::setApplicationDisplayName(Core::Constants::IDE_DISPLAY_NAME);
 
-    auto cleanup = qScopeGuard([] { Utils::Singleton::deleteAll(); });
+    const QScopeGuard cleanup([] { Utils::Singleton::deleteAll(); });
 
     const QStringList pluginArguments = app.arguments();
 
@@ -603,10 +626,8 @@ int main(int argc, char **argv)
     setPixmapCacheLimit();
     loadFonts();
 
-    if (Utils::HostOsInfo::isWindowsHost()
-            && !qFuzzyCompare(qApp->devicePixelRatio(), 1.0)
-            && QApplication::style()->objectName().startsWith(
-                QLatin1String("windows"), Qt::CaseInsensitive)) {
+    if (Utils::HostOsInfo::isWindowsHost() && !qFuzzyCompare(qApp->devicePixelRatio(), 1.0)
+        && !hasStyleOption) {
         QApplication::setStyle(QLatin1String("fusion"));
     }
     const int threadCount = QThreadPool::globalInstance()->maxThreadCount();
@@ -644,7 +665,7 @@ int main(int argc, char **argv)
     for (QString locale : std::as_const(uiLanguages)) {
         locale = QLocale(locale).name();
         if (translator.load("qtcreator_" + locale, creatorTrPath)) {
-            const QString &qtTrPath = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
+            const QString &qtTrPath = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
             const QString &qtTrFile = QLatin1String("qt_") + locale;
             // Binary installer puts Qt tr files into creatorTrPath
             if (qtTranslator.load(qtTrFile, qtTrPath) || qtTranslator.load(qtTrFile, creatorTrPath)) {

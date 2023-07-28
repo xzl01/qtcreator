@@ -12,13 +12,18 @@
 
 #include <cppeditor/cppmodelmanager.h>
 #include <cppeditor/projectpart.h>
-#include <projectexplorer/session.h>
+
+#include <projectexplorer/projectmanager.h>
+
 #include <qmljs/parser/qmljsast_p.h>
 #include <qmljs/qmljsdialect.h>
 #include <qmljstools/qmljsmodelmanager.h>
+
 #include <utils/hostosinfo.h>
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
+
+#include <QPromise>
 
 using namespace QmlJS;
 using namespace Utils;
@@ -141,7 +146,7 @@ QString QuickTestParser::quickTestName(const CPlusPlus::Document::Ptr &doc) cons
     }
 
     if (pchIncludes) {
-        const QRegularExpression regex("\\bQUICK_TEST_(MAIN|OPENGL_MAIN|MAIN_WITH_SETUP)");
+        static const QRegularExpression regex("\\bQUICK_TEST_(MAIN|OPENGL_MAIN|MAIN_WITH_SETUP)");
         const QRegularExpressionMatch match = regex.match(QString::fromUtf8(fileContent));
         if (match.hasMatch())
             return match.captured(); // we do not care for the name, just return something non-empty
@@ -155,13 +160,10 @@ QList<Document::Ptr> QuickTestParser::scanDirectoryForQuickTestQmlFiles(const Fi
     QStringList dirsStr({srcDir.toString()});
     ModelManagerInterface *qmlJsMM = QmlJSTools::Internal::ModelManager::instance();
     // make sure even files not listed in pro file are available inside the snapshot
-    QFutureInterface<void> future;
     PathsAndLanguages paths;
     paths.maybeInsert(srcDir, Dialect::Qml);
-    ModelManagerInterface::importScan(future, ModelManagerInterface::workingCopy(), paths, qmlJsMM,
+    ModelManagerInterface::importScan(ModelManagerInterface::workingCopy(), paths, qmlJsMM,
         false /*emitDocumentChanges*/, false /*onlyTheLib*/, true /*forceRescan*/ );
-
-    const Snapshot snapshot = QmlJSTools::Internal::ModelManager::instance()->snapshot();
 
     QDirIterator it(srcDir.toString(),
                     QDir::Dirs | QDir::NoDotAndDotDot,
@@ -179,6 +181,7 @@ QList<Document::Ptr> QuickTestParser::scanDirectoryForQuickTestQmlFiles(const Fi
 
     QList<Document::Ptr> foundDocs;
 
+    const Snapshot snapshot = QmlJSTools::Internal::ModelManager::instance()->snapshot();
     for (const FilePath &path : std::as_const(dirs)) {
         const QList<Document::Ptr> docs = snapshot.documentsInDirectory(path);
         for (const Document::Ptr &doc : docs) {
@@ -196,7 +199,7 @@ QList<Document::Ptr> QuickTestParser::scanDirectoryForQuickTestQmlFiles(const Fi
     return foundDocs;
 }
 
-static bool checkQmlDocumentForQuickTestCode(QFutureInterface<TestParseResultPtr> &futureInterface,
+static bool checkQmlDocumentForQuickTestCode(QPromise<TestParseResultPtr> &promise,
                                              const Document::Ptr &qmlJSDoc,
                                              ITestFramework *framework,
                                              const FilePath &proFile = {},
@@ -240,12 +243,12 @@ static bool checkQmlDocumentForQuickTestCode(QFutureInterface<TestParseResultPtr
             parseResult->children.append(funcResult);
         }
 
-        futureInterface.reportResult(TestParseResultPtr(parseResult));
+        promise.addResult(TestParseResultPtr(parseResult));
     }
     return true;
 }
 
-bool QuickTestParser::handleQtQuickTest(QFutureInterface<TestParseResultPtr> &futureInterface,
+bool QuickTestParser::handleQtQuickTest(QPromise<TestParseResultPtr> &promise,
                                         CPlusPlus::Document::Ptr document,
                                         ITestFramework *framework)
 {
@@ -263,17 +266,14 @@ bool QuickTestParser::handleQtQuickTest(QFutureInterface<TestParseResultPtr> &fu
     if (srcDir.isEmpty())
         return false;
 
-    if (futureInterface.isCanceled())
+    if (promise.isCanceled())
         return false;
     const QList<Document::Ptr> qmlDocs = scanDirectoryForQuickTestQmlFiles(srcDir);
     bool result = false;
     for (const Document::Ptr &qmlJSDoc : qmlDocs) {
-        if (futureInterface.isCanceled())
+        if (promise.isCanceled())
             break;
-        result |= checkQmlDocumentForQuickTestCode(futureInterface,
-                                                   qmlJSDoc,
-                                                   framework,
-                                                   proFile,
+        result |= checkQmlDocumentForQuickTestCode(promise, qmlJSDoc, framework, proFile,
                                                    m_checkForDerivedTests);
     }
     return result;
@@ -305,9 +305,8 @@ void QuickTestParser::handleDirectoryChanged(const QString &directory)
             m_watchedFiles[directory] = filesAndDates;
             PathsAndLanguages paths;
             paths.maybeInsert(FilePath::fromString(directory), Dialect::Qml);
-            QFutureInterface<void> future;
             ModelManagerInterface *qmlJsMM = ModelManagerInterface::instance();
-            ModelManagerInterface::importScan(future, ModelManagerInterface::workingCopy(), paths,
+            ModelManagerInterface::importScan(ModelManagerInterface::workingCopy(), paths,
                                               qmlJsMM,
                                               true /*emitDocumentChanges*/,
                                               false /*onlyTheLib*/,
@@ -327,8 +326,8 @@ void QuickTestParser::doUpdateWatchPaths(const QStringList &directories)
 QuickTestParser::QuickTestParser(ITestFramework *framework)
     : CppParser(framework)
 {
-    connect(ProjectExplorer::SessionManager::instance(),
-            &ProjectExplorer::SessionManager::startupProjectChanged, this, [this] {
+    connect(ProjectExplorer::ProjectManager::instance(),
+            &ProjectExplorer::ProjectManager::startupProjectChanged, this, [this] {
         const QStringList &dirs = m_directoryWatcher.directories();
         if (!dirs.isEmpty())
             m_directoryWatcher.removePaths(dirs);
@@ -338,7 +337,7 @@ QuickTestParser::QuickTestParser(ITestFramework *framework)
             this, &QuickTestParser::handleDirectoryChanged);
 }
 
-void QuickTestParser::init(const FilePaths &filesToParse, bool fullParse)
+void QuickTestParser::init(const QSet<FilePath> &filesToParse, bool fullParse)
 {
     m_qmlSnapshot = QmlJSTools::Internal::ModelManager::instance()->snapshot();
     if (!fullParse) {
@@ -370,7 +369,7 @@ void QuickTestParser::release()
     CppParser::release();
 }
 
-bool QuickTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futureInterface,
+bool QuickTestParser::processDocument(QPromise<TestParseResultPtr> &promise,
                                       const FilePath &fileName)
 {
     if (fileName.endsWith(".qml")) {
@@ -378,7 +377,7 @@ bool QuickTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futu
         if (proFile.isEmpty())
             return false;
         Document::Ptr qmlJSDoc = m_qmlSnapshot.document(fileName);
-        return checkQmlDocumentForQuickTestCode(futureInterface,
+        return checkQmlDocumentForQuickTestCode(promise,
                                                 qmlJSDoc,
                                                 framework(),
                                                 proFile,
@@ -389,7 +388,7 @@ bool QuickTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futu
    if (cppdoc.isNull() || !includesQtQuickTest(cppdoc, m_cppSnapshot))
        return false;
 
-   return handleQtQuickTest(futureInterface, cppdoc, framework());
+   return handleQtQuickTest(promise, cppdoc, framework());
 }
 
 FilePath QuickTestParser::projectFileForMainCppFile(const FilePath &fileName) const

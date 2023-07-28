@@ -35,10 +35,7 @@ Toolchains NimToolChainFactory::autoDetect(const ToolchainDetector &detector) co
 {
     Toolchains result;
 
-    IDevice::ConstPtr dev =
-        detector.device ? detector.device : DeviceManager::defaultDesktopDevice();
-
-    const FilePath compilerPath = dev->searchExecutableInPath("nim");
+    const FilePath compilerPath = detector.device->searchExecutableInPath("nim");
     if (compilerPath.isEmpty())
         return result;
 
@@ -86,7 +83,7 @@ NimToolChainConfigWidget::NimToolChainConfigWidget(NimToolChain *tc)
     fillUI();
 
     // Connect
-    connect(m_compilerCommand, &PathChooser::textChanged, this, [this] {
+    connect(m_compilerCommand, &PathChooser::validChanged, this, [this] {
         const FilePath path = m_compilerCommand->rawFilePath();
         auto tc = static_cast<NimToolChain *>(toolChain());
         QTC_ASSERT(tc, return);

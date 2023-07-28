@@ -15,7 +15,7 @@
 #include <utils/genericconstants.h>
 
 #include <projectexplorer/project.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
 
 #include <texteditor/tabsettings.h>
 #include <texteditor/textdocumentlayout.h>
@@ -32,7 +32,7 @@ static bool isBeautifierPluginActivated()
     return std::find_if(specs.begin(),
                         specs.end(),
                         [](ExtensionSystem::PluginSpec *spec) {
-                            return spec->name() == "Beautifier";
+                            return spec->name() == "Beautifier" && spec->isEffectivelyEnabled();
                         })
            != specs.end();
 }

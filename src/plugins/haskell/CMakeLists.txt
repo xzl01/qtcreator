@@ -1,7 +1,6 @@
 add_qtc_plugin(Haskell
   PLUGIN_DEPENDS
     QtCreator::Core QtCreator::TextEditor QtCreator::ProjectExplorer
-  DEPENDS Qt5::Widgets
   SOURCES
     haskell.qrc
     haskell_global.h
@@ -13,8 +12,9 @@ add_qtc_plugin(Haskell
     haskellplugin.cpp haskellplugin.h
     haskellproject.cpp haskellproject.h
     haskellrunconfiguration.cpp haskellrunconfiguration.h
+    haskellsettings.cpp haskellsettings.h
     haskelltokenizer.cpp haskelltokenizer.h
-    optionspage.cpp optionspage.h
+    haskelltr.h
     stackbuildstep.cpp stackbuildstep.h
 )
 

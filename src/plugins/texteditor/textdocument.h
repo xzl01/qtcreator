@@ -37,6 +37,7 @@ class SyntaxHighlighter;
 class TabSettings;
 class TextDocumentPrivate;
 class TextMark;
+class TextSuggestion;
 class TypingSettings;
 
 using TextMarks = QList<TextMark *>;
@@ -100,7 +101,6 @@ public:
     static bool marksAnnotationHidden(const Utils::Id &category);
 
     // IDocument implementation.
-    bool save(QString *errorString, const Utils::FilePath &filePath, bool autoSave) override;
     QByteArray contents() const override;
     bool setContents(const QByteArray &contents) override;
     bool shouldAutoSave() const override;
@@ -144,6 +144,9 @@ public:
     static QAction *createDiffAgainstCurrentFileAction(QObject *parent,
         const std::function<Utils::FilePath()> &filePath);
 
+    void insertSuggestion(const QString &text, const QTextCursor &cursor);
+    void insertSuggestion(std::unique_ptr<TextSuggestion> &&suggestion);
+
 #ifdef WITH_TESTS
     void setSilentReload();
 #endif
@@ -162,6 +165,7 @@ signals:
 
 protected:
     virtual void applyFontSettings();
+    bool saveImpl(QString *errorString, const Utils::FilePath &filePath, bool autoSave) override;
 
 private:
     OpenResult openImpl(QString *errorString,

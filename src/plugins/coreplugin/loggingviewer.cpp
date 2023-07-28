@@ -11,7 +11,6 @@
 
 #include <utils/algorithm.h>
 #include <utils/basetreeview.h>
-#include <utils/executeondestruction.h>
 #include <utils/fileutils.h>
 #include <utils/listmodel.h>
 #include <utils/qtcassert.h>
@@ -33,6 +32,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QSortFilterProxyModel>
 #include <QStyledItemDelegate>
 #include <QToolButton>
@@ -591,7 +591,7 @@ void LoggingViewManagerWidget::saveLoggingsToFile() const
 {
     // should we just let it continue without temporarily disabling?
     const bool enabled = m_manager->isEnabled();
-    Utils::ExecuteOnDestruction exec([this, enabled] { m_manager->setEnabled(enabled); });
+    const QScopeGuard cleanup([this, enabled] { m_manager->setEnabled(enabled); });
     if (enabled)
         m_manager->setEnabled(false);
     const Utils::FilePath fp = Utils::FileUtils::getSaveFilePath(ICore::dialogParent(),
@@ -622,7 +622,7 @@ void LoggingViewManagerWidget::saveLoggingsToFile() const
 void LoggingViewManagerWidget::saveEnabledCategoryPreset() const
 {
     Utils::FilePath fp = Utils::FileUtils::getSaveFilePath(ICore::dialogParent(),
-                                                           Tr::tr("Save Enabled Categories As"));
+                                                           Tr::tr("Save Enabled Categories As..."));
     if (fp.isEmpty())
         return;
     const QList<LoggingCategoryItem> enabled = m_categoryModel->enabledCategories();
@@ -656,7 +656,7 @@ void LoggingViewManagerWidget::loadAndUpdateFromPreset()
     if (!contents) {
         QMessageBox::critical(ICore::dialogParent(),
                               Tr::tr("Error"),
-                              Tr::tr("Failed to open preset file \"%1\" for reading")
+                              Tr::tr("Failed to open preset file \"%1\" for reading.")
                                   .arg(fp.toUserOutput()));
         return;
     }

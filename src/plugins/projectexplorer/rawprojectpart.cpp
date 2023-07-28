@@ -11,13 +11,14 @@
 #include "target.h"
 
 #include <ios/iosconstants.h>
+
 #include <utils/algorithm.h>
 
 namespace ProjectExplorer {
 
 RawProjectPartFlags::RawProjectPartFlags(const ToolChain *toolChain,
                                          const QStringList &commandLineFlags,
-                                         const QString &includeFileBaseDir)
+                                         const Utils::FilePath &includeFileBaseDir)
 {
     // Keep the following cheap/non-blocking for the ui thread. Expensive
     // operations are encapsulated in ToolChainInfo as "runners".
@@ -25,7 +26,8 @@ RawProjectPartFlags::RawProjectPartFlags(const ToolChain *toolChain,
     if (toolChain) {
         warningFlags = toolChain->warningFlags(commandLineFlags);
         languageExtensions = toolChain->languageExtensions(commandLineFlags);
-        includedFiles = toolChain->includedFiles(commandLineFlags, includeFileBaseDir);
+        includedFiles = Utils::transform(toolChain->includedFiles(commandLineFlags, includeFileBaseDir),
+                                         &Utils::FilePath::toFSPathString);
     }
 }
 
@@ -43,9 +45,10 @@ void RawProjectPart::setFiles(const QStringList &files,
     this->getMimeType = getMimeType;
 }
 
-static QString trimTrailingSlashes(const QString &path) {
+static QString trimTrailingSlashes(const QString &path)
+{
     QString p = path;
-    while (p.endsWith('/') && p.count() > 1) {
+    while (p.endsWith('/') && p.size() > 1) {
         p.chop(1);
     }
     return p;

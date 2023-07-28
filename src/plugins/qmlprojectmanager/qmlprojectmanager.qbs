@@ -9,6 +9,7 @@ QtcPlugin {
 
     Depends { name: "Core" }
     Depends { name: "ProjectExplorer" }
+    Depends { name: "QmlDesignerBase" }
     Depends { name: "QtSupport" }
     Depends { name: "TextEditor" }
 
@@ -25,7 +26,6 @@ QtcPlugin {
             "qmlprojectconstants.h",
             "qmlprojectmanager_global.h", "qmlprojectmanagertr.h",
             "qmlprojectmanagerconstants.h",
-            "qmlprojectnodes.cpp", "qmlprojectnodes.h",
             "qmlprojectplugin.cpp", "qmlprojectplugin.h",
             "qmlprojectrunconfiguration.cpp", "qmlprojectrunconfiguration.h",
             project.ide_source_tree + "/src/share/3rdparty/studiofonts/studiofonts.qrc"
@@ -33,12 +33,14 @@ QtcPlugin {
     }
 
     Group {
-        name: "File Format"
-        prefix: "fileformat/"
+        name: "Build System"
+        prefix: "buildsystem/"
         files: [
-            "filefilteritems.cpp", "filefilteritems.h",
-            "qmlprojectfileformat.cpp", "qmlprojectfileformat.h",
-            "qmlprojectitem.cpp", "qmlprojectitem.h",
+            "qmlbuildsystem.cpp", "qmlbuildsystem.h",
+            "projectitem/filefilteritems.cpp", "projectitem/filefilteritems.h",
+            "projectitem/qmlprojectitem.cpp", "projectitem/qmlprojectitem.h",
+            "projectitem/converters.cpp", "projectitem/converters.h",
+            "projectnode/qmlprojectnodes.cpp", "projectnode/qmlprojectnodes.h"
         ]
     }
 
@@ -55,7 +57,7 @@ QtcPlugin {
             "cmakeprojectconverterdialog.cpp", "cmakeprojectconverterdialog.h",
         ]
     }
-    
+
     Group {
         name: "QML Project File Generator"
         prefix: "qmlprojectgen/"

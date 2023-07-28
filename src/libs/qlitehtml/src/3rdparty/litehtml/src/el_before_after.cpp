@@ -16,12 +16,9 @@ litehtml::el_before_after_base::el_before_after_base(const std::shared_ptr<liteh
 	}
 }
 
-void litehtml::el_before_after_base::add_style(const tstring& style, const tstring& baseurl)
+void litehtml::el_before_after_base::add_style(const litehtml::style& st)
 {
-	html_tag::add_style(style, baseurl);
-
-	auto children = m_children;
-	m_children.clear();
+	html_tag::add_style(st);
 
 	tstring content = get_style_property(_t("content"), false, _t(""));
 	if(!content.empty())
@@ -74,11 +71,6 @@ void litehtml::el_before_after_base::add_style(const tstring& style, const tstri
 				}
 			}
 		}
-	}
-
-	if(m_children.empty())
-	{
-		m_children = children;
 	}
 }
 

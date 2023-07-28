@@ -44,16 +44,6 @@ void DoxygenGenerator::setAddLeadingAsterisks(bool add)
     m_addLeadingAsterisks = add;
 }
 
-static int lineBeforeCursor(const QTextCursor &cursor)
-{
-    int line, column;
-    const bool converted = Utils::Text::convertPosition(cursor.document(), cursor.position(), &line,
-                                                        &column);
-    QTC_ASSERT(converted, return std::numeric_limits<int>::max());
-
-    return line - 1;
-}
-
 QString DoxygenGenerator::generate(QTextCursor cursor,
                                    const CPlusPlus::Snapshot &snapshot,
                                    const Utils::FilePath &documentFilePath)
@@ -71,7 +61,7 @@ QString DoxygenGenerator::generate(QTextCursor cursor,
         const QString &text = block.text();
         const Tokens &tks = lexer(text);
         for (const Token &tk : tks) {
-            if (tk.is(T_SEMICOLON) || tk.is(T_LBRACE)) {
+            if (tk.is(T_SEMICOLON)) {
                 // No need to continue beyond this, we might already have something meaningful.
                 cursor.setPosition(block.position() + tk.utf16charsEnd(), QTextCursor::KeepAnchor);
                 break;
@@ -83,6 +73,11 @@ QString DoxygenGenerator::generate(QTextCursor cursor,
 
         block = block.next();
     }
+
+    // For the edge case of no semicolons at all, which can e.g. happen if the file
+    // consists only of empty function definitions.
+    if (!cursor.hasSelection())
+        cursor.setPosition(cursor.document()->characterCount() - 1, QTextCursor::KeepAnchor);
 
     if (!cursor.hasSelection())
         return QString();
@@ -104,7 +99,7 @@ QString DoxygenGenerator::generate(QTextCursor cursor,
 
     Document::Ptr doc = snapshot.preprocessedDocument(declCandidate.toUtf8(),
                                                       documentFilePath,
-                                                      lineBeforeCursor(initialCursor));
+                                                      cursor.blockNumber());
     doc->parse(Document::ParseDeclaration);
     doc->check(Document::FastCheck);
 

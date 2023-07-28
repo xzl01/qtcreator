@@ -6,6 +6,7 @@
 #include "propertyeditorqmlbackend.h"
 #include "propertyeditortransaction.h"
 #include "propertyeditorvalue.h"
+#include "propertyeditorwidget.h"
 
 #include <auxiliarydataproperties.h>
 #include <nodemetainfo.h>
@@ -28,15 +29,17 @@
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 
-#include <QCoreApplication>
-#include <QDir>
-#include <QFileSystemWatcher>
-#include <QFileInfo>
-#include <QDebug>
-#include <QTimer>
-#include <QShortcut>
 #include <QApplication>
+#include <QCoreApplication>
+#include <QDebug>
+#include <QDir>
+#include <QFileInfo>
+#include <QFileSystemWatcher>
+#include <QQuickItem>
+#include <QScopeGuard>
 #include <QScopedPointer>
+#include <QShortcut>
+#include <QTimer>
 
 enum {
     debug = false
@@ -69,9 +72,9 @@ PropertyEditorView::PropertyEditorView(AsynchronousImageCache &imageCache,
     m_qmlDir = PropertyEditorQmlBackend::propertyEditorResourcesPath();
 
     if (Utils::HostOsInfo::isMacHost())
-        m_updateShortcut = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_F3), m_stackedWidget);
+        m_updateShortcut = new QShortcut(QKeySequence(Qt::ALT | Qt::Key_F3), m_stackedWidget);
     else
-        m_updateShortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_F3), m_stackedWidget);
+        m_updateShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F3), m_stackedWidget);
     connect(m_updateShortcut, &QShortcut::activated, this, &PropertyEditorView::reloadQml);
 
     m_stackedWidget->setStyleSheet(Theme::replaceCssColors(
@@ -199,7 +202,7 @@ void PropertyEditorView::changeValue(const QString &name)
     if (name == "state" && castedValue.toString() == "base state")
         castedValue = "";
 
-    if (castedValue.type() == QVariant::Color) {
+    if (castedValue.typeId() == QVariant::Color) {
         QColor color = castedValue.value<QColor>();
         QColor newColor = QColor(color.name());
         newColor.setAlpha(color.alpha());
@@ -212,9 +215,9 @@ void PropertyEditorView::changeValue(const QString &name)
     } else {
         // QVector*D(0, 0, 0) detects as null variant though it is valid value
         if (castedValue.isValid()
-            && (!castedValue.isNull() || castedValue.type() == QVariant::Vector2D
-                || castedValue.type() == QVariant::Vector3D
-                || castedValue.type() == QVariant::Vector4D)) {
+            && (!castedValue.isNull() || castedValue.typeId() == QVariant::Vector2D
+                || castedValue.typeId() == QVariant::Vector3D
+                || castedValue.typeId() == QVariant::Vector4D)) {
             commitVariantValueToModel(propertyName, castedValue);
         }
     }
@@ -239,10 +242,10 @@ void PropertyEditorView::changeExpression(const QString &propertyName)
     if (noValidSelection())
         return;
 
-    QScopeGuard unlock([&](){ m_locked = false; });
+    const QScopeGuard cleanup([&] { m_locked = false; });
     m_locked = true;
 
-    executeInTransaction("PropertyEditorView::changeExpression", [this, name](){
+    executeInTransaction("PropertyEditorView::changeExpression", [this, name] {
         PropertyName underscoreName(name);
         underscoreName.replace('.', '_');
 
@@ -501,6 +504,7 @@ void PropertyEditorView::setupQmlBackend()
         currentQmlBackend->contextObject()->setSpecificQmlData(specificQmlData);
     }
 
+    currentQmlBackend->widget()->installEventFilter(this);
     m_stackedWidget->setCurrentWidget(currentQmlBackend->widget());
 
     currentQmlBackend->contextObject()->triggerSelectionChanged();
@@ -629,7 +633,7 @@ void PropertyEditorView::modelAboutToBeDetached(Model *model)
     resetView();
 }
 
-void PropertyEditorView::propertiesRemoved(const QList<AbstractProperty>& propertyList)
+void PropertyEditorView::propertiesRemoved(const QList<AbstractProperty> &propertyList)
 {
     if (noValidSelection())
         return;
@@ -641,7 +645,11 @@ void PropertyEditorView::propertiesRemoved(const QList<AbstractProperty>& proper
             m_qmlBackEndForCurrentType->contextObject()->setHasAliasExport(QmlObjectNode(m_selectedNode).isAliasExported());
 
         if (node == m_selectedNode || QmlObjectNode(m_selectedNode).propertyChangeForCurrentState() == node) {
-            setValue(m_selectedNode, property.name(), QmlObjectNode(m_selectedNode).instanceValue(property.name()));
+            m_locked = true;
+            PropertyEditorValue *value = m_qmlBackEndForCurrentType->propertyValueForName(QString::fromUtf8(property.name()));
+            if (value)
+                value->resetValue();
+            m_locked = false;
 
             if (propertyIsAttachedLayoutProperty(property.name())) {
                 m_qmlBackEndForCurrentType->setValueforLayoutAttachedProperties(m_selectedNode, property.name());
@@ -697,12 +705,9 @@ void PropertyEditorView::variantPropertiesChanged(const QList<VariantProperty>& 
     }
 }
 
-void PropertyEditorView::bindingPropertiesChanged(const QList<BindingProperty>& propertyList, PropertyChangeFlags /*propertyChange*/)
+void PropertyEditorView::bindingPropertiesChanged(const QList<BindingProperty> &propertyList, PropertyChangeFlags /*propertyChange*/)
 {
-    if (locked())
-        return;
-
-    if (noValidSelection())
+    if (locked() || noValidSelection())
         return;
 
     for (const BindingProperty &property : propertyList) {
@@ -714,11 +719,11 @@ void PropertyEditorView::bindingPropertiesChanged(const QList<BindingProperty>& 
         if (node == m_selectedNode || QmlObjectNode(m_selectedNode).propertyChangeForCurrentState() == node) {
             if (property.name().contains("anchor"))
                 m_qmlBackEndForCurrentType->backendAnchorBinding().invalidate(m_selectedNode);
-            if ( QmlObjectNode(m_selectedNode).modelNode().property(property.name()).isBindingProperty())
-                setValue(m_selectedNode, property.name(), QmlObjectNode(m_selectedNode).instanceValue(property.name()));
-            else
-                setValue(m_selectedNode, property.name(), QmlObjectNode(m_selectedNode).modelValue(property.name()));
 
+            m_locked = true;
+            QString exp = QmlObjectNode(m_selectedNode).bindingProperty(property.name()).expression();
+            m_qmlBackEndForCurrentType->setExpression(property.name(), exp);
+            m_locked = false;
         }
     }
 }
@@ -806,7 +811,12 @@ bool PropertyEditorView::hasWidget() const
 
 WidgetInfo PropertyEditorView::widgetInfo()
 {
-    return createWidgetInfo(m_stackedWidget, QStringLiteral("Properties"), WidgetInfo::RightPane, 0, tr("Properties"));
+    return createWidgetInfo(m_stackedWidget,
+                            QStringLiteral("Properties"),
+                            WidgetInfo::RightPane,
+                            0,
+                            tr("Properties"),
+                            tr("Property Editor view"));
 }
 
 void PropertyEditorView::currentStateChanged(const ModelNode &node)
@@ -890,6 +900,15 @@ void PropertyEditorView::setValue(const QmlObjectNode &qmlObjectNode,
     m_locked = true;
     m_qmlBackEndForCurrentType->setValue(qmlObjectNode, name, value);
     m_locked = false;
+}
+
+bool PropertyEditorView::eventFilter(QObject *obj, QEvent *event)
+{
+    if (event->type() == QEvent::FocusOut) {
+        if (m_qmlBackEndForCurrentType && m_qmlBackEndForCurrentType->widget() == obj)
+            QMetaObject::invokeMethod(m_qmlBackEndForCurrentType->widget()->rootObject(), "closeContextMenu");
+    }
+    return AbstractView::eventFilter(obj, event);
 }
 
 void PropertyEditorView::reloadQml()

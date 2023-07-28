@@ -112,7 +112,7 @@ function sdkInfoList(sdksPath) {
         if (!sdks[i].match(/[0-9]+/))
             continue;
 
-        if (sdks[i].startsWith("DriverKit"))
+        if (sdks[i].startsWith("DriverKit") || sdks[i].startsWith("AssetRuntime"))
             continue;
 
         var settingsPlist = FileInfo.joinPaths(sdksPath, sdks[i], "SDKSettings.plist");
@@ -205,8 +205,12 @@ function boolFromSdkOrPlatform(varName, sdkProps, platformProps, defaultValue) {
 function archsSpecsPath(version, targetOS, platformType, platformPath, devicePlatformPath,
                         developerPath) {
     if (Utilities.versionCompare(version, "13.3") >= 0) {
-        var baseDir = FileInfo.joinPaths(developerPath, "..",
-                                         "PlugIns/XCBSpecifications.ideplugin/Contents/Resources");
+        var pluginsDir = Utilities.versionCompare(version, "14.3") >= 0
+            ? FileInfo.joinPaths(developerPath, "Library", "Xcode", "Plug-ins")
+            : FileInfo.joinPaths(developerPath, "..", "PlugIns");
+        var baseDir = FileInfo.joinPaths(pluginsDir,
+                                         "XCBSpecifications.ideplugin", "Contents", "Resources");
+
         var baseName = targetOS.includes("macos") ? "MacOSX Architectures"
                 : targetOS.includes("ios-simulator") ? "iOS Simulator"
                 : targetOS.includes("ios") ? "iOS Device"

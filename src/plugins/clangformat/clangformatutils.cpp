@@ -7,6 +7,7 @@
 
 #include <coreplugin/icore.h>
 
+#include <cppeditor/cppcodestylepreferences.h>
 #include <cppeditor/cppcodestylesettings.h>
 
 #include <texteditor/icodestylepreferences.h>
@@ -15,7 +16,7 @@
 
 #include <projectexplorer/editorconfiguration.h>
 #include <projectexplorer/project.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
 
 #include <utils/qtcassert.h>
 
@@ -171,13 +172,89 @@ clang::format::FormatStyle qtcStyle()
     style.SpacesInCStyleCastParentheses = false;
     style.SpacesInParentheses = false;
     style.SpacesInSquareBrackets = false;
-    style.StatementMacros.emplace_back("Q_OBJECT");
-    style.StatementMacros.emplace_back("QT_BEGIN_NAMESPACE");
-    style.StatementMacros.emplace_back("QT_END_NAMESPACE");
+    addQtcStatementMacros(style);
     style.Standard = FormatStyle::LS_Cpp11;
     style.TabWidth = 4;
     style.UseTab = FormatStyle::UT_Never;
+    style.Standard = FormatStyle::LS_Auto;
     return style;
+}
+
+clang::format::FormatStyle currentQtStyle(const TextEditor::ICodeStylePreferences *preferences)
+{
+    clang::format::FormatStyle style = qtcStyle();
+    if (!preferences)
+        return style;
+
+    fromTabSettings(style, preferences->tabSettings());
+    if (auto ccpPreferences = dynamic_cast<const CppEditor::CppCodeStylePreferences *>(preferences))
+        fromCppCodeStyleSettings(style, ccpPreferences->codeStyleSettings());
+    return style;
+}
+
+void fromCppCodeStyleSettings(clang::format::FormatStyle &style,
+                              const CppEditor::CppCodeStyleSettings &settings)
+{
+    using namespace clang::format;
+    if (settings.indentAccessSpecifiers)
+        style.AccessModifierOffset = 0;
+    else
+        style.AccessModifierOffset = -1 * style.IndentWidth;
+
+    if (settings.indentNamespaceBody && settings.indentNamespaceBraces)
+        style.NamespaceIndentation = FormatStyle::NamespaceIndentationKind::NI_All;
+    else
+        style.NamespaceIndentation = FormatStyle::NamespaceIndentationKind::NI_None;
+
+    if (settings.indentClassBraces && settings.indentEnumBraces && settings.indentBlockBraces
+        && settings.indentFunctionBraces)
+        style.BreakBeforeBraces = FormatStyle::BS_Whitesmiths;
+    else
+        style.BreakBeforeBraces = FormatStyle::BS_Custom;
+
+    style.IndentCaseLabels = settings.indentSwitchLabels;
+#if LLVM_VERSION_MAJOR >= 11
+    style.IndentCaseBlocks = settings.indentBlocksRelativeToSwitchLabels;
+#endif
+
+    if (settings.extraPaddingForConditionsIfConfusingAlign)
+        style.BreakBeforeBinaryOperators = FormatStyle::BOS_All;
+    else if (settings.alignAssignments)
+        style.BreakBeforeBinaryOperators = FormatStyle::BOS_NonAssignment;
+    else
+        style.BreakBeforeBinaryOperators = FormatStyle::BOS_None;
+
+    style.DerivePointerAlignment = settings.bindStarToIdentifier || settings.bindStarToTypeName
+                                   || settings.bindStarToLeftSpecifier
+                                   || settings.bindStarToRightSpecifier;
+
+    if ((settings.bindStarToIdentifier || settings.bindStarToRightSpecifier)
+        && ClangFormatSettings::instance().mode() == ClangFormatSettings::Mode::Formatting)
+        style.PointerAlignment = FormatStyle::PAS_Right;
+
+    if ((settings.bindStarToTypeName || settings.bindStarToLeftSpecifier)
+        && ClangFormatSettings::instance().mode() == ClangFormatSettings::Mode::Formatting)
+        style.PointerAlignment = FormatStyle::PAS_Left;
+}
+
+void fromTabSettings(clang::format::FormatStyle &style, const TextEditor::TabSettings &settings)
+{
+    using namespace clang::format;
+
+    style.IndentWidth = settings.m_indentSize;
+    style.TabWidth = settings.m_tabSize;
+
+    switch (settings.m_tabPolicy) {
+    case TextEditor::TabSettings::TabPolicy::MixedTabPolicy:
+        style.UseTab = FormatStyle::UT_ForContinuationAndIndentation;
+        break;
+    case TextEditor::TabSettings::TabPolicy::SpacesOnlyTabPolicy:
+        style.UseTab = FormatStyle::UT_Never;
+        break;
+    case TextEditor::TabSettings::TabPolicy::TabsOnlyTabPolicy:
+        style.UseTab = FormatStyle::UT_Always;
+        break;
+    }
 }
 
 QString projectUniqueId(ProjectExplorer::Project *project)
@@ -211,7 +288,7 @@ bool getProjectOverriddenSettings(const ProjectExplorer::Project *project)
 
 bool getCurrentOverriddenSettings(const Utils::FilePath &filePath)
 {
-    const ProjectExplorer::Project *project = ProjectExplorer::SessionManager::projectForFile(
+    const ProjectExplorer::Project *project = ProjectExplorer::ProjectManager::projectForFile(
         filePath);
 
     return getProjectUseGlobalSettings(project)
@@ -233,7 +310,7 @@ ClangFormatSettings::Mode getProjectIndentationOrFormattingSettings(
 
 ClangFormatSettings::Mode getCurrentIndentationOrFormattingSettings(const Utils::FilePath &filePath)
 {
-    const ProjectExplorer::Project *project = ProjectExplorer::SessionManager::projectForFile(
+    const ProjectExplorer::Project *project = ProjectExplorer::ProjectManager::projectForFile(
         filePath);
 
     return getProjectUseGlobalSettings(project)
@@ -264,7 +341,7 @@ Utils::FilePath configForFile(const Utils::FilePath &fileName)
         return findConfig(fileName);
 
     const ProjectExplorer::Project *projectForFile
-        = ProjectExplorer::SessionManager::projectForFile(fileName);
+        = ProjectExplorer::ProjectManager::projectForFile(fileName);
 
     const TextEditor::ICodeStylePreferences *preferences
         = projectForFile
@@ -276,9 +353,44 @@ Utils::FilePath configForFile(const Utils::FilePath &fileName)
 
 void addQtcStatementMacros(clang::format::FormatStyle &style)
 {
-    static const std::vector<std::string> macros = {"Q_OBJECT",
+    static const std::vector<std::string> macros = {"Q_CLASSINFO",
+                                                    "Q_ENUM",
+                                                    "Q_ENUM_NS",
+                                                    "Q_FLAG",
+                                                    "Q_FLAG_NS",
+                                                    "Q_GADGET",
+                                                    "Q_GADGET_EXPORT",
+                                                    "Q_INTERFACES",
+                                                    "Q_MOC_INCLUDE",
+                                                    "Q_NAMESPACE",
+                                                    "Q_NAMESPACE_EXPORT",
+                                                    "Q_OBJECT",
+                                                    "Q_PROPERTY",
+                                                    "Q_REVISION",
+                                                    "Q_DISABLE_COPY",
+                                                    "Q_SET_OBJECT_NAME",
                                                     "QT_BEGIN_NAMESPACE",
-                                                    "QT_END_NAMESPACE"};
+                                                    "QT_END_NAMESPACE",
+
+                                                    "QML_ADDED_IN_MINOR_VERSION",
+                                                    "QML_ANONYMOUS",
+                                                    "QML_ATTACHED",
+                                                    "QML_DECLARE_TYPE",
+                                                    "QML_DECLARE_TYPEINFO",
+                                                    "QML_ELEMENT",
+                                                    "QML_EXTENDED",
+                                                    "QML_EXTENDED_NAMESPACE",
+                                                    "QML_EXTRA_VERSION",
+                                                    "QML_FOREIGN",
+                                                    "QML_FOREIGN_NAMESPACE",
+                                                    "QML_IMPLEMENTS_INTERFACES",
+                                                    "QML_INTERFACE",
+                                                    "QML_NAMED_ELEMENT",
+                                                    "QML_REMOVED_IN_MINOR_VERSION",
+                                                    "QML_SINGLETON",
+                                                    "QML_UNAVAILABLE",
+                                                    "QML_UNCREATABLE",
+                                                    "QML_VALUE_TYPE"};
     for (const std::string &macro : macros) {
         if (std::find(style.StatementMacros.begin(), style.StatementMacros.end(), macro)
             == style.StatementMacros.end())

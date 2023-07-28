@@ -37,6 +37,8 @@
 #include <QTextDocument>
 #include <QIcon>
 
+#include <set>
+
 using namespace CPlusPlus;
 using namespace CppEditor;
 using namespace TextEditor;
@@ -847,27 +849,27 @@ bool InternalCppCompletionAssistProcessor::accepts() const
 IAssistProposal *InternalCppCompletionAssistProcessor::createContentProposal()
 {
     // Duplicates are kept only if they are snippets.
-    QSet<QString> processed;
-    auto it = m_completions.begin();
-    while (it != m_completions.end()) {
-        auto item = static_cast<CppAssistProposalItem *>(*it);
-        if (!processed.contains(item->text()) || item->isSnippet()) {
+    std::set<QString> processed;
+    for (auto it = m_completions.begin(); it != m_completions.end();) {
+        if ((*it)->isSnippet()) {
             ++it;
-            if (!item->isSnippet()) {
-                processed.insert(item->text());
-                if (!item->isOverloaded()) {
-                    if (auto symbol = qvariant_cast<Symbol *>(item->data())) {
-                        if (Function *funTy = symbol->type()->asFunctionType()) {
-                            if (funTy->hasArguments())
-                                item->markAsOverloaded();
-                        }
-                    }
-                }
-            }
-        } else {
+            continue;
+        }
+        if (!processed.insert((*it)->text()).second) {
             delete *it;
             it = m_completions.erase(it);
+            continue;
         }
+        auto item = static_cast<CppAssistProposalItem *>(*it);
+        if (!item->isOverloaded()) {
+            if (auto symbol = qvariant_cast<Symbol *>(item->data())) {
+                if (Function *funTy = symbol->type()->asFunctionType()) {
+                    if (funTy->hasArguments())
+                        item->markAsOverloaded();
+                }
+            }
+        }
+        ++it;
     }
 
     m_model->loadContent(m_completions);
@@ -1041,7 +1043,7 @@ int InternalCppCompletionAssistProcessor::startCompletionHelper()
     int line = 0, column = 0;
     Utils::Text::convertPosition(interface()->textDocument(), startOfExpression, &line, &column);
     return startCompletionInternal(interface()->filePath(),
-                                   line, column - 1, expression, endOfExpression);
+                                   line, column, expression, endOfExpression);
 }
 
 bool InternalCppCompletionAssistProcessor::tryObjCCompletion()
@@ -1074,7 +1076,7 @@ bool InternalCppCompletionAssistProcessor::tryObjCCompletion()
     int line = 0, column = 0;
     Utils::Text::convertPosition(interface()->textDocument(), interface()->position(), &line,
                                  &column);
-    Scope *scope = thisDocument->scopeAt(line, column - 1);
+    Scope *scope = thisDocument->scopeAt(line, column);
     if (!scope)
         return false;
 
@@ -1989,7 +1991,7 @@ bool InternalCppCompletionAssistProcessor::completeConstructorOrFunction(const Q
         int lineSigned = 0, columnSigned = 0;
         Utils::Text::convertPosition(interface()->textDocument(), interface()->position(),
                                      &lineSigned, &columnSigned);
-        unsigned line = lineSigned, column = columnSigned - 1;
+        unsigned line = lineSigned, column = columnSigned;
 
         // find a scope that encloses the current location, starting from the lastVisibileSymbol
         // and moving outwards

@@ -5,19 +5,14 @@
 
 #include "diffeditorconstants.h"
 #include "diffeditordocument.h"
-#include "diffeditorplugin.h"
 #include "diffeditortr.h"
 
-#include <QMenu>
-#include <QPainter>
-#include <QScrollBar>
-#include <QTextBlock>
-#include <QVBoxLayout>
-
-#include <coreplugin/icore.h>
 #include <coreplugin/find/highlightscrollbarcontroller.h>
+#include <coreplugin/icore.h>
 #include <coreplugin/minisplitter.h>
 #include <coreplugin/progressmanager/progressmanager.h>
+
+#include <extensionsystem/pluginmanager.h>
 
 #include <texteditor/displaysettings.h>
 #include <texteditor/fontsettings.h>
@@ -25,9 +20,14 @@
 #include <texteditor/textdocumentlayout.h>
 #include <texteditor/texteditorsettings.h>
 
-#include <utils/asynctask.h>
+#include <utils/async.h>
 #include <utils/mathutils.h>
 #include <utils/tooltip/tooltip.h>
+
+#include <QMenu>
+#include <QPainter>
+#include <QScrollBar>
+#include <QVBoxLayout>
 
 using namespace Core;
 using namespace TextEditor;
@@ -35,8 +35,7 @@ using namespace Utils;
 
 using namespace std::placeholders;
 
-namespace DiffEditor {
-namespace Internal {
+namespace DiffEditor::Internal {
 
 static DiffSide oppositeSide(DiffSide side)
 {
@@ -245,8 +244,8 @@ QString SideDiffEditorWidget::plainTextFromSelection(const QTextCursor &cursor) 
     return TextDocument::convertToPlainText(text);
 }
 
-SideBySideDiffOutput SideDiffData::diffOutput(QFutureInterface<void> &fi, int progressMin,
-                                              int progressMax, const DiffEditorInput &input)
+static SideBySideDiffOutput diffOutput(QPromise<SideBySideShowResults> &promise, int progressMin,
+                                       int progressMax, const DiffEditorInput &input)
 {
     SideBySideDiffOutput output;
 
@@ -316,7 +315,7 @@ SideBySideDiffOutput SideDiffData::diffOutput(QFutureInterface<void> &fi, int pr
             addChunkLine(RightSide, -2);
             blockNumber++;
         } else {
-            for (int j = 0; j < contextFileData.chunks.count(); j++) {
+            for (int j = 0; j < contextFileData.chunks.size(); j++) {
                 const ChunkData &chunkData = contextFileData.chunks.at(j);
 
                 int leftLineNumber = chunkData.startingLineNumber[LeftSide];
@@ -331,7 +330,7 @@ SideBySideDiffOutput SideDiffData::diffOutput(QFutureInterface<void> &fi, int pr
                         blockNumber++;
                     }
 
-                    const int rows = chunkData.rows.count();
+                    const int rows = chunkData.rows.size();
                     output.side[LeftSide].diffData.m_chunkInfo.setChunkIndex(blockNumber, rows, j);
                     output.side[RightSide].diffData.m_chunkInfo.setChunkIndex(blockNumber, rows, j);
 
@@ -342,11 +341,11 @@ SideBySideDiffOutput SideDiffData::diffOutput(QFutureInterface<void> &fi, int pr
                     }
                 }
 
-                if (j == contextFileData.chunks.count() - 1) { // the last chunk
+                if (j == contextFileData.chunks.size() - 1) { // the last chunk
                     int skippedLines = -2;
                     if (chunkData.contextChunk) {
                         // if it's context chunk
-                        skippedLines = chunkData.rows.count();
+                        skippedLines = chunkData.rows.size();
                     } else if (!contextFileData.lastChunkAtTheEndOfFile
                                && !contextFileData.contextChunksIncluded) {
                         // if not a context chunk and not a chunk at the end of file
@@ -366,8 +365,8 @@ SideBySideDiffOutput SideDiffData::diffOutput(QFutureInterface<void> &fi, int pr
         diffText[RightSide].replace('\r', ' ');
         output.side[LeftSide].diffText += diffText[LeftSide];
         output.side[RightSide].diffText += diffText[RightSide];
-        fi.setProgressValue(MathUtils::interpolateLinear(++i, 0, count, progressMin, progressMax));
-        if (fi.isCanceled())
+        promise.setProgressValue(MathUtils::interpolateLinear(++i, 0, count, progressMin, progressMax));
+        if (promise.isCanceled())
             return {};
     }
     output.side[LeftSide].selections = SelectableTextEditorWidget::polishedSelections(
@@ -381,7 +380,7 @@ void SideDiffData::setLineNumber(int blockNumber, int lineNumber)
 {
     const QString lineNumberString = QString::number(lineNumber);
     m_lineNumbers.insert(blockNumber, lineNumber);
-    m_lineNumberDigits = qMax(m_lineNumberDigits, lineNumberString.count());
+    m_lineNumberDigits = qMax(m_lineNumberDigits, lineNumberString.size());
 }
 
 void SideDiffData::setFileInfo(int blockNumber, const DiffFileInfo &fileInfo)
@@ -869,16 +868,16 @@ void SideBySideDiffEditorWidget::restoreState()
 
 void SideBySideDiffEditorWidget::showDiff()
 {
-    m_asyncTask.reset(new AsyncTask<ShowResults>());
-    m_asyncTask->setFutureSynchronizer(DiffEditorPlugin::futureSynchronizer());
+    m_asyncTask.reset(new Async<SideBySideShowResults>());
+    m_asyncTask->setFutureSynchronizer(ExtensionSystem::PluginManager::futureSynchronizer());
     m_controller.setBusyShowing(true);
 
-    connect(m_asyncTask.get(), &AsyncTaskBase::done, this, [this] {
+    connect(m_asyncTask.get(), &AsyncBase::done, this, [this] {
         if (m_asyncTask->isCanceled() || !m_asyncTask->isResultAvailable()) {
             for (SideDiffEditorWidget *editor : m_editor)
                 editor->clearAll(Tr::tr("Retrieving data failed."));
         } else {
-            const ShowResults results = m_asyncTask->result();
+            const SideBySideShowResults results = m_asyncTask->result();
             m_editor[LeftSide]->setDiffData(results[LeftSide].diffData);
             m_editor[RightSide]->setDiffData(results[RightSide].diffData);
             TextDocumentPtr leftDoc(results[LeftSide].textDocument);
@@ -914,28 +913,23 @@ void SideBySideDiffEditorWidget::showDiff()
 
     const DiffEditorInput input(&m_controller);
 
-    auto getDocument = [input](QFutureInterface<ShowResults> &futureInterface) {
-        auto cleanup = qScopeGuard([&futureInterface] {
-            if (futureInterface.isCanceled())
-                futureInterface.reportCanceled();
-        });
+    auto getDocument = [input](QPromise<SideBySideShowResults> &promise) {
         const int firstPartMax = 20; // diffOutput is about 4 times quicker than filling document
         const int leftPartMax = 60;
         const int rightPartMax = 100;
-        futureInterface.setProgressRange(0, rightPartMax);
-        futureInterface.setProgressValue(0);
-        QFutureInterface<void> fi = futureInterface;
-        const SideBySideDiffOutput output = SideDiffData::diffOutput(fi, 0, firstPartMax, input);
-        if (futureInterface.isCanceled())
+        promise.setProgressRange(0, rightPartMax);
+        promise.setProgressValue(0);
+        const SideBySideDiffOutput output = diffOutput(promise, 0, firstPartMax, input);
+        if (promise.isCanceled())
             return;
 
-        const ShowResult leftResult{TextDocumentPtr(new TextDocument("DiffEditor.SideDiffEditor")),
+        const SideBySideShowResult leftResult{TextDocumentPtr(new TextDocument("DiffEditor.SideDiffEditor")),
                     output.side[LeftSide].diffData, output.side[LeftSide].selections};
-        const ShowResult rightResult{TextDocumentPtr(new TextDocument("DiffEditor.SideDiffEditor")),
+        const SideBySideShowResult rightResult{TextDocumentPtr(new TextDocument("DiffEditor.SideDiffEditor")),
                     output.side[RightSide].diffData, output.side[RightSide].selections};
-        const ShowResults result{leftResult, rightResult};
+        const SideBySideShowResults result{leftResult, rightResult};
 
-        auto propagateDocument = [&output, &fi](DiffSide side, const ShowResult &result,
+        auto propagateDocument = [&output, &promise](DiffSide side, const SideBySideShowResult &result,
                                                 int progressMin, int progressMax) {
             // No need to store the change history
             result.textDocument->document()->setUndoRedoEnabled(false);
@@ -952,8 +946,9 @@ void SideBySideDiffEditorWidget::showDiff()
                 const QString package = output.side[side].diffText.mid(currentPos, packageSize);
                 cursor.insertText(package);
                 currentPos += package.size();
-                fi.setProgressValue(MathUtils::interpolateLinear(currentPos, 0, diffSize, progressMin, progressMax));
-                if (fi.isCanceled())
+                promise.setProgressValue(MathUtils::interpolateLinear(currentPos, 0, diffSize,
+                                                                      progressMin, progressMax));
+                if (promise.isCanceled())
                     return;
             }
 
@@ -968,16 +963,16 @@ void SideBySideDiffEditorWidget::showDiff()
         };
 
         propagateDocument(LeftSide, leftResult, firstPartMax, leftPartMax);
-        if (fi.isCanceled())
+        if (promise.isCanceled())
             return;
         propagateDocument(RightSide, rightResult, leftPartMax, rightPartMax);
-        if (fi.isCanceled())
+        if (promise.isCanceled())
             return;
 
-        futureInterface.reportResult(result);
+        promise.addResult(result);
     };
 
-    m_asyncTask->setAsyncCallData(getDocument);
+    m_asyncTask->setConcurrentCallData(getDocument);
     m_asyncTask->start();
     ProgressManager::addTask(m_asyncTask->future(), Tr::tr("Rendering diff"), "DiffEditor");
 }
@@ -990,7 +985,7 @@ void SideBySideDiffEditorWidget::setFontSettings(const FontSettings &fontSetting
 void SideBySideDiffEditorWidget::jumpToOriginalFileRequested(DiffSide side, int diffFileIndex,
                                                              int lineNumber, int columnNumber)
 {
-    if (diffFileIndex < 0 || diffFileIndex >= m_controller.m_contextFileData.count())
+    if (diffFileIndex < 0 || diffFileIndex >= m_controller.m_contextFileData.size())
         return;
 
     const FileData fileData = m_controller.m_contextFileData.at(diffFileIndex);
@@ -1011,7 +1006,7 @@ void SideBySideDiffEditorWidget::jumpToOriginalFileRequested(DiffSide side, int 
         int thisLineNumber = chunkData.startingLineNumber[side];
         int otherLineNumber = chunkData.startingLineNumber[otherSide];
 
-        for (int j = 0; j < chunkData.rows.count(); j++) {
+        for (int j = 0; j < chunkData.rows.size(); j++) {
             const RowData rowData = chunkData.rows.at(j);
             if (rowData.line[side].textLineType == TextLineData::TextLine)
                 thisLineNumber++;
@@ -1108,7 +1103,6 @@ void SideBySideDiffEditorWidget::syncCursor(SideDiffEditorWidget *source, SideDi
     dest->horizontalScrollBar()->setValue(oldHSliderPos);
 }
 
-} // namespace Internal
-} // namespace DiffEditor
+} // namespace DiffEditor::Internal
 
 #include "sidebysidediffeditorwidget.moc"

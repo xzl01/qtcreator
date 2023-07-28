@@ -10,30 +10,24 @@
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/taskhub.h>
 
-#include <utils/qtcassert.h>
-
+#include <QPromise>
 #include <QTimer>
-
-#include <set>
 
 using namespace ProjectExplorer;
 using namespace Utils;
 
 namespace CppEditor::Internal {
 
-ProjectInfoGenerator::ProjectInfoGenerator(
-        const QFutureInterface<ProjectInfo::ConstPtr> &futureInterface,
-        const ProjectUpdateInfo &projectUpdateInfo)
-    : m_futureInterface(futureInterface)
-    , m_projectUpdateInfo(projectUpdateInfo)
+ProjectInfoGenerator::ProjectInfoGenerator(const ProjectUpdateInfo &projectUpdateInfo)
+    : m_projectUpdateInfo(projectUpdateInfo)
 {
 }
 
-ProjectInfo::ConstPtr ProjectInfoGenerator::generate()
+ProjectInfo::ConstPtr ProjectInfoGenerator::generate(const QPromise<ProjectInfo::ConstPtr> &promise)
 {
     QVector<ProjectPart::ConstPtr> projectParts;
     for (const RawProjectPart &rpp : m_projectUpdateInfo.rawProjectParts) {
-        if (m_futureInterface.isCanceled())
+        if (promise.isCanceled())
             return {};
         for (const ProjectPart::ConstPtr &part : createProjectParts(
                  rpp, m_projectUpdateInfo.projectFilePath)) {
@@ -48,14 +42,14 @@ ProjectInfo::ConstPtr ProjectInfoGenerator::generate()
         });
     };
     if (m_cToolchainMissing) {
-        showWarning(Tr::tr(
-                "The project contains C source files, but the currently active kit "
-                "has no C compiler. The code model will not be fully functional."));
+        showWarning(
+            ::CppEditor::Tr::tr("The project contains C source files, but the currently active kit "
+                                "has no C compiler. The code model will not be fully functional."));
     }
     if (m_cxxToolchainMissing) {
-        showWarning(Tr::tr(
-                "The project contains C++ source files, but the currently active kit "
-                "has no C++ compiler. The code model will not be fully functional."));
+        showWarning(::CppEditor::Tr::tr(
+            "The project contains C++ source files, but the currently active kit "
+            "has no C++ compiler. The code model will not be fully functional."));
     }
     return projectInfo;
 }

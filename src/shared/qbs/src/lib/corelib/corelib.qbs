@@ -14,14 +14,19 @@ QbsLibrary {
         ".",
         "../.." // for the plugin headers
     ])
-    property stringList enableUnitTestsDefines:
-        qbsbuildconfig.enableUnitTests ? ["QBS_ENABLE_UNIT_TESTS"] : []
-    property stringList systemSettingsDirDefines: qbsbuildconfig.systemSettingsDir
-        ? ['QBS_SYSTEM_SETTINGS_DIR="' + qbsbuildconfig.systemSettingsDir + '"'] : []
-    cpp.defines: base.concat([
-        "QBS_RELATIVE_LIBEXEC_PATH=" + Utilities.cStringQuote(qbsbuildconfig.relativeLibexecPath),
-        "QBS_VERSION=" + Utilities.cStringQuote(version),
-    ]).concat(enableUnitTestsDefines).concat(systemSettingsDirDefines)
+    cpp.defines: {
+        var defines = base.concat([
+            "QBS_RELATIVE_LIBEXEC_PATH=" + Utilities.cStringQuote(qbsbuildconfig.relativeLibexecPath),
+            "QBS_VERSION=" + Utilities.cStringQuote(version),
+        ]);
+        if (project.withTests)
+            defines.push("QBS_WITH_TESTS");
+        if (qbsbuildconfig.enableUnitTests)
+            defines.push("QBS_ENABLE_UNIT_TESTS");
+        if (qbsbuildconfig.systemSettingsDir)
+            defines.push('QBS_SYSTEM_SETTINGS_DIR="' + qbsbuildconfig.systemSettingsDir + '"');
+        return defines;
+    }
 
     Properties {
         condition: qbs.targetOS.contains("windows")
@@ -261,10 +266,6 @@ QbsLibrary {
         files: [
             "artifactproperties.cpp",
             "artifactproperties.h",
-            "astimportshandler.cpp",
-            "astimportshandler.h",
-            "astpropertiesitemhandler.cpp",
-            "astpropertiesitemhandler.h",
             "asttools.cpp",
             "asttools.h",
             "builtindeclarations.cpp",
@@ -287,31 +288,13 @@ QbsLibrary {
             "itemobserver.h",
             "itempool.cpp",
             "itempool.h",
-            "itemreader.cpp",
-            "itemreader.h",
-            "itemreaderastvisitor.cpp",
-            "itemreaderastvisitor.h",
-            "itemreadervisitorstate.cpp",
-            "itemreadervisitorstate.h",
             "itemtype.h",
             "jsimports.h",
             "language.cpp",
             "language.h",
-            "loader.cpp",
-            "loader.h",
-            "moduleloader.cpp",
-            "moduleloader.h",
-            "modulemerger.cpp",
-            "modulemerger.h",
             "moduleproviderinfo.h",
-            "moduleproviderloader.cpp",
-            "moduleproviderloader.h",
             "preparescriptobserver.cpp",
             "preparescriptobserver.h",
-            "probesresolver.cpp",
-            "probesresolver.h",
-            "projectresolver.cpp",
-            "projectresolver.h",
             "property.cpp",
             "property.h",
             "propertydeclaration.cpp",
@@ -337,6 +320,48 @@ QbsLibrary {
         qbs.install: qbsbuildconfig.installApiHeaders
         qbs.installDir: headerInstallPrefix + "/language"
         files: "language/forward_decls.h"
+    }
+    Group {
+        name: "loader"
+        prefix: name + '/'
+        files: [
+            "astimportshandler.cpp",
+            "astimportshandler.h",
+            "astpropertiesitemhandler.cpp",
+            "astpropertiesitemhandler.h",
+            "dependenciesresolver.cpp",
+            "dependenciesresolver.h",
+            "groupshandler.cpp",
+            "groupshandler.h",
+            "itemreader.cpp",
+            "itemreader.h",
+            "itemreaderastvisitor.cpp",
+            "itemreaderastvisitor.h",
+            "itemreadervisitorstate.cpp",
+            "itemreadervisitorstate.h",
+            "loaderutils.cpp",
+            "loaderutils.h",
+            "localprofiles.cpp",
+            "localprofiles.h",
+            "moduleinstantiator.cpp",
+            "moduleinstantiator.h",
+            "moduleloader.cpp",
+            "moduleloader.h",
+            "modulepropertymerger.cpp",
+            "modulepropertymerger.h",
+            "moduleproviderloader.cpp",
+            "moduleproviderloader.h",
+            "probesresolver.cpp",
+            "probesresolver.h",
+            "productitemmultiplexer.cpp",
+            "productitemmultiplexer.h",
+            "productscollector.cpp",
+            "productscollector.h",
+            "productshandler.cpp",
+            "productshandler.h",
+            "projectresolver.cpp",
+            "projectresolver.h",
+        ]
     }
     Group {
         name: "logging"
@@ -424,6 +449,7 @@ QbsLibrary {
             "msvcinfo.cpp",
             "msvcinfo.h",
             "pathutils.h",
+            "pimpl.h",
             "persistence.cpp",
             "persistence.h",
             "porting.h",
@@ -438,6 +464,7 @@ QbsLibrary {
             "progressobserver.cpp",
             "progressobserver.h",
             "projectgeneratormanager.cpp",
+            "propagate_const.h",
             "qbsassert.cpp",
             "qbsassert.h",
             "qbspluginmanager.cpp",

@@ -9,6 +9,9 @@ QtObject {
 
     property Item mainScrollView
 
-    signal collapseAll()
-    signal expandAll()
+    property bool contextMenuOpened: false
+
+    signal collapseAll(string category)
+    signal expandAll(string category)
+    signal closeContextMenu()
 }

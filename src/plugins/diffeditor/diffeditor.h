@@ -18,9 +18,8 @@ QT_END_NAMESPACE
 
 namespace TextEditor { class TextEditorWidget; }
 
-namespace DiffEditor {
+namespace DiffEditor::Internal {
 
-namespace Internal {
 class DescriptionEditorWidget;
 class DiffEditorDocument;
 class IDiffView;
@@ -53,6 +52,7 @@ private:
     void ignoreWhitespaceHasChanged();
     void prepareForReload();
     void reloadHasFinished(bool success);
+    void currentIndexChanged(int index);
     void setCurrentDiffFileIndex(int index);
     void documentStateChanged();
 
@@ -94,5 +94,4 @@ private:
     bool m_showDescription = true;
 };
 
-} // namespace Internal
-} // namespace DiffEditor
+} // namespace DiffEditor::Internal

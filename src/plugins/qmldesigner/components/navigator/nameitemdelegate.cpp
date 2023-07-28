@@ -13,6 +13,7 @@
 
 #include <metainfo.h>
 #include <modelnodecontextmenu.h>
+#include <qmldesignerconstants.h>
 #include <qmlobjectnode.h>
 #include <theme.h>
 
@@ -216,17 +217,28 @@ void NameItemDelegate::paint(QPainter *painter,
         if (widget && !widget->dragType().isEmpty()) {
             QByteArray dragType = widget->dragType();
             const NodeMetaInfo metaInfo = node.metaInfo();
-            const NodeMetaInfo dragInfo = node.model()->metaInfo(dragType);
-            ChooseFromPropertyListFilter *filter = new ChooseFromPropertyListFilter(dragInfo, metaInfo, true);
 
-            if (!filter->propertyList.isEmpty()) {
+            bool validDrop = false;
+            if (dragType == Constants::MIME_TYPE_BUNDLE_TEXTURE) {
+                validDrop = metaInfo.isQtQuick3DModel();
+            } else if (dragType == Constants::MIME_TYPE_ASSET_TEXTURE3D) {
+                validDrop = metaInfo.isQtQuick3DModel() || metaInfo.isQtQuick3DTexture();
+            } else if (dragType == Constants::MIME_TYPE_ASSET_IMAGE) {
+                validDrop = metaInfo.isQtQuick3DModel() || metaInfo.isQtQuick3DTexture()
+                        || metaInfo.isQtQuickImage() || metaInfo.isQtQuickBorderImage();
+            } else {
+                const NodeMetaInfo dragInfo = node.model()->metaInfo(dragType);
+                ChooseFromPropertyListFilter *filter = new ChooseFromPropertyListFilter(dragInfo, metaInfo, true);
+                validDrop = !filter->propertyList.isEmpty();
+                delete filter;
+            }
+            if (validDrop) {
                 painter->setOpacity(0.5);
                 painter->fillRect(styleOption.rect.adjusted(0, delegateMargin, 0, -delegateMargin),
                                   Theme::getColor(Theme::Color::DSnavigatorDropIndicatorBackground));
                 painter->setOpacity(1.0);
                 painter->setPen(Theme::getColor(Theme::Color::DSnavigatorTextSelected));
             }
-            delete filter;
         }
     }
 
@@ -276,7 +288,7 @@ bool NameItemDelegate::editorEvent(QEvent *event, QAbstractItemModel *, const QS
     if (event->type() == QEvent::MouseButtonRelease) {
         auto mouseEvent = static_cast<QMouseEvent *>(event);
         if (mouseEvent->button() == Qt::RightButton) {
-            openContextMenu(index, mouseEvent->globalPos());
+            openContextMenu(index, mouseEvent->globalPosition().toPoint());
             mouseEvent->accept();
             return true;
         }

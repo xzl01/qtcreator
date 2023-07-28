@@ -9822,6 +9822,14 @@ BOOL JS_SetConstructorBit(JSContext *ctx, JSValueConst func_obj, BOOL val)
     return TRUE;
 }
 
+JS_BOOL JS_IsArrayBuffer(JSValueConst v)
+{
+    if (!JS_IsObject(v))
+        return FALSE;
+    JSObject *p = JS_VALUE_GET_OBJ(v);
+    return p->class_id == JS_CLASS_ARRAY_BUFFER || p->class_id == JS_CLASS_SHARED_ARRAY_BUFFER;
+}
+
 BOOL JS_IsError(JSContext *ctx, JSValueConst val)
 {
     JSObject *p;
@@ -45338,6 +45346,10 @@ static int js_proxy_isArray(JSContext *ctx, JSValueConst obj)
     JSProxyData *s = JS_GetOpaque(obj, JS_CLASS_PROXY);
     if (!s)
         return FALSE;
+    if (js_check_stack_overflow(ctx->rt, 0)) {
+        JS_ThrowStackOverflow(ctx);
+        return -1;
+    }
     if (s->is_revoked) {
         JS_ThrowTypeErrorRevokedProxy(ctx);
         return -1;
@@ -54220,6 +54232,17 @@ JSValue JS_NewCFunctionMagic(JSContext *ctx, JSCFunctionMagic *func,
                             magic);
 }
 
+#ifdef JS_NAN_BOXING
+JSValue mkVal(int32_t tag, int32_t val)
+{
+    return ((uint64_t)(tag) << 32) | (uint32_t)(val);
+}
+
+JSValue mkPtr(int32_t tag, void *p)
+{
+    return ((uint64_t)(tag) << 32) | (uintptr_t)(p);
+}
+#else
 JSValue mkVal(int32_t tag, int32_t val)
 {
     return (JSValue){ (JSValueUnion){ .int32 = val }, tag };
@@ -54229,6 +54252,7 @@ JSValue mkPtr(int32_t tag, void *p)
 {
     return (JSValue){ (JSValueUnion){ .ptr = p }, tag };
 }
+#endif
 
 void JS_FreeValue(JSContext *ctx, JSValue v) {
     if (JS_VALUE_HAS_REF_COUNT(v)) {
@@ -54312,4 +54336,24 @@ JS_BOOL JS_IsRegExp(JSContext *ctx, JSValue val)
     if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
         return FALSE;
     return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_REGEXP;
+}
+
+int JS_IsDate(JSValue v)
+{
+    JSObject *p;
+    if (JS_VALUE_GET_TAG(v) != JS_TAG_OBJECT)
+        return FALSE;
+    return JS_VALUE_GET_OBJ(v)->class_id == JS_CLASS_DATE;
+}
+
+JSValue JS_NewDate(JSContext *ctx, const char *s)
+{
+    JSValue dateString = JS_NewString(ctx, s);
+    JSAtom constrAtom = JS_NewAtom(ctx, "Date");
+    JSValue constr = JS_GetGlobalVar(ctx, constrAtom, FALSE);
+    JSValue date = js_date_constructor(ctx, constr, 1, &dateString);
+    JS_FreeValue(ctx, constr);
+    JS_FreeValue(ctx, dateString);
+    JS_FreeAtom(ctx, constrAtom);
+    return date;
 }

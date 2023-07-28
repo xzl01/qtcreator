@@ -25,8 +25,7 @@ public:
     void registerActions(const Core::Context &qmlDesignerMainContext,
                          const Core::Context &qmlDesignerFormEditorContext,
                          const Core::Context &qmlDesignerEditor3DContext,
-                         const Core::Context &qmlDesignerNavigatorContext,
-                         const Core::Context &qmlDesignerMaterialBrowserContext);
+                         const Core::Context &qmlDesignerNavigatorContext);
 
     void connectUndoActions(DesignDocument *designDocument);
     void disconnectUndoActions(DesignDocument *designDocument);
@@ -53,6 +52,7 @@ private:
     QAction m_saveAction;
     QAction m_saveAsAction;
     QAction m_exportAsImageAction;
+    QAction m_takeScreenshotAction;
     QAction m_closeCurrentEditorAction;
     QAction m_closeAllEditorsAction;
     QAction m_closeOtherEditorsAction;
@@ -67,6 +67,7 @@ private:
     QAction m_escapeAction;
 
     bool isMatBrowserActive = false;
+    bool isAssetsLibraryActive = false;
 };
 
 } // namespace QmlDesigner

@@ -55,12 +55,14 @@ public:
     Q_INVOKABLE void addNewTexture();
     Q_INVOKABLE void duplicateTexture(int idx);
     Q_INVOKABLE void deleteTexture(int idx);
+    Q_INVOKABLE void setTextureId(int idx, const QString &newId);
     Q_INVOKABLE void applyToSelectedMaterial(qint64 internalId);
     Q_INVOKABLE void applyToSelectedModel(qint64 internalId);
     Q_INVOKABLE void openTextureEditor();
     Q_INVOKABLE void updateSceneEnvState();
     Q_INVOKABLE void updateModelSelectionState();
     Q_INVOKABLE void applyAsLightProbe(qint64 internalId);
+    Q_INVOKABLE bool isVisible(int idx) const;
 
 signals:
     void isEmptyChanged();
@@ -76,7 +78,6 @@ signals:
     void applyAsLightProbeRequested(const QmlDesigner::ModelNode &texture);
 
 private:
-    bool isTextureVisible(int idx) const;
     bool isValidIndex(int idx) const;
 
     QString m_searchText;
@@ -91,6 +92,7 @@ private:
     enum {
         RoleTexHasDynamicProps = Qt::UserRole + 1,
         RoleTexInternalId,
+        RoleTexId,
         RoleTexSource,
         RoleTexToolTip,
         RoleTexVisible

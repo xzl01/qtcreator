@@ -156,8 +156,9 @@ static inline double JS_VALUE_GET_FLOAT64(JSValue v)
 
 #define JS_NAN (0x7ff8000000000000 - ((uint64_t)JS_FLOAT64_TAG_ADDEND << 32))
 
-static inline JSValue __JS_NewFloat64(JSContext *ctx, double d)
+static inline JSValue JS_NewFloat64Impl(JSContext *ctx, double d)
 {
+    (void) ctx;
     union {
         double d;
         uint64_t u64;
@@ -665,6 +666,10 @@ JS_BOOL JS_IsFunction(JSContext* ctx, JSValueConst val);
 JS_BOOL JS_IsRegExp(JSContext* ctx, JSValueConst val);
 JS_BOOL JS_IsConstructor(JSContext* ctx, JSValueConst val);
 JS_BOOL JS_SetConstructorBit(JSContext *ctx, JSValueConst func_obj, JS_BOOL val);
+JS_BOOL JS_IsArrayBuffer(JSValueConst v);
+
+JSValue JS_NewDate(JSContext *ctx, const char *s);
+JS_BOOL JS_IsDate(JSValueConst v);
 
 JSValue JS_NewArray(JSContext *ctx);
 int JS_IsArray(JSContext *ctx, JSValueConst val);

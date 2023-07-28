@@ -21,9 +21,9 @@
 #include <cplusplus/Overview.h>
 #include <cplusplus/TypeOfExpression.h>
 
+#include <utils/async.h>
 #include <utils/proxyaction.h>
 #include <utils/qtcassert.h>
-#include <utils/runextensions.h>
 #include <utils/tooltip/tooltip.h>
 
 #include <QRegularExpression>
@@ -232,7 +232,7 @@ void FunctionDeclDefLinkFinder::startFindLinkAt(
     // handle the rest in a thread
     m_watcher.reset(new QFutureWatcher<QSharedPointer<FunctionDeclDefLink> >());
     connect(m_watcher.data(), &QFutureWatcherBase::finished, this, &FunctionDeclDefLinkFinder::onFutureDone);
-    m_watcher->setFuture(Utils::runAsync(findLinkHelper, result, refactoringChanges));
+    m_watcher->setFuture(Utils::asyncRun(findLinkHelper, result, refactoringChanges));
 }
 
 bool FunctionDeclDefLink::isValid() const
@@ -279,8 +279,7 @@ void FunctionDeclDefLink::hideMarker(CppEditorWidget *editor)
 {
     if (!hasMarker)
         return;
-    editor->setRefactorMarkers(RefactorMarker::filterOutType(
-        editor->refactorMarkers(), Constants::CPP_FUNCTION_DECL_DEF_LINK_MARKER_ID));
+    editor->clearRefactorMarkers(Constants::CPP_FUNCTION_DECL_DEF_LINK_MARKER_ID);
     hasMarker = false;
 }
 
@@ -289,8 +288,7 @@ void FunctionDeclDefLink::showMarker(CppEditorWidget *editor)
     if (hasMarker)
         return;
 
-    QList<RefactorMarker> markers = RefactorMarker::filterOutType(
-        editor->refactorMarkers(), Constants::CPP_FUNCTION_DECL_DEF_LINK_MARKER_ID);
+    RefactorMarkers markers;
     RefactorMarker marker;
 
     // show the marker at the end of the linked area, with a special case
@@ -321,7 +319,7 @@ void FunctionDeclDefLink::showMarker(CppEditorWidget *editor)
             cppEditor->applyDeclDefLinkChanges(true);
     };
     markers += marker;
-    editor->setRefactorMarkers(markers);
+    editor->setRefactorMarkers(markers, Constants::CPP_FUNCTION_DECL_DEF_LINK_MARKER_ID);
 
     hasMarker = true;
 }

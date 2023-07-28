@@ -39,16 +39,16 @@ AsynchronousImageFactory::~AsynchronousImageFactory()
     wait();
 }
 
-void AsynchronousImageFactory::generate(Utils::PathString name,
-                                        Utils::SmallString extraId,
+void AsynchronousImageFactory::generate(Utils::SmallStringView name,
+                                        Utils::SmallStringView extraId,
                                         ImageCache::AuxiliaryData auxiliaryData)
 {
-    addEntry(std::move(name), std::move(extraId), std::move(auxiliaryData));
+    addEntry(name, extraId, std::move(auxiliaryData));
     m_condition.notify_all();
 }
 
-void AsynchronousImageFactory::addEntry(Utils::PathString &&name,
-                                        Utils::SmallString &&extraId,
+void AsynchronousImageFactory::addEntry(Utils::SmallStringView name,
+                                        Utils::SmallStringView extraId,
                                         ImageCache::AuxiliaryData &&auxiliaryData)
 {
     std::unique_lock lock{m_mutex};
@@ -99,8 +99,8 @@ void AsynchronousImageFactory::request(Utils::SmallStringView name,
     if (currentModifiedTime < (storageModifiedTime + pause))
         return;
 
-    auto capture = [=](const QImage &image, const QImage &smallImage) {
-        m_storage.storeImage(id, currentModifiedTime, image, smallImage);
+    auto capture = [=](const QImage &image, const QImage &midSizeImage, const QImage &smallImage) {
+        m_storage.storeImage(id, currentModifiedTime, image, midSizeImage, smallImage);
     };
 
     collector.start(name,

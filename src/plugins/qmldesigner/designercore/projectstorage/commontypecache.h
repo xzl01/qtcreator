@@ -23,6 +23,7 @@ namespace QmlDesigner::Storage::Info {
 
 inline constexpr char Affector3D[] = "Affector3D";
 inline constexpr char Attractor3D[] = "Attractor3D";
+inline constexpr char BakedLightmap[] = "BakedLightmap";
 inline constexpr char BoolType[] = "bool";
 inline constexpr char BorderImage[] = "BorderImage";
 inline constexpr char Buffer[] = "Buffer";
@@ -48,6 +49,7 @@ inline constexpr char GroupItem[] = "GroupItem";
 inline constexpr char Image[] = "Image";
 inline constexpr char InstanceListEntry[] = "InstanceListEntry";
 inline constexpr char InstanceList[] = "InstanceList";
+inline constexpr char Light[] = "Light";
 inline constexpr char IntType[] = "int";
 inline constexpr char Item[] = "Item";
 inline constexpr char KeyframeGroup[] = "KeyframeGroup";
@@ -82,6 +84,7 @@ inline constexpr char QtQuick3D[] = "QtQuick3D";
 inline constexpr char QtQuick3D_Particles3D[] = "QtQuick3D.Particles3D";
 inline constexpr char QtQuick3D_Particles3D_cppnative[] = "QtQuick3D.Particles3D-cppnative";
 inline constexpr char QtQuick[] = "QtQuick";
+inline constexpr char QtQuick_cppnative[] = "QtQuick-cppnative";
 inline constexpr char QtQuick_Controls[] = "QtQuick.Controls";
 inline constexpr char QtQuick_Dialogs[] = "QtQuick.Dialogs";
 inline constexpr char QtQuick_Extras[] = "QtQuick.Extras";
@@ -89,9 +92,7 @@ inline constexpr char QtQuick_Layouts[] = "QtQuick.Layouts";
 inline constexpr char QtQuick_Studio_Components[] = "QtQuick.Studio.Components";
 inline constexpr char QtQuick_Timeline[] = "QtQuick.Timeline";
 inline constexpr char QtQuick_Window[] = "QtQuick.Window";
-inline constexpr char QtQuick_cppnative[] = "QtQuick-cppnative";
 inline constexpr char Qt_SafeRenderer[] = "Qt.SafeRenderer";
-inline constexpr char QuickStateOperation[] = "QuickStateOperation";
 inline constexpr char Rectangle[] = "Rectangle";
 inline constexpr char Repeater[] = "Repeater";
 inline constexpr char SafePicture[] = "SafePicture";
@@ -105,8 +106,6 @@ inline constexpr char StateGroup[] = "StateGroup";
 inline constexpr char State[] = "State";
 inline constexpr char SwipeView[] = "SwipeView";
 inline constexpr char TabBar[] = "TabBar";
-inline constexpr char TabView[] = "TabView";
-inline constexpr char Tab[] = "Tab";
 inline constexpr char TextArea[] = "TextArea";
 inline constexpr char TextEdit[] = "TextEdit";
 inline constexpr char Text[] = "Text";
@@ -157,7 +156,6 @@ class CommonTypeCache
                                    CacheType<QML, url>,
                                    CacheType<QML, var>,
                                    CacheType<QML_cppnative, FloatType>,
-                                   CacheType<QML_cppnative, QQuickStateOperation>,
                                    CacheType<QtMultimedia, SoundEffect>,
                                    CacheType<QtQuick, BorderImage>,
                                    CacheType<QtQuick, Connections>,
@@ -184,6 +182,7 @@ class CommonTypeCache
                                    CacheType<QtQuick, vector2d>,
                                    CacheType<QtQuick, vector3d>,
                                    CacheType<QtQuick, vector4d>,
+                                   CacheType<QtQuick3D, BakedLightmap>,
                                    CacheType<QtQuick3D, Buffer>,
                                    CacheType<QtQuick3D, Camera>,
                                    CacheType<QtQuick3D, Command>,
@@ -192,12 +191,14 @@ class CommonTypeCache
                                    CacheType<QtQuick3D, Effect>,
                                    CacheType<QtQuick3D, InstanceList>,
                                    CacheType<QtQuick3D, InstanceListEntry>,
+                                   CacheType<QtQuick3D, Light>,
                                    CacheType<QtQuick3D, Material>,
                                    CacheType<QtQuick3D, Model>,
                                    CacheType<QtQuick3D, Node>,
                                    CacheType<QtQuick3D, Pass>,
                                    CacheType<QtQuick3D, PrincipledMaterial>,
                                    CacheType<QtQuick3D, SceneEnvironment>,
+                                   CacheType<QtQuick3D, SpecularGlossyMaterial>,
                                    CacheType<QtQuick3D, Shader>,
                                    CacheType<QtQuick3D, Texture>,
                                    CacheType<QtQuick3D, TextureInput>,
@@ -212,9 +213,7 @@ class CommonTypeCache
                                    CacheType<QtQuick_Controls, Popup>,
                                    CacheType<QtQuick_Controls, SplitView>,
                                    CacheType<QtQuick_Controls, SwipeView>,
-                                   CacheType<QtQuick_Controls, Tab>,
                                    CacheType<QtQuick_Controls, TabBar>,
-                                   CacheType<QtQuick_Controls, TabView>,
                                    CacheType<QtQuick_Controls, TextArea>,
                                    CacheType<QtQuick_Dialogs, Dialog>,
                                    CacheType<QtQuick_Extras, Picture>,
@@ -224,7 +223,7 @@ class CommonTypeCache
                                    CacheType<QtQuick_Timeline, KeyframeGroup>,
                                    CacheType<QtQuick_Timeline, Timeline>,
                                    CacheType<QtQuick_Timeline, TimelineAnimation>,
-                                   CacheType<QtQuick_cppnative, QuickStateOperation>,
+                                   CacheType<QtQuick_cppnative, QQuickStateOperation>,
                                    CacheType<Qt_SafeRenderer, SafePicture>,
                                    CacheType<Qt_SafeRenderer, SafeRendererPicture>,
                                    CacheType<QtQuick_Window, Window>>;
@@ -240,15 +239,13 @@ public:
     }
 
     TypeId refreshTypedId(BaseCacheType &type,
-                          Utils::SmallStringView moduleName,
-                          Utils::SmallStringView typeName) const
+                          ::Utils::SmallStringView moduleName,
+                          ::Utils::SmallStringView typeName) const
     {
         if (!type.moduleId)
             type.moduleId = m_projectStorage.moduleId(moduleName);
 
-        type.typeId = m_projectStorage.typeId(type.moduleId,
-                                              typeName,
-                                              QmlDesigner::Storage::Synchronization::Version{});
+        type.typeId = m_projectStorage.typeId(type.moduleId, typeName, QmlDesigner::Storage::Version{});
 
         return type.typeId;
     }

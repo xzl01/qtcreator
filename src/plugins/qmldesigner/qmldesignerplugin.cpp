@@ -3,19 +3,21 @@
 
 #include "qmldesignerplugin.h"
 #include "qmldesignertr.h"
+
 #include "coreplugin/iwizardfactory.h"
 #include "designmodecontext.h"
 #include "designmodewidget.h"
 #include "dynamiclicensecheck.h"
 #include "exception.h"
 #include "generateresource.h"
-#include "nodeinstanceview.h"
 #include "openuiqmlfiledialog.h"
 #include "qmldesignerconstants.h"
 #include "qmldesignerexternaldependencies.h"
 #include "qmldesignerprojectmanager.h"
 #include "quick2propertyeditorview.h"
 #include "settingspage.h"
+#include "shortcutmanager.h"
+#include "toolbar.h"
 
 #include <colortool/colortool.h>
 #include <connectionview.h>
@@ -29,7 +31,6 @@
 #include <texttool/texttool.h>
 #include <timelineeditor/timelineview.h>
 #include <transitioneditor/transitioneditorview.h>
-
 #include <qmljseditor/qmljseditor.h>
 #include <qmljseditor/qmljseditorconstants.h>
 #include <qmljseditor/qmljseditordocument.h>
@@ -38,9 +39,10 @@
 
 #include <qmlprojectmanager/qmlproject.h>
 
+#include <app/app_version.h>
+#include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/command.h>
-#include <coreplugin/coreconstants.h>
 #include <coreplugin/coreplugintr.h>
 #include <coreplugin/designmode.h>
 #include <coreplugin/editormanager/editormanager.h>
@@ -54,19 +56,22 @@
 #include <extensionsystem/pluginspec.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorerconstants.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/target.h>
-#include <qmljs/qmljsmodelmanagerinterface.h>
 #include <sqlitelibraryinitializer.h>
+#include <qmldesignerbase/qmldesignerbaseplugin.h>
+#include <qmljs/qmljsmodelmanagerinterface.h>
 
 #include <utils/algorithm.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
+#include <utils/uniqueobjectptr.h>
 
 #include <QAction>
 #include <QApplication>
 #include <QDebug>
 #include <QProcessEnvironment>
+#include <QQuickItem>
 #include <QScreen>
 #include <QTimer>
 #include <QWindow>
@@ -130,8 +135,7 @@ QtQuickDesignerFactory::QtQuickDesignerFactory()
 class QmlDesignerPluginPrivate
 {
 public:
-    DesignerSettings settings{Core::ICore::instance()->settings()};
-    ExternalDependencies externalDependencies{settings};
+    ExternalDependencies externalDependencies{QmlDesignerBasePlugin::settings()};
     QmlDesignerProjectManager projectManager{externalDependencies};
     ViewManager viewManager{projectManager.asynchronousImageCache(), externalDependencies};
     DocumentManager documentManager{projectManager, externalDependencies};
@@ -140,6 +144,8 @@ public:
     DesignModeWidget mainWidget;
     QtQuickDesignerFactory m_qtQuickDesignerFactory;
     bool blockEditorChange = false;
+    Utils::UniqueObjectPtr<QToolBar> toolBar;
+    Utils::UniqueObjectPtr<QWidget> statusBar;
 };
 
 QmlDesignerPlugin *QmlDesignerPlugin::m_instance = nullptr;
@@ -180,8 +186,9 @@ static bool isDesignerMode(Utils::Id mode)
 static bool documentIsAlreadyOpen(DesignDocument *designDocument, Core::IEditor *editor, Utils::Id newMode)
 {
     return designDocument
-            && editor == designDocument->editor()
-            && isDesignerMode(newMode);
+           && editor == designDocument->editor()
+           && isDesignerMode(newMode)
+           && designDocument->fileName() == editor->document()->filePath();
 }
 
 static bool shouldAssertInException()
@@ -231,6 +238,15 @@ bool QmlDesignerPlugin::initialize(const QStringList & /*arguments*/, QString *e
     Sqlite::LibraryInitializer::initialize();
     QDir{}.mkpath(Core::ICore::cacheResourcePath().toString());
 
+    QAction *action = new QAction(tr("Give Feedback..."), this);
+    Core::Command *cmd = Core::ActionManager::registerAction(action, "Help.GiveFeedback");
+    Core::ActionManager::actionContainer(Core::Constants::M_HELP)
+        ->addAction(cmd, Core::Constants::G_HELP_SUPPORT);
+
+    connect(action, &QAction::triggered, this, [this] {
+        lauchFeedbackPopupInternal(Core::Constants::IDE_DISPLAY_NAME);
+    });
+
     if (!Utils::HostOsInfo::canCreateOpenGLContext(errorMessage))
         return false;
     d = new QmlDesignerPluginPrivate;
@@ -247,7 +263,7 @@ bool QmlDesignerPlugin::initialize(const QStringList & /*arguments*/, QString *e
     //TODO Move registering those types out of the property editor, since they are used also in the states editor
     Quick2PropertyEditorView::registerQmlTypes();
 
-    if (QmlDesigner::checkLicense() == QmlDesigner::FoundLicense::enterprise)
+    if (checkEnterpriseLicense())
         Core::IWizardFactory::registerFeatureProvider(new EnterpriseFeatureProvider);
     Exception::setWarnAboutException(!QmlDesignerPlugin::instance()
                                           ->settings()
@@ -258,6 +274,11 @@ bool QmlDesignerPlugin::initialize(const QStringList & /*arguments*/, QString *e
         const QString composedTitle = title.isEmpty() ? Tr::tr("Error") : title.toString();
         Core::AsynchronousMessageBox::warning(composedTitle, description.toString());
     });
+
+    if (QmlProjectManager::QmlProject::isQtDesignStudio()) {
+        d->toolBar = ToolBar::create();
+        d->statusBar = ToolBar::createStatusBar();
+    }
 
     return true;
 }
@@ -271,32 +292,32 @@ bool QmlDesignerPlugin::delayedInitialize()
         Utils::transform(ExtensionSystem::PluginManager::pluginPaths(), [postfix](const QString &p) {
             return QString(p + postfix);
         });
-    MetaInfo::setPluginPaths(pluginPaths);
 
-    d->viewManager.registerView(
-        std::make_unique<QmlDesigner::Internal::ConnectionView>(d->externalDependencies));
+    MetaInfo::initializeGlobal(pluginPaths, d->externalDependencies);
+
+    d->viewManager.registerView(std::make_unique<ConnectionView>(d->externalDependencies));
 
     auto timelineView = d->viewManager.registerView(
-        std::make_unique<QmlDesigner::TimelineView>(d->externalDependencies));
+        std::make_unique<TimelineView>(d->externalDependencies));
     timelineView->registerActions();
 
     d->viewManager.registerView(
-        std::make_unique<QmlDesigner::CurveEditorView>(d->externalDependencies));
+        std::make_unique<CurveEditorView>(d->externalDependencies));
 
     auto eventlistView = d->viewManager.registerView(
-        std::make_unique<QmlDesigner::EventListPluginView>(d->externalDependencies));
+        std::make_unique<EventListPluginView>(d->externalDependencies));
     eventlistView->registerActions();
 
     auto transitionEditorView = d->viewManager.registerView(
-        std::make_unique<QmlDesigner::TransitionEditorView>(d->externalDependencies));
+        std::make_unique<TransitionEditorView>(d->externalDependencies));
     transitionEditorView->registerActions();
 
-    d->viewManager.registerFormEditorTool(std::make_unique<QmlDesigner::SourceTool>());
-    d->viewManager.registerFormEditorTool(std::make_unique<QmlDesigner::ColorTool>());
-    d->viewManager.registerFormEditorTool(std::make_unique<QmlDesigner::TextTool>());
+    d->viewManager.registerFormEditorTool(std::make_unique<SourceTool>());
+    d->viewManager.registerFormEditorTool(std::make_unique<ColorTool>());
+    d->viewManager.registerFormEditorTool(std::make_unique<TextTool>());
     d->viewManager.registerFormEditorTool(
-        std::make_unique<QmlDesigner::PathTool>(d->externalDependencies));
-    d->viewManager.registerFormEditorTool(std::make_unique<QmlDesigner::TransitionTool>());
+        std::make_unique<PathTool>(d->externalDependencies));
+    d->viewManager.registerFormEditorTool(std::make_unique<TransitionTool>());
 
     if (QmlProjectManager::QmlProject::isQtDesignStudio()) {
         d->mainWidget.initialize();
@@ -315,8 +336,6 @@ bool QmlDesignerPlugin::delayedInitialize()
         if (!licensee().isEmpty())
             Core::ICore::appendAboutInformation(tr("Licensee: %1").arg(licensee()));
     }
-
-    MetaInfo::global();
 
     return true;
 }
@@ -347,7 +366,7 @@ ExtensionSystem::IPlugin::ShutdownFlag QmlDesignerPlugin::aboutToShutdown()
 static QStringList allUiQmlFilesforCurrentProject(const Utils::FilePath &fileName)
 {
     QStringList list;
-    ProjectExplorer::Project *currentProject = ProjectExplorer::SessionManager::projectForFile(fileName);
+    ProjectExplorer::Project *currentProject = ProjectExplorer::ProjectManager::projectForFile(fileName);
 
     if (currentProject) {
         const QList<Utils::FilePath> fileNames = currentProject->files(ProjectExplorer::Project::SourceFiles);
@@ -363,7 +382,7 @@ static QStringList allUiQmlFilesforCurrentProject(const Utils::FilePath &fileNam
 static QString projectPath(const Utils::FilePath &fileName)
 {
     QString path;
-    ProjectExplorer::Project *currentProject = ProjectExplorer::SessionManager::projectForFile(fileName);
+    ProjectExplorer::Project *currentProject = ProjectExplorer::ProjectManager::projectForFile(fileName);
 
     if (currentProject)
         path = currentProject->projectDirectory().toString();
@@ -380,17 +399,18 @@ void QmlDesignerPlugin::integrateIntoQtCreator(QWidget *modeWidget)
     Core::Context qmlDesignerEditor3dContext(Constants::C_QMLEDITOR3D);
     Core::Context qmlDesignerNavigatorContext(Constants::C_QMLNAVIGATOR);
     Core::Context qmlDesignerMaterialBrowserContext(Constants::C_QMLMATERIALBROWSER);
+    Core::Context qmlDesignerAssetsLibraryContext(Constants::C_QMLASSETSLIBRARY);
 
     context->context().add(qmlDesignerMainContext);
     context->context().add(qmlDesignerFormEditorContext);
     context->context().add(qmlDesignerEditor3dContext);
     context->context().add(qmlDesignerNavigatorContext);
     context->context().add(qmlDesignerMaterialBrowserContext);
+    context->context().add(qmlDesignerAssetsLibraryContext);
     context->context().add(ProjectExplorer::Constants::QMLJS_LANGUAGE_ID);
 
     d->shortCutManager.registerActions(qmlDesignerMainContext, qmlDesignerFormEditorContext,
-                                       qmlDesignerEditor3dContext, qmlDesignerNavigatorContext,
-                                       qmlDesignerMaterialBrowserContext);
+                                       qmlDesignerEditor3dContext, qmlDesignerNavigatorContext);
 
     const QStringList mimeTypes = { QmlJSTools::Constants::QML_MIMETYPE,
                                     QmlJSTools::Constants::QMLUI_MIMETYPE };
@@ -419,14 +439,12 @@ void QmlDesignerPlugin::integrateIntoQtCreator(QWidget *modeWidget)
             &Core::ModeManager::currentModeChanged,
             [this](Utils::Id newMode, Utils::Id oldMode) {
                 Core::IEditor *currentEditor = Core::EditorManager::currentEditor();
-                if (d && currentEditor && checkIfEditorIsQtQuick(currentEditor)
+                if (isDesignerMode(newMode) && checkIfEditorIsQtQuick(currentEditor)
                     && !documentIsAlreadyOpen(currentDesignDocument(), currentEditor, newMode)) {
-                    if (isDesignerMode(newMode)) {
-                        showDesigner();
-                    } else if (currentDesignDocument()
-                               || (!isDesignerMode(newMode) && isDesignerMode(oldMode))) {
-                        hideDesigner();
-                    }
+                    showDesigner();
+                } else if (currentDesignDocument()
+                           || (!isDesignerMode(newMode) && isDesignerMode(oldMode))) {
+                    hideDesigner();
                 }
             });
 }
@@ -476,7 +494,7 @@ void QmlDesignerPlugin::hideDesigner()
     d->shortCutManager.disconnectUndoActions(currentDesignDocument());
     d->documentManager.setCurrentDesignDocument(nullptr);
     d->shortCutManager.updateUndoActions(nullptr);
-    emitUsageStatisticsTime(QmlDesigner::Constants::EVENT_DESIGNMODE_TIME, m_usageTimer.elapsed());
+    emitUsageStatisticsTime(Constants::EVENT_DESIGNMODE_TIME, m_usageTimer.elapsed());
 }
 
 void QmlDesignerPlugin::changeEditor()
@@ -574,6 +592,15 @@ void QmlDesignerPlugin::resetModelSelection()
         return;
     }
     rewriterView()->setSelectedModelNodes(QList<ModelNode>());
+}
+
+QString QmlDesignerPlugin::identiferToDisplayString(const QString &identifier)
+{
+    for (AbstractView *view : viewManager().views())
+        if (view->widgetInfo().uniqueId.toLower() == identifier.toLower())
+            return view->widgetInfo().feedbackDisplayName;
+
+    return identifier;
 }
 
 RewriterView *QmlDesignerPlugin::rewriterView() const
@@ -701,8 +728,67 @@ void QmlDesignerPlugin::trackWidgetFocusTime(QWidget *widget, const QString &ide
             });
 }
 
+void QmlDesignerPlugin::lauchFeedbackPopup(const QString &identifier)
+{
+    if (Core::ModeManager::currentModeId() == Core::Constants::MODE_DESIGN)
+        lauchFeedbackPopupInternal(identifier);
+}
+
+void QmlDesignerPlugin::handleFeedback(const QString &feedback, int rating)
+{
+    const QString identifier = sender()->property("identifier").toString();
+    emit usageStatisticsInsertFeedback(identifier, feedback, rating);
+}
+
+void QmlDesignerPlugin::lauchFeedbackPopupInternal(const QString &identifier)
+{
+    m_feedbackWidget = new QQuickWidget(Core::ICore::dialogParent());
+    m_feedbackWidget->setObjectName(Constants::OBJECT_NAME_TOP_FEEDBACK);
+
+    const QString qmlPath = Core::ICore::resourcePath("qmldesigner/feedback/FeedbackPopup.qml").toString();
+
+    m_feedbackWidget->setSource(QUrl::fromLocalFile(qmlPath));
+    if (!m_feedbackWidget->errors().isEmpty()) {
+        qDebug() << qmlPath;
+        qDebug() << m_feedbackWidget->errors().first().toString();
+    }
+    m_feedbackWidget->setWindowModality(Qt::ApplicationModal);
+    if (Utils::HostOsInfo::isMacHost())
+        m_feedbackWidget->setWindowFlags(Qt::Dialog);
+    else
+        m_feedbackWidget->setWindowFlags(Qt::SplashScreen);
+    m_feedbackWidget->setAttribute(Qt::WA_DeleteOnClose);
+
+    QQuickItem *root = m_feedbackWidget->rootObject();
+
+    QTC_ASSERT(root, return );
+
+    QObject *title = root->findChild<QObject *>("title");
+    QString name = QmlDesignerPlugin::tr("Enjoying the %1?").arg(identiferToDisplayString(identifier));
+    title->setProperty("text", name);
+    root->setProperty("identifier", identifier);
+
+    connect(root, SIGNAL(closeClicked()), this, SLOT(closeFeedbackPopup()));
+
+    QObject::connect(root,
+                     SIGNAL(submitFeedback(QString, int)),
+                     this,
+                     SLOT(handleFeedback(QString, int)));
+
+    m_feedbackWidget->show();
+}
+
+void QmlDesignerPlugin::closeFeedbackPopup()
+{
+    if (m_feedbackWidget) {
+        m_feedbackWidget->deleteLater();
+        m_feedbackWidget = nullptr;
+    }
+}
+
 void QmlDesignerPlugin::emitUsageStatisticsTime(const QString &identifier, int elapsed)
 {
+
     QTC_ASSERT(instance(), return);
     emit instance()->usageStatisticsUsageTimer(normalizeIdentifier(identifier), elapsed);
 }
@@ -744,7 +830,7 @@ ExternalDependenciesInterface &QmlDesignerPlugin::externalDependenciesForPluginI
 
 DesignerSettings &QmlDesignerPlugin::settings()
 {
-    return instance()->d->settings;
+    return QmlDesignerBasePlugin::settings();
 }
 
 } // namespace QmlDesigner

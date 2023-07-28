@@ -21,14 +21,14 @@
 #include <projectexplorer/toolchain.h>
 
 #include <utils/algorithm.h>
-#include <utils/qtcprocess.h>
+#include <utils/process.h>
 #include <utils/stringutils.h>
-#include <utils/tasktree.h>
 
 #include <QLoggingCategory>
 
 using namespace CppEditor;
 using namespace ProjectExplorer;
+using namespace Tasking;
 using namespace Utils;
 
 static Q_LOGGING_CATEGORY(LOG, "qtc.clangtools.runcontrol", QtWarningMsg)
@@ -55,7 +55,8 @@ private:
 
         connect(BuildManager::instance(), &BuildManager::buildQueueFinished,
                 this, &ProjectBuilder::onBuildFinished, Qt::QueuedConnection);
-        BuildManager::buildProjectWithDependencies(target->project());
+        if (!BuildManager::isBuilding(target))
+            BuildManager::buildProjectWithDependencies(target->project());
      }
 
      void onBuildFinished(bool success)
@@ -182,10 +183,13 @@ void ClangToolRunWorker::start()
     m_filesAnalyzed.clear();
     m_filesNotAnalyzed.clear();
 
-    using namespace Tasking;
-    QList<TaskItem> tasks{ParallelLimit(qMax(1, m_runSettings.parallelJobs()))};
+    QList<GroupItem> tasks{parallelLimit(qMax(1, m_runSettings.parallelJobs()))};
     for (const AnalyzeUnit &unit : std::as_const(unitsToProcess)) {
-        const AnalyzeInputData input{tool, m_diagnosticConfig, m_temporaryDir.path(),
+        if (!m_diagnosticConfig.isEnabled(tool)
+            && !m_runSettings.hasConfigFileForSourceFile(unit.file)) {
+            continue;
+        }
+        const AnalyzeInputData input{tool, m_runSettings, m_diagnosticConfig, m_temporaryDir.path(),
                                      m_environment, unit};
         const auto setupHandler = [this, unit, tool] {
             const QString filePath = unit.file.toUserOutput();
@@ -238,26 +242,15 @@ void ClangToolRunWorker::onDone(const AnalyzeOutputData &output)
 
     qCDebug(LOG) << "onRunnerFinishedWithSuccess:" << output.outputFilePath;
 
-    QString errorMessage;
-    const Diagnostics diagnostics = m_tool->read(output.outputFilePath, m_projectFiles,
-                                                 &errorMessage);
+    const Diagnostics diagnostics = output.diagnostics;
 
-    if (!errorMessage.isEmpty()) {
-        m_filesAnalyzed.remove(output.fileToAnalyze);
-        m_filesNotAnalyzed.insert(output.fileToAnalyze);
-        qCDebug(LOG) << "onRunnerFinishedWithSuccess: Error reading log file:" << errorMessage;
-        appendMessage(Tr::tr("Failed to analyze \"%1\": %2")
-                        .arg(output.fileToAnalyze.toUserOutput(), errorMessage),
-                      Utils::StdErrFormat);
-    } else {
-        if (!m_filesNotAnalyzed.contains(output.fileToAnalyze))
-            m_filesAnalyzed.insert(output.fileToAnalyze);
-        if (!diagnostics.isEmpty()) {
-            // do not generate marks when we always analyze open files since marks from that
-            // analysis should be more up to date
-            const bool generateMarks = !m_runSettings.analyzeOpenFiles();
-            m_tool->onNewDiagnosticsAvailable(diagnostics, generateMarks);
-        }
+    if (!m_filesNotAnalyzed.contains(output.fileToAnalyze))
+        m_filesAnalyzed.insert(output.fileToAnalyze);
+    if (!diagnostics.isEmpty()) {
+        // do not generate marks when we always analyze open files since marks from that
+        // analysis should be more up to date
+        const bool generateMarks = !m_runSettings.analyzeOpenFiles();
+        m_tool->onNewDiagnosticsAvailable(diagnostics, generateMarks);
     }
 }
 

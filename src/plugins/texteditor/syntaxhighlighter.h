@@ -62,6 +62,7 @@ protected:
     void setTextFormatCategories(int count, std::function<TextStyle(int)> formatMapping);
     QTextCharFormat formatForCategory(int categoryIndex) const;
     QTextCharFormat whitespacified(const QTextCharFormat &fmt);
+    QTextCharFormat asSyntaxHighlight(const QTextCharFormat &fmt);
 
     // implement in subclasses
     // default implementation highlights whitespace
@@ -91,6 +92,11 @@ private:
     void delayedRehighlight();
 
     QScopedPointer<SyntaxHighlighterPrivate> d_ptr;
+
+#ifdef WITH_TESTS
+    friend class tst_highlighter;
+    SyntaxHighlighter(QTextDocument *parent, const FontSettings &fontsettings);
+#endif
 };
 
 } // namespace TextEditor

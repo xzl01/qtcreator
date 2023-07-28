@@ -41,7 +41,7 @@ namespace Internal {
 
 static QStringList puppetModes()
 {
-    static QStringList puppetModeList{"", "all", "editormode", "rendermode", "previewmode"};
+    static QStringList puppetModeList{"", "all", "editormode", "rendermode", "previewmode", "bakelightsmode"};
     return puppetModeList;
 }
 
@@ -196,7 +196,7 @@ SettingsPageWidget::SettingsPageWidget(ExternalDependencies &externalDependencie
 
     m_debugPuppetComboBox = new QComboBox;
 
-    using namespace Utils::Layouting;
+    using namespace Layouting;
 
     Column {
         m_useDefaultPuppetRadioButton,

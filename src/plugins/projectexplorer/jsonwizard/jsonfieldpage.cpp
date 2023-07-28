@@ -16,10 +16,7 @@
 
 #include <utils/algorithm.h>
 #include <utils/fancylineedit.h>
-#include <utils/fileutils.h>
 #include <utils/qtcassert.h>
-#include <utils/runextensions.h>
-#include <utils/stringutils.h>
 #include <utils/theme/theme.h>
 
 #include <QApplication>
@@ -29,7 +26,6 @@
 #include <QDebug>
 #include <QDir>
 #include <QFormLayout>
-#include <QFutureWatcher>
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QListView>
@@ -154,7 +150,7 @@ QVariant JsonFieldPage::Field::toSettings() const
 
 JsonFieldPage::Field *JsonFieldPage::Field::parse(const QVariant &input, QString *errorMessage)
 {
-    if (input.type() != QVariant::Map) {
+    if (input.typeId() != QVariant::Map) {
         *errorMessage = Tr::tr("Field is not an object.");
         return nullptr;
     }
@@ -397,7 +393,7 @@ QDebug &operator<<(QDebug &debug, const JsonFieldPage::Field &field)
 
 bool LabelField::parseData(const QVariant &data, QString *errorMessage)
 {
-    if (data.type() != QVariant::Map) {
+    if (data.typeId() != QVariant::Map) {
         *errorMessage = Tr::tr("Label (\"%1\") data is not an object.").arg(name());
         return false;
     }
@@ -435,7 +431,7 @@ bool SpacerField::parseData(const QVariant &data, QString *errorMessage)
     if (data.isNull())
         return true;
 
-    if (data.type() != QVariant::Map) {
+    if (data.typeId() != QVariant::Map) {
         *errorMessage = Tr::tr("Spacer (\"%1\") data is not an object.").arg(name());
         return false;
     }
@@ -480,7 +476,7 @@ bool LineEditField::parseData(const QVariant &data, QString *errorMessage)
     if (data.isNull())
         return true;
 
-    if (data.type() != QVariant::Map) {
+    if (data.typeId() != QVariant::Map) {
         *errorMessage = Tr::tr("LineEdit (\"%1\") data is not an object.").arg(name());
         return false;
     }
@@ -603,31 +599,27 @@ void LineEditField::setupCompletion(FancyLineEdit *lineEdit)
     using namespace Utils;
     if (m_completion == Completion::None)
         return;
-    ILocatorFilter * const classesFilter = findOrDefault(
-                ILocatorFilter::allLocatorFilters(),
-                equal(&ILocatorFilter::id, Id("Classes")));
-    if (!classesFilter)
-        return;
-    classesFilter->prepareSearch({});
-    const auto watcher = new QFutureWatcher<LocatorFilterEntry>;
-    const auto handleResults = [this, lineEdit, watcher](int firstIndex, int endIndex) {
+    LocatorMatcher *matcher = new LocatorMatcher;
+    matcher->setParent(lineEdit);
+    matcher->setTasks(LocatorMatcher::matchers(MatcherType::Classes));
+    const auto handleResults = [lineEdit, matcher, completion = m_completion] {
         QSet<QString> namespaces;
         QStringList classes;
         Project * const project = ProjectTree::currentProject();
-        for (int i = firstIndex; i < endIndex; ++i) {
+        const LocatorFilterEntries entries = matcher->outputData();
+        for (const LocatorFilterEntry &entry : entries) {
             static const auto isReservedName = [](const QString &name) {
                 static const QRegularExpression rx1("^_[A-Z].*");
                 static const QRegularExpression rx2(".*::_[A-Z].*");
                 return name.contains("__") || rx1.match(name).hasMatch()
                         || rx2.match(name).hasMatch();
             };
-            const LocatorFilterEntry &entry = watcher->resultAt(i);
             const bool hasNamespace = !entry.extraInfo.isEmpty()
                     && !entry.extraInfo.startsWith('<')  && !entry.extraInfo.contains("::<")
                     && !isReservedName(entry.extraInfo)
                     && !entry.extraInfo.startsWith('~')
                     && !entry.extraInfo.contains("Anonymous:")
-                    && !FilePath::fromString(entry.extraInfo).isAbsolutePath();
+                    && !FilePath::fromUserInput(entry.extraInfo).isAbsolutePath();
             const bool isBaseClassCandidate = !isReservedName(entry.displayName)
                     && !entry.displayName.startsWith("Anonymous:");
             if (isBaseClassCandidate)
@@ -635,7 +627,7 @@ void LineEditField::setupCompletion(FancyLineEdit *lineEdit)
             if (hasNamespace) {
                 if (isBaseClassCandidate)
                     classes << (entry.extraInfo + "::" + entry.displayName);
-                if (m_completion == Completion::Namespaces) {
+                if (completion == Completion::Namespaces) {
                     if (!project
                             || entry.filePath.startsWith(project->projectDirectory().toString())) {
                         namespaces << entry.extraInfo;
@@ -644,7 +636,7 @@ void LineEditField::setupCompletion(FancyLineEdit *lineEdit)
             }
         }
         QStringList completionList;
-        if (m_completion == Completion::Namespaces) {
+        if (completion == Completion::Namespaces) {
             completionList = toList(namespaces);
             completionList = filtered(completionList, [&classes](const QString &ns) {
                 return !classes.contains(ns);
@@ -658,16 +650,9 @@ void LineEditField::setupCompletion(FancyLineEdit *lineEdit)
         completionList.sort();
         lineEdit->setSpecialCompleter(new QCompleter(completionList, lineEdit));
     };
-    QObject::connect(watcher, &QFutureWatcher<LocatorFilterEntry>::resultsReadyAt, lineEdit,
-                     handleResults);
-    QObject::connect(watcher, &QFutureWatcher<LocatorFilterEntry>::finished,
-                     watcher, &QFutureWatcher<LocatorFilterEntry>::deleteLater);
-    watcher->setFuture(runAsync([classesFilter](QFutureInterface<LocatorFilterEntry> &f) {
-        const QList<LocatorFilterEntry> matches = classesFilter->matchesFor(f, {});
-        if (!matches.isEmpty())
-            f.reportResults(QVector<LocatorFilterEntry>(matches.cbegin(), matches.cend()));
-        f.reportFinished();
-    }));
+    QObject::connect(matcher, &LocatorMatcher::done, lineEdit, handleResults);
+    QObject::connect(matcher, &LocatorMatcher::done, matcher, &QObject::deleteLater);
+    matcher->start();
 }
 
 void LineEditField::setText(const QString &text)
@@ -688,7 +673,7 @@ bool TextEditField::parseData(const QVariant &data, QString *errorMessage)
     if (data.isNull())
         return true;
 
-    if (data.type() != QVariant::Map) {
+    if (data.typeId() != QVariant::Map) {
         *errorMessage = Tr::tr("TextEdit (\"%1\") data is not an object.")
                 .arg(name());
         return false;
@@ -771,7 +756,7 @@ bool PathChooserField::parseData(const QVariant &data, QString *errorMessage)
     if (data.isNull())
         return true;
 
-    if (data.type() != QVariant::Map) {
+    if (data.typeId() != QVariant::Map) {
         *errorMessage = Tr::tr("PathChooser data is not an object.");
         return false;
     }
@@ -876,7 +861,7 @@ bool CheckBoxField::parseData(const QVariant &data, QString *errorMessage)
     if (data.isNull())
         return true;
 
-    if (data.type() != QVariant::Map) {
+    if (data.typeId() != QVariant::Map) {
         *errorMessage = Tr::tr("CheckBox (\"%1\") data is not an object.").arg(name());
         return false;
     }
@@ -965,12 +950,12 @@ QVariant CheckBoxField::toSettings() const
 
 std::unique_ptr<QStandardItem> createStandardItemFromListItem(const QVariant &item, QString *errorMessage)
 {
-    if (item.type() == QVariant::List) {
+    if (item.typeId() == QVariant::List) {
         *errorMessage = Tr::tr("No JSON lists allowed inside List items.");
         return {};
     }
     auto standardItem = std::make_unique<QStandardItem>();
-    if (item.type() == QVariant::Map) {
+    if (item.typeId() == QVariant::Map) {
         QVariantMap tmp = item.toMap();
         const QString key = JsonWizardFactory::localizedString(consumeValue(tmp, "trKey", QString()).toString());
         const QVariant value = consumeValue(tmp, "value", key);
@@ -1000,7 +985,7 @@ ListField::~ListField() = default;
 
 bool ListField::parseData(const QVariant &data, QString *errorMessage)
 {
-    if (data.type() != QVariant::Map) {
+    if (data.typeId() != QVariant::Map) {
         *errorMessage = Tr::tr("%1 (\"%2\") data is not an object.").arg(type(), name());
         return false;
     }
@@ -1026,7 +1011,7 @@ bool ListField::parseData(const QVariant &data, QString *errorMessage)
         *errorMessage = Tr::tr("%1 (\"%2\") \"items\" missing.").arg(type(), name());
         return false;
     }
-    if (value.type() != QVariant::List) {
+    if (value.typeId() != QVariant::List) {
         *errorMessage = Tr::tr("%1 (\"%2\") \"items\" is not a JSON list.").arg(type(), name());
         return false;
     }

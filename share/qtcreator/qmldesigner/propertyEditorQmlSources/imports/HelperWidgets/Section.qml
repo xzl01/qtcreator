@@ -38,6 +38,8 @@ Item {
 
     property bool useDefaulContextMenu: true
 
+    property string category: "properties"
+
     clip: true
 
     Connections {
@@ -49,19 +51,24 @@ Item {
 
     Connections {
         target: Controller
-        function onCollapseAll() {
-            if (collapsible) {
+        function onCollapseAll(cat) {
+            if (collapsible && cat === section.category) {
                 if (section.expandOnClick)
                     section.expanded = false
                 else
                     section.collapse()
             }
         }
-        function onExpandAll() {
-            if (section.expandOnClick)
-                section.expanded = true
-            else
-                section.expand()
+        function onExpandAll(cat) {
+            if (cat === section.category) {
+                if (section.expandOnClick)
+                    section.expanded = true
+                else
+                    section.expand()
+            }
+        }
+        function onCloseContextMenu() {
+            contextMenu.close()
         }
     }
 
@@ -79,8 +86,8 @@ Item {
         enabled: section.dropEnabled
         anchors.fill: parent
 
-        onEntered: (drag)=> section.dropEnter(drag)
-        onDropped: (drag)=> section.drop(drag)
+        onEntered: (drag) => section.dropEnter(drag)
+        onDropped: (drag) => section.drop(drag)
         onExited: section.dropExit()
     }
 
@@ -100,13 +107,15 @@ Item {
 
                 StudioControls.MenuItem {
                     text: qsTr("Expand All")
-                    onTriggered: Controller.expandAll()
+                    onTriggered: Controller.expandAll(section.category)
                 }
 
                 StudioControls.MenuItem {
                     text: qsTr("Collapse All")
-                    onTriggered: Controller.collapseAll()
+                    onTriggered: Controller.collapseAll(section.category)
                 }
+
+                onOpenedChanged: Controller.contextMenuOpened = contextMenu.opened
             }
         }
 

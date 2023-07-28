@@ -11,7 +11,6 @@ CppApplication {
     consoleApplication: true
 
     Depends { name: "cpp" }
-    cpp.cxxLanguageVersion: "c++11"
     cpp.minimumMacosVersion: "10.8"
 
     Depends { name: "protobuf.nanopb"; required: false }

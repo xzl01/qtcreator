@@ -149,14 +149,13 @@
     \uicontrol Help for reading documentation. The other modes are mostly
     needed for application development.
 
-    \image studio-design-mode.png "Design mode"
+    \image studio-design-mode.webp "Design mode"
 
-    Read more about modes:
+    The mode selector is hidden by default.
 
-    \list
-        \li \l{Selecting Modes}
-        \li \l{Design Views}
-    \endlist
+    To show the mode selector, go to \uicontrol Views >
+    \uicontrol {Mode Selector Style} and select \uicontrol {Icons and Text}
+    or \uicontrol {Icons Only}.
 
     \section1 Project
     \target glossary-project

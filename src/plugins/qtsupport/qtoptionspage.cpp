@@ -232,8 +232,6 @@ QtOptionsPageWidget::QtOptionsPageWidget()
     , m_warningVersionIcon(Utils::Icons::WARNING.icon())
     , m_configurationWidget(nullptr)
 {
-    resize(446, 450);
-
     m_qtdirList = new QTreeView(this);
     m_qtdirList->setObjectName("qtDirList");
     m_qtdirList->setUniformRowHeights(true);
@@ -261,15 +259,16 @@ QtOptionsPageWidget::QtOptionsPageWidget()
 
     m_errorLabel = new QLabel;
 
-    using namespace Utils::Layouting;
+    using namespace Layouting;
 
     auto versionInfoWidget = new QWidget;
     // clang-format off
     Form {
         Tr::tr("Name:"), m_nameEdit, br,
         Tr::tr("qmake path:"), Row { m_qmakePath, m_editPathPushButton }, br,
-        Span(2, m_errorLabel)
-    }.attachTo(versionInfoWidget, WithoutMargins);
+        Span(2, m_errorLabel),
+        noMargin
+    }.attachTo(versionInfoWidget);
     // clang-format on
 
     m_formLayout = qobject_cast<QFormLayout*>(versionInfoWidget->layout());
@@ -970,20 +969,13 @@ void QtOptionsPageWidget::linkWithQt()
     bool askForRestart = false;
     QDialog dialog(Core::ICore::dialogParent());
     dialog.setWindowTitle(title);
-    auto layout = new QVBoxLayout;
-    dialog.setLayout(layout);
     auto tipLabel = new QLabel(linkingPurposeText());
     tipLabel->setWordWrap(true);
-    layout->addWidget(tipLabel);
-    auto pathLayout = new QHBoxLayout;
-    layout->addLayout(pathLayout);
     auto pathLabel = new QLabel(Tr::tr("Qt installation path:"));
     pathLabel->setToolTip(
         Tr::tr("Choose the Qt installation directory, or a directory that contains \"%1\".")
             .arg(settingsFile("")));
-    pathLayout->addWidget(pathLabel);
     auto pathInput = new PathChooser;
-    pathLayout->addWidget(pathInput);
     pathInput->setExpectedKind(PathChooser::ExistingDirectory);
     pathInput->setBaseDirectory(FilePath::fromString(QCoreApplication::applicationDirPath()));
     pathInput->setPromptDialogTitle(title);
@@ -998,8 +990,17 @@ void QtOptionsPageWidget::linkWithQt()
     pathInput->setFilePath(currentLink ? *currentLink : defaultQtInstallationPath());
     pathInput->setAllowPathFromDevice(true);
     auto buttons = new QDialogButtonBox;
-    layout->addStretch(10);
-    layout->addWidget(buttons);
+
+    using namespace Layouting;
+    Column {
+        tipLabel,
+        Form {
+            Tr::tr("Qt installation path:"), pathInput, br,
+        },
+        st,
+        buttons,
+    }.attachTo(&dialog);
+
     auto linkButton = buttons->addButton(Tr::tr("Link with Qt"), QDialogButtonBox::AcceptRole);
     connect(linkButton, &QPushButton::clicked, &dialog, &QDialog::accept);
     auto cancelButton = buttons->addButton(Tr::tr("Cancel"), QDialogButtonBox::RejectRole);
@@ -1023,6 +1024,7 @@ void QtOptionsPageWidget::linkWithQt()
     connect(pathInput, &PathChooser::validChanged, linkButton, &QPushButton::setEnabled);
     linkButton->setEnabled(pathInput->isValid());
 
+    dialog.setMinimumWidth(520);
     dialog.exec();
     if (dialog.result() == QDialog::Accepted) {
         const std::optional<FilePath> settingsDir = settingsDirForQtDir(pathInput->baseDirectory(),
@@ -1056,6 +1058,20 @@ QtOptionsPage::QtOptionsPage()
     setDisplayName(Tr::tr("Qt Versions"));
     setCategory(ProjectExplorer::Constants::KITS_SETTINGS_CATEGORY);
     setWidgetCreator([] { return new QtOptionsPageWidget; });
+}
+
+QStringList QtOptionsPage::keywords() const
+{
+    return {
+        Tr::tr("Add..."),
+        Tr::tr("Remove"),
+        Tr::tr("Clean Up"),
+        Tr::tr("Link with Qt"),
+        Tr::tr("Remove Link"),
+        Tr::tr("Qt installation path:"),
+        Tr::tr("qmake path:"),
+        Tr::tr("Register documentation:")
+    };
 }
 
 bool QtOptionsPage::canLinkWithQt()

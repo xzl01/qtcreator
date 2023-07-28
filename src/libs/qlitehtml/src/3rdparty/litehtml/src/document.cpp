@@ -75,8 +75,6 @@ litehtml::document::ptr litehtml::document::createFromUTF8(const char* str, lite
 	{
 		doc->container()->get_media_features(doc->m_media);
 
-		doc->m_root->set_pseudo_class(_t("root"), true);
-
 		// apply master CSS
 		doc->m_root->apply_stylesheet(ctx->master_css());
 
@@ -123,7 +121,7 @@ litehtml::document::ptr litehtml::document::createFromUTF8(const char* str, lite
 		// and create the anonymous boxes in visual table layout
 		doc->fix_tables_layout();
 
-		// Finally initialize elements
+		// Fanaly initialize elements
 		doc->m_root->init();
 	}
 
@@ -593,12 +591,15 @@ void litehtml::document::add_fixed_box( const position& pos )
 
 bool litehtml::document::media_changed()
 {
-	container()->get_media_features(m_media);
-	if (update_media_lists(m_media))
+	if(!m_media_lists.empty())
 	{
-		m_root->refresh_styles();
-		m_root->parse_styles();
-		return true;
+		container()->get_media_features(m_media);
+		if (update_media_lists(m_media))
+		{
+			m_root->refresh_styles();
+			m_root->parse_styles();
+			return true;
+		}
 	}
 	return false;
 }
@@ -799,7 +800,9 @@ void litehtml::document::fix_table_children(element::ptr& el_ptr, style_display 
 	auto flush_elements = [&]()
 	{
 		element::ptr annon_tag = std::make_shared<html_tag>(shared_from_this());
-		annon_tag->add_style(tstring(_t("display:")) + disp_str, _t(""));
+		style st;
+		st.add_property(_t("display"), disp_str, nullptr, false);
+		annon_tag->add_style(st);
 		annon_tag->parent(el_ptr);
 		annon_tag->parse_styles();
 		std::for_each(tmp.begin(), tmp.end(),
@@ -822,7 +825,7 @@ void litehtml::document::fix_table_children(element::ptr& el_ptr, style_display 
 	{
 		if ((*cur_iter)->get_display() != disp)
 		{
-			if (!(*cur_iter)->is_table_skip() || ((*cur_iter)->is_table_skip() && !tmp.empty()))
+			if (!(*cur_iter)->is_white_space() || ((*cur_iter)->is_white_space() && !tmp.empty()))
 			{
 				if (disp != display_table_row_group || (*cur_iter)->get_display() != display_table_caption)
 				{
@@ -878,7 +881,7 @@ void litehtml::document::fix_table_parent(element::ptr& el_ptr, style_display di
 			{
 				if (cur == parent->m_children.begin()) break;
 				cur--;
-				if ((*cur)->is_table_skip() || (*cur)->get_display() == el_disp)
+				if ((*cur)->is_white_space() || (*cur)->get_display() == el_disp)
 				{
 					first = cur;
 				}
@@ -895,7 +898,7 @@ void litehtml::document::fix_table_parent(element::ptr& el_ptr, style_display di
 				cur++;
 				if (cur == parent->m_children.end()) break;
 
-				if ((*cur)->is_table_skip() || (*cur)->get_display() == el_disp)
+				if ((*cur)->is_white_space() || (*cur)->get_display() == el_disp)
 				{
 					last = cur;
 				}
@@ -907,7 +910,9 @@ void litehtml::document::fix_table_parent(element::ptr& el_ptr, style_display di
 
 			// extract elements with the same display and wrap them with anonymous object
 			element::ptr annon_tag = std::make_shared<html_tag>(shared_from_this());
-			annon_tag->add_style(tstring(_t("display:")) + disp_str, _t(""));
+			style st;
+			st.add_property(_t("display"), disp_str, nullptr, false);
+			annon_tag->add_style(st);
 			annon_tag->parent(parent);
 			annon_tag->parse_styles();
 			std::for_each(first, last + 1,

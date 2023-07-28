@@ -82,12 +82,8 @@ public:
 // MimeTypeSettingsModel
 class MimeTypeSettingsModel : public QAbstractTableModel
 {
-    Q_OBJECT
-
 public:
-    enum class Role {
-        DefaultHandler = Qt::UserRole
-    };
+    enum class Role { DefaultHandler = Qt::UserRole, MimeType };
 
     MimeTypeSettingsModel(QObject *parent = nullptr)
         : QAbstractTableModel(parent) {}
@@ -160,6 +156,8 @@ QVariant MimeTypeSettingsModel::data(const QModelIndex &modelIndex, int role) co
             }
         }
         return QVariant();
+    } else if (role == int(Role::MimeType)) {
+        return QVariant::fromValue(m_mimeTypes.at(modelIndex.row()));
     }
     return QVariant();
 }
@@ -224,11 +222,40 @@ void MimeTypeSettingsModel::resetUserDefaults()
     endResetModel();
 }
 
+class MimeFilterModel : public QSortFilterProxyModel
+{
+public:
+    explicit MimeFilterModel(QObject *parent = nullptr);
+
+protected:
+    bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
+};
+
+MimeFilterModel::MimeFilterModel(QObject *parent)
+    : QSortFilterProxyModel(parent)
+{
+}
+
+bool MimeFilterModel::filterAcceptsRow(int source_row, const QModelIndex &source_parent) const
+{
+    const QModelIndex &index = sourceModel()->index(source_row, 0, source_parent);
+    const MimeType mt
+        = sourceModel()->data(index, int(MimeTypeSettingsModel::Role::MimeType)).value<MimeType>();
+    const QModelIndex &handlerIndex = sourceModel()->index(source_row, 1, source_parent);
+    const QString handlerText = sourceModel()->data(handlerIndex, Qt::DisplayRole).toString();
+
+    const QStringList matchStrings = mt.globPatterns() << mt.name() << handlerText;
+    const QRegularExpression regex = filterRegularExpression();
+    for (const QString &str : matchStrings) {
+        if (regex.match(str).hasMatch())
+            return true;
+    }
+    return false;
+}
+
 // MimeTypeSettingsPrivate
 class MimeTypeSettingsPrivate : public QObject
 {
-    Q_OBJECT
-
 public:
     MimeTypeSettingsPrivate();
     ~MimeTypeSettingsPrivate() override;
@@ -260,7 +287,7 @@ public:
 
     static UserMimeTypeHash m_userModifiedMimeTypes; // these are already in mime database
     MimeTypeSettingsModel *m_model;
-    QSortFilterProxyModel *m_filterModel;
+    MimeFilterModel *m_filterModel;
     UserMimeTypeHash m_pendingModifiedMimeTypes; // currently edited in the options page
     QString m_filterPattern;
     QPointer<QWidget> m_widget;
@@ -281,21 +308,48 @@ MimeTypeSettingsPrivate::UserMimeTypeHash MimeTypeSettingsPrivate::m_userModifie
 
 MimeTypeSettingsPrivate::MimeTypeSettingsPrivate()
     : m_model(new MimeTypeSettingsModel(this))
-    , m_filterModel(new QSortFilterProxyModel(this))
+    , m_filterModel(new MimeFilterModel(this))
 {
     m_filterModel->setSourceModel(m_model);
     m_filterModel->setFilterKeyColumn(-1);
+    m_filterModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
     connect(ICore::instance(), &ICore::saveSettingsRequested,
             this, &MimeTypeSettingsPrivate::writeUserModifiedMimeTypes);
 }
 
 MimeTypeSettingsPrivate::~MimeTypeSettingsPrivate() = default;
 
+class MimeTypeSettingsWidget : public IOptionsPageWidget
+{
+public:
+    MimeTypeSettingsWidget(MimeTypeSettingsPrivate *d)
+        : d(d)
+    {
+        d->configureUi(this);
+    }
+
+    void apply() final
+    {
+        MimeTypeSettingsPrivate::applyUserModifiedMimeTypes(d->m_pendingModifiedMimeTypes);
+        Core::Internal::setUserPreferredEditorTypes(d->m_model->m_userDefault);
+        d->m_pendingModifiedMimeTypes.clear();
+        d->m_model->load();
+    }
+
+    void finish() final
+    {
+        d->m_pendingModifiedMimeTypes.clear();
+    }
+
+    MimeTypeSettingsPrivate *d;
+};
+
 void MimeTypeSettingsPrivate::configureUi(QWidget *w)
 {
     auto filterLineEdit = new FancyLineEdit;
     filterLineEdit->setObjectName("filterLineEdit");
     filterLineEdit->setFiltering(true);
+    m_filterModel->setFilterWildcard({});
 
     m_mimeTypesTreeView = new QTreeView;
     m_mimeTypesTreeView->setObjectName("mimeTypesTreeView");
@@ -713,6 +767,7 @@ MimeTypeSettings::MimeTypeSettings()
     setId(Constants::SETTINGS_ID_MIMETYPES);
     setDisplayName(Tr::tr("MIME Types"));
     setCategory(Constants::SETTINGS_CATEGORY_CORE);
+    setWidgetCreator([this] { return new MimeTypeSettingsWidget(d); });
 }
 
 MimeTypeSettings::~MimeTypeSettings()
@@ -720,27 +775,18 @@ MimeTypeSettings::~MimeTypeSettings()
     delete d;
 }
 
-QWidget *MimeTypeSettings::widget()
+QStringList MimeTypeSettings::keywords() const
 {
-    if (!d->m_widget) {
-        d->m_widget = new QWidget;
-        d->configureUi(d->m_widget);
-    }
-    return d->m_widget;
-}
-
-void MimeTypeSettings::apply()
-{
-    MimeTypeSettingsPrivate::applyUserModifiedMimeTypes(d->m_pendingModifiedMimeTypes);
-    Core::Internal::setUserPreferredEditorTypes(d->m_model->m_userDefault);
-    d->m_pendingModifiedMimeTypes.clear();
-    d->m_model->load();
-}
-
-void MimeTypeSettings::finish()
-{
-    d->m_pendingModifiedMimeTypes.clear();
-    delete d->m_widget;
+    return {
+        Tr::tr("Reset MIME Types"),
+        Tr::tr("Reset Handlers"),
+        Tr::tr("Registered MIME Types"),
+        Tr::tr("Patterns:"),
+        Tr::tr("Add..."),
+        Tr::tr("Edit..."),
+        Tr::tr("Remove"),
+        Tr::tr("Details")
+    };
 }
 
 void MimeTypeSettings::restoreSettings()
@@ -784,5 +830,3 @@ void MimeEditorDelegate::setModelData(QWidget *editor,
 }
 
 } // Core::Internal
-
-#include "mimetypesettings.moc"

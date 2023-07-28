@@ -55,7 +55,7 @@ QmlMainFileAspect::~QmlMainFileAspect()
     delete m_fileListCombo;
 }
 
-void QmlMainFileAspect::addToLayout(Layouting::LayoutBuilder &builder)
+void QmlMainFileAspect::addToLayout(Layouting::LayoutItem &parent)
 {
     QTC_ASSERT(!m_fileListCombo, delete m_fileListCombo);
     m_fileListCombo = new QComboBox;
@@ -67,7 +67,7 @@ void QmlMainFileAspect::addToLayout(Layouting::LayoutBuilder &builder)
             this, &QmlMainFileAspect::updateFileComboBox);
     connect(m_fileListCombo, &QComboBox::activated, this, &QmlMainFileAspect::setMainScript);
 
-    builder.addItems({Tr::tr("Main QML file:"), m_fileListCombo.data()});
+    parent.addItems({Tr::tr("Main QML file:"), m_fileListCombo.data()});
 }
 
 void QmlMainFileAspect::toMap(QVariantMap &map) const
@@ -181,7 +181,7 @@ void QmlMainFileAspect::setScriptSource(MainScriptSource source, const QString &
 FilePath QmlMainFileAspect::mainScript() const
 {
     if (!qmlBuildSystem()->mainFile().isEmpty()) {
-        const FilePath pathInProject = qmlBuildSystem()->mainFile();
+        const FilePath pathInProject = qmlBuildSystem()->mainFilePath();
         return qmlBuildSystem()->canonicalProjectDir().resolvePath(pathInProject);
     }
 
@@ -210,7 +210,7 @@ void QmlMainFileAspect::changeCurrentFile(Core::IEditor *editor)
 bool QmlMainFileAspect::isQmlFilePresent()
 {
     bool qmlFileFound = false;
-    if (mainScriptSource() == FileInEditor) {
+    if (mainScriptSource() == FileInEditor && !mainScript().isEmpty()) {
         IDocument *document = EditorManager::currentDocument();
         const MimeType mainScriptMimeType = mimeTypeForFile(mainScript());
         if (document) {

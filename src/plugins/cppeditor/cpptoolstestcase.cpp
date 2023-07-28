@@ -18,7 +18,7 @@
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
 
 #include <texteditor/texteditor.h>
 #include <texteditor/codeassist/iassistproposal.h>
@@ -26,7 +26,6 @@
 #include <texteditor/storagesettings.h>
 
 #include <utils/environment.h>
-#include <utils/executeondestruction.h>
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
@@ -158,7 +157,7 @@ bool VerifyCleanCppModelManager::isClean(bool testOnlyForCleanedProjects)
     if (!testOnlyForCleanedProjects) {
         RETURN_FALSE_IF_NOT(mm->snapshot().isEmpty());
         RETURN_FALSE_IF_NOT(mm->workingCopy().size() == 1);
-        RETURN_FALSE_IF_NOT(mm->workingCopy().contains(mm->configurationFileName()));
+        RETURN_FALSE_IF_NOT(mm->workingCopy().get(mm->configurationFileName()));
     }
     return true;
 }
@@ -348,8 +347,8 @@ bool TestCase::waitUntilProjectIsFullyOpened(Project *project, int timeOutInMs)
 
     return QTest::qWaitFor(
         [project]() {
-            return SessionManager::startupBuildSystem()
-                    && !SessionManager::startupBuildSystem()->isParsing()
+            return ProjectManager::startupBuildSystem()
+                    && !ProjectManager::startupBuildSystem()->isParsing()
                     && CppModelManager::instance()->projectInfo(project);
         },
         timeOutInMs);
@@ -367,7 +366,7 @@ bool TestCase::writeFile(const FilePath &filePath, const QByteArray &contents)
 
 ProjectOpenerAndCloser::ProjectOpenerAndCloser()
 {
-    QVERIFY(!SessionManager::hasProjects());
+    QVERIFY(!ProjectManager::hasProjects());
 }
 
 ProjectOpenerAndCloser::~ProjectOpenerAndCloser()
@@ -376,11 +375,8 @@ ProjectOpenerAndCloser::~ProjectOpenerAndCloser()
         return;
 
     bool hasGcFinished = false;
-    QMetaObject::Connection connection;
-    Utils::ExecuteOnDestruction disconnect([&]() { QObject::disconnect(connection); });
-    connection = QObject::connect(CppModelManager::instance(), &CppModelManager::gcFinished, [&]() {
-        hasGcFinished = true;
-    });
+    auto connection = QObject::connect(CppModelManager::instance(), &CppModelManager::gcFinished,
+                                       [&hasGcFinished] { hasGcFinished = true; });
 
     for (Project *project : std::as_const(m_openProjects))
         ProjectExplorerPlugin::unloadProject(project);
@@ -389,6 +385,8 @@ ProjectOpenerAndCloser::~ProjectOpenerAndCloser()
     t.start();
     while (!hasGcFinished && t.elapsed() <= 30000)
         QCoreApplication::processEvents();
+
+    QObject::disconnect(connection);
 }
 
 ProjectInfo::ConstPtr ProjectOpenerAndCloser::open(const FilePath &projectFile,

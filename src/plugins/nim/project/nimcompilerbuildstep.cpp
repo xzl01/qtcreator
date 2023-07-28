@@ -16,8 +16,8 @@
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/toolchain.h>
 
+#include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
 
 #include <QComboBox>
 #include <QFormLayout>
@@ -60,7 +60,7 @@ QWidget *NimCompilerBuildStep::createConfigWidget()
     auto additionalArgumentsLineEdit = new QLineEdit(widget);
 
     auto commandTextEdit = new QTextEdit(widget);
-    commandTextEdit->setEnabled(false);
+    commandTextEdit->setReadOnly(true);
     commandTextEdit->setMinimumSize(QSize(0, 0));
 
     auto defaultArgumentsComboBox = new QComboBox(widget);
@@ -76,7 +76,7 @@ QWidget *NimCompilerBuildStep::createConfigWidget()
 
     auto updateUi = [=] {
         const CommandLine cmd = commandLine();
-        const QStringList parts = ProcessArgs::splitArgs(cmd.toUserOutput());
+        const QStringList parts = ProcessArgs::splitArgs(cmd.toUserOutput(), HostOsInfo::hostOs());
 
         commandTextEdit->setText(parts.join(QChar::LineFeed));
 

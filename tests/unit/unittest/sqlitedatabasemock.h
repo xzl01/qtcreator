@@ -28,11 +28,14 @@ public:
 
     MOCK_METHOD(void, prepare, (Utils::SmallStringView sqlStatement), ());
 
-    MOCK_METHOD(void, execute, (Utils::SmallStringView sqlStatement), ());
+    MOCK_METHOD(void, execute, (Utils::SmallStringView sqlStatement), (override));
 
     MOCK_METHOD(int64_t, lastInsertedRowId, (), (const));
 
-    MOCK_METHOD(void, setLastInsertedRowId, (int64_t), (const));
+    MOCK_METHOD(void, setLastInsertedRowId, (int64_t), ());
+
+    MOCK_METHOD(int, version, (), (const));
+    MOCK_METHOD(void, setVersion, (int), ());
 
     MOCK_METHOD(bool, isInitialized, (), (const));
 

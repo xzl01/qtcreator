@@ -4,7 +4,6 @@
 #pragma once
 
 #include "abstractview.h"
-#include "createtexture.h"
 
 #include <QPointer>
 #include <QSet>
@@ -45,7 +44,7 @@ public:
     void nodeAboutToBeRemoved(const ModelNode &removedNode) override;
     void nodeRemoved(const ModelNode &removedNode, const NodeAbstractProperty &parentProperty,
                      PropertyChangeFlags propertyChange) override;
-    void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports) override;
+    void importsChanged(const Imports &addedImports, const Imports &removedImports) override;
     void customNotification(const AbstractView *view, const QString &identifier,
                             const QList<ModelNode> &nodeList, const QList<QVariant> &data) override;
     void instancesCompleted(const QVector<ModelNode> &completedNodeList) override;
@@ -53,9 +52,10 @@ public:
     void active3DSceneChanged(qint32 sceneId) override;
     void currentStateChanged(const ModelNode &node) override;
 
-    void applyTextureToModel3D(const QmlObjectNode &model3D, const ModelNode &texture);
+    void applyTextureToModel3D(const QmlObjectNode &model3D, const ModelNode &texture = {});
     void applyTextureToMaterial(const QList<ModelNode> &materials, const ModelNode &texture);
 
+    void createTextures(const QStringList &assetPaths);
 
     Q_INVOKABLE void updatePropsModel(const QString &matId);
     Q_INVOKABLE void applyTextureToProperty(const QString &matId, const QString &propName);
@@ -66,12 +66,13 @@ protected:
 
 private:
     void refreshModel(bool updateImages);
+    void updateMaterialsPreview();
     bool isMaterial(const ModelNode &node) const;
     bool isTexture(const ModelNode &node) const;
     void loadPropertyGroups();
     void requestPreviews();
     ModelNode resolveSceneEnv();
-    ModelNode getMaterialOfModel(const ModelNode &model);
+    ModelNode getMaterialOfModel(const ModelNode &model, int idx = 0);
 
     AsynchronousImageCache &m_imageCache;
     QPointer<MaterialBrowserWidget> m_widget;
@@ -87,6 +88,7 @@ private:
     QPointer<QQuickView> m_chooseMatPropsView;
     QHash<QString, QList<PropertyName>> m_textureModels;
     QString m_appliedTextureId;
+    QString m_appliedTexturePath; // defers texture creation until dialog apply
     int m_sceneId = -1;
 };
 

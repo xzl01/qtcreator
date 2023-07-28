@@ -20,8 +20,8 @@
 
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
+#include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
 
 #include <QDirIterator>
 #include <QFileInfo>
@@ -41,13 +41,13 @@ const char CustomCommandLineAspectId[] = "RemoteLinux.MakeInstall.CustomCommandL
 
 MakeInstallStep::MakeInstallStep(BuildStepList *parent, Id id) : MakeStep(parent, id)
 {
-    makeCommandAspect()->setVisible(false);
-    buildTargetsAspect()->setVisible(false);
-    userArgumentsAspect()->setVisible(false);
-    overrideMakeflagsAspect()->setVisible(false);
-    nonOverrideWarning()->setVisible(false);
-    jobCountAspect()->setVisible(false);
-    disabledForSubdirsAspect()->setVisible(false);
+    m_makeCommandAspect.setVisible(false);
+    m_buildTargetsAspect.setVisible(false);
+    m_userArgumentsAspect.setVisible(false);
+    m_overrideMakeflagsAspect.setVisible(false);
+    m_nonOverrideWarning.setVisible(false);
+    m_jobCountAspect.setVisible(false);
+    m_disabledForSubdirsAspect.setVisible(false);
 
     // FIXME: Hack, Part#1: If the build device is not local, start with a temp dir
     // inside the build dir. On Docker that's typically shared with the host.
@@ -70,10 +70,9 @@ MakeInstallStep::MakeInstallStep(BuildStepList *parent, Id id) : MakeStep(parent
     connect(makeAspect, &ExecutableAspect::changed,
             this, &MakeInstallStep::updateCommandFromAspect);
 
-    const auto installRootAspect = addAspect<StringAspect>();
+    const auto installRootAspect = addAspect<FilePathAspect>();
     installRootAspect->setId(InstallRootAspectId);
     installRootAspect->setSettingsKey(InstallRootAspectId);
-    installRootAspect->setDisplayStyle(StringAspect::PathChooserDisplay);
     installRootAspect->setExpectedKind(PathChooser::Directory);
     installRootAspect->setLabelText(Tr::tr("Install root:"));
     installRootAspect->setFilePath(rootPath);
@@ -124,16 +123,6 @@ MakeInstallStep::MakeInstallStep(BuildStepList *parent, Id id) : MakeStep(parent
     });
 }
 
-Utils::Id MakeInstallStep::stepId()
-{
-    return Constants::MakeInstallStepId;
-}
-
-QString MakeInstallStep::displayName()
-{
-    return Tr::tr("Install into temporary host directory");
-}
-
 QWidget *MakeInstallStep::createConfigWidget()
 {
     // Note: this intentionally skips the MakeStep::createConfigWidget() level.
@@ -145,7 +134,7 @@ bool MakeInstallStep::init()
     if (!MakeStep::init())
         return false;
 
-    const FilePath rootDir = installRoot().onDevice(makeCommand());
+    const FilePath rootDir = makeCommand().withNewPath(installRoot().path()); // FIXME: Needed?
     if (rootDir.isEmpty()) {
         emit addTask(BuildSystemTask(Task::Error, Tr::tr("You must provide an install root.")));
         return false;
@@ -172,12 +161,10 @@ bool MakeInstallStep::init()
     const MakeInstallCommand cmd = buildSystem()->makeInstallCommand(rootDir);
     if (cmd.environment.hasChanges()) {
         Environment env = processParameters()->environment();
-        for (auto it = cmd.environment.constBegin(); it != cmd.environment.constEnd(); ++it) {
-            if (cmd.environment.isEnabled(it)) {
-                const QString key = cmd.environment.key(it);
-                env.set(key, cmd.environment.expandedValueForKey(key));
-            }
-        }
+        cmd.environment.forEachEntry([&](const QString &key, const QString &value, bool enabled) {
+            if (enabled)
+                env.set(key, cmd.environment.expandVariables(value));
+        });
         processParameters()->setEnvironment(env);
     }
     m_noInstallTarget = false;
@@ -193,7 +180,7 @@ bool MakeInstallStep::init()
 void MakeInstallStep::finish(ProcessResult result)
 {
     if (isSuccess(result)) {
-        const FilePath rootDir = installRoot().onDevice(makeCommand());
+        const FilePath rootDir = makeCommand().withNewPath(installRoot().path()); // FIXME: Needed?
 
         m_deploymentData = DeploymentData();
         m_deploymentData.setLocalInstallRoot(rootDir);
@@ -251,11 +238,8 @@ void MakeInstallStep::updateArgsFromAspect()
 
 void MakeInstallStep::updateFullCommandLine()
 {
-    // FIXME: Only executable?
-    static_cast<StringAspect *>(aspect(FullCommandLineAspectId))->setValue(
-                QDir::toNativeSeparators(
-                    ProcessArgs::quoteArg(makeExecutable().toString()))
-                + ' '  + userArguments());
+    CommandLine cmd{makeExecutable(), userArguments(), CommandLine::Raw};
+    static_cast<StringAspect *>(aspect(FullCommandLineAspectId))->setValue(cmd.toUserOutput());
 }
 
 void MakeInstallStep::updateFromCustomCommandLineAspect()
@@ -263,7 +247,7 @@ void MakeInstallStep::updateFromCustomCommandLineAspect()
     const StringAspect * const aspect = customCommandLineAspect();
     if (!aspect->isChecked())
         return;
-    const QStringList tokens = ProcessArgs::splitArgs(aspect->value());
+    const QStringList tokens = ProcessArgs::splitArgs(aspect->value(), HostOsInfo::hostOs());
     setMakeCommand(tokens.isEmpty() ? FilePath() : FilePath::fromString(tokens.first()));
     setUserArguments(ProcessArgs::joinArgs(tokens.mid(1)));
 }
@@ -283,4 +267,12 @@ bool MakeInstallStep::fromMap(const QVariantMap &map)
     return true;
 }
 
-} // namespace RemoteLinux
+// Factory
+
+MakeInstallStepFactory::MakeInstallStepFactory()
+{
+    registerStep<MakeInstallStep>(Constants::MakeInstallStepId);
+    setDisplayName(Tr::tr("Install into temporary host directory"));
+}
+
+} // RemoteLinux

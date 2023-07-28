@@ -7,7 +7,6 @@
 #include "clangconstants.h"
 #include "clangdclient.h"
 #include "clangdiagnostictooltipwidget.h"
-#include "clangeditordocumentprocessor.h"
 #include "clangutils.h"
 
 #include <coreplugin/icore.h>
@@ -49,46 +48,15 @@ Project *projectForCurrentEditor()
     if (filePath.isEmpty())
         return nullptr;
 
-    if (auto processor = ClangEditorDocumentProcessor::get(filePath)) {
-        if (ProjectPart::ConstPtr projectPart = processor->projectPart())
-            return projectForProjectPart(*projectPart);
-    }
+    if (ProjectPart::ConstPtr projectPart = projectPartForFile(filePath))
+        return projectForProjectPart(*projectPart);
 
     return nullptr;
 }
 
-enum class DiagnosticType { Clang, Tidy, Clazy };
-DiagnosticType diagnosticType(const ClangDiagnostic &diagnostic)
-
-{
-    if (!diagnostic.disableOption.isEmpty())
-        return DiagnosticType::Clang;
-
-    const DiagnosticTextInfo textInfo(diagnostic.text);
-    if (DiagnosticTextInfo::isClazyOption(textInfo.option()))
-        return DiagnosticType::Clazy;
-    return DiagnosticType::Tidy;
-}
-
 void disableDiagnosticInConfig(ClangDiagnosticConfig &config, const ClangDiagnostic &diagnostic)
 {
-    switch (diagnosticType(diagnostic)) {
-    case DiagnosticType::Clang:
-        config.setClangOptions(config.clangOptions() + QStringList(diagnostic.disableOption));
-        break;
-    case DiagnosticType::Tidy:
-        config.setChecks(ClangToolType::Tidy, config.checks(ClangToolType::Tidy) + QString(",-")
-                                  + DiagnosticTextInfo(diagnostic.text).option());
-        break;
-    case DiagnosticType::Clazy: {
-        const DiagnosticTextInfo textInfo(diagnostic.text);
-        const QString checkName = DiagnosticTextInfo::clazyCheckName(textInfo.option());
-        QStringList newChecks = config.checks(ClangToolType::Clazy).split(',');
-        newChecks.removeOne(checkName);
-        config.setChecks(ClangToolType::Clazy, newChecks.join(','));
-        break;
-    }
-    }
+    config.setClangOptions(config.clangOptions() + QStringList(diagnostic.disableOption));
 }
 
 ClangDiagnosticConfig diagnosticConfig()
@@ -98,15 +66,12 @@ ClangDiagnosticConfig diagnosticConfig()
     return warningsConfigForProject(project);
 }
 
-bool isDiagnosticConfigChangable(Project *project, const ClangDiagnostic &diagnostic)
+static bool isDiagnosticConfigChangable(Project *project)
 {
     if (!project)
         return false;
-    const ClangDiagnosticConfig config = diagnosticConfig();
-    if (config.clangTidyMode() == ClangDiagnosticConfig::TidyMode::UseConfigFile
-        && diagnosticType(diagnostic) == DiagnosticType::Tidy) {
+    if (diagnosticConfig().useBuildSystemWarnings())
         return false;
-    }
     return true;
 }
 
@@ -213,8 +178,10 @@ ClangDiagnostic convertDiagnostic(const ClangdDiagnostic &src,
         target.severity = convertSeverity(*src.severity());
     const Diagnostic::Code code = src.code().value_or(Diagnostic::Code());
     const QString * const codeString = std::get_if<QString>(&code);
-    if (codeString && codeString->startsWith("-W"))
+    if (codeString && codeString->startsWith("-W")) {
         target.enableOption = *codeString;
+        target.disableOption = "-Wno-" + codeString->mid(2);
+    }
     for (const CodeAction &codeAction : src.codeActions().value_or(QList<CodeAction>())) {
         const std::optional<WorkspaceEdit> edit = codeAction.edit();
         if (!edit)
@@ -266,16 +233,16 @@ Task createTask(const ClangDiagnostic &diagnostic)
 
 } // anonymous namespace
 
-ClangdTextMark::ClangdTextMark(const FilePath &filePath,
+ClangdTextMark::ClangdTextMark(TextEditor::TextDocument *doc,
                                const Diagnostic &diagnostic,
                                bool isProjectFile,
                                ClangdClient *client)
-    : TextEditor::TextMark(filePath,
+    : TextEditor::TextMark(doc,
                            int(diagnostic.range().start().line() + 1),
                            {client->name(), client->id()})
     , m_lspDiagnostic(diagnostic)
     , m_diagnostic(
-          convertDiagnostic(ClangdDiagnostic(diagnostic), filePath, client->hostPathMapper()))
+          convertDiagnostic(ClangdDiagnostic(diagnostic), doc->filePath(), client->hostPathMapper()))
     , m_client(client)
 {
     setSettingsPage(CppEditor::Constants::CPP_CLANGD_SETTINGS_ID);
@@ -307,15 +274,17 @@ ClangdTextMark::ClangdTextMark(const FilePath &filePath,
         actions << action;
 
         // Remove diagnostic warning action
-        Project *project = projectForCurrentEditor();
-        if (project && isDiagnosticConfigChangable(project, diag)) {
-            action = new QAction();
-            action->setIcon(Icons::BROKEN.icon());
-            action->setToolTip(Tr::tr("Disable Diagnostic in Current Project"));
-            QObject::connect(action, &QAction::triggered, [diag] {
-                disableDiagnosticInCurrentProjectConfig(diag);
-            });
-            actions << action;
+        if (!diag.disableOption.isEmpty()) {
+            if (Project * const project = projectForCurrentEditor();
+                project && isDiagnosticConfigChangable(project)) {
+                action = new QAction();
+                action->setIcon(Icons::BROKEN.icon());
+                action->setToolTip(Tr::tr("Disable Diagnostic in Current Project"));
+                QObject::connect(action, &QAction::triggered, [diag] {
+                    disableDiagnosticInCurrentProjectConfig(diag);
+                });
+                actions << action;
+            }
         }
         return actions;
     });

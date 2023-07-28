@@ -52,8 +52,14 @@ ModuleProvider {
     property stringList extraPaths
     property stringList libDirs
     property bool staticMode: false
-    property path sysroot: qbs.sysroot
-    property bool mergeDependencies: true
+
+    // We take the sysroot default from qbs.sysroot, except for Xcode toolchains, where
+    // the sysroot points into the Xcode installation and does not contain .pc files.
+    property path sysroot: qbs.toolchain && qbs.toolchain.includes("xcode")
+                           ? undefined : qbs.sysroot
+
+    // TODO: deprecate in 2.2, remove in 2.3
+    property bool mergeDependencies: false
 
     relativeSearchPaths: {
 
@@ -211,7 +217,9 @@ ModuleProvider {
                 continue;
             }
             if (packageName.startsWith("Qt")) {
-                setupQt(pkg);
+                if (!sysroot) {
+                    setupQt(pkg);
+                }
                 continue;
             }
             var moduleName = getModuleName(moduleMapping[packageName]

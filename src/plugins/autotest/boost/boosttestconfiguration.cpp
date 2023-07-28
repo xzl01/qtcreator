@@ -6,23 +6,20 @@
 #include "boosttestoutputreader.h"
 #include "boosttestsettings.h"
 
-#include "../autotestplugin.h"
 #include "../itestframework.h"
 #include "../testsettings.h"
 
 #include <utils/algorithm.h>
-#include <utils/stringutils.h>
 
 using namespace Utils;
 
 namespace Autotest {
 namespace Internal {
 
-TestOutputReader *BoostTestConfiguration::createOutputReader(
-        const QFutureInterface<TestResult> &fi, QtcProcess *app) const
+TestOutputReader *BoostTestConfiguration::createOutputReader(Process *app) const
 {
     auto settings = static_cast<BoostTestSettings *>(framework()->testSettings());
-    return new BoostTestOutputReader(fi, app, buildDirectory(), projectFile(),
+    return new BoostTestOutputReader(app, buildDirectory(), projectFile(),
                                      LogLevel(settings->logLevel.value()),
                                      ReportLevel(settings->reportLevel.value()));
 }
@@ -105,10 +102,15 @@ QStringList BoostTestConfiguration::argumentsForTestRunner(QStringList *omitted)
         arguments << "--detect_memory_leaks=0";
 
     // TODO improve the test case gathering and arguments building to avoid too long command lines
-    for (const QString &test : testCases())
-        arguments << "-t" << test;
+    if (isDebugRunMode()) { // debugger has its own quoting
+        for (const QString &test : testCases())
+            arguments << "-t" << test;
+    } else {
+        for (const QString &test : testCases())
+            arguments << "-t" << "\"" + test + "\"";
+    }
 
-    if (AutotestPlugin::settings()->processArgs) {
+    if (TestSettings::instance()->processArgs()) {
         arguments << filterInterfering(runnable().command.arguments().split(
                                            ' ', Qt::SkipEmptyParts), omitted);
     }

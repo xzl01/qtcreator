@@ -3,12 +3,12 @@
 
 #pragma once
 
-#include <coreplugin/find/searchresultitem.h>
 #include <cppeditor/baseeditordocumentparser.h>
 #include <cppeditor/cppcodemodelsettings.h>
 #include <cppeditor/cursorineditor.h>
 #include <languageclient/client.h>
 #include <utils/link.h>
+#include <utils/searchresultitem.h>
 
 #include <QVersionNumber>
 
@@ -37,6 +37,8 @@ void setupClangdConfigFile();
 
 enum class FollowTo { SymbolDef, SymbolType };
 
+class ClangdFollowSymbol;
+
 class ClangdClient : public LanguageClient::Client
 {
     Q_OBJECT
@@ -53,7 +55,7 @@ public:
     void openExtraFile(const Utils::FilePath &filePath, const QString &content = {});
     void closeExtraFile(const Utils::FilePath &filePath);
 
-    void findUsages(TextEditor::TextDocument *document, const QTextCursor &cursor,
+    void findUsages(const CppEditor::CursorInEditor &cursor,
                     const std::optional<QString> &replacement,
                     const std::function<void()> &renameCallback);
     void checkUnused(const Utils::Link &link, Core::SearchResult *search,
@@ -117,9 +119,13 @@ public:
             const LanguageServerProtocol::Position &position,
             const SymbolInfoHandler &handler);
 
+#ifdef WITH_TESTS
+    ClangdFollowSymbol *currentFollowSymbolOperation();
+#endif
+
 signals:
     void indexingFinished();
-    void foundReferences(const QList<Core::SearchResultItem> &items);
+    void foundReferences(const Utils::SearchResultItems &items);
     void findUsagesDone();
     void helpItemGathered(const Core::HelpItem &helpItem);
     void highlightingResultsReady(const TextEditor::HighlightingResults &results,
@@ -137,6 +143,8 @@ private:
     const CustomInspectorTabs createCustomInspectorTabs() override;
     TextEditor::RefactoringChangesData *createRefactoringChangesBackend() const override;
     LanguageClient::DiagnosticManager *createDiagnosticManager() override;
+    LanguageClient::LanguageClientOutlineItem *createOutlineItem(
+        const LanguageServerProtocol::DocumentSymbol &symbol) override;
     bool referencesShadowFile(const TextEditor::TextDocument *doc,
                               const Utils::FilePath &candidate) override;
     bool fileBelongsToProject(const Utils::FilePath &filePath) const override;

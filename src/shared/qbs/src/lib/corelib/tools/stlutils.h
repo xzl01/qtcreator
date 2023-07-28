@@ -46,11 +46,21 @@
 namespace qbs {
 namespace Internal {
 
-template <class C>
-C sorted(const C &container)
+template <typename C>
+auto sorted(C &&container)
 {
-    C result = container;
+    using R = std::remove_cv_t<std::remove_reference_t<C>>;
+    R result(std::forward<C>(container));
     std::sort(std::begin(result), std::end(result));
+    return result;
+}
+
+template <typename C, typename Pred>
+auto sorted(C &&container, Pred &&pred)
+{
+    using R = std::remove_cv_t<std::remove_reference_t<C>>;
+    R result(std::forward<C>(container));
+    std::sort(std::begin(result), std::end(result), std::forward<Pred>(pred));
     return result;
 }
 

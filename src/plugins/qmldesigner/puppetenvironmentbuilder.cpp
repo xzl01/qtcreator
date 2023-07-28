@@ -33,22 +33,6 @@ void filterOutQtBaseImportPath(QStringList *stringList)
                && !dir.entryInfoList(QStringList("QtTest"), QDir::Dirs).isEmpty();
     });
 }
-
-Utils::FilePath pathForBinPuppet(ProjectExplorer::Target *target)
-{
-    if (!target || !target->kit())
-        return {};
-
-    QtSupport::QtVersion *currentQtVersion = QtSupport::QtKitAspect::qtVersion(target->kit());
-
-    if (currentQtVersion)
-        return currentQtVersion->binPath()
-            .pathAppended(QString{"qml2puppet-"} + Core::Constants::IDE_VERSION_LONG)
-            .withExecutableSuffix();
-
-    return {};
-}
-
 } // namespace
 
 QProcessEnvironment PuppetEnvironmentBuilder::processEnvironment() const
@@ -67,6 +51,7 @@ QProcessEnvironment PuppetEnvironmentBuilder::processEnvironment() const
     addMultiLanguageDatatbase();
     addImportPaths();
     addCustomFileSelectors();
+    addDisableDeferredProperties();
 
     qCInfo(puppetEnvirmentBuild) << "Puppet environment:" << m_environment.toStringList();
 
@@ -74,9 +59,12 @@ QProcessEnvironment PuppetEnvironmentBuilder::processEnvironment() const
 }
 
 QProcessEnvironment PuppetEnvironmentBuilder::createEnvironment(
-    ProjectExplorer::Target *target, const DesignerSettings &designerSettings, const Model &model)
+    ProjectExplorer::Target *target,
+    const DesignerSettings &designerSettings,
+    const Model &model,
+    const Utils::FilePath &qmlPuppetPath)
 {
-    PuppetEnvironmentBuilder builder{target, designerSettings, model};
+    PuppetEnvironmentBuilder builder{target, designerSettings, model, qmlPuppetPath};
     return builder.processEnvironment();
 }
 
@@ -217,7 +205,7 @@ void PuppetEnvironmentBuilder::addImportPaths() const
     }
 
     if (m_availablePuppetType == PuppetType::Fallback)
-        importPaths.prepend(QLibraryInfo::location(QLibraryInfo::Qml2ImportsPath));
+        importPaths.prepend(QLibraryInfo::path(QLibraryInfo::Qml2ImportsPath));
 
     constexpr auto pathSep = Utils::HostOsInfo::pathListSeparator();
     m_environment.appendOrSet("QML2_IMPORT_PATH", importPaths.join(pathSep), pathSep);
@@ -241,10 +229,15 @@ void PuppetEnvironmentBuilder::addCustomFileSelectors() const
     qCInfo(puppetEnvirmentBuild) << "Puppet selectors:" << customFileSelectors;
 }
 
+void PuppetEnvironmentBuilder::addDisableDeferredProperties() const
+{
+    m_environment.set("QML_DISABLE_INTERNAL_DEFERRED_PROPERTIES", "true");
+}
+
 PuppetType PuppetEnvironmentBuilder::determinePuppetType() const
 {
     if (m_target && m_target->kit() && m_target->kit()->isValid()) {
-        if (pathForBinPuppet(m_target).isExecutableFile())
+        if (m_qmlPuppetPath.isExecutableFile())
             return PuppetType::Kit;
     }
 

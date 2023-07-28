@@ -4,6 +4,7 @@
 #include "dockcontainerwidget.h"
 
 #include "ads_globals.h"
+#include "ads_globals_p.h"
 #include "dockareawidget.h"
 #include "dockingstatereader.h"
 #include "dockmanager.h"
@@ -24,8 +25,6 @@
 
 #include <functional>
 #include <iostream>
-
-static Q_LOGGING_CATEGORY(adsLog, "qtc.qmldesigner.advanceddockingsystem", QtWarningMsg)
 
 namespace ADS
 {
@@ -642,8 +641,8 @@ namespace ADS
             stream.writeAttribute("orientation",
                                   QVariant::fromValue(splitter->orientation()).toString());
             stream.writeAttribute("count", QString::number(splitter->count()));
-            qCInfo(adsLog) << "NodeSplitter orient: " << splitter->orientation()
-                           << " WidgetCont: " << splitter->count();
+            qCInfo(adsLog) << "NodeSplitter orientation:" << splitter->orientation()
+                           << "WidgetCount:" << splitter->count();
             for (int i = 0; i < splitter->count(); ++i)
                 saveChildNodesState(stream, splitter->widget(i));
 
@@ -679,8 +678,8 @@ namespace ADS
         if (!ok)
             return false;
 
-        qCInfo(adsLog) << "Restore NodeSplitter Orientation: " << orientation
-                       << " WidgetCount: " << widgetCount;
+        qCInfo(adsLog) << "Restore NodeSplitter Orientation:" << orientation
+                       << "WidgetCount:" << widgetCount;
         QSplitter *splitter = nullptr;
         if (!testing)
             splitter = createSplitter(orientation);

@@ -376,6 +376,7 @@ void TestBlackboxQt::pkgconfigQt()
     QbsRunParameters params("build", {"-f", "pkgconfig-qt.qbs"});
     // need to override prefix for the downloaded Qt
     params.environment.insert("PKG_CONFIG_QT5CORE_PREFIX", prefix);
+    params.environment.insert("PKG_CONFIG_QT6CORE_PREFIX", prefix);
     params.arguments << "moduleProviders.qbspkgconfig.extraPaths:" + pkgConfigPath;
     params.arguments << arguments;
 
@@ -392,6 +393,8 @@ void TestBlackboxQt::pkgconfigQt_data()
     QTest::newRow("pkgconfig") << QStringList() << true;
     QTest::newRow("dummy")
             << QStringList({"products.p.qbsModuleProviders:dummyProvider"}) << false;
+    QTest::newRow("cross-compiling")
+            << QStringList({"moduleProviders.qbspkgconfig.sysroot:/some/fake/sysroot"}) << false;
 }
 
 void TestBlackboxQt::pluginMetaData()
@@ -465,6 +468,16 @@ void TestBlackboxQt::pluginSupport()
         QCOMPARE(m_qbsStdout.contains("qt_plugin_import_" + plugin + ".cpp"),
                  enabledPlugins.contains(plugin));
     }
+}
+
+void TestBlackboxQt::qdoc()
+{
+    QDir::setCurrent(testDataDir + "/qdoc");
+    QCOMPARE(runQbs(QbsRunParameters("resolve")), 0);
+    if (m_qbsStdout.contains("Qt is too old"))
+        QSKIP("Skip test since qdoc3 does not work properly");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY(QFileInfo(relativeProductBuildDir("QDoc Test") + "/qdoctest.qch").exists());
 }
 
 void TestBlackboxQt::qmlDebugging()

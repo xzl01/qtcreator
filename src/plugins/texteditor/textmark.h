@@ -11,6 +11,7 @@
 
 #include <QCoreApplication>
 #include <QIcon>
+#include <QStaticText>
 #include <QVector>
 
 #include <optional>
@@ -40,6 +41,7 @@ class TEXTEDITOR_EXPORT TextMark
 public:
     TextMark() = delete;
     TextMark(const Utils::FilePath &filePath, int lineNumber, TextMarkCategory category);
+    TextMark(TextDocument *document, int lineNumber, TextMarkCategory category);
     virtual ~TextMark();
 
     // determine order on markers on the same line.
@@ -115,14 +117,17 @@ public:
     void setActions(const QVector<QAction *> &actions); // Takes ownership
     void setActionsProvider(const std::function<QList<QAction *>()> &actionsProvider); // Takes ownership
 
-    bool isLocationMarker() const;;
+    bool isLocationMarker() const;
     void setIsLocationMarker(bool newIsLocationMarker);
+
 
 protected:
     void setSettingsPage(Utils::Id settingsPage);
 
 private:
     Q_DISABLE_COPY(TextMark)
+
+    void setDeleteCallback(const std::function<void()> &callback) { m_deleteCallback = callback; };
 
     TextDocument *m_baseTextDocument = nullptr;
     Utils::FilePath m_fileName;
@@ -135,12 +140,16 @@ private:
     bool m_visible = false;
     TextMarkCategory m_category;
     QString m_lineAnnotation;
+    mutable QStaticText m_staticAnnotationText;
     QString m_toolTip;
     std::function<QString()> m_toolTipProvider;
     QString m_defaultToolTip;
     QVector<QAction *> m_actions; // FIXME Remove in master
     std::function<QList<QAction *>()> m_actionsProvider;
     Utils::Id m_settingsPage;
+    std::function<void()> m_deleteCallback;
+
+    friend class TextDocumentLayout;
 };
 
 } // namespace TextEditor

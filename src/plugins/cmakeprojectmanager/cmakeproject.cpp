@@ -7,16 +7,17 @@
 #include "cmakeprojectconstants.h"
 #include "cmakeprojectimporter.h"
 #include "cmakeprojectmanagertr.h"
-#include "cmaketool.h"
 
 #include <coreplugin/icontext.h>
 #include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/buildinfo.h>
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/taskhub.h>
+#include <qtsupport/qtkitinformation.h>
 
 using namespace ProjectExplorer;
 using namespace Utils;
@@ -34,7 +35,11 @@ CMakeProject::CMakeProject(const FilePath &fileName)
     setProjectLanguages(Core::Context(ProjectExplorer::Constants::CXX_LANGUAGE_ID));
     setDisplayName(projectDirectory().fileName());
     setCanBuildProducts();
-    setHasMakeInstallEquivalent(true);
+
+    // This only influences whether 'Install into temporary host directory'
+    // will show up by default enabled in some remote deploy configurations.
+    // We rely on staging via the actual cmake build step.
+    setHasMakeInstallEquivalent(false);
 
     readPresets();
 }
@@ -62,7 +67,7 @@ Tasks CMakeProject::projectIssues(const Kit *k) const
 ProjectImporter *CMakeProject::projectImporter() const
 {
     if (!m_projectImporter)
-        m_projectImporter = new CMakeProjectImporter(projectFilePath(), m_presetsData);
+        m_projectImporter = new CMakeProjectImporter(projectFilePath(), this);
     return m_projectImporter;
 }
 
@@ -88,6 +93,14 @@ Internal::PresetsData CMakeProject::combinePresets(Internal::PresetsData &cmakeP
     result.version = cmakePresetsData.version;
     result.cmakeMinimimRequired = cmakePresetsData.cmakeMinimimRequired;
 
+    result.include = cmakePresetsData.include;
+    if (result.include) {
+        if (cmakeUserPresetsData.include)
+            result.include->append(cmakeUserPresetsData.include.value());
+    } else {
+        result.include = cmakeUserPresetsData.include;
+    }
+
     auto combinePresetsInternal = [](auto &presetsHash,
                                      auto &presets,
                                      auto &userPresets,
@@ -98,7 +111,20 @@ Internal::PresetsData CMakeProject::combinePresets(Internal::PresetsData &cmakeP
 
         auto resolveInherits = [](auto &presetsHash, auto &presetsList) {
             Utils::sort(presetsList, [](const auto &left, const auto &right) {
-                if (!left.inherits || left.inherits.value().contains(right.name))
+                const bool sameInheritance = left.inherits && right.inherits
+                                             && left.inherits.value() == right.inherits.value();
+                const bool leftInheritsRight = left.inherits
+                                               && left.inherits.value().contains(right.name);
+
+                const bool inheritsGreater = left.inherits && right.inherits
+                                             && left.inherits.value().first()
+                                                    > right.inherits.value().first();
+
+                const bool noInheritsGreater = !left.inherits && !right.inherits
+                                               && left.name > right.name;
+
+                if ((left.inherits && !right.inherits) || leftInheritsRight || sameInheritance
+                    || inheritsGreater || noInheritsGreater)
                     return false;
                 return true;
             });
@@ -221,7 +247,7 @@ void CMakeProject::readPresets()
                         if (includeStack.contains(includePath)) {
                             TaskHub::addTask(BuildSystemTask(
                                 Task::TaskType::Warning,
-                                Tr::tr("Attempt to include %1 which was already parsed.")
+                                Tr::tr("Attempt to include \"%1\" which was already parsed.")
                                     .arg(includePath.path()),
                                 Utils::FilePath(),
                                 -1));
@@ -274,6 +300,30 @@ ProjectExplorer::DeploymentKnowledge CMakeProject::deploymentKnowledge() const
                    .isEmpty()
                ? DeploymentKnowledge::Approximative
                : DeploymentKnowledge::Bad;
+}
+
+void CMakeProject::configureAsExampleProject(ProjectExplorer::Kit *kit)
+{
+    QList<BuildInfo> infoList;
+    const QList<Kit *> kits(kit != nullptr ? QList<Kit *>({kit}) : KitManager::kits());
+    for (Kit *k : kits) {
+        if (QtSupport::QtKitAspect::qtVersion(k) != nullptr) {
+            if (auto factory = BuildConfigurationFactory::find(k, projectFilePath()))
+                infoList << factory->allAvailableSetups(k, projectFilePath());
+        }
+    }
+    setup(infoList);
+}
+
+void CMakeProjectManager::CMakeProject::setOldPresetKits(
+    const QList<ProjectExplorer::Kit *> &presetKits) const
+{
+    m_oldPresetKits = presetKits;
+}
+
+QList<Kit *> CMakeProject::oldPresetKits() const
+{
+    return m_oldPresetKits;
 }
 
 } // namespace CMakeProjectManager

@@ -47,13 +47,14 @@ void litehtml::css::parse_stylesheet(const tchar_t* str, const tchar_t* baseurl,
 			break;
 		}
 
-		tstring::size_type style_start	= text.find(_t('{'), pos);
+		tstring::size_type style_start = text.find(_t('{'), pos);
 		tstring::size_type style_end	= text.find(_t('}'), pos);
 		if(style_start != tstring::npos && style_end != tstring::npos)
 		{
-			auto style = text.substr(style_start + 1, style_end - style_start - 1);
+			style::ptr st = std::make_shared<style>();
+			st->add(text.substr(style_start + 1, style_end - style_start - 1).c_str(), baseurl);
 
-			parse_selectors(text.substr(pos, style_start - pos), style, media, baseurl ? baseurl : _t(""));
+			parse_selectors(text.substr(pos, style_start - pos), st, media);
 
 			if(media && doc)
 			{
@@ -98,7 +99,7 @@ void litehtml::css::parse_css_url( const tstring& str, tstring& url )
 	}
 }
 
-bool litehtml::css::parse_selectors( const tstring& txt, const tstring& styles, const media_query_list::ptr& media, const tstring& baseurl )
+bool litehtml::css::parse_selectors( const tstring& txt, const litehtml::style::ptr& styles, const media_query_list::ptr& media )
 {
 	tstring selector = txt;
 	trim(selector);
@@ -109,7 +110,7 @@ bool litehtml::css::parse_selectors( const tstring& txt, const tstring& styles, 
 
 	for(auto & token : tokens)
 	{
-		css_selector::ptr new_selector = std::make_shared<css_selector>(media, baseurl);
+		css_selector::ptr new_selector = std::make_shared<css_selector>(media);
         new_selector->m_style = styles;
 		trim(token);
 		if(new_selector->parse(token))

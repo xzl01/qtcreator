@@ -49,8 +49,8 @@
 #include <buildgraph/productinstaller.h>
 #include <buildgraph/rulesevaluationcontext.h>
 #include <language/language.h>
-#include <language/loader.h>
 #include <language/scriptengine.h>
+#include <loader/projectresolver.h>
 #include <logging/logger.h>
 #include <logging/translator.h>
 #include <tools/buildgraphlocker.h>
@@ -324,16 +324,14 @@ void InternalSetupProjectJob::execute()
 
 void InternalSetupProjectJob::resolveProjectFromScratch(ScriptEngine *engine)
 {
-    Loader loader(engine, logger());
-    loader.setSearchPaths(m_parameters.searchPaths());
-    loader.setProgressObserver(observer());
-    m_newProject = loader.loadProject(m_parameters);
+    ProjectResolver resolver(m_parameters, engine, logger());
+    resolver.setProgressObserver(observer());
+    m_newProject = resolver.resolve();
     QBS_CHECK(m_newProject);
 }
 
 void InternalSetupProjectJob::resolveBuildDataFromScratch(const RulesEvaluationContextPtr &evalContext)
 {
-    TimedActivityLogger resolveLogger(logger(), QStringLiteral("Resolving build project"), timed());
     BuildDataResolver(logger()).resolveBuildData(m_newProject, evalContext);
 }
 

@@ -261,7 +261,7 @@ void RewriterView::nodeReparented(const ModelNode &node, const NodeAbstractPrope
         applyChanges();
 }
 
-void RewriterView::importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports)
+void RewriterView::importsChanged(const Imports &addedImports, const Imports &removedImports)
 {
     for (const Import &import : addedImports)
         importAdded(import);
@@ -701,6 +701,12 @@ bool RewriterView::possibleImportsEnabled() const
 void RewriterView::setPossibleImportsEnabled(bool b)
 {
     m_possibleImportsEnabled = b;
+}
+
+void RewriterView::forceAmend()
+{
+    m_amendTimer.stop();
+    amendQmlText();
 }
 
 Internal::ModelNodePositionStorage *RewriterView::positionStorage() const

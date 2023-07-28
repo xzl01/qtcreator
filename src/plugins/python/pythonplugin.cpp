@@ -6,11 +6,12 @@
 #include "pysidebuildconfiguration.h"
 #include "pythoneditor.h"
 #include "pythonproject.h"
-#include "pythonsettings.h"
 #include "pythonrunconfiguration.h"
+#include "pythonsettings.h"
+#include "pythonwizardpage.h"
 
 #include <projectexplorer/buildtargetinfo.h>
-#include <projectexplorer/localenvironmentaspect.h>
+#include <projectexplorer/jsonwizard/jsonwizardfactory.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectmanager.h>
 #include <projectexplorer/taskhub.h>
@@ -19,6 +20,7 @@
 #include <utils/theme/theme.h>
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace Python::Internal {
 
@@ -57,14 +59,16 @@ void PythonPlugin::initialize()
     d = new PythonPluginPrivate;
 
     ProjectManager::registerProjectType<PythonProject>(PythonMimeType);
+    ProjectManager::registerProjectType<PythonProject>(PythonMimeTypeLegacy);
+    JsonWizardFactory::registerPageFactory(new PythonWizardPageFactory);
 }
 
 void PythonPlugin::extensionsInitialized()
 {
     // Add MIME overlay icons (these icons displayed at Project dock panel)
-    QString imageFile = Utils::creatorTheme()->imageFile(Utils::Theme::IconOverlayPro,
-                                                         ::Constants::FILEOVERLAY_PY);
-    Utils::FileIconProvider::registerIconOverlayForSuffix(imageFile, "py");
+    const QString imageFile = Utils::creatorTheme()->imageFile(Theme::IconOverlayPro,
+                                                               ::Constants::FILEOVERLAY_PY);
+    FileIconProvider::registerIconOverlayForSuffix(imageFile, "py");
 
     TaskHub::addCategory(PythonErrorTaskCategory, "Python", true);
 }

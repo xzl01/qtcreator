@@ -21,7 +21,8 @@
 #include <projectexplorer/headerpath.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
+#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/toolchain.h>
 #include <projectexplorer/toolchainmanager.h>
@@ -32,8 +33,8 @@
 #include <utils/fileinprojectfinder.h>
 #include <utils/hostosinfo.h>
 #include <utils/macroexpander.h>
+#include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
 #include <utils/stringutils.h>
 #include <utils/winutils.h>
 
@@ -639,7 +640,7 @@ bool QtVersion::hasReleaseBuild() const
     return !d->m_defaultConfigIsDebug || d->m_defaultConfigIsDebugAndRelease;
 }
 
-void QtVersion::fromMap(const QVariantMap &map)
+void QtVersion::fromMap(const QVariantMap &map, const FilePath &filePath)
 {
     d->m_id = map.value(Constants::QTVERSIONID).toInt();
     if (d->m_id == -1) // this happens on adding from installer, see updateFromInstaller => get a new unique id
@@ -664,6 +665,7 @@ void QtVersion::fromMap(const QVariantMap &map)
             d->m_qmakeCommand = BuildableHelperLibrary::qtChooserToQmakePath(qmake);
         }
     }
+    d->m_qmakeCommand = filePath.resolvePath(d->m_qmakeCommand);
 
     d->m_data.qtSources = FilePath::fromSettings(map.value(QTVERSIONSOURCEPATH));
 
@@ -1251,7 +1253,7 @@ void QtVersionPrivate::updateVersionInfo()
     m_qmakeIsExecutable = true;
 
     auto fileProperty = [this](const QByteArray &name) {
-        return FilePath::fromUserInput(qmakeProperty(name)).onDevice(m_qmakeCommand);
+        return m_qmakeCommand.withNewPath(qmakeProperty(name)).cleanPath();
     };
 
     m_data.prefix = fileProperty("QT_INSTALL_PREFIX");
@@ -1542,10 +1544,10 @@ void QtVersion::populateQmlFileFinder(FileInProjectFinder *finder, const Target 
 
     // ... else try the session manager's global startup project ...
     if (!startupProject)
-        startupProject = SessionManager::startupProject();
+        startupProject = ProjectManager::startupProject();
 
     // ... and if that is null, use the first project available.
-    const QList<Project *> projects = SessionManager::projects();
+    const QList<Project *> projects = ProjectManager::projects();
     QTC_CHECK(projects.isEmpty() || startupProject);
 
     FilePath projectDirectory;
@@ -1610,7 +1612,7 @@ QSet<Id> QtVersion::features() const
 void QtVersion::addToEnvironment(const Kit *k, Environment &env) const
 {
     Q_UNUSED(k)
-    env.set("QTDIR", hostDataPath().toUserOutput());
+    env.set("QTDIR", hostDataPath().nativePath());
 }
 
 // Some Qt versions may require environment settings for qmake to work
@@ -1682,7 +1684,7 @@ static QByteArray runQmakeQuery(const FilePath &binary, const Environment &env, 
     // Prevent e.g. qmake 4.x on MinGW to show annoying errors about missing dll's.
     WindowsCrashDialogBlocker crashDialogBlocker;
 
-    QtcProcess process;
+    Process process;
     process.setEnvironment(env);
     process.setCommand({binary, {"-query"}});
     process.start();
@@ -1772,7 +1774,7 @@ FilePath QtVersionPrivate::mkspecDirectoryFromVersionInfo(const QHash<ProKey, Pr
     QString dataDir = qmakeProperty(versionInfo, "QT_HOST_DATA", PropertyVariantSrc);
     if (dataDir.isEmpty())
         return FilePath();
-    return FilePath::fromUserInput(dataDir + "/mkspecs").onDevice(qmakeCommand);
+    return qmakeCommand.withNewPath(dataDir + "/mkspecs").cleanPath();
 }
 
 FilePath QtVersionPrivate::mkspecFromVersionInfo(const QHash<ProKey, ProString> &versionInfo,
@@ -1859,9 +1861,23 @@ FilePath QtVersionPrivate::mkspecFromVersionInfo(const QHash<ProKey, ProString> 
 FilePath QtVersionPrivate::sourcePath(const QHash<ProKey, ProString> &versionInfo)
 {
     const QString qt5Source = qmakeProperty(versionInfo, "QT_INSTALL_PREFIX/src");
-    if (!qt5Source.isEmpty())
-        return FilePath::fromString(QFileInfo(qt5Source).canonicalFilePath());
+    if (!qt5Source.isEmpty()) {
+        // Can be wrong for the Qt installers :/
+        // Check if we actually find sources, otherwise try what the online installer does.
+        const auto source = FilePath::fromString(QFileInfo(qt5Source).canonicalFilePath());
+        static const QString qglobal = "qtbase/src/corelib/global/qglobal.h";
+        if (!(source / qglobal).exists()) {
+            const auto install = FilePath::fromString(
+                                     qmakeProperty(versionInfo, "QT_INSTALL_PREFIX"))
+                                     .canonicalPath();
+            const FilePath otherSource = install / ".." / "Src";
+            if ((otherSource / qglobal).exists())
+                return otherSource.cleanPath();
+        }
+        return source;
+    }
 
+    // TODO The .qmake.cache workaround doesn't work anymore since Qt is built with CMake
     const QString installData = qmakeProperty(versionInfo, "QT_INSTALL_PREFIX");
     QString sourcePath = installData;
     QFile qmakeCache(installData + "/.qmake.cache");
@@ -2099,8 +2115,7 @@ static QByteArray scanQtBinaryForBuildString(const FilePath &library)
 
 static QStringList extractFieldsFromBuildString(const QByteArray &buildString)
 {
-    if (buildString.isEmpty()
-            || buildString.count() > 4096)
+    if (buildString.isEmpty() || buildString.size() > 4096)
         return QStringList();
 
     const QRegularExpression buildStringMatcher("^Qt "
@@ -2129,7 +2144,7 @@ static QStringList extractFieldsFromBuildString(const QByteArray &buildString)
 
     const QString endian = abiInfo.takeFirst();
     QTC_ASSERT(endian.endsWith("_endian"), return QStringList());
-    result.append(endian.left(endian.count() - 7)); // without the "_endian"
+    result.append(endian.left(endian.size() - 7)); // without the "_endian"
 
     result.append(abiInfo.takeFirst()); // pointer
 
@@ -2159,7 +2174,7 @@ static QStringList extractFieldsFromBuildString(const QByteArray &buildString)
 static Abi refineAbiFromBuildString(const QByteArray &buildString, const Abi &probableAbi)
 {
     QStringList buildStringData = extractFieldsFromBuildString(buildString);
-    if (buildStringData.count() != 9)
+    if (buildStringData.size() != 9)
         return probableAbi;
 
     const QString compiler = buildStringData.at(8);
@@ -2308,12 +2323,12 @@ bool QtVersionFactory::canRestore(const QString &type)
     return type == m_supportedType;
 }
 
-QtVersion *QtVersionFactory::restore(const QString &type, const QVariantMap &data)
+QtVersion *QtVersionFactory::restore(const QString &type, const QVariantMap &data, const FilePath &filePath)
 {
     QTC_ASSERT(canRestore(type), return nullptr);
     QTC_ASSERT(m_creator, return nullptr);
     QtVersion *version = create();
-    version->fromMap(data);
+    version->fromMap(data, filePath);
     return version;
 }
 

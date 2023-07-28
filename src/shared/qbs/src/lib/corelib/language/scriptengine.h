@@ -283,6 +283,7 @@ public:
 
     JSValue getInternalExtension(const char *name) const;
     void addInternalExtension(const char *name, JSValue ext);
+    JSValue asJsValue(const QByteArray &s);
     JSValue asJsValue(const QString &s);
     JSValue asJsValue(const QStringList &l);
     JSValue asJsValue(const QVariantList &l);
@@ -292,6 +293,19 @@ public:
     void setProperty(const char *k, const QVariant &v) { m_properties.insert(QLatin1String(k), v); }
 
 private:
+    class Importer {
+    public:
+        Importer(ScriptEngine &engine, const FileContextBaseConstPtr &fileCtx,
+                 JSValue &targetObject, ObserveMode observeMode);
+        ~Importer();
+        void run();
+
+    private:
+        ScriptEngine &m_engine;
+        const FileContextBaseConstPtr &m_fileCtx;
+        JSValue &m_targetObject;
+    };
+
     static int interruptor(JSRuntime *rt, void *opaqueEngine);
 
     bool gatherFileResults() const;
@@ -305,7 +319,7 @@ private:
     void uninstallImportFunctions();
     void import(const JsImport &jsImport, JSValue &targetObject);
     void observeImport(JSValue &jsImport);
-    void importFile(const QString &filePath, JSValue &targetObject);
+    void importFile(const QString &filePath, JSValue targetObject);
     static JSValue js_require(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv, int magic, JSValue *func_data);
     JSValue mergeExtensionObjects(const JSValueList &lst);

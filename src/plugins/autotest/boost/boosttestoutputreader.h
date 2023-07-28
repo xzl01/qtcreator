@@ -15,8 +15,7 @@ class BoostTestOutputReader : public TestOutputReader
 {
     Q_OBJECT
 public:
-    BoostTestOutputReader(const QFutureInterface<TestResult> &futureInterface,
-                          Utils::QtcProcess *testApplication, const Utils::FilePath &buildDirectory,
+    BoostTestOutputReader(Utils::Process *testApplication, const Utils::FilePath &buildDirectory,
                           const Utils::FilePath &projectFile, LogLevel log, ReportLevel report);
 protected:
     void processOutputLine(const QByteArray &outputLine) override;
@@ -24,7 +23,7 @@ protected:
     TestResult createDefaultResult() const override;
 
 private:
-    void onDone(int exitCode);
+    void onDone(int exitCode) override;
     void sendCompleteInformation();
     void handleMessageMatch(const QRegularExpressionMatch &match);
     void reportNoOutputFinish(const QString &description, ResultType type);

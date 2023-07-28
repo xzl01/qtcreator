@@ -5,7 +5,7 @@
 #include "savefile.h"
 
 #include "algorithm.h"
-#include "hostosinfo.h"
+#include "devicefileaccess.h"
 #include "qtcassert.h"
 #include "utilstr.h"
 
@@ -62,6 +62,10 @@ bool FileReader::fetch(const FilePath &filePath, QIODevice::OpenMode mode)
         return false;
     }
     m_data = *contents;
+
+    if (mode & QIODevice::Text)
+        m_data = m_data.replace("\r\n", "\n");
+
     return true;
 }
 
@@ -129,7 +133,7 @@ bool FileSaverBase::write(const QByteArray &bytes)
 {
     if (m_hasError)
         return false;
-    return setResult(m_file->write(bytes) == bytes.count());
+    return setResult(m_file->write(bytes) == bytes.size());
 }
 
 bool FileSaverBase::setResult(bool ok)
@@ -190,12 +194,13 @@ FileSaver::FileSaver(const FilePath &filePath, QIODevice::OpenMode mode)
         auto tf = new QTemporaryFile(QDir::tempPath() + "/remotefilesaver-XXXXXX");
         tf->setAutoRemove(false);
         m_file.reset(tf);
-    } else if (mode & (QIODevice::ReadOnly | QIODevice::Append)) {
-        m_file.reset(new QFile{filePath.path()});
-        m_isSafe = false;
     } else {
-        m_file.reset(new SaveFile(filePath));
-        m_isSafe = true;
+        const bool readOnlyOrAppend = mode & (QIODevice::ReadOnly | QIODevice::Append);
+        m_isSafe = !readOnlyOrAppend && !filePath.hasHardLinks();
+        if (m_isSafe)
+            m_file.reset(new SaveFile(filePath));
+        else
+            m_file.reset(new QFile{filePath.path()});
     }
     if (!m_file->open(QIODevice::WriteOnly | mode)) {
         QString err = filePath.exists() ?
@@ -254,7 +259,9 @@ TempFileSaver::~TempFileSaver()
         QFile::remove(m_filePath.toString());
 }
 
-/*! \class Utils::FileUtils
+/*!
+    \class Utils::FileUtils
+    \inmodule QtCreator
 
   \brief The FileUtils class contains file and directory related convenience
   functions.
@@ -586,8 +593,7 @@ FilePaths FileUtils::getOpenFilePaths(QWidget *parent,
 
 #endif // QT_WIDGETS_LIB
 
-// Converts a hex string of the st_mode field of a stat structure to FileFlags.
-FilePathInfo::FileFlags fileInfoFlagsfromStatRawModeHex(const QString &hexString)
+FilePathInfo::FileFlags fileInfoFlagsfromStatMode(const QString &hexString, int modeBase)
 {
     // Copied from stat.h
     enum st_mode {
@@ -617,18 +623,24 @@ FilePathInfo::FileFlags fileInfoFlagsfromStatRawModeHex(const QString &hexString
     };
 
     bool ok = false;
-    uint mode = hexString.toUInt(&ok, 16);
+    uint mode = hexString.toUInt(&ok, modeBase);
 
     QTC_ASSERT(ok, return {});
 
     FilePathInfo::FileFlags result;
 
-    if (mode & IRUSR)
+    if (mode & IRUSR) {
         result |= FilePathInfo::ReadOwnerPerm;
-    if (mode & IWUSR)
+        result |= FilePathInfo::ReadUserPerm;
+    }
+    if (mode & IWUSR) {
         result |= FilePathInfo::WriteOwnerPerm;
-    if (mode & IXUSR)
+        result |= FilePathInfo::WriteUserPerm;
+    }
+    if (mode & IXUSR) {
         result |= FilePathInfo::ExeOwnerPerm;
+        result |= FilePathInfo::ExeUserPerm;
+    }
     if (mode & IRGRP)
         result |= FilePathInfo::ReadGroupPerm;
     if (mode & IWGRP)
@@ -657,13 +669,13 @@ FilePathInfo::FileFlags fileInfoFlagsfromStatRawModeHex(const QString &hexString
     return result;
 }
 
-FilePathInfo FileUtils::filePathInfoFromTriple(const QString &infos)
+FilePathInfo FileUtils::filePathInfoFromTriple(const QString &infos, int modeBase)
 {
     const QStringList parts = infos.split(' ', Qt::SkipEmptyParts);
     if (parts.size() != 3)
         return {};
 
-    FilePathInfo::FileFlags flags = fileInfoFlagsfromStatRawModeHex(parts[0]);
+    FilePathInfo::FileFlags flags = fileInfoFlagsfromStatMode(parts[0], modeBase);
 
     const QDateTime dt = QDateTime::fromSecsSinceEpoch(parts[1].toLongLong(), Qt::UTC);
     qint64 size = parts[2].toLongLong();
@@ -802,13 +814,13 @@ FilePath FileUtils::commonPath(const FilePath &oldCommonPath, const FilePath &fi
 
 FilePath FileUtils::homePath()
 {
-    return FilePath::fromString(doCleanPath(QDir::homePath()));
+    return FilePath::fromUserInput(QDir::homePath());
 }
 
-FilePaths FileUtils::toFilePathList(const QStringList &paths) {
-    return transform(paths, [](const QString &path) { return FilePath::fromString(path); });
+FilePaths FileUtils::toFilePathList(const QStringList &paths)
+{
+    return transform(paths, &FilePath::fromString);
 }
-
 
 qint64 FileUtils::bytesAvailableFromDFOutput(const QByteArray &dfOutput)
 {

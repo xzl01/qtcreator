@@ -16,12 +16,13 @@ add_qtc_plugin(Designer
     designer_export.h
     designerconstants.h
     designercontext.cpp designercontext.h
+    designertr.h
     editordata.h
     editorwidget.cpp editorwidget.h
     formeditorfactory.cpp formeditorfactory.h
     formeditorplugin.cpp formeditorplugin.h
     formeditorstack.cpp formeditorstack.h
-    formeditorw.cpp formeditorw.h
+    formeditor.cpp formeditor.h
     formtemplatewizardpage.cpp formtemplatewizardpage.h
     formwindoweditor.cpp formwindoweditor.h
     formwindowfile.cpp formwindowfile.h

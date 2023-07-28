@@ -9,11 +9,13 @@
 #include <edit3d/edit3dviewconfig.h>
 #include <itemlibraryimport.h>
 #include <projectexplorer/kit.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/target.h>
 #include <puppetenvironmentbuilder.h>
+#include <qmlpuppetpaths.h>
 #include <qtsupport/baseqtversion.h>
 #include <qtsupport/qtkitinformation.h>
+#include <qmlprojectmanager/buildsystem/qmlbuildsystem.h>
 
 #include <coreplugin/icore.h>
 
@@ -109,7 +111,7 @@ QString ExternalDependencies::itemLibraryImportUserComponentsTitle() const
 
 bool ExternalDependencies::isQt6Import() const
 {
-    auto target = ProjectExplorer::SessionManager::startupTarget();
+    auto target = ProjectExplorer::ProjectManager::startupTarget();
     if (target) {
         QtSupport::QtVersion *currentQtVersion = QtSupport::QtKitAspect::qtVersion(target->kit());
         if (currentQtVersion && currentQtVersion->isValid()) {
@@ -122,7 +124,7 @@ bool ExternalDependencies::isQt6Import() const
 
 bool ExternalDependencies::hasStartupTarget() const
 {
-    auto target = ProjectExplorer::SessionManager::startupTarget();
+    auto target = ProjectExplorer::ProjectManager::startupTarget();
     if (target) {
         QtSupport::QtVersion *currentQtVersion = QtSupport::QtKitAspect::qtVersion(target->kit());
         if (currentQtVersion && currentQtVersion->isValid()) {
@@ -134,54 +136,6 @@ bool ExternalDependencies::hasStartupTarget() const
 }
 
 namespace {
-
-Utils::FilePath qmlPuppetExecutablePath(const Utils::FilePath &workingDirectory)
-{
-    return workingDirectory.pathAppended(QString{"qml2puppet-"} + Core::Constants::IDE_VERSION_LONG)
-        .withExecutableSuffix();
-}
-
-Utils::FilePath qmlPuppetFallbackDirectory(const DesignerSettings &settings)
-{
-    auto puppetFallbackDirectory = Utils::FilePath::fromString(
-        settings.value(DesignerSettingsKey::PUPPET_DEFAULT_DIRECTORY).toString());
-    if (puppetFallbackDirectory.isEmpty() || !puppetFallbackDirectory.exists())
-        return Core::ICore::libexecPath();
-    return puppetFallbackDirectory;
-}
-
-std::pair<Utils::FilePath, Utils::FilePath> qmlPuppetFallbackPaths(const DesignerSettings &settings)
-{
-    auto workingDirectory = qmlPuppetFallbackDirectory(settings);
-
-    return {workingDirectory, qmlPuppetExecutablePath(workingDirectory)};
-}
-
-std::pair<Utils::FilePath, Utils::FilePath> pathsForKitPuppet(ProjectExplorer::Target *target)
-{
-    if (!target || !target->kit())
-        return {};
-
-    QtSupport::QtVersion *currentQtVersion = QtSupport::QtKitAspect::qtVersion(target->kit());
-
-    if (currentQtVersion) {
-        auto path = currentQtVersion->binPath();
-        return {path, qmlPuppetExecutablePath(path)};
-    }
-
-    return {};
-}
-
-std::pair<Utils::FilePath, Utils::FilePath> qmlPuppetPaths(ProjectExplorer::Target *target,
-                                                           const DesignerSettings &settings)
-{
-    auto [workingDirectoryPath, puppetPath] = pathsForKitPuppet(target);
-
-    if (workingDirectoryPath.isEmpty() || !puppetPath.exists())
-        return qmlPuppetFallbackPaths(settings);
-
-    return {workingDirectoryPath, puppetPath};
-}
 
 bool isForcingFreeType(ProjectExplorer::Target *target)
 {
@@ -208,12 +162,12 @@ QString createFreeTypeOption(ProjectExplorer::Target *target)
 PuppetStartData ExternalDependencies::puppetStartData(const Model &model) const
 {
     PuppetStartData data;
-    auto target = ProjectExplorer::SessionManager::startupTarget();
-    auto [workingDirectory, puppetPath] = qmlPuppetPaths(target, m_designerSettings);
+    auto target = ProjectExplorer::ProjectManager::startupTarget();
+    auto [workingDirectory, puppetPath] = QmlPuppetPaths::qmlPuppetPaths(target, m_designerSettings);
 
     data.puppetPath = puppetPath.toString();
     data.workingDirectoryPath = workingDirectory.toString();
-    data.environment = PuppetEnvironmentBuilder::createEnvironment(target, m_designerSettings, model);
+    data.environment = PuppetEnvironmentBuilder::createEnvironment(target, m_designerSettings, model, qmlPuppetPath());
     data.debugPuppet = m_designerSettings.value(DesignerSettingsKey::DEBUG_PUPPET).toString();
     data.freeTypeOption = createFreeTypeOption(target);
     data.forwardOutput = m_designerSettings.value(DesignerSettingsKey::FORWARD_PUPPET_OUTPUT).toString();
@@ -224,6 +178,104 @@ PuppetStartData ExternalDependencies::puppetStartData(const Model &model) const
 bool ExternalDependencies::instantQmlTextUpdate() const
 {
     return false;
+}
+
+Utils::FilePath ExternalDependencies::qmlPuppetPath() const
+{
+    auto target = ProjectExplorer::ProjectManager::startupTarget();
+    auto [workingDirectory, puppetPath] = QmlPuppetPaths::qmlPuppetPaths(target, m_designerSettings);
+    return puppetPath;
+}
+
+namespace {
+
+QString qmlPath(ProjectExplorer::Target *target)
+{
+    auto kit = target->kit();
+
+    if (!kit)
+        return {};
+
+    auto qtVersion = QtSupport::QtKitAspect::qtVersion(kit);
+    if (!qtVersion)
+        return {};
+
+    return qtVersion->qmlPath().toString();
+}
+
+std::tuple<ProjectExplorer::Project *, ProjectExplorer::Target *, QmlProjectManager::QmlBuildSystem *>
+activeProjectEntries()
+{
+    auto project = ProjectExplorer::ProjectManager::startupProject();
+
+    if (!project)
+        return {};
+
+    auto target = project->activeTarget();
+
+    if (!target)
+        return {};
+
+    const auto qmlBuildSystem = qobject_cast<QmlProjectManager::QmlBuildSystem *>(
+        target->buildSystem());
+
+    if (qmlBuildSystem)
+        return std::make_tuple(project, target, qmlBuildSystem);
+
+    return {};
+}
+} // namespace
+
+QStringList ExternalDependencies::modulePaths() const
+{
+    auto [project, target, qmlBuildSystem] = activeProjectEntries();
+
+    if (project && target && qmlBuildSystem) {
+        QStringList modulePaths;
+
+        if (auto path = qmlPath(target); !path.isEmpty())
+            modulePaths.push_back(path);
+
+        for (const QString &modulePath : qmlBuildSystem->customImportPaths())
+            modulePaths.append(project->projectDirectory().pathAppended(modulePath).toString());
+
+        return modulePaths;
+    }
+
+    return {};
+}
+
+QStringList ExternalDependencies::projectModulePaths() const
+{
+    auto [project, target, qmlBuildSystem] = activeProjectEntries();
+
+    if (project && target && qmlBuildSystem) {
+        QStringList modulePaths;
+
+        for (const QString &modulePath : qmlBuildSystem->customImportPaths())
+            modulePaths.append(project->projectDirectory().pathAppended(modulePath).toString());
+    }
+
+    return {};
+}
+
+bool ExternalDependencies::isQt6Project() const
+{
+    auto [project, target, qmlBuildSystem] = activeProjectEntries();
+
+    return qmlBuildSystem && qmlBuildSystem->qt6Project();
+}
+
+QString ExternalDependencies::qtQuickVersion() const
+{
+    auto [project, target, qmlBuildSystem] = activeProjectEntries();
+
+    return qmlBuildSystem ? qmlBuildSystem->versionQtQuick() : QString{};
+}
+
+Utils::FilePath ExternalDependencies::resourcePath(const QString &relativePath) const
+{
+    return Core::ICore::resourcePath(relativePath);
 }
 
 } // namespace QmlDesigner

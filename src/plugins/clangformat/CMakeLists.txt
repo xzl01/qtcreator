@@ -12,6 +12,7 @@ add_qtc_plugin(ClangFormat
     clangformatindenter.cpp clangformatindenter.h
     clangformatplugin.cpp clangformatplugin.h
     clangformatsettings.cpp clangformatsettings.h
+    clangformattr.h
     clangformatutils.cpp clangformatutils.h
   EXPLICIT_MOC
     clangformatconfigwidget.cpp clangformatconfigwidget.h
@@ -38,4 +39,5 @@ extend_qtc_plugin(ClangFormat
     tests/clangformat-test.h
   DEFINES
     TESTDATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
+  EXPLICIT_MOC tests/clangformat-test.h
 )

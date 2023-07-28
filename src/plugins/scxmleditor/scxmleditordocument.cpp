@@ -6,7 +6,7 @@
 #include "scxmleditorconstants.h"
 
 #include <projectexplorer/projectexplorerconstants.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
 #include <qtsupport/qtkitinformation.h>
 #include <utils/fileutils.h>
 #include <utils/qtcassert.h>
@@ -58,7 +58,7 @@ Core::IDocument::OpenResult ScxmlEditorDocument::open(QString *errorString,
     return OpenResult::Success;
 }
 
-bool ScxmlEditorDocument::save(QString *errorString, const FilePath &filePath, bool autoSave)
+bool ScxmlEditorDocument::saveImpl(QString *errorString, const FilePath &filePath, bool autoSave)
 {
     const FilePath oldFileName = this->filePath();
     const FilePath actualName = filePath.isEmpty() ? oldFileName : filePath;

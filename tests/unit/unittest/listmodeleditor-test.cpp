@@ -4,6 +4,7 @@
 #include "googletest.h"
 
 #include "mocklistmodeleditorview.h"
+#include "projectstoragemock.h"
 
 #include <qmldesigner/components/listmodeleditor/listmodeleditormodel.h>
 #include <qmldesigner/designercore/include/abstractview.h>
@@ -19,6 +20,10 @@ using QmlDesigner::AbstractProperty;
 using QmlDesigner::AbstractView;
 using QmlDesigner::ListModelEditorModel;
 using QmlDesigner::ModelNode;
+using QmlDesigner::ModuleId;
+using QmlDesigner::PropertyDeclarationId;
+using QmlDesigner::TypeId;
+namespace Info = QmlDesigner::Storage::Info;
 
 MATCHER_P2(HasItem,
            name,
@@ -91,7 +96,7 @@ public:
                                          mockComponentView,
                                          mockComponentView.rootModelNode());
 
-        ON_CALL(mockGoIntoComponent, Call(_)).WillByDefault([](ModelNode node) { return node; });
+        ON_CALL(goIntoComponentMock, Call(_)).WillByDefault([](ModelNode node) { return node; });
     }
 
     using Entry = std::pair<QmlDesigner::PropertyName, QVariant>;
@@ -174,13 +179,15 @@ public:
     }
 
 protected:
-    MockFunction<ModelNode(const ModelNode &)> mockGoIntoComponent;
-    QmlDesigner::ModelPointer designerModel{QmlDesigner::Model::create("QtQuick.Item", 1, 1)};
+    NiceMock<ProjectStorageMockWithQtQtuick> projectStorageMock;
+    NiceMock<MockFunction<ModelNode(const ModelNode &)>> goIntoComponentMock;
+    QmlDesigner::ModelPointer designerModel{
+        QmlDesigner::Model::create(projectStorageMock, "QtQuick.Item", 1, 1)};
     NiceMock<MockListModelEditorView> mockView;
     QmlDesigner::ListModelEditorModel model{
         [&] { return mockView.createModelNode("QtQml.Models.ListModel", 2, 15); },
         [&] { return mockView.createModelNode("QtQml.Models.ListElement", 2, 15); },
-        mockGoIntoComponent.AsStdFunction()};
+        goIntoComponentMock.AsStdFunction()};
     ModelNode listViewNode;
     ModelNode listModelNode;
     ModelNode emptyListModelNode;
@@ -188,7 +195,7 @@ protected:
     ModelNode element2;
     ModelNode element3;
     QmlDesigner::ModelPointer componentModel{
-        QmlDesigner::Model::create("QtQml.Models.ListModel", 1, 1)};
+        QmlDesigner::Model::create(projectStorageMock, "QtQml.Models.ListModel", 1, 1)};
     NiceMock<MockListModelEditorView> mockComponentView;
     ModelNode componentElement;
 };
@@ -211,7 +218,7 @@ TEST_F(ListModelEditor, HorizontalLabels)
 {
     model.setListModel(listModelNode);
 
-    ASSERT_THAT(headerLabels(model), ElementsAre("image", "name", "value", "value2"));
+    ASSERT_THAT(headerLabels(model), ElementsAre(u"image", u"name", u"value", u"value2"));
 }
 
 TEST_F(ListModelEditor, HorizontalLabelsForEmptyList)
@@ -365,7 +372,7 @@ TEST_F(ListModelEditor, AddColumnInsertsHeaderLabel)
 
     model.addColumn("other");
 
-    ASSERT_THAT(headerLabels(model), ElementsAre("image", "name", "other", "value", "value2"));
+    ASSERT_THAT(headerLabels(model), ElementsAre(u"image", u"name", u"other", u"value", u"value2"));
 }
 
 TEST_F(ListModelEditor, AddColumnInsertsHeaderLabelToEmptyModel)
@@ -374,7 +381,7 @@ TEST_F(ListModelEditor, AddColumnInsertsHeaderLabelToEmptyModel)
 
     model.addColumn("foo");
 
-    ASSERT_THAT(headerLabels(model), ElementsAre("foo"));
+    ASSERT_THAT(headerLabels(model), ElementsAre(u"foo"));
 }
 
 TEST_F(ListModelEditor, AddTwiceColumnInsertsHeaderLabelToEmptyModel)
@@ -384,7 +391,7 @@ TEST_F(ListModelEditor, AddTwiceColumnInsertsHeaderLabelToEmptyModel)
 
     model.addColumn("foo2");
 
-    ASSERT_THAT(headerLabels(model), ElementsAre("foo", "foo2"));
+    ASSERT_THAT(headerLabels(model), ElementsAre(u"foo", u"foo2"));
 }
 
 TEST_F(ListModelEditor, AddSameColumnInsertsHeaderLabel)
@@ -394,7 +401,7 @@ TEST_F(ListModelEditor, AddSameColumnInsertsHeaderLabel)
 
     model.addColumn("foo");
 
-    ASSERT_THAT(headerLabels(model), ElementsAre("foo"));
+    ASSERT_THAT(headerLabels(model), ElementsAre(u"foo"));
 }
 
 TEST_F(ListModelEditor, AddColumnInsertsDisplayValues)
@@ -510,7 +517,7 @@ TEST_F(ListModelEditor, DontConvertStringToNumber)
 
     model.setValue(1, 1, "hello");
 
-    ASSERT_THAT(element2.variantProperty("name").value().value<QString>(), "hello");
+    ASSERT_THAT(element2.variantProperty("name").value().value<QString>(), u"hello");
     ASSERT_THAT(element2.variantProperty("name").value().type(), QVariant::String);
 }
 
@@ -520,7 +527,7 @@ TEST_F(ListModelEditor, EmptyStringsRemovesProperty)
 
     model.setValue(1, 1, "");
 
-    ASSERT_THAT(element2.variantProperty("name").value().value<QString>(), Eq(""));
+    ASSERT_THAT(element2.variantProperty("name").value().value<QString>(), Eq(u""));
 }
 
 TEST_F(ListModelEditor, InvalidVariantRemovesProperty)
@@ -645,7 +652,7 @@ TEST_F(ListModelEditor, DontRenameColumnIfColumnNameExists)
 
     model.renameColumn(1, "value2");
 
-    ASSERT_THAT(headerLabels(model), ElementsAre("image", "name", "value", "value2"));
+    ASSERT_THAT(headerLabels(model), ElementsAre(u"image", u"name", u"value", u"value2"));
 }
 
 TEST_F(ListModelEditor, DontRenameColumnIfColumnNameExistsDoesNotChangeDisplayValues)
@@ -693,7 +700,7 @@ TEST_F(ListModelEditor, RenameColumnButDontChangeOrder)
 
     model.renameColumn(1, "mood");
 
-    ASSERT_THAT(headerLabels(model), ElementsAre("image", "mood", "value", "value2"));
+    ASSERT_THAT(headerLabels(model), ElementsAre(u"image", u"mood", u"value", u"value2"));
 }
 
 TEST_F(ListModelEditor, RenameColumnButDontChangeOrderDisplayValues)
@@ -794,7 +801,7 @@ TEST_F(ListModelEditor, RenameToPrecedingColumn)
 
     model.renameColumn(1, "alpha");
 
-    ASSERT_THAT(headerLabels(model), ElementsAre("alpha", "image", "value", "value2"));
+    ASSERT_THAT(headerLabels(model), ElementsAre(u"alpha", u"image", u"value", u"value2"));
 }
 
 TEST_F(ListModelEditor, RenameToPrecedingColumnDisplayValues)
@@ -842,7 +849,7 @@ TEST_F(ListModelEditor, RenameToFollowingColumn)
 
     model.renameColumn(2, "zoo");
 
-    ASSERT_THAT(headerLabels(model), ElementsAre("image", "name", "value2", "zoo"));
+    ASSERT_THAT(headerLabels(model), ElementsAre(u"image", u"name", u"value2", u"zoo"));
 }
 
 TEST_F(ListModelEditor, RenameToFollowingColumnDisplayValues)
@@ -1374,7 +1381,7 @@ TEST_F(ListModelEditor, AddFalseAsStringProperties)
 
 TEST_F(ListModelEditor, GoIntoComponentForBinding)
 {
-    EXPECT_CALL(mockGoIntoComponent, Call(Eq(listModelNode)))
+    EXPECT_CALL(goIntoComponentMock, Call(Eq(listModelNode)))
         .WillRepeatedly(Return(mockComponentView.rootModelNode()));
     listModelNode.setIdWithoutRefactoring("listModel");
     listViewNode.bindingProperty("model").setExpression("listModel");
@@ -1386,7 +1393,7 @@ TEST_F(ListModelEditor, GoIntoComponentForBinding)
 
 TEST_F(ListModelEditor, GoIntoComponentForModelNode)
 {
-    EXPECT_CALL(mockGoIntoComponent, Call(Eq(listModelNode)))
+    EXPECT_CALL(goIntoComponentMock, Call(Eq(listModelNode)))
         .WillRepeatedly(Return(mockComponentView.rootModelNode()));
     listViewNode.nodeProperty("model").reparentHere(listModelNode);
 

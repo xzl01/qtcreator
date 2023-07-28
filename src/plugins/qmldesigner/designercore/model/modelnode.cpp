@@ -19,6 +19,7 @@
 #include <rewriterview.h>
 
 #include <utils/algorithm.h>
+#include <utils/ranges.h>
 
 #include <QHash>
 #include <QRegularExpression>
@@ -60,7 +61,6 @@ ModelNode::ModelNode(const InternalNodePointer &internalNode, Model *model, cons
         m_model(model),
         m_view(const_cast<AbstractView*>(view))
 {
-    Q_ASSERT(!m_model || m_view);
 }
 
 ModelNode::ModelNode(const ModelNode &modelNode, AbstractView *view)
@@ -290,7 +290,7 @@ A node might become invalid if e.g. it or one of its ancestors is deleted.
 */
 bool ModelNode::isValid() const
 {
-    return !m_model.isNull() && !m_view.isNull() && m_internalNode && m_internalNode->isValid;
+    return !m_model.isNull() && m_internalNode && m_internalNode->isValid;
 }
 
 /*!
@@ -652,7 +652,7 @@ void ModelNode::removeProperty(const PropertyName &name) const
         return;
 
     if (m_internalNode->hasProperty(name))
-        model()->d->removeProperty(m_internalNode->property(name));
+        model()->d->removePropertyAndRelatedResources(m_internalNode->property(name));
 }
 
 /*! \brief removes this node from the node tree
@@ -692,7 +692,7 @@ void ModelNode::destroy()
         return;
 
     removeModelNodeFromSelection(*this);
-    model()->d->removeNode(m_internalNode);
+    model()->d->removeNodeAndRelatedResources(m_internalNode);
 }
 //\}
 
@@ -1400,6 +1400,31 @@ ModelNode ModelNode::lowestCommonAncestor(const QList<ModelNode> &nodes)
     }
 
     return accumulatedNode;
+}
+
+QList<ModelNode> ModelNode::pruneChildren(const QList<ModelNode> &nodes)
+{
+    QList<ModelNode> forwardNodes;
+    QList<ModelNode> backNodes;
+
+    auto pushIfIsNotChild = [] (QList<ModelNode> &container, const ModelNode &node) {
+        bool hasAncestor = Utils::anyOf(container,
+                                        [node] (const ModelNode &testNode) -> bool {
+            return testNode.isAncestorOf(node);
+        });
+        if (!hasAncestor)
+            container.append(node);
+    };
+
+    for (const ModelNode &node : nodes | Utils::views::reverse) {
+        if (node)
+            pushIfIsNotChild(forwardNodes, node);
+    }
+
+    for (const ModelNode &node : forwardNodes | Utils::views::reverse)
+        pushIfIsNotChild(backNodes, node);
+
+    return backNodes;
 }
 
 void  ModelNode::setScriptFunctions(const QStringList &scriptFunctionList)

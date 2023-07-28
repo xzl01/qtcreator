@@ -1029,10 +1029,11 @@ void TestApi::excludedInputs()
     waitForFinished(buildJob.get());
     QVERIFY2(!buildJob->error().hasError(), qPrintable(job->error().toString()));
     QVERIFY(project.isValid());
-    QCOMPARE(project.projectData().products().size(), 2);
+    const qbs::ProjectData projectData = project.projectData();
+    QCOMPARE(projectData.products().size(), 2);
     qbs::ProductData depProduct;
     qbs::ProductData pProduct;
-    for (const qbs::ProductData &p : project.projectData().products()) {
+    for (const qbs::ProductData &p : projectData.products()) {
         if (p.name() == "dep")
             depProduct = p;
         else if (p.name() == "p")
@@ -1291,7 +1292,7 @@ void TestApi::fallbackGcc()
     QVERIFY(project.isValid());
     QList<qbs::ProductData> products = project.allProducts();
     QCOMPARE(products.size(), 2);
-    for (const qbs::ProductData &p : qAsConst(products)) {
+    for (const qbs::ProductData &p : std::as_const(products)) {
         if (p.profile() == "unixProfile") {
             qbs::PropertyMap moduleProps = p.moduleProperties();
             QCOMPARE(moduleProps.getModuleProperty("qbs", "targetOS").toStringList(),
@@ -1434,7 +1435,7 @@ void TestApi::infiniteLoopResolving()
                                                                               m_logSink, nullptr));
     QTimer::singleShot(1000, setupJob.get(), &qbs::AbstractJob::cancel);
     QVERIFY(waitForFinished(setupJob.get(), testTimeoutInMsecs()));
-    QVERIFY2(setupJob->error().toString().toLower().contains("interrupted"),
+    QVERIFY2(setupJob->error().toString().toLower().contains("cancel"),
              qPrintable(setupJob->error().toString()));
 }
 
@@ -1563,7 +1564,7 @@ void TestApi::linkDynamicAndStaticLibs()
     if (profileToolchain(buildProfile).contains("gcc")) {
         static const std::regex appLinkCmdRex(" -o [^ ]*/HelloWorld" QBS_HOST_EXE_SUFFIX " ");
         QString appLinkCmd;
-        for (const QString &line : qAsConst(bdr.descriptionLines)) {
+        for (const QString &line : std::as_const(bdr.descriptionLines)) {
             const auto ln = line.toStdString();
             if (std::regex_search(ln, appLinkCmdRex)) {
                 appLinkCmd = line;
@@ -1596,7 +1597,7 @@ void TestApi::linkStaticAndDynamicLibs()
     if (profileToolchain(buildProfile).contains("gcc")) {
         static const std::regex appLinkCmdRex(" -o [^ ]*/HelloWorld" QBS_HOST_EXE_SUFFIX " ");
         QString appLinkCmd;
-        for (const QString &line : qAsConst(bdr.descriptionLines)) {
+        for (const QString &line : std::as_const(bdr.descriptionLines)) {
             const auto ln = line.toStdString();
             if (std::regex_search(ln, appLinkCmdRex)) {
                 appLinkCmd = line;
@@ -1660,7 +1661,7 @@ void TestApi::localProfiles()
     qbs::ProductData libClang;
     qbs::ProductData appDebug;
     qbs::ProductData appRelease;
-    for (const qbs::ProductData &p : qAsConst(products)) {
+    for (const qbs::ProductData &p : std::as_const(products)) {
         if (p.name() == "lib") {
             if (p.profile() == "mingwProfile")
                 libMingw = p;
@@ -1730,7 +1731,7 @@ void TestApi::localProfiles()
     products = project.allProducts();
     QCOMPARE(products.size(), 4);
     int clangProfiles = 0;
-    for (const qbs::ProductData &p : qAsConst(products)) {
+    for (const qbs::ProductData &p : std::as_const(products)) {
         if (p.profile() == "clangProfile") {
             ++clangProfiles;
             moduleProps = p.moduleProperties();
@@ -1826,7 +1827,8 @@ void TestApi::multiArch()
     QVERIFY2(!setupJob->error().hasError(), qPrintable(setupJob->error().toString()));
     qbs::Project project = setupJob->project();
     QCOMPARE(project.profile(), profileName());
-    const QList<qbs::ProductData> &products = project.projectData().products();
+    const qbs::ProjectData projectData = project.projectData();
+    const QList<qbs::ProductData> &products = projectData.products();
     QCOMPARE(products.size(), 3);
     QList<qbs::ProductData> hostProducts;
     QList<qbs::ProductData> targetProducts;
@@ -1885,26 +1887,23 @@ void TestApi::multiArch()
     QFile p2ArtifactInstalled(installRoot + "/host/host-tool.output");
     QVERIFY2(p2ArtifactInstalled.exists(), qPrintable(p2ArtifactInstalled.fileName()));
 
-    // Error check: Try to build for the same profile twice.
+    // Specifying the same profile twice should not result in an attempt to multiplex.
     overriddenValues.insert("project.targetProfile", hostProfile.name());
     setupParams.setOverriddenValues(overriddenValues);
     setupJob.reset(project.setupProject(setupParams, m_logSink, nullptr));
     waitForFinished(setupJob.get());
-    QVERIFY(setupJob->error().hasError());
-    QVERIFY2(setupJob->error().toString().contains("Duplicate entry 'host' in qbs.profiles."),
-             qPrintable(setupJob->error().toString()));
+    QVERIFY(!setupJob->error().hasError());
+    QCOMPARE(int(setupJob->project().projectData().products().size()), 2);
 
-    // Error check: Try to build for the same profile twice, this time attaching
-    // the properties via the product name.
+    // The same, but this time attaching the properties via the product name.
     overriddenValues.remove(QStringLiteral("project.targetProfile"));
     overriddenValues.insert("products.p1.myProfiles",
                             targetProfile.name() + ',' + targetProfile.name());
     setupParams.setOverriddenValues(overriddenValues);
     setupJob.reset(project.setupProject(setupParams, m_logSink, nullptr));
     waitForFinished(setupJob.get());
-    QVERIFY(setupJob->error().hasError());
-    QVERIFY2(setupJob->error().toString().contains("Duplicate entry 'target' in qbs.profiles."),
-             qPrintable(setupJob->error().toString()));
+    QVERIFY(!setupJob->error().hasError());
+    QCOMPARE(int(setupJob->project().projectData().products().size()), 2);
 }
 
 struct ProductDataSelector
@@ -2711,12 +2710,13 @@ void TestApi::restoredWarnings()
     waitForFinished(job.get());
     QVERIFY2(!job->error().hasError(), qPrintable(job->error().toString()));
     job.reset(nullptr);
-    QCOMPARE(toSet(m_logSink->warnings).size(), 2);
+    QCOMPARE(toSet(m_logSink->warnings).size(), 3);
     const auto beforeErrors = m_logSink->warnings;
     for (const qbs::ErrorInfo &e : beforeErrors) {
         const QString msg = e.toString();
         QVERIFY2(msg.contains("Superfluous version")
-                 || msg.contains("Property 'blubb' is not declared"),
+                 || msg.contains("Property 'blubb' is not declared")
+                 || msg.contains("Product 'theProduct' had errors and was disabled"),
                  qPrintable(msg));
     }
     m_logSink->warnings.clear();
@@ -2726,7 +2726,7 @@ void TestApi::restoredWarnings()
     waitForFinished(job.get());
     QVERIFY2(!job->error().hasError(), qPrintable(job->error().toString()));
     job.reset(nullptr);
-    QCOMPARE(toSet(m_logSink->warnings).size(), 2);
+    QCOMPARE(toSet(m_logSink->warnings).size(), 3);
     m_logSink->warnings.clear();
 
     // Re-resolving with changes: Errors come from the re-resolving, stored ones must be suppressed.
@@ -2737,13 +2737,14 @@ void TestApi::restoredWarnings()
     waitForFinished(job.get());
     QVERIFY2(!job->error().hasError(), qPrintable(job->error().toString()));
     job.reset(nullptr);
-    QCOMPARE(toSet(m_logSink->warnings).size(), 3); // One more for the additional group
+    QCOMPARE(toSet(m_logSink->warnings).size(), 4); // One more for the additional group
     const auto afterErrors = m_logSink->warnings;
     for (const qbs::ErrorInfo &e : afterErrors) {
         const QString msg = e.toString();
         QVERIFY2(msg.contains("Superfluous version")
                  || msg.contains("Property 'blubb' is not declared")
-                 || msg.contains("blubb.cpp' does not exist"),
+                 || msg.contains("blubb.cpp' does not exist")
+                 || msg.contains("Product 'theProduct' had errors and was disabled"),
                  qPrintable(msg));
     }
     m_logSink->warnings.clear();

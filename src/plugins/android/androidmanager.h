@@ -74,6 +74,7 @@ public:
     static bool isQt5CmakeProject(const ProjectExplorer::Target *target);
 
     static Utils::FilePath androidBuildDirectory(const ProjectExplorer::Target *target);
+    static Utils::FilePath androidAppProcessDir(const ProjectExplorer::Target *target);
     static Utils::FilePath buildDirectory(const ProjectExplorer::Target *target);
     static Utils::FilePath manifestPath(const ProjectExplorer::Target *target);
     static void setManifestPath(ProjectExplorer::Target *target, const Utils::FilePath &path);
@@ -82,6 +83,7 @@ public:
     static bool matchedAbis(const QStringList &deviceAbis, const QStringList &appAbis);
     static QString devicePreferredAbi(const QStringList &deviceAbis, const QStringList &appAbis);
     static ProjectExplorer::Abi androidAbi2Abi(const QString &androidAbi);
+    static bool skipInstallationAndPackageSteps(const ProjectExplorer::Target *target);
 
     static QString androidNameForApiLevel(int x);
 

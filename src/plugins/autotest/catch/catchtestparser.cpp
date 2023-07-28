@@ -11,6 +11,7 @@
 #include <cppeditor/projectpart.h>
 #include <utils/qtcassert.h>
 
+#include <QPromise>
 #include <QRegularExpression>
 
 using namespace Utils;
@@ -91,7 +92,7 @@ static bool hasCatchNames(const CPlusPlus::Document::Ptr &document)
     return false;
 }
 
-bool CatchTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futureInterface,
+bool CatchTestParser::processDocument(QPromise<TestParseResultPtr> &promise,
                                       const FilePath &fileName)
 {
     CPlusPlus::Document::Ptr doc = document(fileName);
@@ -103,12 +104,12 @@ bool CatchTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futu
     const QByteArray &fileContent = getFileContent(fileName);
 
     if (!hasCatchNames(doc)) {
-        const QRegularExpression regex("\\b(CATCH_)?"
-                                       "(SCENARIO|(TEMPLATE_(PRODUCT_)?)?TEST_CASE(_METHOD)?|"
-                                       "TEMPLATE_TEST_CASE(_METHOD)?_SIG|"
-                                       "TEMPLATE_PRODUCT_TEST_CASE(_METHOD)?_SIG|"
-                                       "TEMPLATE_LIST_TEST_CASE_METHOD|METHOD_AS_TEST_CASE|"
-                                       "REGISTER_TEST_CASE)");
+        static const QRegularExpression regex("\\b(CATCH_)?"
+                                              "(SCENARIO|(TEMPLATE_(PRODUCT_)?)?TEST_CASE(_METHOD)?|"
+                                              "TEMPLATE_TEST_CASE(_METHOD)?_SIG|"
+                                              "TEMPLATE_PRODUCT_TEST_CASE(_METHOD)?_SIG|"
+                                              "TEMPLATE_LIST_TEST_CASE_METHOD|METHOD_AS_TEST_CASE|"
+                                              "REGISTER_TEST_CASE)");
         if (!regex.match(QString::fromUtf8(fileContent)).hasMatch())
             return false;
     }
@@ -144,7 +145,7 @@ bool CatchTestParser::processDocument(QFutureInterface<TestParseResultPtr> &futu
         parseResult->children.append(testCase);
     }
 
-    futureInterface.reportResult(TestParseResultPtr(parseResult));
+    promise.addResult(TestParseResultPtr(parseResult));
 
     return !foundTests.isEmpty();
 }

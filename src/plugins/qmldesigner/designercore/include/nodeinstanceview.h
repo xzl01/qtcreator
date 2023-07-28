@@ -6,6 +6,7 @@
 #include "qmldesignercorelib_global.h"
 #include "abstractview.h"
 #include "modelcache.h"
+#include "rewritertransaction.h"
 
 #include <modelnode.h>
 #include <nodeinstance.h>
@@ -33,7 +34,7 @@ class Target;
 }
 
 namespace Utils {
-class QtcProcess;
+class Process;
 }
 
 namespace QmlDesigner {
@@ -84,7 +85,7 @@ public:
     void fileUrlChanged(const QUrl &oldUrl, const QUrl &newUrl) override;
     void nodeIdChanged(const ModelNode& node, const QString& newId, const QString& oldId) override;
     void nodeOrderChanged(const NodeListProperty &listProperty) override;
-    void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports) override;
+    void importsChanged(const Imports &addedImports, const Imports &removedImports) override;
     void auxiliaryDataChanged(const ModelNode &node,
                               AuxiliaryDataKeyView key,
                               const QVariant &data) override;
@@ -121,6 +122,7 @@ public:
     QImage statePreviewImage(const ModelNode &stateNode) const;
 
     void setTarget(ProjectExplorer::Target *newTarget);
+    ProjectExplorer::Target *target() const;
 
     void sendToken(const QString &token, int number, const QVector<ModelNode> &nodeVector);
 
@@ -227,7 +229,7 @@ private: // functions
 
     void updateWatcher(const QString &path);
     void handleShaderChanges();
-    void handleQsbProcessExit(Utils::QtcProcess *qsbProcess, const QString &shader);
+    void handleQsbProcessExit(Utils::Process *qsbProcess, const QString &shader);
     void updateQsbPathToFilterMap();
     void updateRotationBlocks();
     void maybeResetOnPropertyChange(const PropertyName &name, const ModelNode &node,

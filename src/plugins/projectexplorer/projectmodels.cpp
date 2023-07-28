@@ -8,8 +8,8 @@
 #include "projectnodes.h"
 #include "projectexplorer.h"
 #include "projectexplorertr.h"
+#include "projectmanager.h"
 #include "projecttree.h"
-#include "session.h"
 #include "target.h"
 
 #include <app/app_version.h>
@@ -17,6 +17,7 @@
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/iversioncontrol.h>
+#include <coreplugin/session.h>
 #include <coreplugin/vcsmanager.h>
 
 #include <utils/utilsicons.h>
@@ -24,8 +25,8 @@
 #include <utils/dropsupport.h>
 #include <utils/fsengine/fileiconprovider.h>
 #include <utils/pathchooser.h>
+#include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
 #include <utils/stringutils.h>
 #include <utils/theme/theme.h>
 
@@ -174,14 +175,15 @@ FlatModel::FlatModel(QObject *parent)
     ProjectTree *tree = ProjectTree::instance();
     connect(tree, &ProjectTree::subtreeChanged, this, &FlatModel::updateSubtree);
 
-    SessionManager *sm = SessionManager::instance();
-    connect(sm, &SessionManager::projectRemoved, this, &FlatModel::handleProjectRemoved);
-    connect(sm, &SessionManager::aboutToLoadSession, this, &FlatModel::loadExpandData);
-    connect(sm, &SessionManager::aboutToSaveSession, this, &FlatModel::saveExpandData);
-    connect(sm, &SessionManager::projectAdded, this, &FlatModel::handleProjectAdded);
-    connect(sm, &SessionManager::startupProjectChanged, this, [this] { emit layoutChanged(); });
+    ProjectManager *sm = ProjectManager::instance();
+    SessionManager *sb = SessionManager::instance();
+    connect(sm, &ProjectManager::projectRemoved, this, &FlatModel::handleProjectRemoved);
+    connect(sb, &SessionManager::aboutToLoadSession, this, &FlatModel::loadExpandData);
+    connect(sb, &SessionManager::aboutToSaveSession, this, &FlatModel::saveExpandData);
+    connect(sm, &ProjectManager::projectAdded, this, &FlatModel::handleProjectAdded);
+    connect(sm, &ProjectManager::startupProjectChanged, this, [this] { emit layoutChanged(); });
 
-    for (Project *project : SessionManager::projects())
+    for (Project *project : ProjectManager::projects())
         handleProjectAdded(project);
 }
 
@@ -234,7 +236,7 @@ QVariant FlatModel::data(const QModelIndex &index, int role) const
     }
     case Qt::FontRole: {
         QFont font;
-        if (project == SessionManager::startupProject())
+        if (project == ProjectManager::startupProject())
             font.setBold(true);
         return font;
     }
@@ -407,7 +409,7 @@ void FlatModel::updateSubtree(FolderNode *node)
 
 void FlatModel::rebuildModel()
 {
-    const QList<Project *> projects = SessionManager::projects();
+    const QList<Project *> projects = ProjectManager::projects();
     for (Project *project : projects)
         addOrRebuildProjectModel(project);
 }
@@ -434,6 +436,8 @@ void FlatModel::handleProjectAdded(Project *project)
 {
     QTC_ASSERT(project, return);
 
+    auto oldName = project->displayName();
+    project->setProperty("_q_oldProjectName", oldName);
     connect(project, &Project::anyParsingStarted,
             this, [this, project]() {
         if (nodeForProject(project))
@@ -441,8 +445,28 @@ void FlatModel::handleProjectAdded(Project *project)
     });
     connect(project, &Project::anyParsingFinished,
             this, [this, project]() {
-        if (nodeForProject(project))
+        auto wrapper = nodeForProject(project);
+        if (wrapper) {
+            // In case the project was renamed, change the name in expand data as well
+            // FIXME: Redesign node expansion so that it does not rely on display name of a node
+            auto oldName = project->property("_q_oldProjectName").toString();
+            auto currentName = project->displayName();
+            if (oldName != currentName) {
+                project->setProperty("_q_oldProjectName", currentName);
+                auto node = wrapper->m_node;
+                ExpandData oldData(node->filePath().toString(), oldName);
+                ExpandData newData(oldData.path, currentName);
+                auto it = m_toExpand.find(oldData);
+                if (it != m_toExpand.end()) {
+                    m_toExpand.erase(it);
+                    m_toExpand.insert(newData);
+                    emit requestExpansion(wrapper->index());
+                } else if (m_toExpand.contains(newData)) {
+                    emit requestExpansion(wrapper->index());
+                }
+            }
             parsingStateChanged(project);
+        }
         emit ProjectTree::instance()->nodeActionsChanged();
     });
     addOrRebuildProjectModel(project);

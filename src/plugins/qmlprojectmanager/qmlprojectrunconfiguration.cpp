@@ -21,8 +21,11 @@
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/runconfigurationaspects.h>
 #include <projectexplorer/runcontrol.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/target.h>
+
+#include <qmldesignerbase/qmldesignerbaseplugin.h>
+#include <qmldesignerbase/utils/qmlpuppetpaths.h>
 
 #include <qtsupport/qtkitinformation.h>
 #include <qtsupport/qtsupportconstants.h>
@@ -31,7 +34,7 @@
 #include <utils/aspects.h>
 #include <utils/environment.h>
 #include <utils/fileutils.h>
-#include <utils/qtcprocess.h>
+#include <utils/process.h>
 #include <utils/winutils.h>
 
 #include <qmljstools/qmljstoolsconstants.h>
@@ -58,19 +61,19 @@ private:
     FilePath qmlRuntimeFilePath() const;
     void createQtVersionAspect();
 
-    StringAspect *m_qmlViewerAspect = nullptr;
+    FilePathAspect *m_qmlViewerAspect = nullptr;
     QmlMainFileAspect *m_qmlMainFileAspect = nullptr;
     QmlMultiLanguageAspect *m_multiLanguageAspect = nullptr;
     SelectionAspect *m_qtversionAspect = nullptr;
+    mutable bool usePuppetAsQmlRuntime = false;
 };
 
 QmlProjectRunConfiguration::QmlProjectRunConfiguration(Target *target, Id id)
     : RunConfiguration(target, id)
 {
-    m_qmlViewerAspect = addAspect<StringAspect>();
+    m_qmlViewerAspect = addAspect<FilePathAspect>();
     m_qmlViewerAspect->setLabelText(Tr::tr("Override device QML viewer:"));
     m_qmlViewerAspect->setPlaceHolderText(qmlRuntimeFilePath().toUserOutput());
-    m_qmlViewerAspect->setDisplayStyle(StringAspect::PathChooserDisplay);
     m_qmlViewerAspect->setHistoryCompleter("QmlProjectManager.viewer.history");
     m_qmlViewerAspect->setSettingsKey(Constants::QML_VIEWER_KEY);
 
@@ -80,17 +83,17 @@ QmlProjectRunConfiguration::QmlProjectRunConfiguration(Target *target, Id id)
     setCommandLineGetter([this, target] {
         const FilePath qmlRuntime = qmlRuntimeFilePath();
         CommandLine cmd(qmlRuntime);
+        if (usePuppetAsQmlRuntime)
+            cmd.addArg("--qml-runtime");
 
         // arguments in .user file
         cmd.addArgs(aspect<ArgumentsAspect>()->arguments(), CommandLine::Raw);
 
         // arguments from .qmlproject file
         const QmlBuildSystem *bs = qobject_cast<QmlBuildSystem *>(target->buildSystem());
-        const QStringList importPaths = QmlBuildSystem::makeAbsolute(bs->targetDirectory(),
-                                                                     bs->customImportPaths());
-        for (const QString &importPath : importPaths) {
+        for (const QString &importPath : bs->customImportPaths()) {
             cmd.addArg("-I");
-            cmd.addArg(importPath);
+            cmd.addArg(bs->targetDirectory().pathAppended(importPath).path());
         }
 
         for (const QString &fileSelector : bs->customFileSelectors()) {
@@ -109,8 +112,9 @@ QmlProjectRunConfiguration::QmlProjectRunConfiguration(Target *target, Id id)
         }
 
         const FilePath main = bs->targetFile(mainScript());
+
         if (!main.isEmpty())
-            cmd.addArg(main.nativePath());
+            cmd.addArg(main.path());
 
         return cmd;
     });
@@ -193,6 +197,7 @@ QString QmlProjectRunConfiguration::disabledReason() const
 
 FilePath QmlProjectRunConfiguration::qmlRuntimeFilePath() const
 {
+    usePuppetAsQmlRuntime = false;
     // Give precedence to the manual override in the run configuration.
     const FilePath qmlViewer = m_qmlViewerAspect->filePath();
     if (!qmlViewer.isEmpty())
@@ -202,24 +207,35 @@ FilePath QmlProjectRunConfiguration::qmlRuntimeFilePath() const
 
     // We might not have a full Qt version for building, but the device
     // might know what is good for running.
-    if (IDevice::ConstPtr dev = DeviceKitAspect::device(kit)) {
+    IDevice::ConstPtr dev = DeviceKitAspect::device(kit);
+    if (dev) {
         const FilePath qmlRuntime = dev->qmlRunCommand();
         if (!qmlRuntime.isEmpty())
             return qmlRuntime;
     }
 
-    // The Qt version might know. That's the "build" Qt version,
-    // i.e. not necessarily something the device can use, but the
-    // device had its chance above.
+    // The Qt version might know, but we need to make sure
+    // that the device can reach it.
     if (QtVersion *version = QtKitAspect::qtVersion(kit)) {
+        // look for puppet as qmlruntime only in QtStudio Qt versions
+        if (version->features().contains("QtStudio") &&
+            version->qtVersion().majorVersion() > 5) {
+
+            auto [workingDirectoryPath, puppetPath] = QmlDesigner::QmlPuppetPaths::qmlPuppetPaths(
+                        target(), QmlDesigner::QmlDesignerBasePlugin::settings());
+            if (!puppetPath.isEmpty()) {
+                usePuppetAsQmlRuntime = true;
+                return puppetPath;
+            }
+        }
         const FilePath qmlRuntime = version->qmlRuntimeFilePath();
-        if (!qmlRuntime.isEmpty())
+        if (!qmlRuntime.isEmpty() && (!dev || dev->ensureReachable(qmlRuntime)))
             return qmlRuntime;
     }
 
     // If not given explicitly by run device, nor Qt, try to pick
     // it from $PATH on the run device.
-    return "qml";
+    return dev ? dev->filePath("qml").searchInPath() : "qml";
 }
 
 void QmlProjectRunConfiguration::createQtVersionAspect()
@@ -274,7 +290,7 @@ void QmlProjectRunConfiguration::createQtVersionAspect()
                     if (!newTarget)
                         newTarget = project->addTargetForKit(kits.first());
 
-                    SessionManager::setActiveTarget(project, newTarget, SetActive::Cascade);
+                    project->setActiveTarget(newTarget, SetActive::Cascade);
 
                     /* Reset the aspect. We changed the target and this aspect should not change. */
                     m_qtversionAspect->blockSignals(true);

@@ -12,10 +12,10 @@ import subprocess;
 import sys
 import errno;
 from datetime import datetime,timedelta;
-try:
-    import __builtin__                  # Python 2
-except ImportError:
-    import builtins as __builtin__      # Python 3
+if sys.version_info.major > 2:
+    import builtins as __builtin__
+else:
+    import __builtin__
 
 
 srcPath = ''
@@ -44,7 +44,10 @@ def __closeInfoBarEntry__(leftButtonText):
     doNotShowAgain = toolButton % "Do Not Show Again"
     leftWidget = "leftWidget={%s}" % (toolButton % leftButtonText)
     test.log("closing %s" % leftButtonText)
-    clickButton(waitForObject("{%s %s}" % (doNotShowAgain, leftWidget)))
+    buttonObjStr = "{%s %s}" % (doNotShowAgain, leftWidget)
+    checkIfObjectExists(buttonObjStr, verboseOnFail=True)
+    clickButton(waitForObject(buttonObjStr))
+    checkIfObjectExists(buttonObjStr, False, 2000, True)
 
 # additionalParameters must be a list or tuple of strings or None
 def startQC(additionalParameters=None, withPreparedSettingsPath=True, closeLinkToQt=True, cancelTour=True):
@@ -124,17 +127,6 @@ def waitForCleanShutdown(timeOut=10):
                     shutdownDone=True
             if not shutdownDone and datetime.utcnow() > endtime:
                 break
-        if platform.system() == 'Linux' and JIRA.isBugStillOpen(15749):
-            pgrepOutput = getOutputFromCmdline(["pgrep", "-f", "qtcreator_process_stub"],
-                                               acceptedError=1)
-            pids = pgrepOutput.splitlines()
-            if len(pids):
-                print("Killing %d qtcreator_process_stub instances" % len(pids))
-            for pid in pids:
-                try:
-                    os.kill(__builtin__.int(pid), 9)
-                except OSError: # we might kill the parent before the current pid
-                    pass
 
 def checkForStillRunningQmlExecutable(possibleNames):
     for qmlHelper in possibleNames:
@@ -200,10 +192,7 @@ def substituteDefaultCompiler(settingsDir):
     if platform.system() == 'Darwin':
         compiler = "clang_64"
     elif platform.system() == 'Linux':
-        if __is64BitOS__():
-            compiler = "gcc_64"
-        else:
-            compiler = "gcc"
+        compiler = "gcc_64"
     else:
         test.warning("Called substituteDefaultCompiler() on wrong platform.",
                      "This is a script error.")
@@ -248,7 +237,9 @@ def substituteMsvcPaths(settingsDir, version, targetBitness=64):
         try:
             msvcPath = os.path.join("C:\\Program Files (x86)", "Microsoft Visual Studio",
                                     version, msvcFlavor, "VC", "Tools", "MSVC")
-            msvcPath = os.path.join(msvcPath, os.listdir(msvcPath)[0], "bin", hostArch, targetArch)
+            foundVersions = os.listdir(msvcPath) # undetermined order
+            foundVersions.sort(reverse=True) # we explicitly want the latest and greatest
+            msvcPath = os.path.join(msvcPath, foundVersions[0], "bin", hostArch, targetArch)
             __substitute__(os.path.join(settingsDir, "QtProject", 'qtcreator', 'toolchains.xml'),
                            "SQUISH_MSVC%s_%d_PATH" % (version, targetBitness), msvcPath)
             return
@@ -277,71 +268,6 @@ def prependWindowsKit(settingsDir, targetBitness=64):
     test.warning("Windows Kit path could not be added, some tests mail fail.")
     __substitute__(profilesPath, "SQUISH_ENV_MODIFICATION", "")
 
-
-def __guessABI__(supportedABIs, use64Bit):
-    if platform.system() == 'Linux':
-        supportedABIs = filter(lambda x: 'linux' in x, supportedABIs)
-    elif platform.system() == 'Darwin':
-        supportedABIs = filter(lambda x: 'darwin' in x, supportedABIs)
-    if use64Bit:
-        searchFor = "64bit"
-    else:
-        searchFor = "32bit"
-    for abi in supportedABIs:
-        if searchFor in abi:
-            return abi
-    if use64Bit:
-        test.log("Supported ABIs do not include an ABI supporting 64bit - trying 32bit now")
-        return __guessABI__(supportedABIs, False)
-    test.fatal('Could not guess ABI!',
-               'Given ABIs: %s' % str(supportedABIs))
-    return ''
-
-def __is64BitOS__():
-    if platform.system() in ('Microsoft', 'Windows'):
-        machine = os.getenv("PROCESSOR_ARCHITEW6432", os.getenv("PROCESSOR_ARCHITECTURE"))
-    else:
-        machine = platform.machine()
-    if machine:
-        return '64' in machine
-    else:
-        return False
-
-def substituteUnchosenTargetABIs(settingsDir):
-    class ReadState:
-        NONE = 0
-        READING = 1
-        CLOSED = 2
-
-    on64Bit = __is64BitOS__()
-    toolchains = os.path.join(settingsDir, "QtProject", 'qtcreator', 'toolchains.xml')
-    origToolchains = toolchains + "_orig"
-    os.rename(toolchains, origToolchains)
-    origFile = open(origToolchains, "r")
-    modifiedFile = open(toolchains, "w")
-    supported = []
-    readState = ReadState.NONE
-    for line in origFile:
-        if readState == ReadState.NONE:
-            if "SupportedAbis" in line:
-                supported = []
-                readState = ReadState.READING
-        elif readState == ReadState.READING:
-            if "</valuelist>" in line:
-                readState = ReadState.CLOSED
-            else:
-                supported.append(line.split(">", 1)[1].rsplit("<", 1)[0])
-        elif readState == ReadState.CLOSED:
-            if "SupportedAbis" in line:
-                supported = []
-                readState = ReadState.READING
-            elif "SET_BY_SQUISH" in line:
-                line = line.replace("SET_BY_SQUISH", __guessABI__(supported, on64Bit))
-        modifiedFile.write(line)
-    origFile.close()
-    modifiedFile.close()
-    os.remove(origToolchains)
-    test.log("Substituted unchosen ABIs inside toolchains.xml...")
 
 def copySettingsToTmpDir(destination=None, omitFiles=[]):
     global tmpSettingsDir, SettingsPath, origSettingsDir
@@ -377,9 +303,9 @@ def copySettingsToTmpDir(destination=None, omitFiles=[]):
         substituteMsvcPaths(tmpSettingsDir, '2019', 64)
         prependWindowsKit(tmpSettingsDir, 32)
     substituteOnlineInstallerPath(tmpSettingsDir)
-    substituteUnchosenTargetABIs(tmpSettingsDir)
     SettingsPath = ['-settingspath', '"%s"' % tmpSettingsDir]
 
+test.log("Test is running on Python %s" % sys.version)
 # current dir is directory holding qtcreator.py
 origSettingsDir = os.path.abspath(os.path.join(os.getcwd(), "..", "..", "settings"))
 

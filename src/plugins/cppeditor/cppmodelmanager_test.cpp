@@ -18,13 +18,13 @@
 #include <cplusplus/LookupContext.h>
 
 #include <projectexplorer/projectexplorer.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
 
-#include <utils/executeondestruction.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 
 #include <QDebug>
+#include <QScopeGuard>
 #include <QtTest>
 
 #define VERIFY_DOCUMENT_REVISION(document, expectedRevision) \
@@ -649,7 +649,7 @@ void ModelManagerTest::testGcIfLastCppeditorClosed()
     QVERIFY(editor);
     QCOMPARE(Core::DocumentModel::openedDocuments().size(), 1);
     QVERIFY(mm->isCppEditor(editor));
-    QVERIFY(mm->workingCopy().contains(file));
+    QVERIFY(mm->workingCopy().get(file));
 
     // Wait until the file is refreshed
     helper.waitForRefreshedSourceFiles();
@@ -659,7 +659,7 @@ void ModelManagerTest::testGcIfLastCppeditorClosed()
     helper.waitForFinishedGc();
 
     // Check: File is removed from the snapshpt
-    QVERIFY(!mm->workingCopy().contains(file));
+    QVERIFY(!mm->workingCopy().get(file));
     QVERIFY(!mm->snapshot().contains(file));
 }
 
@@ -684,13 +684,13 @@ void ModelManagerTest::testDontGcOpenedFiles()
     // Wait until the file is refreshed and check whether it is in the working copy
     helper.waitForRefreshedSourceFiles();
 
-    QVERIFY(mm->workingCopy().contains(file));
+    QVERIFY(mm->workingCopy().get(file));
 
     // Run the garbage collector
     mm->GC();
 
     // Check: File is still there
-    QVERIFY(mm->workingCopy().contains(file));
+    QVERIFY(mm->workingCopy().get(file));
     QVERIFY(mm->snapshot().contains(file));
 
     // Close editor
@@ -1085,12 +1085,10 @@ void ModelManagerTest::testRenameIncludesInEditor()
     Core::IEditor *editor = Core::EditorManager::openEditor(mainFile);
     QVERIFY(editor);
     EditorCloser editorCloser(editor);
-    Utils::ExecuteOnDestruction saveAllFiles([](){
-        Core::DocumentManager::saveAllModifiedDocumentsSilently();
-    });
+    const QScopeGuard cleanup([] { Core::DocumentManager::saveAllModifiedDocumentsSilently(); });
     QCOMPARE(Core::DocumentModel::openedDocuments().size(), 1);
     QVERIFY(modelManager->isCppEditor(editor));
-    QVERIFY(modelManager->workingCopy().contains(mainFile));
+    QVERIFY(modelManager->workingCopy().get(mainFile));
 
     // Test the renaming of a header file where a pragma once guard is present
     QVERIFY(Core::FileUtils::renameFile(headerWithPragmaOnce,

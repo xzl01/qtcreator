@@ -23,7 +23,6 @@
 #include <projectexplorer/project.h>
 #include <projectexplorer/projecttree.h>
 
-#include <utils/futuresynchronizer.h>
 #include <utils/macroexpander.h>
 #include <utils/qtcassert.h>
 
@@ -33,15 +32,47 @@ using namespace Core;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace VcsBase {
-namespace Internal {
+namespace VcsBase::Internal {
 
 class VcsPluginPrivate
 {
 public:
-    CommonOptionsPage m_settingsPage;
+    explicit VcsPluginPrivate(VcsPlugin *plugin)
+        : q(plugin)
+    {
+        QObject::connect(&m_settings, &AspectContainer::changed,
+                         [this] { slotSettingsChanged(); });
+        slotSettingsChanged();
+    }
+
+    QStandardItemModel *nickNameModel()
+    {
+        if (!m_nickNameModel) {
+            m_nickNameModel = NickNameDialog::createModel(q);
+            populateNickNameModel();
+        }
+        return m_nickNameModel;
+    }
+
+    void populateNickNameModel()
+    {
+        QString errorMessage;
+        if (!NickNameDialog::populateModelFromMailCapFile(m_settings.nickNameMailMap(),
+                                                          m_nickNameModel,
+                                                          &errorMessage)) {
+            qWarning("%s", qPrintable(errorMessage));
+        }
+    }
+
+    void slotSettingsChanged()
+    {
+        if (m_nickNameModel)
+            populateNickNameModel();
+    }
+
+    VcsPlugin *q;
+    CommonVcsSettings m_settings;
     QStandardItemModel *m_nickNameModel = nullptr;
-    FutureSynchronizer m_futureSynchronizer;
 };
 
 static VcsPlugin *m_instance = nullptr;
@@ -61,7 +92,7 @@ VcsPlugin::~VcsPlugin()
 
 void VcsPlugin::initialize()
 {
-    d = new VcsPluginPrivate;
+    d = new VcsPluginPrivate(this);
 
     EditorManager::addCloseEditorListener([this](IEditor *editor) -> bool {
         bool result = true;
@@ -69,12 +100,6 @@ void VcsPlugin::initialize()
             emit submitEditorAboutToClose(se, &result);
         return result;
     });
-
-    connect(&d->m_settingsPage, &CommonOptionsPage::settingsChanged,
-            this, &VcsPlugin::settingsChanged);
-    connect(&d->m_settingsPage, &CommonOptionsPage::settingsChanged,
-            this, &VcsPlugin::slotSettingsChanged);
-    slotSettingsChanged();
 
     JsonWizardFactory::registerPageFactory(new Internal::VcsConfigurationPageFactory);
     JsonWizardFactory::registerPageFactory(new Internal::VcsCommandPageFactory);
@@ -118,42 +143,11 @@ VcsPlugin *VcsPlugin::instance()
     return m_instance;
 }
 
-CommonVcsSettings &VcsPlugin::settings() const
-{
-    return d->m_settingsPage.settings();
-}
-
-FutureSynchronizer *VcsPlugin::futureSynchronizer()
-{
-    QTC_ASSERT(m_instance, return nullptr);
-    return &m_instance->d->m_futureSynchronizer;
-}
-
 /* Delayed creation/update of the nick name model. */
 QStandardItemModel *VcsPlugin::nickNameModel()
 {
-    if (!d->m_nickNameModel) {
-        d->m_nickNameModel = NickNameDialog::createModel(this);
-        populateNickNameModel();
-    }
-    return d->m_nickNameModel;
+    QTC_ASSERT(d, return nullptr);
+    return d->nickNameModel();
 }
 
-void VcsPlugin::populateNickNameModel()
-{
-    QString errorMessage;
-    if (!NickNameDialog::populateModelFromMailCapFile(settings().nickNameMailMap.filePath(),
-                                                      d->m_nickNameModel,
-                                                      &errorMessage)) {
-        qWarning("%s", qPrintable(errorMessage));
-    }
-}
-
-void VcsPlugin::slotSettingsChanged()
-{
-    if (d->m_nickNameModel)
-        populateNickNameModel();
-}
-
-} // namespace Internal
-} // namespace VcsBase
+} // VcsBase::Internal

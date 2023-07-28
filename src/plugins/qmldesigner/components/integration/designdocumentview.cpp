@@ -115,6 +115,7 @@ QString DesignDocumentView::toText() const
     QScopedPointer<RewriterView> rewriterView(
         new RewriterView(externalDependencies(), RewriterView::Amend));
     rewriterView->setCheckSemanticErrors(false);
+    rewriterView->setPossibleImportsEnabled(false);
     rewriterView->setTextModifier(&modifier);
     outputModel->setRewriterView(rewriterView.data());
 
@@ -148,6 +149,7 @@ void DesignDocumentView::fromText(const QString &text)
 
     RewriterView rewriterView{externalDependencies()};
     rewriterView.setCheckSemanticErrors(false);
+    rewriterView.setPossibleImportsEnabled(false);
     rewriterView.setTextModifier(&modifier);
     inputModel->setRewriterView(&rewriterView);
 

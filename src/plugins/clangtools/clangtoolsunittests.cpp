@@ -23,10 +23,8 @@
 #include <qtsupport/qtkitinformation.h>
 
 #include <utils/environment.h>
-#include <utils/executeondestruction.h>
 #include <utils/fileutils.h>
 
-#include <QEventLoop>
 #include <QSignalSpy>
 #include <QTimer>
 #include <QtTest>

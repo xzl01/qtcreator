@@ -4,6 +4,10 @@
 #pragma once
 
 #include <instances/puppetstartdata.h>
+#include <utils/filepath.h>
+
+#include <QColor>
+#include <QUrl>
 
 namespace QmlDesigner {
 
@@ -38,6 +42,12 @@ public:
     virtual bool hasStartupTarget() const = 0;
     virtual PuppetStartData puppetStartData(const class Model &model) const = 0;
     virtual bool instantQmlTextUpdate() const = 0;
+    virtual Utils::FilePath qmlPuppetPath() const = 0;
+    virtual QStringList modulePaths() const = 0;
+    virtual QStringList projectModulePaths() const = 0;
+    virtual bool isQt6Project() const = 0;
+    virtual QString qtQuickVersion() const = 0;
+    virtual Utils::FilePath resourcePath(const QString &relativePath) const = 0;
 };
 
 } // namespace QmlDesigner

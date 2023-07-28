@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPixmapCache>
 #include <QStyleOption>
 #include <QWindow>
@@ -36,6 +37,11 @@ static int range(float x, int min, int max)
 
 namespace Utils {
 
+static StyleHelper::ToolbarStyle m_toolbarStyle = StyleHelper::defaultToolbarStyle;
+// Invalid by default, setBaseColor needs to be called at least once
+static QColor m_baseColor;
+static QColor m_requestedBaseColor;
+
 QColor StyleHelper::mergedColors(const QColor &colorA, const QColor &colorB, int factor)
 {
     const int maxFactor = 100;
@@ -56,6 +62,36 @@ QColor StyleHelper::alphaBlendedColors(const QColor &colorA, const QColor &color
                 (colorA.green() * antiAlpha + colorB.green() * alpha) / 255,
                 (colorA.blue() * antiAlpha + colorB.blue() * alpha) / 255
                 );
+}
+
+QColor StyleHelper::sidebarHighlight()
+{
+    return QColor(255, 255, 255, 40);
+}
+
+QColor StyleHelper::sidebarShadow()
+{
+    return QColor(0, 0, 0, 40);
+}
+
+QColor StyleHelper::toolBarDropShadowColor()
+{
+    return QColor(0, 0, 0, 70);
+}
+
+int StyleHelper::navigationWidgetHeight()
+{
+    return m_toolbarStyle == ToolbarStyleCompact ? 24 : 30;
+}
+
+void StyleHelper::setToolbarStyle(ToolbarStyle style)
+{
+    m_toolbarStyle = style;
+}
+
+StyleHelper::ToolbarStyle StyleHelper::toolbarStyle()
+{
+    return m_toolbarStyle;
 }
 
 qreal StyleHelper::sidebarFontSize()
@@ -89,16 +125,25 @@ QColor StyleHelper::panelTextColor(bool lightColored)
         return Qt::black;
 }
 
-// Invalid by default, setBaseColor needs to be called at least once
-QColor StyleHelper::m_baseColor;
-QColor StyleHelper::m_requestedBaseColor;
-
 QColor StyleHelper::baseColor(bool lightColored)
 {
     static const QColor windowColor = QApplication::palette().color(QPalette::Window);
     static const bool windowColorAsBase = creatorTheme()->flag(Theme::WindowColorAsBase);
 
     return (lightColored || windowColorAsBase) ? windowColor : m_baseColor;
+}
+
+QColor StyleHelper::requestedBaseColor()
+{
+    return m_requestedBaseColor;
+}
+
+QColor StyleHelper::toolbarBaseColor(bool lightColored)
+{
+    if (creatorTheme()->flag(Theme::QDSTheme))
+        return creatorTheme()->color(Utils::Theme::DStoolbarBackground);
+    else
+        return StyleHelper::baseColor(lightColored);
 }
 
 QColor StyleHelper::highlightColor(bool lightColored)
@@ -141,6 +186,11 @@ QColor StyleHelper::toolBarBorderColor()
                            clamp(base.value() * 0.80f));
 }
 
+QColor StyleHelper::buttonTextColor()
+{
+    return QColor(0x4c4c4c);
+}
+
 // We try to ensure that the actual color used are within
 // reasonalbe bounds while generating the actual baseColor
 // from the users request.
@@ -165,7 +215,7 @@ void StyleHelper::setBaseColor(const QColor &newcolor)
 
     if (color.isValid() && color != m_baseColor) {
         m_baseColor = color;
-        const QList<QWidget *> widgets = QApplication::topLevelWidgets();
+        const QWidgetList widgets = QApplication::allWidgets();
         for (QWidget *w : widgets)
             w->update();
     }
@@ -336,6 +386,117 @@ void StyleHelper::drawArrow(QStyle::PrimitiveElement element, QPainter *painter,
     painter->drawPixmap(xOffset, yOffset, pixmap);
 }
 
+void StyleHelper::drawMinimalArrow(QStyle::PrimitiveElement element, QPainter *painter, const QStyleOption *option)
+{
+    if (option->rect.width() <= 1 || option->rect.height() <= 1)
+        return;
+
+    const qreal devicePixelRatio = painter->device()->devicePixelRatio();
+    const bool enabled = option->state & QStyle::State_Enabled;
+    QRect r = option->rect;
+    int size = qMin(r.height(), r.width());
+    QPixmap pixmap;
+    const QString pixmapName = QString::asprintf("StyleHelper::drawMinimalArrow-%d-%d-%d-%f",
+                                                 element, size, enabled, devicePixelRatio);
+    if (!QPixmapCache::find(pixmapName, &pixmap)) {
+        QImage image(size * devicePixelRatio, size * devicePixelRatio, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        QStyleOption tweakedOption(*option);
+
+        double rotation = 0;
+        switch (element) {
+        case QStyle::PE_IndicatorArrowLeft:
+            rotation = 45;
+            break;
+        case QStyle::PE_IndicatorArrowUp:
+            rotation = 135;
+            break;
+        case QStyle::PE_IndicatorArrowRight:
+            rotation = 225;
+            break;
+        case QStyle::PE_IndicatorArrowDown:
+            rotation = 315;
+            break;
+        default:
+            break;
+        }
+
+        auto drawArrow = [&tweakedOption, rotation, &painter](const QRect &rect, const QColor &color) -> void
+        {
+            static const QCommonStyle* const style = qobject_cast<QCommonStyle*>(QApplication::style());
+            if (!style)
+                return;
+
+            // Workaround for QTCREATORBUG-28470
+            QPalette pal = tweakedOption.palette;
+            pal.setBrush(QPalette::Base, pal.text()); // Base and Text differ, causing a detachment.
+            // Inspired by tst_QPalette::cacheKey()
+            pal.setColor(QPalette::ButtonText, color.rgb());
+
+            tweakedOption.palette = pal;
+            tweakedOption.rect = rect;
+
+            painter.save();
+            painter.setOpacity(color.alphaF());
+
+            double minDim = std::min(rect.width(), rect.height());
+            double innerWidth = minDim/M_SQRT2;
+            int penWidth = std::max(innerWidth/4, 1.0);
+            innerWidth -= penWidth;
+
+            QPen pPen(pal.color(QPalette::ButtonText), penWidth);
+            pPen.setJoinStyle(Qt::MiterJoin);
+            painter.setBrush(pal.text());
+            painter.setPen(pPen);
+
+            painter.translate(rect.center());
+            painter.rotate(rotation);
+            painter.translate(-innerWidth/2, -innerWidth/2);
+
+            const QPointF points[3] = {
+                {0, 0},
+                {0, innerWidth},
+                {innerWidth, innerWidth}
+            };
+
+            painter.drawPolyline(points, 3);
+            painter.restore();
+        };
+
+        if (enabled) {
+            if (creatorTheme()->flag(Theme::ToolBarIconShadow))
+                drawArrow(image.rect().translated(0, devicePixelRatio), toolBarDropShadowColor());
+            drawArrow(image.rect(), creatorTheme()->color(Theme::IconsBaseColor));
+        } else {
+            drawArrow(image.rect(), creatorTheme()->color(Theme::IconsDisabledColor));
+        }
+        painter.end();
+        pixmap = QPixmap::fromImage(image);
+        pixmap.setDevicePixelRatio(devicePixelRatio);
+        QPixmapCache::insert(pixmapName, pixmap);
+    }
+    int xOffset = r.x() + (r.width() - size)/2;
+    int yOffset = r.y() + (r.height() - size)/2;
+    painter->drawPixmap(xOffset, yOffset, pixmap);
+}
+
+void StyleHelper::drawPanelBgRect(QPainter *painter, const QRectF &rect, const QBrush &brush)
+{
+    if (toolbarStyle() == ToolbarStyleCompact) {
+        painter->fillRect(rect.toRect(), brush);
+    } else {
+        constexpr int margin = 2;
+        constexpr int radius = 5;
+        QPainterPath path;
+        path.addRoundedRect(rect.adjusted(margin, margin, -margin, -margin), radius, radius);
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->fillPath(path, brush);
+        painter->restore();
+    }
+}
+
 void StyleHelper::menuGradient(QPainter *painter, const QRect &spanRect, const QRect &clipRect)
 {
     if (StyleHelper::usePixmapCache()) {
@@ -357,6 +518,11 @@ void StyleHelper::menuGradient(QPainter *painter, const QRect &spanRect, const Q
     } else {
         menuGradientHelper(painter, spanRect, clipRect);
     }
+}
+
+bool StyleHelper::usePixmapCache()
+{
+    return true;
 }
 
 QPixmap StyleHelper::disabledSideBarIcon(const QPixmap &enabledicon)
@@ -531,6 +697,21 @@ QLinearGradient StyleHelper::statusBarGradient(const QRect &statusBarRect)
     return grad;
 }
 
+void StyleHelper::setPanelWidget(QWidget *widget, bool value)
+{
+    widget->setProperty(C_PANEL_WIDGET, value);
+}
+
+void StyleHelper::setPanelWidgetSingleRow(QWidget *widget, bool value)
+{
+    widget->setProperty(C_PANEL_WIDGET_SINGLE_ROW, value);
+}
+
+bool StyleHelper::isQDSTheme()
+{
+    return creatorTheme() ? creatorTheme()->flag(Theme::QDSTheme) : false;
+}
+
 QIcon StyleHelper::getIconFromIconFont(const QString &fontName, const QList<IconFontHelper> &parameters)
 {
     QFontDatabase a;
@@ -590,7 +771,7 @@ QIcon StyleHelper::getIconFromIconFont(const QString &fontName, const QString &i
             painter.save();
             painter.setPen(color);
             painter.setFont(font);
-            painter.drawText(QRectF(QPoint(0, 0), size), iconSymbol);
+            painter.drawText(QRectF(QPoint(0, 0), size), Qt::AlignCenter, iconSymbol);
             painter.restore();
 
             icon.addPixmap(pixmap);

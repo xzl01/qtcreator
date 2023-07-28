@@ -36,12 +36,12 @@ def checkQtCreatorHelpVersion(expectedVersion):
         helpContentWidget = waitForObject(':Qt Creator_QHelpContentWidget', 5000)
         waitFor("any(map(rightStart, dumpItems(helpContentWidget.model())))", 10000)
         items = dumpItems(helpContentWidget.model())
-        test.compare(filter(rightStart, items)[0],
+        test.compare(list(filter(rightStart, items))[0],
                      'Qt Creator Manual %s' % expectedVersion,
                      'Verifying whether manual uses expected version.')
     except:
         t, v = sys.exc_info()[:2]
-        test.log("Exception caught", "%s(%s)" % (str(t), str(v)))
+        test.log("Exception caught", "%s: %s" % (t.__name__, str(v)))
         test.fail("Missing Qt Creator Manual.")
 
 
@@ -53,8 +53,8 @@ def setKeyboardShortcutForAboutQtC():
     invokeMenuItem("Edit", "Preferences...")
     mouseClick(waitForObjectItem(":Options_QListView", "Environment"))
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Keyboard")
-    filter = waitForObject("{container={title='Keyboard Shortcuts' type='QGroupBox' unnamed='1' "
-                           "visible='1'} type='Utils::FancyLineEdit' unnamed='1' visible='1' "
+    filter = waitForObject("{container={name='Command Mappings' type='QGroupBox' visible='1'} "
+                           "type='Utils::FancyLineEdit' unnamed='1' visible='1' "
                            "placeholderText='Filter'}")
     replaceEditorContent(filter, "about")
     treewidget = waitForObject("{type='QTreeWidget' unnamed='1' visible='1'}")

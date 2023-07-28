@@ -4,12 +4,15 @@
 #pragma once
 
 #include "clangfileinfo.h"
+#include "clangtoolsdiagnostic.h"
+#include "clangtoolslogfilereader.h"
+#include "clangtoolssettings.h"
 
 #include <cppeditor/clangdiagnosticconfig.h>
 
 #include <utils/environment.h>
 
-namespace Utils::Tasking { class TaskItem; }
+namespace Tasking { class GroupItem; }
 
 namespace ClangTools {
 namespace Internal {
@@ -28,11 +31,13 @@ using AnalyzeUnits = QList<AnalyzeUnit>;
 struct AnalyzeInputData
 {
     CppEditor::ClangToolType tool = CppEditor::ClangToolType::Tidy;
+    RunSettings runSettings;
     CppEditor::ClangDiagnosticConfig config;
     Utils::FilePath outputDirPath;
     Utils::Environment environment;
     AnalyzeUnit unit;
     QString overlayFilePath = {};
+    AcceptDiagsFromFilePath diagnosticsFilter = {};
 };
 
 struct AnalyzeOutputData
@@ -40,6 +45,7 @@ struct AnalyzeOutputData
     bool success = true;
     Utils::FilePath fileToAnalyze;
     Utils::FilePath outputFilePath;
+    Diagnostics diagnostics;
     CppEditor::ClangToolType toolType;
     QString errorMessage = {};
     QString errorDetails = {};
@@ -48,9 +54,9 @@ struct AnalyzeOutputData
 using AnalyzeSetupHandler = std::function<bool()>;
 using AnalyzeOutputHandler = std::function<void(const AnalyzeOutputData &)>;
 
-Utils::Tasking::TaskItem clangToolTask(const AnalyzeInputData &input,
-                                       const AnalyzeSetupHandler &setupHandler,
-                                       const AnalyzeOutputHandler &outputHandler);
+Tasking::GroupItem clangToolTask(const AnalyzeInputData &input,
+                                 const AnalyzeSetupHandler &setupHandler,
+                                 const AnalyzeOutputHandler &outputHandler);
 
 } // namespace Internal
 } // namespace ClangTools

@@ -1,5 +1,6 @@
 find_package(Googletest MODULE)
 find_package(GoogleBenchmark MODULE)
+find_package(Qt6 COMPONENTS QmlDomPrivate QmlCompilerPrivate)
 
 if (NOT Googletest_FOUND)
   message(STATUS "Googletest was not found. Please set GOOGLETEST_DIR (CMake or Environment) variable.")
@@ -18,25 +19,30 @@ file(RELATIVE_PATH RELATIVE_TEST_PATH "${PROJECT_BINARY_DIR}" "${CMAKE_CURRENT_B
 file(RELATIVE_PATH TEST_RELATIVE_LIBEXEC_PATH "/${RELATIVE_TEST_PATH}" "/${IDE_LIBEXEC_PATH}")
 
 add_qtc_test(unittest GTEST
+  PROPERTIES COMPILE_WARNING_AS_ERROR OFF
   INCLUDES
     BEFORE "../mockup"
     BEFORE "../mockup/qmldesigner/designercore/include"
   DEPENDS
     Qt::Core Qt::Network Qt::Widgets
-    Qt::Xml Qt::Concurrent Qt::Qml Qt::Gui
-    Qt6Core5Compat QmlJS Sqlite SqliteC
+    Qt::Xml Qt::Concurrent Qt::QmlPrivate Qt::Gui
+    Qt::Core5Compat QmlJS Sqlite SqliteC
     Googletest
   DEFINES
+    GTEST_INTERNAL_HAS_STRING_VIEW
     QT_NO_CAST_TO_ASCII
     QT_RESTRICTED_CAST_FROM_ASCII
     UNIT_TESTS
     DONT_CHECK_MESSAGE_COUNTER
     QTC_RESOURCE_DIR="${CMAKE_CURRENT_LIST_DIR}/../../../share/qtcreator"
-    TESTDATA_DIR="${CMAKE_CURRENT_BINARY_DIR}/data"
+    TESTDATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
+    UNITTEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     TEST_RELATIVE_LIBEXEC_PATH="${TEST_RELATIVE_LIBEXEC_PATH}"
+    QT6_INSTALL_PREFIX="${QT6_INSTALL_PREFIX}"
+    QDS_MODEL_USE_PROJECTSTORAGEINTERFACE
+    QDS_USE_PROJECTSTORAGE
   SOURCES
     abstractviewmock.h
-    compare-operators.h
     conditionally-disabled-tests.h
     dynamicastmatcherdiagnosticcontainer-matcher.h
     eventspy.cpp eventspy.h
@@ -48,6 +54,9 @@ add_qtc_test(unittest GTEST
     gtest-qt-printing.cpp gtest-qt-printing.h
     gtest-std-printing.h
     lastchangedrowid-test.cpp
+    import-test.cpp
+    model-test.cpp
+    modelresourcemanagementmock.h
     matchingtext-test.cpp
     mockfutureinterface.h
     mockmutex.h
@@ -58,6 +67,7 @@ add_qtc_test(unittest GTEST
     mocktimer.cpp mocktimer.h
     nodelistproperty-test.cpp
     processevents-utilities.cpp processevents-utilities.h
+    projectstoragemock.cpp projectstoragemock.h
     sizedarray-test.cpp
     smallstring-test.cpp
     spydummy.cpp spydummy.h
@@ -70,6 +80,7 @@ add_qtc_test(unittest GTEST
     sqlitecolumn-test.cpp
     sqlitedatabasebackend-test.cpp
     sqlitedatabase-test.cpp
+    sqlitefunctionregistry-test.cpp
     sqlitesessions-test.cpp
     sqlitestatement-test.cpp
     sqlitetable-test.cpp
@@ -94,6 +105,7 @@ add_qtc_test(unittest GTEST
     mockimagecachestorage.h
     asynchronousexplicitimagecache-test.cpp
     asynchronousimagefactory-test.cpp
+    modulescanner-test.cpp
 )
 
 if (NOT TARGET unittest)
@@ -203,16 +215,27 @@ extend_qtc_test(unittest
     include/bindingproperty.h
     include/imagecacheauxiliarydata.h
     include/import.h
+    include/itemlibraryinfo.h
+    include/metainfo.h
+    include/metainforeader.h
     include/model.h
     include/modelnode.h
     include/nodeabstractproperty.h
     include/nodelistproperty.h
+    include/nodemetainfo.h
     include/nodeproperty.h
     include/projectstorageids.h
+    include/propertymetainfo.h
+    include/propertycontainer.h
+    include/propertyparser.h
     include/qmldesignercorelib_global.h
     include/signalhandlerproperty.h
     include/synchronousimagecache.h
     include/variantproperty.h
+    metainfo/itemlibraryinfo.cpp
+    metainfo/metainfo.cpp
+    metainfo/metainforeader.cpp
+    metainfo/nodemetainfo.cpp
     model/abstractproperty.cpp
     model/abstractview.cpp
     model/annotation.cpp
@@ -237,17 +260,24 @@ extend_qtc_test(unittest
     model/model.cpp
     model/model_p.h
     model/modelnode.cpp
+    model/modelresourcemanagementinterface.h
+    model/propertycontainer.cpp
+    model/propertyparser.cpp
     model/nodeabstractproperty.cpp
     model/nodelistproperty.cpp
     model/nodeproperty.cpp
     model/signalhandlerproperty.cpp
     model/variantproperty.cpp
+    pluginmanager/widgetpluginmanager.h pluginmanager/widgetpluginmanager.cpp
+    pluginmanager/widgetpluginpath.h pluginmanager/widgetpluginpath.cpp
     projectstorage/directorypathcompressor.h
     projectstorage/filesysteminterface.h
     projectstorage/filesystem.cpp projectstorage/filesystem.h
     projectstorage/filestatus.h
     projectstorage/filestatuscache.cpp projectstorage/filestatuscache.h
+    projectstorage/modulescanner.cpp projectstorage/modulescanner.h
     projectstorage/nonlockingmutex.h
+    projectstorage/projectstorageexceptions.cpp projectstorage/projectstorageexceptions.h
     projectstorage/projectstorageinterface.h
     projectstorage/projectstorage.cpp projectstorage/projectstorage.h
     projectstorage/projectstoragepathwatcher.h
@@ -311,26 +341,18 @@ endif()
 extend_qtc_test(unittest DEPENDS Utils CPlusPlus)
 
 extend_qtc_test(unittest
-  SOURCES_PREFIX ../../../src/plugins/coreplugin
-  DEFINES CORE_STATIC_LIBRARY
-  SOURCES
-    coreicons.cpp coreicons.h
-    find/ifindfilter.cpp find/ifindfilter.h
-    locator/ilocatorfilter.cpp locator/ilocatorfilter.h
-)
-
-extend_qtc_test(unittest
-  CONDITION TARGET qmldomlib
-  DEPENDS qmldomlib
+  CONDITION TARGET Qt6::QmlDomPrivate AND TARGET Qt6::QmlCompilerPrivate AND Qt6_VERSION VERSION_GREATER_EQUAL 6.5.0  AND Qt6_VERSION VERSION_LESS 6.6.0
+  DEPENDS Qt6::QmlDomPrivate Qt6::QmlCompilerPrivate
   SOURCES
     qmldocumentparser-test.cpp
     qmltypesparser-test.cpp
 )
 
 extend_qtc_test(unittest
+  CONDITION TARGET Qt6::QmlDomPrivate AND TARGET Qt6::QmlCompilerPrivate AND Qt6_VERSION VERSION_GREATER_EQUAL 6.5.0 AND Qt6_VERSION VERSION_LESS 6.6.0
   SOURCES_PREFIX "${QmlDesignerDir}/designercore"
-  CONDITION TARGET qmldomlib
-  DEPENDS qmldomlib
+  DEPENDS Qt6::QmlDomPrivate Qt6::QmlCompilerPrivate
+  DEFINES QDS_BUILD_QMLPARSER
   SOURCES
     projectstorage/qmldocumentparser.cpp projectstorage/qmldocumentparser.h
     projectstorage/qmltypesparser.cpp projectstorage/qmltypesparser.h
@@ -341,3 +363,5 @@ set_property(SOURCE ${PROJECTSTORAGE_EXCLUDED_SOURCES} PROPERTY SKIP_AUTOMOC ON)
 
 file(GLOB UNITTEST_EXCLUDED_SOURCES *.cpp)
 set_property(SOURCE ${UNITTEST_EXCLUDED_SOURCES} PROPERTY SKIP_AUTOMOC ON)
+
+add_subdirectory(qmlprojectmanager)

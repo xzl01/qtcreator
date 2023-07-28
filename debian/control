@@ -5,7 +5,7 @@ Maintainer: Debian Qt/KDE Maintainers <debian-qt-kde@lists.debian.org>
 Uploaders: Adam Majer <adamm@zombino.com>,
            Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>,
 Build-Depends: clang (>= 1:10~),
-               clangd (>= 1:13~),
+               clangd (>= 1:14~),
                cmake (>= 3.16~),
                debhelper-compat (= 13),
                libclang-dev (>= 1:10~),
@@ -31,12 +31,12 @@ Build-Depends: clang (>= 1:10~),
 Standards-Version: 4.6.2
 Rules-Requires-Root: no
 Homepage: https://doc.qt.io/qt-5/topics-app-development.html
-Vcs-Git: https://salsa.debian.org/qt-kde-team/qt/qtcreator.git -b experimental
-Vcs-Browser: https://salsa.debian.org/qt-kde-team/qt/qtcreator/-/tree/experimental
+Vcs-Git: https://salsa.debian.org/qt-kde-team/qt/qtcreator.git
+Vcs-Browser: https://salsa.debian.org/qt-kde-team/qt/qtcreator
 
 Package: qtcreator
 Architecture: any
-Depends: clangd (>= 1:13~),
+Depends: clangd (>= 1:14~),
          libqt6sql6-sqlite,
          qml6-module-qtqml-models,
          qml6-module-qtqml-workerscript,

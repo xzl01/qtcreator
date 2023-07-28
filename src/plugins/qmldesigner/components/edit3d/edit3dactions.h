@@ -5,12 +5,18 @@
 #include <abstractaction.h>
 
 #include <QAction>
+#include <QWidgetAction>
 #include <QIcon>
+
+QT_BEGIN_NAMESPACE
+class QWidgetAction;
+QT_END_NAMESPACE
 
 namespace QmlDesigner {
 
 using SelectionContextOperation = std::function<void(const SelectionContext &)>;
 class Edit3DView;
+class SeekerSliderAction;
 
 class Edit3DActionTemplate : public DefaultAction
 {
@@ -29,6 +35,15 @@ public:
     View3DActionType m_type;
 };
 
+class Edit3DWidgetActionTemplate : public PureActionInterface
+{
+    Q_DISABLE_COPY(Edit3DWidgetActionTemplate)
+
+public:
+    explicit Edit3DWidgetActionTemplate(QWidgetAction *widget);
+    virtual void setSelectionContext(const SelectionContext &) {}
+};
+
 class Edit3DAction : public AbstractAction
 {
 public:
@@ -38,13 +53,15 @@ public:
                  const QKeySequence &key,
                  bool checkable,
                  bool checked,
-                 const QIcon &iconOff,
-                 const QIcon &iconOn,
+                 const QIcon &icon,
                  Edit3DView *view,
                  SelectionContextOperation selectionAction = nullptr,
                  const QString &toolTip = {});
 
-    virtual ~Edit3DAction();
+    Edit3DAction(const QByteArray &menuId,
+                 View3DActionType type,
+                 Edit3DView *view,
+                 PureActionInterface *pureInt);
 
     QByteArray category() const override;
 
@@ -71,7 +88,7 @@ protected:
 
 private:
     QByteArray m_menuId;
-    Edit3DActionTemplate *m_actionTemplate = nullptr;
+    View3DActionType m_actionType;
 };
 
 class Edit3DCameraAction : public Edit3DAction
@@ -83,13 +100,44 @@ public:
                        const QKeySequence &key,
                        bool checkable,
                        bool checked,
-                       const QIcon &iconOff,
-                       const QIcon &iconOn,
+                       const QIcon &icon,
                        Edit3DView *view,
                        SelectionContextOperation selectionAction = nullptr);
 
 protected:
     bool isEnabled(const SelectionContext &selectionContext) const override;
+};
+
+class Edit3DParticleSeekerAction : public Edit3DAction
+{
+public:
+    Edit3DParticleSeekerAction(const QByteArray &menuId,
+                               View3DActionType type,
+                               Edit3DView *view);
+
+    SeekerSliderAction *seekerAction();
+
+protected:
+    bool isVisible(const SelectionContext &) const override;
+    bool isEnabled(const SelectionContext &) const override;
+
+private:
+    SeekerSliderAction *m_seeker = nullptr;
+};
+
+class Edit3DBakeLightsAction : public Edit3DAction
+{
+public:
+    Edit3DBakeLightsAction(const QIcon &icon,
+                           Edit3DView *view,
+                           SelectionContextOperation selectionAction);
+
+protected:
+    bool isVisible(const SelectionContext &) const override;
+    bool isEnabled(const SelectionContext &) const override;
+
+private:
+    Edit3DView *m_view = nullptr;
 };
 
 } // namespace QmlDesigner

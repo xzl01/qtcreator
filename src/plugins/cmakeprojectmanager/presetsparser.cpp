@@ -82,7 +82,7 @@ std::optional<PresetsDetails::Condition> parseCondition(const QJsonValue &jsonVa
 
     if (type == "const") {
         condition->type = type;
-        condition->constValue = object.value("const").toBool();
+        condition->constValue = object.value("value").toBool();
         return condition;
     }
 
@@ -215,12 +215,24 @@ bool parseConfigurePresets(const QJsonValue &jsonValue,
                 item.key = cacheKey.toUtf8();
                 item.type = CMakeConfigItem::typeStringToType(
                     cacheVariableObj.value("type").toString().toUtf8());
-                item.value = cacheVariableObj.value("type").toString().toUtf8();
+                item.value = cacheVariableObj.value("value").toString().toUtf8();
                 preset.cacheVariables.value() << item;
 
             } else {
-                preset.cacheVariables.value()
-                    << CMakeConfigItem(cacheKey.toUtf8(), cacheValue.toString().toUtf8());
+                if (cacheValue.isBool()) {
+                    preset.cacheVariables.value()
+                        << CMakeConfigItem(cacheKey.toUtf8(),
+                                           CMakeConfigItem::BOOL,
+                                           cacheValue.toBool() ? "ON" : "OFF");
+                } else if (CMakeConfigItem::toBool(cacheValue.toString()).has_value()) {
+                    preset.cacheVariables.value()
+                        << CMakeConfigItem(cacheKey.toUtf8(),
+                                           CMakeConfigItem::BOOL,
+                                           cacheValue.toString().toUtf8());
+                } else {
+                    preset.cacheVariables.value()
+                        << CMakeConfigItem(cacheKey.toUtf8(), cacheValue.toString().toUtf8());
+                }
             }
         }
 
@@ -284,6 +296,15 @@ bool parseConfigurePresets(const QJsonValue &jsonValue,
                 if (strategy == "external")
                     preset.architecture->strategy
                         = PresetsDetails::ValueStrategyPair::Strategy::external;
+            } else {
+                preset.architecture->strategy = PresetsDetails::ValueStrategyPair::Strategy::set;
+            }
+        } else {
+            const QString value = object.value("architecture").toString();
+            if (!value.isEmpty()) {
+                preset.architecture = PresetsDetails::ValueStrategyPair();
+                preset.architecture->value = value;
+                preset.architecture->strategy = PresetsDetails::ValueStrategyPair::Strategy::set;
             }
         }
 
@@ -299,6 +320,15 @@ bool parseConfigurePresets(const QJsonValue &jsonValue,
                     preset.toolset->strategy = PresetsDetails::ValueStrategyPair::Strategy::set;
                 if (strategy == "external")
                     preset.toolset->strategy = PresetsDetails::ValueStrategyPair::Strategy::external;
+            } else {
+                preset.toolset->strategy = PresetsDetails::ValueStrategyPair::Strategy::set;
+            }
+        } else {
+            const QString value = object.value("toolset").toString();
+            if (!value.isEmpty()) {
+                preset.toolset = PresetsDetails::ValueStrategyPair();
+                preset.toolset->value = value;
+                preset.toolset->strategy = PresetsDetails::ValueStrategyPair::Strategy::set;
             }
         }
 
@@ -482,16 +512,6 @@ static QHash<QString, QString> merge(const QHash<QString, QString> &first,
     return result;
 }
 
-static Utils::Environment merge(const Utils::Environment &first, const Utils::Environment &second)
-{
-    Utils::Environment result = first;
-    for (auto it = second.constBegin(); it != second.constEnd(); ++it) {
-        result.set(it.key().name, it.value().first);
-    }
-
-    return result;
-}
-
 static CMakeConfig merge(const CMakeConfig &first, const CMakeConfig &second)
 {
     return Utils::setUnionMerge<CMakeConfig>(
@@ -549,7 +569,7 @@ void PresetsDetails::ConfigurePreset::inheritFrom(const ConfigurePreset &other)
     if (!environment && other.environment)
         environment = other.environment;
     else if (environment && other.environment)
-        environment = merge(other.environment.value(), environment.value());
+        environment = environment.value().appliedToEnvironment(other.environment.value());
 
     if (!warnings && other.warnings)
         warnings = other.warnings;
@@ -575,7 +595,7 @@ void PresetsDetails::BuildPreset::inheritFrom(const BuildPreset &other)
     if (!environment && other.environment)
         environment = other.environment;
     else if (environment && other.environment)
-        environment = merge(other.environment.value(), environment.value());
+        environment = environment.value().appliedToEnvironment(other.environment.value());
 
     if (!configurePreset && other.configurePreset)
         configurePreset = other.configurePreset;

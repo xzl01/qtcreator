@@ -130,6 +130,7 @@ QStringList CompilerOptionsBuilder::build(ProjectFile::Kind fileKind,
     undefineCppLanguageFeatureMacrosForMsvc2015();
     addDefineFunctionMacrosMsvc();
     addDefineFunctionMacrosQnx();
+    addQtMacros();
 
     addHeaderPathOptions();
 
@@ -786,6 +787,12 @@ void CompilerOptionsBuilder::addDefineFunctionMacrosQnx()
         addMacros({{"_LIBCPP_HAS_NO_BUILTIN_OPERATOR_NEW_DELETE"}});
 }
 
+void CompilerOptionsBuilder::addQtMacros()
+{
+    if (m_projectPart.qtVersion != QtMajorVersion::None)
+        addMacros({{"QT_ANNOTATE_FUNCTION(x)", "__attribute__((annotate(#x)))"}});
+}
+
 void CompilerOptionsBuilder::reset()
 {
     m_options.clear();
@@ -868,7 +875,8 @@ void CompilerOptionsBuilder::evaluateCompilerFlags()
             || option.startsWith("/M", Qt::CaseSensitive)
             || option.startsWith(includeUserPathOption)
             || option.startsWith(includeSystemPathOption)
-            || option.startsWith(includeUserPathOptionWindows)) {
+            || option.startsWith(includeUserPathOptionWindows)
+            || option.startsWith("-flto")) {
             // Optimization and run-time flags.
             continue;
         }

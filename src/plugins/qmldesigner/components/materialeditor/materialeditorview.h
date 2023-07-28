@@ -3,28 +3,24 @@
 
 #pragma once
 
-#include <abstractview.h>
-#include <itemlibraryinfo.h>
+#include "abstractview.h"
+#include "modelnode.h"
 
 #include <QHash>
 #include <QPointer>
 #include <QTimer>
 
 QT_BEGIN_NAMESPACE
+class QColorDialog;
 class QShortcut;
 class QStackedWidget;
-class QTimer;
-class QColorDialog;
 QT_END_NAMESPACE
 
 namespace QmlDesigner {
 
-class ModelNode;
-class MaterialEditorQmlBackend;
-
-namespace Internal {
 class DynamicPropertiesModel;
-}
+class ItemLibraryInfo;
+class MaterialEditorQmlBackend;
 
 class MaterialEditorView : public AbstractView
 {
@@ -59,7 +55,7 @@ public:
     void nodeTypeChanged(const ModelNode& node, const TypeName &type, int majorVersion, int minorVersion) override;
     void rootNodeTypeChanged(const QString &type, int majorVersion, int minorVersion) override;
     void modelNodePreviewPixmapChanged(const ModelNode &node, const QPixmap &pixmap) override;
-    void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports) override;
+    void importsChanged(const Imports &addedImports, const Imports &removedImports) override;
     void customNotification(const AbstractView *view, const QString &identifier,
                             const QList<ModelNode> &nodeList, const QList<QVariant> &data) override;
     void nodeReparented(const ModelNode &node, const NodeAbstractProperty &newPropertyParent,
@@ -79,7 +75,7 @@ public:
 
     void currentTimelineChanged(const ModelNode &node) override;
 
-    Internal::DynamicPropertiesModel *dynamicPropertiesModel() const;
+    DynamicPropertiesModel *dynamicPropertiesModel() const;
 
     static MaterialEditorView *instance();
 
@@ -133,7 +129,7 @@ private:
 
     QPointer<QColorDialog> m_colorDialog;
     QPointer<ItemLibraryInfo> m_itemLibraryInfo;
-    Internal::DynamicPropertiesModel *m_dynamicPropertiesModel = nullptr;
+    DynamicPropertiesModel *m_dynamicPropertiesModel = nullptr;
 };
 
 } // namespace QmlDesigner

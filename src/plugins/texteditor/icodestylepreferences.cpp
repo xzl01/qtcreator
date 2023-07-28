@@ -24,6 +24,8 @@ public:
     QByteArray m_id;
     QString m_displayName;
     bool m_readOnly = false;
+    bool m_temporarilyReadOnly = false;
+    bool m_isAdditionalTabDisabled = false;
     QString m_settingsSuffix;
 };
 
@@ -69,6 +71,26 @@ bool ICodeStylePreferences::isReadOnly() const
 void ICodeStylePreferences::setReadOnly(bool on)
 {
     d->m_readOnly = on;
+}
+
+void ICodeStylePreferences::setTemporarilyReadOnly(bool on)
+{
+    d->m_temporarilyReadOnly = on;
+}
+
+bool ICodeStylePreferences::isTemporarilyReadOnly() const
+{
+    return d->m_temporarilyReadOnly;
+}
+
+bool ICodeStylePreferences::isAdditionalTabDisabled() const
+{
+    return d->m_isAdditionalTabDisabled;
+}
+
+void ICodeStylePreferences::setIsAdditionalTabDisabled(bool on)
+{
+    d->m_isAdditionalTabDisabled = on;
 }
 
 void ICodeStylePreferences::setTabSettings(const TabSettings &settings)

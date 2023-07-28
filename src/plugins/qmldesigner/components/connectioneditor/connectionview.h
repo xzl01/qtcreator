@@ -15,8 +15,6 @@ QT_END_NAMESPACE
 
 namespace QmlDesigner {
 
-namespace Internal {
-
 class ConnectionViewWidget;
 class BindingModel;
 class ConnectionModel;
@@ -52,7 +50,7 @@ public:
                               AuxiliaryDataKeyView key,
                               const QVariant &data) override;
 
-    void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports) override;
+    void importsChanged(const Imports &addedImports, const Imports &removedImports) override;
 
     void currentStateChanged(const ModelNode &node) override;
 
@@ -81,7 +79,5 @@ private: //variables
     DynamicPropertiesModel *m_dynamicPropertiesModel;
     BackendModel *m_backendModel;
 };
-
-} // namespace Internal
 
 } // namespace QmlDesigner

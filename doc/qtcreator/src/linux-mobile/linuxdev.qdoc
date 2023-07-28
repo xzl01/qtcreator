@@ -107,11 +107,14 @@
             All of these parameters can be edited later, as well as additional ones that the
             wizard does not show because there are sensible default values.
 
+           To add a device without using the wizard, select
+           \uicontrol {Add Remote Linux Device} in the pull-down
+           menu of the \uicontrol Add button.
 
         \li Select \uicontrol Edit > \uicontrol Preferences > \uicontrol Kits >
             \uicontrol Add to add a kit for building for the device. Select the
             Qt version, compiler, and device that you added above, and select
-            \uicontrol {Remote Linux Device} in \uicontrol {Device type}.
+            \uicontrol {Remote Linux Device} in \uicontrol {Run device type}.
 
             To build on the remote device, select \uicontrol {Remote Linux Device}
             also in \uicontrol {Build device}.

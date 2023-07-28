@@ -5,13 +5,11 @@
 
 #include "../autotesttr.h"
 #include "../testframeworkmanager.h"
-#include "../testresult.h"
 #include "../testtreeitem.h"
 
 #include <cmakeprojectmanager/cmakeprojectconstants.h>
 
 #include <utils/qtcassert.h>
-#include <utils/treemodel.h>
 
 #include <QRegularExpression>
 
@@ -52,10 +50,9 @@ public:
     {}
 };
 
-CTestOutputReader::CTestOutputReader(const QFutureInterface<TestResult> &futureInterface,
-                                     QtcProcess *testApplication,
+CTestOutputReader::CTestOutputReader(Process *testApplication,
                                      const FilePath &buildDirectory)
-    : TestOutputReader(futureInterface, testApplication, buildDirectory)
+    : TestOutputReader(testApplication, buildDirectory)
 {
 }
 
@@ -93,7 +90,7 @@ void CTestOutputReader::processOutputLine(const QByteArray &outputLine)
         m_project = match.captured(1);
         TestResult testResult = createDefaultResult();
         testResult.setResult(ResultType::TestStart);
-        testResult.setDescription(Tr::tr("Running tests for %1").arg(m_project));
+        testResult.setDescription(Tr::tr("Running tests for \"%1\".").arg(m_project));
         reportResult(testResult);
     } else if (ExactMatch match = testCase1.match(line)) {
         int current = match.captured("current").toInt();

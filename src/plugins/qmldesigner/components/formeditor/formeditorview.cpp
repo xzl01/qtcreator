@@ -253,7 +253,7 @@ void FormEditorView::modelAboutToBeDetached(Model *model)
     AbstractView::modelAboutToBeDetached(model);
 }
 
-void FormEditorView::importsChanged(const QList<Import> &/*addedImports*/, const QList<Import> &/*removedImports*/)
+void FormEditorView::importsChanged(const Imports &/*addedImports*/, const Imports &/*removedImports*/)
 {
     reset();
 }
@@ -271,7 +271,7 @@ void FormEditorView::rootNodeTypeChanged(const QString &/*type*/, int /*majorVer
     for (FormEditorItem *item : items) {
         item->setParentItem(nullptr);
         m_scene->removeItemFromHash(item);
-        delete item;
+        deleteWithoutChildren({item});
     }
 
     QmlItemNode newItemNode(rootModelNode());
@@ -341,7 +341,13 @@ WidgetInfo FormEditorView::widgetInfo()
     if (!m_formEditorWidget)
         createFormEditorWidget();
 
-    return createWidgetInfo(m_formEditorWidget.data(), "FormEditor", WidgetInfo::CentralPane, 0, tr("2D"), DesignerWidgetFlags::IgnoreErrors);
+    return createWidgetInfo(m_formEditorWidget.data(),
+                            "FormEditor",
+                            WidgetInfo::CentralPane,
+                            0,
+                            tr("2D"),
+                            tr("2D view"),
+                            DesignerWidgetFlags::IgnoreErrors);
 }
 
 FormEditorWidget *FormEditorView::formEditorWidget()

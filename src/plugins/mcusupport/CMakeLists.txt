@@ -1,5 +1,5 @@
 add_qtc_plugin(McuSupport
-  DEPENDS Qt::Core
+  DEPENDS Qt::Core QmlJS
   PLUGIN_DEPENDS Core BareMetal ProjectExplorer Debugger CMakeProjectManager QtSupport
   SOURCES
     mcukitinformation.cpp mcukitinformation.h
@@ -23,6 +23,8 @@ add_qtc_plugin(McuSupport
     mcuhelpers.cpp mcuhelpers.h
     settingshandler.cpp settingshandler.h
     mcuqmlprojectnode.cpp mcuqmlprojectnode.h
+    mcubuildstep.cpp mcubuildstep.h
+    dialogs/mcukitcreationdialog.cpp dialogs/mcukitcreationdialog.h
 )
 
 add_subdirectory(test)

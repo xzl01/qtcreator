@@ -3,12 +3,20 @@
 
 #pragma once
 
-#include <QFutureInterface>
 #include <QLoggingCategory>
 #include <QPointer>
 #include <QVersionNumber>
 
-namespace LanguageClient { class ExpandedSemanticToken; }
+QT_BEGIN_NAMESPACE
+template <typename T>
+class QPromise;
+QT_END_NAMESPACE
+
+namespace LanguageClient {
+class Client;
+class ExpandedSemanticToken;
+}
+namespace LanguageServerProtocol { class JsonRpcMessage; }
 namespace TextEditor {
 class HighlightingResult;
 class TextDocument;
@@ -21,7 +29,7 @@ class TaskTimer;
 Q_DECLARE_LOGGING_CATEGORY(clangdLogHighlight);
 
 void doSemanticHighlighting(
-        QFutureInterface<TextEditor::HighlightingResult> &future,
+        QPromise<TextEditor::HighlightingResult> &promise,
         const Utils::FilePath &filePath,
         const QList<LanguageClient::ExpandedSemanticToken> &tokens,
         const QString &docContents,
@@ -31,5 +39,10 @@ void doSemanticHighlighting(
         const QVersionNumber &clangdVersion,
         const TaskTimer &taskTimer
         );
+
+
+QString inactiveRegionsMethodName();
+void handleInactiveRegions(LanguageClient::Client *client,
+                           const LanguageServerProtocol::JsonRpcMessage &msg);
 
 } // namespace ClangCodeModel::Internal

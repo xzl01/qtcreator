@@ -30,7 +30,19 @@ function(_extract_ts_data_from_targets outprefix)
 
         set(_target_sources "")
         if(_source_files)
-          list(FILTER _source_files EXCLUDE REGEX ".*[.]json[.]in|.*[.]svg")
+          # exclude various funny source files, and anything generated
+          # like *metatypes.json.gen, moc_*.cpp, qrc_*.cpp, */qmlcache/*.cpp,
+          # *qmltyperegistrations.cpp
+          string(REGEX REPLACE "(\\^|\\$|\\.|\\[|\\]|\\*|\\+|\\?|\\(|\\)|\\|)" "\\\\\\1" binary_dir_regex "${PROJECT_BINARY_DIR}")
+          set(_exclude_patterns
+            .*[.]json[.]in
+            .*[.]svg
+            .*[.]pro
+            .*[.]css
+            "${binary_dir_regex}/.*"
+          )
+          list(JOIN _exclude_patterns "|" _exclude_pattern)
+          list(FILTER _source_files EXCLUDE REGEX "${_exclude_pattern}")
           list(APPEND _target_sources ${_source_files})
         endif()
         if(_extra_translations)
@@ -58,7 +70,7 @@ function(_create_ts_custom_target name)
     set(_arg_TS_TARGET_PREFIX "ts_")
   endif()
 
-  set(ts_file "${CMAKE_CURRENT_SOURCE_DIR}/${_arg_FILE_PREFIX}_${l}.ts")
+  set(ts_file "${CMAKE_CURRENT_SOURCE_DIR}/${_arg_FILE_PREFIX}_${name}.ts")
 
   set(_sources "${_arg_SOURCES}")
   list(SORT _sources)
@@ -130,7 +142,7 @@ endfunction()
 function(add_translation_targets file_prefix)
   if (NOT TARGET Qt::lrelease OR NOT TARGET Qt::lupdate)
     # No Qt translation tools were found: Skip this directory
-    message(WARNING "No Qt translation tools found, skipping translation targets. Add find_package(Qt5 COMPONENTS LinguistTools) to CMake to enable.")
+    message(WARNING "No Qt translation tools found, skipping translation targets. Add find_package(Qt6 COMPONENTS LinguistTools) to CMake to enable.")
     return()
   endif()
 

@@ -29,6 +29,7 @@ private:
     void highlightWord(QStringView word, int position, int length);
     bool highlightRawStringLiteral(QStringView text, const CPlusPlus::Token &tk,
                                    const QString &inheritedSuffix);
+    void highlightStringLiteral(QStringView text, const CPlusPlus::Token &tk);
 
     void highlightDoxygenComment(const QString &text, int position,
                                  int length);
@@ -51,6 +52,8 @@ public:
 private slots:
     void test_data();
     void test();
+    void testParentheses_data();
+    void testParentheses();
 
 private:
     QTextDocument m_doc;

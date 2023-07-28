@@ -50,6 +50,7 @@ static QRect stringToRectangle(const QString &v)
 
 /*!
     \class Utils::PersistentSettingsReader
+    \inmodule QtCreator
 
     \brief The PersistentSettingsReader class reads a QVariantMap of arbitrary,
     nested data structures from an XML file.
@@ -336,13 +337,20 @@ bool PersistentSettingsReader::load(const FilePath &fileName)
     if (fileName.fileSize() == 0) // skip empty files
         return false;
 
+    m_filePath = fileName.parentDir();
     ParseContext ctx;
     m_valueMap = ctx.parse(fileName);
     return true;
 }
 
+FilePath PersistentSettingsReader::filePath()
+{
+    return m_filePath;
+}
+
 /*!
     \class Utils::PersistentSettingsWriter
+    \inmodule QtCreator
 
     \brief The PersistentSettingsWriter class serializes a QVariantMap of
     arbitrary, nested data structures to an XML file.

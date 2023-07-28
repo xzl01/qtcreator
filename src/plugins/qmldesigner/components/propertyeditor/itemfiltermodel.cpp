@@ -6,23 +6,27 @@
 #include <abstractview.h>
 #include <model.h>
 #include <nodemetainfo.h>
+#include <qmlmodelnodeproxy.h>
+#include <variantproperty.h>
 
 #include <QFileDialog>
 #include <QDirIterator>
-#include <qmlmodelnodeproxy.h>
+#include <QMetaEnum>
 
-ItemFilterModel::ItemFilterModel(QObject *parent) :
-    QObject(parent), m_typeFilter("QtQuick.Item"), m_lock(false), m_selectionOnly(false)
-{
-}
+using namespace QmlDesigner;
+
+ItemFilterModel::ItemFilterModel(QObject *parent)
+    : QAbstractListModel(parent)
+    , m_typeFilter("QtQuick.Item")
+    , m_selectionOnly(false)
+{}
 
 void ItemFilterModel::setModelNodeBackend(const QVariant &modelNodeBackend)
 {
-
     auto modelNodeBackendObject = modelNodeBackend.value<QObject*>();
 
     const auto backendObjectCasted =
-            qobject_cast<const QmlDesigner::QmlModelNodeProxy *>(modelNodeBackendObject);
+            qobject_cast<const QmlModelNodeProxy *>(modelNodeBackendObject);
 
     if (backendObjectCasted)
         m_modelNode = backendObjectCasted->qmlObjectNode().modelNode();
@@ -33,18 +37,28 @@ void ItemFilterModel::setModelNodeBackend(const QVariant &modelNodeBackend)
 
 void ItemFilterModel::setTypeFilter(const QString &filter)
 {
-    if (m_typeFilter != filter) {
-        m_typeFilter = filter;
-        setupModel();
-    }
+    if (m_typeFilter == filter)
+        return;
+
+    m_typeFilter = filter;
+    setupModel();
+    emit typeFilterChanged();
 }
 
 void ItemFilterModel::setSelectionOnly(bool value)
 {
-    if (m_selectionOnly != value) {
-        m_selectionOnly = value;
-        setupModel();
-    }
+    if (m_selectionOnly == value)
+        return;
+
+    m_selectionOnly = value;
+    setupModel();
+    emit selectionOnlyChanged();
+}
+
+void ItemFilterModel::setSelectedItems(const QStringList &selectedItems)
+{
+    m_selectedItems = selectedItems;
+    emit selectedItemsChanged();
 }
 
 QString ItemFilterModel::typeFilter() const
@@ -57,24 +71,77 @@ bool ItemFilterModel::selectionOnly() const
     return m_selectionOnly;
 }
 
+QStringList ItemFilterModel::selectedItems() const
+{
+    return m_selectedItems;
+}
+
 void ItemFilterModel::registerDeclarativeType()
 {
-    qmlRegisterType<ItemFilterModel>("HelperWidgets",2,0,"ItemFilterModel");
+    qmlRegisterType<ItemFilterModel>("HelperWidgets", 2, 0, "ItemFilterModel");
+}
+
+int ItemFilterModel::rowCount(const QModelIndex &) const
+{
+    return m_modelInternalIds.size();
+}
+
+QVariant ItemFilterModel::data(const QModelIndex &index, int role) const
+{
+    if (!index.isValid() || index.row() >= rowCount())
+        return {};
+
+    const ModelNode node = modelNodeForRow(index.row());
+
+    switch (role) {
+    case IdRole:
+        return node.id();
+    case NameRole:
+        return node.variantProperty("objectName").value();
+    case IdAndNameRole:
+        return QString("%1 [%2]").arg(node.variantProperty("objectName").value().toString(),
+                                      node.id());
+    case EnabledRole:
+        return !m_selectedItems.contains(node.id());
+    default:
+        return {};
+    }
+}
+
+QHash<int, QByteArray> ItemFilterModel::roleNames() const
+{
+    static QHash<int, QByteArray> roleNames{{IdRole, "id"},
+                                            {NameRole, "name"},
+                                            {IdAndNameRole, "idAndName"},
+                                            {EnabledRole, "enabled"}};
+
+    return roleNames;
 }
 
 QVariant ItemFilterModel::modelNodeBackend() const
 {
-    return QVariant();
+    return {};
 }
 
+ModelNode ItemFilterModel::modelNodeForRow(const int &row) const
+{
+    if (row < 0 || row >= m_modelInternalIds.size())
+        return {};
+
+    AbstractView *view = m_modelNode.view();
+    if (!view || !view->model())
+        return {};
+
+    return view->modelNodeForInternalId(m_modelInternalIds.at(row));
+}
 
 void ItemFilterModel::setupModel()
 {
     if (!m_modelNode.isValid() || !m_modelNode.view()->isAttached())
         return;
 
-    m_lock = true;
-    m_model.clear();
+    beginResetModel();
+    m_modelInternalIds.clear();
 
     const auto nodes = m_selectionOnly ? m_modelNode.view()->selectedModelNodes()
                                        : m_modelNode.view()->allModelNodes();
@@ -82,15 +149,22 @@ void ItemFilterModel::setupModel()
     auto base = m_modelNode.model()->metaInfo(m_typeFilter.toUtf8());
     for (const QmlDesigner::ModelNode &node : nodes) {
         if (node.hasId() && node.metaInfo().isBasedOn(base))
-            m_model.append(node.id());
+            m_modelInternalIds.append(node.internalId());
     }
 
-    m_lock = false;
-
+    endResetModel();
     emit itemModelChanged();
 }
 
 QStringList ItemFilterModel::itemModel() const
 {
-    return m_model;
+    AbstractView *view = m_modelNode.view();
+    if (!view || !view->model())
+        return {};
+
+    QStringList retval;
+    for (const auto &internalId : std::as_const(m_modelInternalIds))
+        retval << view->modelNodeForInternalId(internalId).id();
+
+    return retval;
 }

@@ -4,9 +4,9 @@
 #pragma once
 
 #include "qmldesignercorelib_global.h"
-#include "exception.h"
 #include "abstractview.h"
 #include "documentmessage.h"
+#include "rewritertransaction.h"
 
 #include <QScopedPointer>
 #include <QTimer>
@@ -84,7 +84,7 @@ public:
     void rewriterBeginTransaction() override;
     void rewriterEndTransaction() override;
 
-    void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports) override;
+    void importsChanged(const Imports &addedImports, const Imports &removedImports) override;
 
     TextModifier *textModifier() const;
     void setTextModifier(TextModifier *textModifier);
@@ -169,6 +169,8 @@ public:
 
     bool possibleImportsEnabled() const;
     void setPossibleImportsEnabled(bool b);
+
+    void forceAmend();
 
 signals:
     void modelInterfaceProjectUpdated();

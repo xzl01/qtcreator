@@ -39,7 +39,9 @@
 using qbs::Internal::HostOsInfo;
 using qbs::Profile;
 
-TestBlackboxJava::TestBlackboxJava() : TestBlackboxBase (SRCDIR "/testdata-java", "blackbox-java")
+TestBlackboxJava::TestBlackboxJava()
+    : TestBlackboxBase (SRCDIR "/testdata-java", "blackbox-java"),
+      m_blacklistedJdks(qgetenv("QBS_AUTOTEST_JDK_BLACKLIST"))
 {
 }
 
@@ -96,7 +98,7 @@ void TestBlackboxJava::java()
 
     // Now check whether we correctly predicted the class file output paths.
     QCOMPARE(runQbs(QbsRunParameters("clean")), 0);
-    for (const QString &classFile : qAsConst(classFiles1)) {
+    for (const QString &classFile : std::as_const(classFiles1)) {
         QVERIFY2(!regularFileExists(classFile), qPrintable(classFile));
     }
 
@@ -148,8 +150,11 @@ void TestBlackboxJava::javaDependencyTracking()
     QDir::setCurrent(testDataDir + "/java");
     QbsRunParameters rp;
     rp.arguments.push_back("--check-outputs");
-    if (!jdkPath.isEmpty())
+    if (!jdkPath.isEmpty()) {
+        if (m_blacklistedJdks.contains(jdkPath))
+            QSKIP("skipping blacklisted JDK");
         rp.arguments << ("modules.java.jdkPath:" + jdkPath);
+    }
     if (!javaVersion.isEmpty())
         rp.arguments << ("modules.java.languageVersion:'" + javaVersion + "'");
     rmDirR(relativeBuildDir());
@@ -170,7 +175,7 @@ void TestBlackboxJava::javaDependencyTracking_data()
     auto getSpecificJdkVersion = [](const QString &jdkVersion) -> QString {
         if (HostOsInfo::isMacosHost()) {
             QProcess java_home;
-            java_home.start("/usr/libexec/java_home", QStringList() << "--version" << jdkVersion);
+            java_home.start("/usr/libexec/java_home", {"--version", jdkVersion, "--failfast"});
             java_home.waitForFinished();
             if (java_home.exitStatus() == QProcess::NormalExit && java_home.exitCode() == 0)
                 return QString::fromLocal8Bit(java_home.readAllStandardOutput().trimmed());

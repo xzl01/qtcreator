@@ -25,7 +25,8 @@ def verifyChecked(objectName, checked=True):
     test.compare(object.checked, checked)
     return object
 
-def ensureChecked(objectName, shouldBeChecked = True, timeout=20000):
+
+def ensureChecked(objectName, shouldBeChecked=True, timeout=20000, silent=False):
     if shouldBeChecked:
         targetState = Qt.Checked
         state = "checked"
@@ -39,14 +40,13 @@ def ensureChecked(objectName, shouldBeChecked = True, timeout=20000):
         while not waitFor('widget.checkState() == targetState', 1500) and clicked < 2:
             clickButton(widget)
             clicked += 1
-        test.verify(waitFor("widget.checkState() == targetState", 1000))
+        silent or test.verify(waitFor("widget.checkState() == targetState", 1000))
     except:
         # widgets not derived from QCheckbox don't have checkState()
         if not waitFor('widget.checked == shouldBeChecked', 1500):
             mouseClick(widget)
-        test.verify(waitFor("widget.checked == shouldBeChecked", 1000))
-    test.log("New state for QCheckBox: %s" % state,
-             str(objectName))
+        silent or test.verify(waitFor("widget.checked == shouldBeChecked", 1000))
+    silent or test.log("New state for QCheckBox: %s" % state, str(objectName))
     return widget
 
 # verify that an object is in an expected enable state. Returns the object.
@@ -171,6 +171,10 @@ def invokeMenuItem(menu, item, *subItems):
     numberedPrefix = "%d | "
     for subItem in subItems:
         # we might have numbered sub items (e.g. "Recent Files") - these have this special prefix
+        # but on macOS we don't add these prefixes
+        if platform.system() == 'Darwin' and subItem.startswith(numberedPrefix):
+            subItem = subItem[5:]
+
         if subItem.startswith(numberedPrefix):
             triggered = False
             for i in range(1, 10):
@@ -186,7 +190,10 @@ def invokeMenuItem(menu, item, *subItems):
                           "Function arguments: '%s', '%s', %s" % (menu, item, str(subItems)))
                 break # we failed to trigger - no need to process subItems further
         else:
+            noAmpersandItem = item.replace('&', '')
+            waitForObject("{type='QMenu' title='%s'}" % noAmpersandItem, 2000)
             itemObject = waitForObjectItem(itemObject, subItem)
+            waitFor("itemObject.enabled", 2000)
             activateItem(itemObject)
 
 
@@ -436,8 +443,8 @@ def iterateKits(clickOkWhenDone, alreadyOnOptionsDialog,
                 t, v, _ = sys.exc_info()
                 currResult = None
                 test.fatal("Function to additionally execute on Options Dialog could not be "
-                           "found or an exception occurred while executing it.", "%s(%s)" %
-                           (str(t), str(v)))
+                           "found or an exception occurred while executing it.", "%s: %s" %
+                           (t.__name__, str(v)))
             additionalResult.append(currResult)
     if clickOkWhenDone:
         clickButton(waitForObject(":Options.OK_QPushButton"))
@@ -513,8 +520,13 @@ def progressBarWait(timeout=60000, warn=True):
     checkIfObjectExists(":Qt Creator_Core::Internal::ProgressBar", False, timeout)
 
 def readFile(filename):
-    with open(filename, "r") as f:
-        return f.read()
+    try:
+        with open(filename, "r") as f:
+            return f.read()
+    except:
+        # Read file as binary
+        with open(filename, "rb") as f:
+            return f.read()
 
 def simpleFileName(navigatorFileName):
     # try to find the last part of the given name, assume it's inside a (folder) structure
@@ -601,3 +613,24 @@ def stringify(obj):
     if isinstance(obj, bytes):
         tmp = obj.decode('cp1252') if platform.system() in ('Microsoft','Windows') else obj.decode()
         return tmp
+
+
+class GitClone:
+
+    def __init__(self, url, revision):
+        self.localPath = os.path.join(tempDir(),
+                                      url.rsplit('/', 1)[1].rsplit('.')[0])
+        self.url = url
+        self.revision = revision
+
+    def __enter__(self):
+        try:
+            subprocess.check_call(["git", "clone", "-b", self.revision,
+                                   "--depth", "1", self.url, self.localPath])
+            return self.localPath
+        except subprocess.CalledProcessError as e:
+            test.warning("Could not clone git repository %s" % self.url, str(e))
+            return None
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        deleteDirIfExists(self.localPath)

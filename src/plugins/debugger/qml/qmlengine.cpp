@@ -40,8 +40,8 @@
 
 #include <utils/basetreeview.h>
 #include <utils/fileinprojectfinder.h>
+#include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
 #include <utils/treemodel.h>
 
 #include <QDebug>
@@ -200,7 +200,7 @@ public:
 
     QHash<QString, QTextDocument*> sourceDocuments;
     InteractiveInterpreter interpreter;
-    QtcProcess process;
+    Process process;
     QmlInspectorAgent inspectorAgent;
 
     QList<quint32> queryIds;
@@ -249,17 +249,17 @@ QmlEngine::QmlEngine()
     connect(stackHandler(), &StackHandler::currentIndexChanged,
             this, &QmlEngine::updateCurrentContext);
 
-    connect(&d->process, &QtcProcess::readyReadStandardOutput, this, [this] {
+    connect(&d->process, &Process::readyReadStandardOutput, this, [this] {
         // FIXME: Redirect to RunControl
         showMessage(d->process.readAllStandardOutput(), AppOutput);
     });
-    connect(&d->process, &QtcProcess::readyReadStandardError, this, [this] {
+    connect(&d->process, &Process::readyReadStandardError, this, [this] {
         // FIXME: Redirect to RunControl
         showMessage(d->process.readAllStandardError(), AppOutput);
     });
 
-    connect(&d->process, &QtcProcess::done, this, &QmlEngine::disconnected);
-    connect(&d->process, &QtcProcess::started, this, &QmlEngine::handleLauncherStarted);
+    connect(&d->process, &Process::done, this, &QmlEngine::disconnected);
+    connect(&d->process, &Process::started, this, &QmlEngine::handleLauncherStarted);
 
     debuggerConsole()->populateFileFinder();
     debuggerConsole()->setScriptEvaluator([this](const QString &expr) {
@@ -603,10 +603,10 @@ void QmlEngine::executeRunToLine(const ContextData &data)
 {
     QTC_ASSERT(state() == InferiorStopOk, qDebug() << state());
     showStatusMessage(Tr::tr("Run to line %1 (%2) requested...")
-                          .arg(data.lineNumber)
+                          .arg(data.textPosition.line)
                           .arg(data.fileName.toString()),
                       5000);
-    d->setBreakpoint(SCRIPTREGEXP, data.fileName.toString(), true, data.lineNumber);
+    d->setBreakpoint(SCRIPTREGEXP, data.fileName.toString(), true, data.textPosition.line);
     clearExceptionSelection();
     d->continueDebugging(Continue);
 
@@ -658,7 +658,7 @@ void QmlEngine::insertBreakpoint(const Breakpoint &bp)
 
     } else if (requested.type == BreakpointByFileAndLine) {
         d->setBreakpoint(SCRIPTREGEXP, requested.fileName.toString(),
-                         requested.enabled, requested.lineNumber, 0,
+                         requested.enabled, requested.textPosition.line, 0,
                          requested.condition, requested.ignoreCount);
 
     } else if (requested.type == BreakpointOnQmlSignalEmit) {
@@ -716,7 +716,7 @@ void QmlEngine::updateBreakpoint(const Breakpoint &bp)
     } else {
         d->clearBreakpoint(bp);
         d->setBreakpoint(SCRIPTREGEXP, requested.fileName.toString(),
-                         requested.enabled, requested.lineNumber, 0,
+                         requested.enabled, requested.textPosition.line, 0,
                          requested.condition, requested.ignoreCount);
         d->breakpointsSync.insert(d->sequence, bp);
     }
@@ -736,7 +736,7 @@ bool QmlEngine::acceptsBreakpoint(const BreakpointParameters &bp) const
     return bp.isQmlFileAndLineBreakpoint();
 }
 
-void QmlEngine::loadSymbols(const QString &moduleName)
+void QmlEngine::loadSymbols(const FilePath &moduleName)
 {
     Q_UNUSED(moduleName)
 }
@@ -759,7 +759,7 @@ void QmlEngine::updateAll()
     d->updateLocals();
 }
 
-void QmlEngine::requestModuleSymbols(const QString &moduleName)
+void QmlEngine::requestModuleSymbols(const FilePath &moduleName)
 {
     Q_UNUSED(moduleName)
 }
@@ -776,7 +776,7 @@ void QmlEngine::assignValueInDebugger(WatchItem *item,
     const QString &expression, const QVariant &editValue)
 {
     if (!expression.isEmpty()) {
-        QTC_CHECK(editValue.type() == QVariant::String);
+        QTC_CHECK(editValue.typeId() == QVariant::String);
         QVariant value;
         QString val = editValue.toString();
         if (item->type == "boolean")
@@ -855,7 +855,7 @@ static ConsoleItem *constructLogItemTree(const QVariant &result,
 
     QString text;
     ConsoleItem *item = nullptr;
-    if (result.type() == QVariant::Map) {
+    if (result.typeId() == QVariant::Map) {
         if (key.isEmpty())
             text = "Object";
         else
@@ -879,7 +879,7 @@ static ConsoleItem *constructLogItemTree(const QVariant &result,
                 item->appendChild(child);
         }
 
-    } else if (result.type() == QVariant::List) {
+    } else if (result.typeId() == QVariant::List) {
         if (key.isEmpty())
             text = "List";
         else
@@ -1354,9 +1354,9 @@ void QmlEnginePrivate::scripts(int types, const QList<int> ids, bool includeSour
     if (includeSource)
         cmd.arg(INCLUDESOURCE, includeSource);
 
-    if (filter.type() == QVariant::String)
+    if (filter.typeId() == QVariant::String)
         cmd.arg(FILTER, filter.toString());
-    else if (filter.type() == QVariant::Int)
+    else if (filter.typeId() == QVariant::Int)
         cmd.arg(FILTER, filter.toInt());
     else
         QTC_CHECK(!filter.isValid());
@@ -1727,7 +1727,7 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
                             //The breakpoint requested line should be same as
                             //actual line
                             if (bp && bp->state() != BreakpointInserted) {
-                                bp->setLineNumber(line);
+                                bp->setTextPosition({line, -1});
                                 bp->setPending(false);
                                 engine->notifyBreakpointInsertOk(bp);
                             }
@@ -1802,10 +1802,10 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
                             updateScriptSource(name, lineOffset, columnOffset, source);
                         }
 
-                        QMap<QString,QString> files;
+                        QMap<QString, FilePath> files;
                         for (const QString &file : std::as_const(sourceFiles)) {
                             QString shortName = file;
-                            QString fullName = engine->toFileInProject(file);
+                            FilePath fullName = engine->toFileInProject(file);
                             files.insert(shortName, fullName);
                         }
 
@@ -1865,7 +1865,7 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
                             setBreakpoint(SCRIPTREGEXP,
                                           params.fileName.toString(),
                                           params.enabled,
-                                          params.lineNumber,
+                                          params.textPosition.line,
                                           newColumn,
                                           params.condition,
                                           params.ignoreCount);
@@ -1889,7 +1889,7 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
                                 bp->setFunctionName(invocationText);
                             }
                             if (bp->state() != BreakpointInserted) {
-                                bp->setLineNumber(breakData.value("sourceLine").toInt() + 1);
+                                bp->setTextPosition({breakData.value("sourceLine").toInt() + 1, -1});
                                 bp->setPending(false);
                                 engine->notifyBreakpointInsertOk(bp);
                             }
@@ -1915,7 +1915,7 @@ void QmlEnginePrivate::messageReceived(const QByteArray &data)
 
                     const QVariantMap script = body.value("script").toMap();
                     QUrl fileUrl(script.value(NAME).toString());
-                    QString filePath = engine->toFileInProject(fileUrl);
+                    FilePath filePath = engine->toFileInProject(fileUrl);
 
                     const QVariantMap exception = body.value("exception").toMap();
                     QString errorMessage = exception.value("text").toString();
@@ -2039,14 +2039,13 @@ StackFrame QmlEnginePrivate::extractStackFrame(const QVariant &bodyVal)
     }
 
     auto extractString = [this](const QVariant &item) {
-        return ((item.type() == QVariant::String) ? item : extractData(item).value).toString();
+        return (item.typeId() == QVariant::String ? item : extractData(item).value).toString();
     };
 
     stackFrame.function = extractString(body.value("func"));
     if (stackFrame.function.isEmpty())
         stackFrame.function = Tr::tr("Anonymous Function");
-    stackFrame.file = FilePath::fromString(
-        engine->toFileInProject(extractString(body.value("script"))));
+    stackFrame.file = engine->toFileInProject(extractString(body.value("script")));
     stackFrame.usable = stackFrame.file.isReadableFile();
     stackFrame.receiver = extractString(body.value("receiver"));
     stackFrame.line = body.value("line").toInt() + 1;
@@ -2321,7 +2320,6 @@ void QmlEnginePrivate::insertSubItems(WatchItem *parent, const QVariantList &pro
     QTC_ASSERT(parent, return);
     LookupItems itemsToLookup;
 
-    const QSet<QString> expandedINames = engine->watchHandler()->expandedINames();
     for (const QVariant &property : properties) {
         QmlV8ObjectData propertyData = extractData(property);
         std::unique_ptr<WatchItem> item(new WatchItem);
@@ -2343,7 +2341,7 @@ void QmlEnginePrivate::insertSubItems(WatchItem *parent, const QVariantList &pro
         item->id = propertyData.handle;
         item->type = propertyData.type;
         item->value = propertyData.value.toString();
-        if (item->type.isEmpty() || expandedINames.contains(item->iname))
+        if (item->type.isEmpty() || engine->watchHandler()->isExpandedIName(item->iname))
             itemsToLookup.insert(propertyData.handle, {item->iname, item->name, item->exp});
         setWatchItemHasChildren(item.get(), propertyData.hasChildren());
         parent->appendChild(item.release());
@@ -2445,7 +2443,7 @@ void QmlEnginePrivate::flushSendBuffer()
     sendBuffer.clear();
 }
 
-QString QmlEngine::toFileInProject(const QUrl &fileUrl)
+FilePath QmlEngine::toFileInProject(const QUrl &fileUrl)
 {
     // make sure file finder is properly initialized
     const DebuggerRunParameters &rp = runParameters();
@@ -2454,7 +2452,7 @@ QString QmlEngine::toFileInProject(const QUrl &fileUrl)
     d->fileFinder.setAdditionalSearchDirectories(rp.additionalSearchDirectories);
     d->fileFinder.setSysroot(rp.sysRoot);
 
-    return d->fileFinder.findFile(fileUrl).constFirst().toString();
+    return d->fileFinder.findFile(fileUrl).constFirst();
 }
 
 DebuggerEngine *createQmlEngine()

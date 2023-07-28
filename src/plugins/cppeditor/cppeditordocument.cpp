@@ -16,15 +16,13 @@
 #include "cppquickfixassistant.h"
 
 #include <coreplugin/editormanager/editormanager.h>
-
-#include <projectexplorer/session.h>
+#include <coreplugin/session.h>
 
 #include <texteditor/icodestylepreferencesfactory.h>
 #include <texteditor/storagesettings.h>
 #include <texteditor/textdocumentlayout.h>
 #include <texteditor/texteditorsettings.h>
 
-#include <utils/executeondestruction.h>
 #include <utils/infobar.h>
 #include <utils/mimeutils.h>
 #include <utils/minimizableinfobars.h>
@@ -32,6 +30,7 @@
 #include <utils/utilsicons.h>
 
 #include <QApplication>
+#include <QScopeGuard>
 #include <QTextDocument>
 
 const char NO_PROJECT_CONFIGURATION[] = "NoProject";
@@ -217,7 +216,7 @@ void CppEditorDocument::reparseWithPreferredParseContext(const QString &parseCon
 
     // Remember the setting
     const QString key = Constants::PREFERRED_PARSE_CONTEXT + filePath().toString();
-    ProjectExplorer::SessionManager::setValue(key, parseContextId);
+    Core::SessionManager::setValue(key, parseContextId);
 
     // Reprocess
     scheduleProcessDocument();
@@ -284,7 +283,7 @@ void CppEditorDocument::applyPreferredParseContextFromSettings()
         return;
 
     const QString key = Constants::PREFERRED_PARSE_CONTEXT + filePath().toString();
-    const QString parseContextId = ProjectExplorer::SessionManager::value(key).toString();
+    const QString parseContextId = Core::SessionManager::value(key).toString();
 
     setPreferredParseContext(parseContextId);
 }
@@ -295,7 +294,7 @@ void CppEditorDocument::applyExtraPreprocessorDirectivesFromSettings()
         return;
 
     const QString key = Constants::EXTRA_PREPROCESSOR_DIRECTIVES + filePath().toString();
-    const QByteArray directives = ProjectExplorer::SessionManager::value(key).toString().toUtf8();
+    const QByteArray directives = Core::SessionManager::value(key).toString().toUtf8();
 
     setExtraPreprocessorDirectives(directives);
 }
@@ -436,50 +435,48 @@ TextEditor::TabSettings CppEditorDocument::tabSettings() const
     return indenter()->tabSettings().value_or(TextEditor::TextDocument::tabSettings());
 }
 
-bool CppEditorDocument::save(QString *errorString, const FilePath &filePath, bool autoSave)
+bool CppEditorDocument::saveImpl(QString *errorString, const FilePath &filePath, bool autoSave)
 {
-    ExecuteOnDestruction resetSettingsOnScopeExit;
+    if (!indenter()->formatOnSave() || autoSave)
+        return TextEditor::TextDocument::saveImpl(errorString, filePath, autoSave);
 
-    if (indenter()->formatOnSave() && !autoSave) {
-        auto *layout = qobject_cast<TextEditor::TextDocumentLayout *>(document()->documentLayout());
-        const int documentRevision = layout->lastSaveRevision;
+    auto *layout = qobject_cast<TextEditor::TextDocumentLayout *>(document()->documentLayout());
+    const int documentRevision = layout->lastSaveRevision;
 
-        TextEditor::RangesInLines editedRanges;
-        TextEditor::RangeInLines lastRange{-1, -1};
-        for (int i = 0; i < document()->blockCount(); ++i) {
-            const QTextBlock block = document()->findBlockByNumber(i);
-            if (block.revision() == documentRevision) {
-                if (lastRange.startLine != -1)
-                    editedRanges.push_back(lastRange);
+    TextEditor::RangesInLines editedRanges;
+    TextEditor::RangeInLines lastRange{-1, -1};
+    for (int i = 0; i < document()->blockCount(); ++i) {
+        const QTextBlock block = document()->findBlockByNumber(i);
+        if (block.revision() == documentRevision) {
+            if (lastRange.startLine != -1)
+                editedRanges.push_back(lastRange);
 
-                lastRange.startLine = lastRange.endLine = -1;
-                continue;
-            }
-
-            // block.revision() != documentRevision
-            if (lastRange.startLine == -1)
-                lastRange.startLine = block.blockNumber() + 1;
-            lastRange.endLine = block.blockNumber() + 1;
+            lastRange.startLine = lastRange.endLine = -1;
+            continue;
         }
 
-        if (lastRange.startLine != -1)
-            editedRanges.push_back(lastRange);
-
-        if (!editedRanges.empty()) {
-            QTextCursor cursor(document());
-            cursor.joinPreviousEditBlock();
-            indenter()->format(editedRanges);
-            cursor.endEditBlock();
-        }
-
-        TextEditor::StorageSettings settings = storageSettings();
-        resetSettingsOnScopeExit.reset(
-            [this, defaultSettings = settings]() { setStorageSettings(defaultSettings); });
-        settings.m_cleanWhitespace = false;
-        setStorageSettings(settings);
+        // block.revision() != documentRevision
+        if (lastRange.startLine == -1)
+            lastRange.startLine = block.blockNumber() + 1;
+        lastRange.endLine = block.blockNumber() + 1;
     }
 
-    return TextEditor::TextDocument::save(errorString, filePath, autoSave);
+    if (lastRange.startLine != -1)
+        editedRanges.push_back(lastRange);
+
+    if (!editedRanges.empty()) {
+        QTextCursor cursor(document());
+        cursor.joinPreviousEditBlock();
+        indenter()->format(editedRanges);
+        cursor.endEditBlock();
+    }
+
+    TextEditor::StorageSettings settings = storageSettings();
+    const QScopeGuard cleanup([this, settings] { setStorageSettings(settings); });
+    settings.m_cleanWhitespace = false;
+    setStorageSettings(settings);
+
+    return TextEditor::TextDocument::saveImpl(errorString, filePath, autoSave);
 }
 
 bool CppEditorDocument::usesClangd() const

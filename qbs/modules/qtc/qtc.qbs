@@ -6,14 +6,14 @@ import qbs.Utilities
 Module {
     Depends { name: "cpp"; required: false }
 
-    property string qtcreator_display_version: '10.0.0'
-    property string ide_version_major: '10'
+    property string qtcreator_display_version: '11.0.0'
+    property string ide_version_major: '11'
     property string ide_version_minor: '0'
     property string ide_version_release: '0'
     property string qtcreator_version: ide_version_major + '.' + ide_version_minor + '.'
                                        + ide_version_release
 
-    property string ide_compat_version_major: '10'
+    property string ide_compat_version_major: '11'
     property string ide_compat_version_minor: '0'
     property string ide_compat_version_release: '0'
     property string qtcreator_compat_version: ide_compat_version_major + '.'
@@ -100,7 +100,7 @@ Module {
 
     Properties {
         condition: cpp.present && qbs.toolchain.contains("msvc") && product.Qt
-                   && Utilities.versionCompare(Qt.core.version, "6.3") >= 0
+                   && Utilities.versionCompare(product.Qt.core.version, "6.3") >= 0
                    && Utilities.versionCompare(cpp.compilerVersion, "19.10") >= 0
                    && Utilities.versionCompare(qbs.version, "1.23") < 0
         cpp.cxxFlags: "/permissive-"

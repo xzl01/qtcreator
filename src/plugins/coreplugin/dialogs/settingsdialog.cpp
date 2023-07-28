@@ -237,15 +237,33 @@ protected:
     bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
 };
 
+const char SETTING_HIDE_OPTION_CATEGORIES[] = "HideOptionCategories";
+
+static bool categoryVisible(const Id &id)
+{
+    static QStringList list
+        = Core::ICore::settings()->value(SETTING_HIDE_OPTION_CATEGORIES).toStringList();
+
+    if (anyOf(list, [id](const QString &str) { return id.toString().contains(str); }))
+        return false;
+
+    return true;
+}
+
 bool CategoryFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
 {
+    const CategoryModel *cm = static_cast<CategoryModel *>(sourceModel());
+    const Category *category = cm->categories().at(sourceRow);
+
+    if (!categoryVisible(category->id))
+        return false;
+
     // Regular contents check, then check page-filter.
     if (QSortFilterProxyModel::filterAcceptsRow(sourceRow, sourceParent))
         return true;
 
     const QRegularExpression regex = filterRegularExpression();
-    const CategoryModel *cm = static_cast<CategoryModel*>(sourceModel());
-    const Category *category = cm->categories().at(sourceRow);
+
     for (const IOptionsPage *page : category->pages) {
         if (page->displayCategory().contains(regex) || page->displayName().contains(regex)
             || page->matches(regex))
@@ -313,14 +331,26 @@ public:
 class SmartScrollArea : public QScrollArea
 {
 public:
-    explicit SmartScrollArea(QWidget *parent)
-        : QScrollArea(parent)
+    explicit SmartScrollArea(QWidget *parent, IOptionsPage *page)
+        : QScrollArea(parent), m_page(page)
     {
         setFrameStyle(QFrame::NoFrame | QFrame::Plain);
         viewport()->setAutoFillBackground(false);
         setWidgetResizable(true);
     }
+
 private:
+    void showEvent(QShowEvent *event) final
+    {
+        if (!widget()) {
+            QWidget *inner = m_page->widget();
+            setWidget(inner);
+            inner->setAutoFillBackground(false);
+        }
+
+        QScrollArea::showEvent(event);
+    }
+
     void resizeEvent(QResizeEvent *event) final
     {
         QWidget *inner = widget();
@@ -369,6 +399,8 @@ private:
             return 0;
         return list.first()->sizeHint().width();
     }
+
+    IOptionsPage *m_page = nullptr;
 };
 
 // ----------- SettingsDialog
@@ -586,14 +618,8 @@ void SettingsDialog::ensureCategoryWidget(Category *category)
     m_model.ensurePages(category);
     auto tabWidget = new QTabWidget;
     tabWidget->tabBar()->setObjectName("qc_settings_main_tabbar"); // easier lookup in Squish
-    for (IOptionsPage *page : std::as_const(category->pages)) {
-        QWidget *widget = page->widget();
-        ICore::setupScreenShooter(page->displayName(), widget);
-        auto ssa = new SmartScrollArea(this);
-        ssa->setWidget(widget);
-        widget->setAutoFillBackground(false);
-        tabWidget->addTab(ssa, page->displayName());
-    }
+    for (IOptionsPage *page : std::as_const(category->pages))
+        tabWidget->addTab(new SmartScrollArea(this, page), page->displayName());
 
     connect(tabWidget, &QTabWidget::currentChanged,
             this, &SettingsDialog::currentTabChanged);

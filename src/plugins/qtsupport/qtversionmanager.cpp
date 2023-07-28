@@ -5,7 +5,6 @@
 
 #include "baseqtversion.h"
 #include "exampleslistmodel.h"
-#include "qtkitinformation.h"
 #include "qtsupportconstants.h"
 #include "qtversionfactory.h"
 
@@ -22,8 +21,8 @@
 #include <utils/filesystemwatcher.h>
 #include <utils/hostosinfo.h>
 #include <utils/persistentsettings.h>
+#include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
 
 #include <QDir>
 #include <QFile>
@@ -194,7 +193,7 @@ static bool restoreQtVersions()
         bool restored = false;
         for (QtVersionFactory *f : factories) {
             if (f->canRestore(type)) {
-                if (QtVersion *qtv = f->restore(type, qtversionMap)) {
+                if (QtVersion *qtv = f->restore(type, qtversionMap, reader.filePath())) {
                     if (m_versions.contains(qtv->uniqueId())) {
                         // This shouldn't happen, we are restoring the same id multiple times?
                         qWarning() << "A Qt version with id"<<qtv->uniqueId()<<"already exists";
@@ -288,7 +287,7 @@ void QtVersionManager::updateFromInstaller(bool emitSignal)
                 qtversionMap[Constants::QTVERSIONNAME] = v->unexpandedDisplayName();
                 delete v;
 
-                if (QtVersion *qtv = factory->restore(type, qtversionMap)) {
+                if (QtVersion *qtv = factory->restore(type, qtversionMap, reader.filePath())) {
                     Q_ASSERT(qtv->isAutodetected());
                     m_versions.insert(id, qtv);
                     restored = true;
@@ -302,7 +301,7 @@ void QtVersionManager::updateFromInstaller(bool emitSignal)
         // Create a new qtversion
         if (!restored) { // didn't replace any existing versions
             qCDebug(log) << " No Qt version found matching" << autoDetectionSource << " => Creating new version";
-            if (QtVersion *qtv = factory->restore(type, qtversionMap)) {
+            if (QtVersion *qtv = factory->restore(type, qtversionMap, reader.filePath())) {
                 Q_ASSERT(qtv->isAutodetected());
                 m_versions.insert(qtv->uniqueId(), qtv);
                 added << qtv->uniqueId();
@@ -369,7 +368,7 @@ static void saveQtVersions()
 // Executes qtchooser with arguments in a process and returns its output
 static QList<QByteArray> runQtChooser(const QString &qtchooser, const QStringList &arguments)
 {
-    QtcProcess p;
+    Process p;
     p.setCommand({FilePath::fromString(qtchooser), arguments});
     p.start();
     p.waitForFinished();

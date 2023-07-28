@@ -5,11 +5,9 @@
 
 #include "testresult.h"
 
-#include <QFutureInterface>
 #include <QObject>
-#include <QString>
 
-namespace Utils { class QtcProcess; }
+namespace Utils { class Process; }
 
 namespace Autotest {
 
@@ -17,8 +15,7 @@ class TestOutputReader : public QObject
 {
     Q_OBJECT
 public:
-    TestOutputReader(const QFutureInterface<TestResult> &futureInterface,
-                     Utils::QtcProcess *testApplication, const Utils::FilePath &buildDirectory);
+    TestOutputReader(Utils::Process *testApplication, const Utils::FilePath &buildDirectory);
     virtual ~TestOutputReader();
     void processStdOutput(const QByteArray &outputLine);
     virtual void processStdError(const QByteArray &outputLine);
@@ -30,6 +27,8 @@ public:
     QHash<ResultType, int> summary() const { return m_summary; }
     void setId(const QString &id) { m_id = id; }
     QString id() const { return m_id; }
+
+    virtual void onDone(int exitCode) { Q_UNUSED(exitCode) }
 
     void resetCommandlineColor();
 signals:
@@ -46,7 +45,6 @@ protected:
     void sendAndResetSanitizerResult();
 
     void reportResult(const TestResult &result);
-    QFutureInterface<TestResult> m_futureInterface;
     Utils::FilePath m_buildDir;
     QString m_id;
     QHash<ResultType, int> m_summary;

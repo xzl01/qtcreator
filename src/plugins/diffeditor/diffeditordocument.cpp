@@ -24,8 +24,7 @@
 using namespace Core;
 using namespace Utils;
 
-namespace DiffEditor {
-namespace Internal {
+namespace DiffEditor::Internal {
 
 DiffEditorDocument::DiffEditorDocument() :
     Core::BaseTextDocument()
@@ -236,7 +235,7 @@ bool DiffEditorDocument::isSaveAsAllowed() const
     return state() == LoadOK;
 }
 
-bool DiffEditorDocument::save(QString *errorString, const FilePath &filePath, bool autoSave)
+bool DiffEditorDocument::saveImpl(QString *errorString, const FilePath &filePath, bool autoSave)
 {
     Q_UNUSED(errorString)
     Q_UNUSED(autoSave)
@@ -291,8 +290,8 @@ Core::IDocument::OpenResult DiffEditorDocument::open(QString *errorString, const
         return OpenResult::ReadError;
     }
 
-    bool ok = false;
-    QList<FileData> fileDataList = DiffUtils::readPatch(patch, &ok);
+    const std::optional<QList<FileData>> fileDataList = DiffUtils::readPatch(patch);
+    bool ok = fileDataList.has_value();
     if (!ok) {
         *errorString = Tr::tr("Could not parse patch file \"%1\". "
                               "The content is not of unified diff format.")
@@ -302,7 +301,7 @@ Core::IDocument::OpenResult DiffEditorDocument::open(QString *errorString, const
         emit temporaryStateChanged();
         setFilePath(filePath.absoluteFilePath());
         setWorkingDirectory(filePath.absoluteFilePath());
-        setDiffFiles(fileDataList);
+        setDiffFiles(*fileDataList);
     }
     endReload(ok);
     if (!ok && readResult == TextFileFormat::ReadEncodingError)
@@ -388,5 +387,4 @@ void DiffEditorDocument::endReload(bool success)
     emit reloadFinished(success);
 }
 
-} // namespace Internal
-} // namespace DiffEditor
+} // namespace DiffEditor::Internal

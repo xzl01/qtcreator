@@ -7,6 +7,7 @@
 #include "formeditorview.h"
 #include "assetslibrarywidget.h"
 #include "assetslibrarymodel.h"
+#include "materialutils.h"
 #include <metainfo.h>
 #include <modelnodeoperations.h>
 #include <nodehints.h>
@@ -76,8 +77,6 @@ void DragTool::createQmlItemNode(const ItemLibraryEntry &itemLibraryEntry,
                                  const QmlItemNode &parentNode,
                                  const QPointF &scenePosition)
 {
-    MetaInfo metaInfo = MetaInfo::global();
-
     FormEditorItem *parentItem = scene()->itemForQmlItemNode(parentNode);
     const QPointF positonInItemSpace = parentItem->qmlItemNode().instanceSceneContentItemTransform().inverted().map(scenePosition);
     QPointF itemPos = positonInItemSpace;
@@ -106,8 +105,6 @@ void DragTool::createQmlItemNodeFromImage(const QString &imagePath,
                                           const QPointF &scenePosition)
 {
     if (parentNode.isValid()) {
-        MetaInfo metaInfo = MetaInfo::global();
-
         FormEditorItem *parentItem = scene()->itemForQmlItemNode(parentNode);
         QPointF positonInItemSpace = parentItem->qmlItemNode().instanceSceneContentItemTransform().inverted().map(scenePosition);
 
@@ -120,8 +117,6 @@ void DragTool::createQmlItemNodeFromFont(const QString &fontPath,
                                          const QPointF &scenePos)
 {
     if (parentNode.isValid()) {
-        MetaInfo metaInfo = MetaInfo::global();
-
         FormEditorItem *parentItem = scene()->itemForQmlItemNode(parentNode);
         QPointF positonInItemSpace = parentItem->qmlItemNode().instanceSceneContentItemTransform()
                 .inverted().map(scenePos);
@@ -284,6 +279,7 @@ void DragTool::dropEvent(const QList<QGraphicsItem *> &itemList, QGraphicsSceneD
         }
 
         view()->changeToSelectionTool();
+        view()->model()->endDrag();
     }
 }
 
@@ -440,7 +436,7 @@ void DragTool::handleView3dDrop()
             const QList<ModelNode> models = dragNode.modelNode().subModelNodesOfType(
                 model->qtQuick3DModelMetaInfo());
             QTC_ASSERT(models.size() == 1, return);
-            view()->assignMaterialTo3dModel(models.at(0));
+            MaterialUtils::assignMaterialTo3dModel(view(), models.at(0));
         }
     }
 }

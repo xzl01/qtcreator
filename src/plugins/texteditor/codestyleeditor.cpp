@@ -29,9 +29,12 @@ CodeStyleEditor::CodeStyleEditor(ICodeStylePreferencesFactory *factory,
     , m_codeStyle(codeStyle)
 {
     m_layout = new QVBoxLayout(this);
+    m_layout->setContentsMargins(0, 0, 0, 0);
     auto selector = new CodeStyleSelectorWidget(factory, project, this);
     selector->setCodeStyle(codeStyle);
-    m_additionalGlobalSettingsWidget = factory->createAdditionalGlobalSettings(project, parent);
+    m_additionalGlobalSettingsWidget = factory->createAdditionalGlobalSettings(codeStyle,
+                                                                               project,
+                                                                               parent);
 
     if (m_additionalGlobalSettingsWidget)
         m_layout->addWidget(m_additionalGlobalSettingsWidget);
@@ -106,6 +109,9 @@ void CodeStyleEditor::finish()
 {
     if (m_widget)
         m_widget->finish();
+
+    if (m_additionalGlobalSettingsWidget)
+        m_additionalGlobalSettingsWidget->finish();
 }
 
 } // TextEditor

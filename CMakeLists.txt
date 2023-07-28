@@ -6,6 +6,7 @@ include(Utils)
 
 env_with_default("QTC_BUILD_WITH_PCH" ENV_QTC_BUILD_WITH_PCH ON)
 env_with_default("QTC_WITH_TESTS" ENV_QTC_WITH_TESTS OFF)
+env_with_default("QTC_WITH_QMLDESIGNER" ENV_QTC_WITH_QMLDESIGNER ON)
 
 option(BUILD_WITH_PCH "Build with precompiled headers" "${ENV_QTC_BUILD_WITH_PCH}")
 
@@ -35,6 +36,8 @@ qtc_link_with_qt()
 
 option(WITH_TESTS "Build Tests" ${ENV_QTC_WITH_TESTS})
 add_feature_info("Build tests" ${WITH_TESTS} "")
+option(WITH_QMLDESIGNER "Build QmlDesigner" ${ENV_QTC_WITH_QMLDESIGNER})
+add_feature_info("Build QmlDesigner and related code" ${WITH_QMLDESIGNER} "")
 option(WITH_DEBUG_CMAKE "Enabled CMake project debugging functionality" OFF)
 option(SHOW_BUILD_DATE "Show build date in about dialog" OFF)
 option(WITH_SANITIZE "Build with sanitizer enabled" OFF)
@@ -65,11 +68,24 @@ if(MSVC)
   add_compile_options(/wd4573)
 endif()
 
-find_package(Qt5
+find_package(Qt6
   ${IDE_QT_VERSION_MIN}
   COMPONENTS Concurrent Core Gui Network PrintSupport Qml Sql Widgets Xml Core5Compat ${QT_TEST_COMPONENT}
   REQUIRED
 )
+# hack for Qbs which still supports Qt5 and Qt6
+if (TARGET Qt6::Core5CompatPrivate)
+    if (CMAKE_VERSION VERSION_LESS 3.18)
+        set_property(TARGET Qt6::Core5CompatPrivate PROPERTY IMPORTED_GLOBAL TRUE)
+    endif()
+    add_library(Qt6Core5CompatPrivate ALIAS Qt6::Core5CompatPrivate)
+endif()
+if (TARGET Qt6::Core5Compat)
+    if (CMAKE_VERSION VERSION_LESS 3.18)
+        set_property(TARGET Qt6::Core5Compat PROPERTY IMPORTED_GLOBAL TRUE)
+    endif()
+    add_library(Qt6Core5Compat ALIAS Qt6::Core5Compat)
+endif()
 
 # Common intermediate directory for QML modules which are defined via qt_add_qml_module()
 set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml_modules")
@@ -82,8 +98,8 @@ if (MSVC AND QT_FEATURE_static_runtime)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
-find_package(Qt5 COMPONENTS LinguistTools QUIET)
-find_package(Qt5 COMPONENTS Quick QuickWidgets Designer DesignerComponents Help SerialPort Svg Tools QUIET)
+find_package(Qt6 OPTIONAL_COMPONENTS Quick QuickWidgets Designer DesignerComponentsPrivate
+                                     Help SerialPort Svg Tools LinguistTools QUIET)
 
 find_package(Threads)
 find_package(Clang QUIET)

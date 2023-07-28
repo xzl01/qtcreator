@@ -3,6 +3,10 @@
 
 #include "toolbox.h"
 
+#include <theme.h>
+
+#include <utils/stylehelper.h>
+
 #include <QToolBar>
 #include <QHBoxLayout>
 #include <QDebug>
@@ -10,12 +14,15 @@
 
 namespace QmlDesigner {
 
-ToolBox::ToolBox(SeekerSlider *seeker, QWidget *parentWidget)
-    : Utils::StyledBar(parentWidget),
-  m_leftToolBar(new QToolBar(QLatin1String("LeftSidebar"), this)),
-  m_rightToolBar(new QToolBar(QLatin1String("RightSidebar"), this)),
-  m_seeker(seeker)
+ToolBox::ToolBox(QWidget *parentWidget)
+    : Utils::StyledBar(parentWidget)
+    , m_leftToolBar(new QToolBar(QLatin1String("LeftSidebar"), this))
+    , m_rightToolBar(new QToolBar(QLatin1String("RightSidebar"), this))
 {
+    Utils::StyleHelper::setPanelWidget(this, false);
+    Utils::StyleHelper::setPanelWidgetSingleRow(this, false);
+    setFixedHeight(Theme::toolbarSize());
+
     m_leftToolBar->setFloatable(true);
     m_leftToolBar->setMovable(true);
     m_leftToolBar->setOrientation(Qt::Horizontal);
@@ -24,24 +31,23 @@ ToolBox::ToolBox(SeekerSlider *seeker, QWidget *parentWidget)
     horizontalLayout->setContentsMargins(0, 0, 0, 0);
     horizontalLayout->setSpacing(0);
 
+    Utils::StyleHelper::setPanelWidget(m_leftToolBar, false);
+    Utils::StyleHelper::setPanelWidgetSingleRow(m_leftToolBar, false);
+    m_leftToolBar->setFixedHeight(Theme::toolbarSize());
+
+    Utils::StyleHelper::setPanelWidget(m_rightToolBar, false);
+    Utils::StyleHelper::setPanelWidgetSingleRow(m_rightToolBar, false);
+    m_rightToolBar->setFixedHeight(Theme::toolbarSize());
+    m_rightToolBar->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Expanding);
+
     auto stretchToolbar = new QToolBar(this);
-
-    m_leftToolBar->setProperty("panelwidget", true);
-    m_leftToolBar->setProperty("panelwidget_singlerow", false);
-
-    m_rightToolBar->setProperty("panelwidget", true);
-    m_rightToolBar->setProperty("panelwidget_singlerow", false);
-
-    stretchToolbar->setProperty("panelwidget", true);
-    stretchToolbar->setProperty("panelwidget_singlerow", false);
-
+    Utils::StyleHelper::setPanelWidget(stretchToolbar, false);
+    Utils::StyleHelper::setPanelWidgetSingleRow(stretchToolbar, false);
     stretchToolbar->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
 
     m_rightToolBar->setOrientation(Qt::Horizontal);
     horizontalLayout->addWidget(m_leftToolBar);
     horizontalLayout->addWidget(stretchToolbar);
-    if (seeker)
-        horizontalLayout->addWidget(m_seeker);
     horizontalLayout->addWidget(m_rightToolBar);
 }
 
@@ -72,11 +78,6 @@ void ToolBox::addRightSideAction(QAction *action)
 QList<QAction*> ToolBox::actions() const
 {
     return m_leftToolBar->actions() + m_rightToolBar->actions();
-}
-
-SeekerSlider *ToolBox::seeker() const
-{
-    return m_seeker;
 }
 
 } // namespace QmlDesigner

@@ -29,14 +29,13 @@ GradientModel::GradientModel(QObject *parent) :
 
 int GradientModel::rowCount(const QModelIndex & /*parent*/) const
 {
-    if (m_itemNode.isValid()) {
-        if (m_itemNode.modelNode().hasNodeProperty(gradientPropertyName().toUtf8())) {
-            QmlDesigner::ModelNode gradientNode =
-                    m_itemNode.modelNode().nodeProperty(gradientPropertyName().toUtf8()).modelNode();
+    if (m_itemNode.modelNode().hasNodeProperty(gradientPropertyName().toUtf8())) {
+        QmlDesigner::ModelNode gradientNode = m_itemNode.modelNode()
+                                                  .nodeProperty(gradientPropertyName().toUtf8())
+                                                  .modelNode();
 
-            if (gradientNode.hasNodeListProperty("stops"))
-                return gradientNode.nodeListProperty("stops").toModelNodeList().count();
-        }
+        if (gradientNode.hasNodeListProperty("stops"))
+            return gradientNode.nodeListProperty("stops").count();
     }
 
     return 0;
@@ -307,7 +306,7 @@ QString GradientModel::readGradientOrientation() const
 void GradientModel::setupModel()
 {
     m_locked = true;
-    auto guard = qScopeGuard([&] { m_locked = false; });
+    const QScopeGuard cleanup([&] { m_locked = false; });
 
     beginResetModel();
     endResetModel();
@@ -330,7 +329,7 @@ void GradientModel::setAnchorBackend(const QVariant &anchorBackend)
     setupModel();
 
     m_locked = true;
-    auto guard = qScopeGuard([&] { m_locked = false; });
+    const QScopeGuard cleanup([&] { m_locked = false; });
 
     emit anchorBackendChanged();
     emit hasGradientChanged();

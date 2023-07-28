@@ -22,10 +22,11 @@ QT_END_NAMESPACE
 
 namespace QmlDesigner {
 
+class BakeLights;
 class Edit3DWidget;
 class Edit3DAction;
+class Edit3DBakeLightsAction;
 class Edit3DCameraAction;
-class SeekerSlider;
 
 class QMLDESIGNERCOMPONENTS_EXPORT Edit3DView : public AbstractView
 {
@@ -33,7 +34,6 @@ class QMLDESIGNERCOMPONENTS_EXPORT Edit3DView : public AbstractView
 
 public:
     Edit3DView(ExternalDependenciesInterface &externalDependencies);
-    ~Edit3DView() override;
 
     WidgetInfo widgetInfo() override;
 
@@ -44,7 +44,7 @@ public:
     void updateActiveScene3D(const QVariantMap &sceneState) override;
     void modelAttached(Model *model) override;
     void modelAboutToBeDetached(Model *model) override;
-    void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports) override;
+    void importsChanged(const Imports &addedImports, const Imports &removedImports) override;
     void customNotification(const AbstractView *view, const QString &identifier, const QList<ModelNode> &nodeList, const QList<QVariant> &data) override;
     void nodeAtPosReady(const ModelNode &modelNode, const QVector3D &pos3d) override;
 
@@ -59,7 +59,7 @@ public:
     QVector<Edit3DAction *> visibilityToggleActions() const;
     QVector<Edit3DAction *> backgroundColorActions() const;
     Edit3DAction *edit3DAction(View3DActionType type) const;
-    void setSeeker(SeekerSlider *slider);
+    Edit3DBakeLightsAction *bakeLightsAction() const;
 
     void addQuick3DImport();
     void startContextMenu(const QPoint &pos);
@@ -67,6 +67,9 @@ public:
     void dropBundleMaterial(const QPointF &pos);
     void dropTexture(const ModelNode &textureNode, const QPointF &pos);
     void dropComponent(const ItemLibraryEntry &entry, const QPointF &pos);
+    void dropAsset(const QString &file, const QPointF &pos);
+
+    bool isBakingLightsSupported() const;
 
 private slots:
     void onEntriesChanged();
@@ -78,11 +81,11 @@ private:
         MaterialDrop,
         TextureDrop,
         ContextMenu,
+        AssetDrop,
         None
     };
 
     void registerEdit3DAction(Edit3DAction *action);
-    void unregisterEdit3DAction(Edit3DAction *action);
 
     void createEdit3DWidget();
     void checkImports();
@@ -93,13 +96,15 @@ private:
     Edit3DAction *createGridColorSelectionAction();
     Edit3DAction *createResetColorAction(QAction *syncBackgroundColorAction);
     Edit3DAction *createSyncBackgroundColorAction();
+    Edit3DAction *createSeekerSliderAction();
 
     QPointer<Edit3DWidget> m_edit3DWidget;
     QVector<Edit3DAction *> m_leftActions;
     QVector<Edit3DAction *> m_rightActions;
     QVector<Edit3DAction *> m_visibilityToggleActions;
     QVector<Edit3DAction *> m_backgroundColorActions;
-    QMap<View3DActionType, Edit3DAction *> m_edit3DActions;
+
+    QMap<View3DActionType, QSharedPointer<Edit3DAction>> m_edit3DActions;
     Edit3DAction *m_selectionModeAction = nullptr;
     Edit3DAction *m_moveToolAction = nullptr;
     Edit3DAction *m_rotateToolAction = nullptr;
@@ -121,14 +126,18 @@ private:
     Edit3DAction *m_particlesRestartAction = nullptr;
     Edit3DAction *m_visibilityTogglesAction = nullptr;
     Edit3DAction *m_backgrondColorMenuAction = nullptr;
-    SeekerSlider *m_seeker = nullptr;
+    Edit3DAction *m_seekerAction = nullptr;
+    Edit3DBakeLightsAction *m_bakeLightsAction = nullptr;
     int particlemode;
     ModelCache<QImage> m_canvasCache;
     ModelNode m_droppedModelNode;
     ItemLibraryEntry m_droppedEntry;
+    QString m_droppedFile;
     NodeAtPosReqType m_nodeAtPosReqType;
     QPoint m_contextMenuPos;
     QTimer m_compressionTimer;
+    QPointer<BakeLights> m_bakeLights;
+    bool m_isBakingLightsSupported = false;
 
     friend class Edit3DAction;
 };

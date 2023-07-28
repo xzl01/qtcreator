@@ -5,6 +5,7 @@
 
 #include "objectsmapeditor.h"
 #include "squishfilehandler.h"
+#include "squishmessages.h"
 #include "squishnavigationwidget.h"
 #include "squishoutputpane.h"
 #include "squishresultmodel.h"
@@ -43,7 +44,6 @@ public:
     bool initializeGlobalScripts();
 
     SquishSettings m_squishSettings;
-    SquishSettingsPage m_settingsPage{&m_squishSettings};
     SquishTestTreeModel m_treeModel;
     SquishNavigationWidgetFactory m_navigationWidgetFactory;
     ObjectsMapEditorFactory m_objectsMapEditorFactory;
@@ -57,7 +57,6 @@ SquishPluginPrivate::SquishPluginPrivate()
 {
     qRegisterMetaType<SquishResultItem*>("SquishResultItem*");
 
-    m_squishSettings.readSettings(ICore::settings());
     m_outputPane = SquishOutputPane::instance();
     m_squishTools = new SquishTools;
     initializeMenuEntries();
@@ -96,6 +95,15 @@ void SquishPluginPrivate::initializeMenuEntries()
     Command *command = ActionManager::registerAction(action, "Squish.ServerSettings");
     menu->addAction(command);
     connect(action, &QAction::triggered, this, [] {
+        const SquishSettings *settings = SquishPlugin::squishSettings();
+        if (!settings->squishPath().exists()) {
+            SquishMessages::criticalMessage(Tr::tr("Invalid Squish settings. Configure Squish "
+                                                   "installation path inside "
+                                                   "Preferences... > Squish > General to use "
+                                                   "this wizard."));
+            return;
+        }
+
         SquishServerSettingsDialog dialog;
         dialog.exec();
     });
@@ -109,7 +117,7 @@ bool SquishPluginPrivate::initializeGlobalScripts()
     QTC_ASSERT(dd->m_squishTools, return false);
     SquishFileHandler::instance()->setSharedFolders({});
 
-    const Utils::FilePath squishserver = dd->m_squishSettings.squishPath.filePath().pathAppended(
+    const Utils::FilePath squishserver = dd->m_squishSettings.squishPath().pathAppended(
                 Utils::HostOsInfo::withExecutableSuffix("bin/squishserver"));
     if (!squishserver.isExecutableFile())
         return false;
@@ -134,8 +142,7 @@ void SquishPlugin::initialize()
 
 bool SquishPlugin::delayedInitialize()
 {
-
-    connect(&dd->m_squishSettings, &SquishSettings::squishPathChanged,
+    connect(&dd->m_squishSettings.squishPath, &Utils::BaseAspect::changed,
             dd, &SquishPluginPrivate::initializeGlobalScripts);
 
     return dd->initializeGlobalScripts();

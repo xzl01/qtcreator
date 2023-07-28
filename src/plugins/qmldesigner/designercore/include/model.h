@@ -6,6 +6,7 @@
 #include <qmldesignercorelib_global.h>
 
 #include <documentmessage.h>
+#include <model/modelresourcemanagementinterface.h>
 #include <projectstorage/projectstoragefwd.h>
 
 #include <QMimeData>
@@ -40,7 +41,7 @@ class RewriterView;
 class NodeInstanceView;
 class TextModifier;
 
-using PropertyListType = QList<QPair<PropertyName, QVariant> >;
+using PropertyListType = QList<QPair<PropertyName, QVariant>>;
 
 class QMLDESIGNERCORE_EXPORT Model : public QObject
 {
@@ -57,21 +58,38 @@ class QMLDESIGNERCORE_EXPORT Model : public QObject
 public:
     enum ViewNotification { NotifyView, DoNotNotifyView };
 
-    Model(ProjectStorage<Sqlite::Database> &projectStorage,
+    Model(ProjectStorageType &projectStorage,
           const TypeName &type,
           int major = 1,
           int minor = 1,
-          Model *metaInfoProxyModel = nullptr);
-    Model(const TypeName &typeName, int major = 1, int minor = 1, Model *metaInfoProxyModel = nullptr);
+          Model *metaInfoProxyModel = nullptr,
+          std::unique_ptr<ModelResourceManagementInterface> resourceManagement = {});
+    Model(const TypeName &typeName,
+          int major = 1,
+          int minor = 1,
+          Model *metaInfoProxyModel = nullptr,
+          std::unique_ptr<ModelResourceManagementInterface> resourceManagement = {});
 
     ~Model();
 
     static ModelPointer create(const TypeName &typeName,
                                int major = 1,
                                int minor = 1,
-                               Model *metaInfoProxyModel = nullptr)
+                               Model *metaInfoProxyModel = nullptr,
+                               std::unique_ptr<ModelResourceManagementInterface> resourceManagement = {})
     {
-        return ModelPointer(new Model(typeName, major, minor, metaInfoProxyModel));
+        return ModelPointer(
+            new Model(typeName, major, minor, metaInfoProxyModel, std::move(resourceManagement)));
+    }
+
+    static ModelPointer create(ProjectStorageType &projectStorage,
+                               const TypeName &typeName,
+                               int major = 1,
+                               int minor = 1,
+                               std::unique_ptr<ModelResourceManagementInterface> resourceManagement = {})
+    {
+        return ModelPointer(
+            new Model(projectStorage, typeName, major, minor, nullptr, std::move(resourceManagement)));
     }
 
     QUrl fileUrl() const;
@@ -87,10 +105,12 @@ public:
     NodeMetaInfo flowViewFlowTransitionMetaInfo() const;
     NodeMetaInfo flowViewFlowWildcardMetaInfo() const;
     NodeMetaInfo fontMetaInfo() const;
+    NodeMetaInfo qtQuick3DBakedLightmapMetaInfo() const;
     NodeMetaInfo qtQuick3DDefaultMaterialMetaInfo() const;
     NodeMetaInfo qtQuick3DMaterialMetaInfo() const;
     NodeMetaInfo qtQuick3DModelMetaInfo() const;
     NodeMetaInfo qtQuick3DNodeMetaInfo() const;
+    NodeMetaInfo qtQuick3DPrincipledMaterialMetaInfo() const;
     NodeMetaInfo qtQuick3DTextureMetaInfo() const;
     NodeMetaInfo qtQuickConnectionsMetaInfo() const;
     NodeMetaInfo qtQuickControlsTextAreaMetaInfo() const;
@@ -110,15 +130,17 @@ public:
     void attachView(AbstractView *view);
     void detachView(AbstractView *view, ViewNotification emitDetachNotify = NotifyView);
 
+    QList<ModelNode> allModelNodes() const;
+
     // Editing sub-components:
 
     // Imports:
-    const QList<Import> &imports() const;
-    const QList<Import> &possibleImports() const;
-    const QList<Import> &usedImports() const;
-    void changeImports(const QList<Import> &importsToBeAdded, const QList<Import> &importsToBeRemoved);
-    void setPossibleImports(const QList<Import> &possibleImports);
-    void setUsedImports(const QList<Import> &usedImports);
+    const Imports &imports() const;
+    const Imports &possibleImports() const;
+    const Imports &usedImports() const;
+    void changeImports(const Imports &importsToBeAdded, const Imports &importsToBeRemoved);
+    void setPossibleImports(Imports possibleImports);
+    void setUsedImports(Imports usedImports);
     bool hasImport(const Import &import, bool ignoreAlias = true, bool allowHigherVersion = false) const;
     bool isImportPossible(const Import &import, bool ignoreAlias = true, bool allowHigherVersion = false) const;
     QString pathForImport(const Import &import);
@@ -145,7 +167,9 @@ public:
     bool hasId(const QString &id) const;
     bool hasImport(const QString &importUrl) const;
 
-    QString generateNewId(const QString &prefixName, const QString &fallbackPrefix = "element") const;
+    QString generateNewId(const QString &prefixName,
+                          const QString &fallbackPrefix = "element",
+                          std::optional<std::function<bool(const QString &)>> isDuplicate = {}) const;
     QString generateIdFromName(const QString &name, const QString &fallbackId = "element") const;
 
     void setActive3DSceneId(qint32 sceneId);
@@ -154,7 +178,7 @@ public:
     void startDrag(QMimeData *mimeData, const QPixmap &icon);
     void endDrag();
 
-    NotNullPointer<const ProjectStorage<Sqlite::Database>> projectStorage() const;
+    NotNullPointer<const ProjectStorageType> projectStorage() const;
 
 private:
     template<const auto &moduleName, const auto &typeName>
@@ -165,4 +189,4 @@ private:
     std::unique_ptr<Internal::ModelPrivate> d;
 };
 
-}
+} // namespace QmlDesigner

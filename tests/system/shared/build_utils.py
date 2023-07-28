@@ -1,16 +1,45 @@
 # Copyright (C) 2016 The Qt Company Ltd.
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-def getBuildIssues():
-    ensureChecked(":Qt Creator_Issues_Core::Internal::OutputPaneToggleButton")
+def toggleIssuesFilter(filterName, checked):
+    try:
+        toggleFilter = waitForObject("{type='QToolButton' toolTip='Filter by categories' "
+                                     "window=':Qt Creator_Core::Internal::MainWindow'}")
+        clickButton(toggleFilter)
+        filterMenu = waitForObject("{type='QMenu' unnamed='1' visible='1'}")
+        waitFor("filterMenu.visible", 1000)
+
+        filterCategory = waitForObjectItem(filterMenu, filterName)
+        waitFor("filterCategory.visible", 2000)
+        if filterCategory.checked == checked:
+            test.log("Filter '%s' has already check state %s - not toggling."
+                     % (filterName, checked))
+            clickButton(toggleFilter) # close the menu again
+        else:
+            activateItem(filterCategory)
+            test.log("Filter '%s' check state changed to %s." % (filterName, checked))
+    except:
+        t,v = sys.exc_info()[:2]
+        test.log("Exception while toggling filter '%s'" % filterName,
+                 "%s: %s" % (t.__name__, str(v)))
+
+
+def getBuildIssues(ignoreCodeModel=True):
+    ensureChecked(":Qt Creator_Issues_Core::Internal::OutputPaneToggleButton" , silent=True)
     model = waitForObject(":Qt Creator.Issues_QListView").model()
-    return dumpBuildIssues(model)
+    if ignoreCodeModel:
+        # filter out possible code model issues present inside the Issues pane
+        toggleIssuesFilter("Clang Code Model", False)
+    result = dumpBuildIssues(model)
+    if ignoreCodeModel:
+        # reset the filter
+        toggleIssuesFilter("Clang Code Model", True)
+    return result
 
 # this method checks the last build (if there's one) and logs the number of errors, warnings and
 # lines within the Issues output
 # param expectedToFail can be used to tell this function if the build was expected to fail or not
-# param createTasksFileOnError whether a tasks file should be created when building ends with errors
-def checkLastBuild(expectedToFail=False, createTasksFileOnError=True):
+def checkLastBuild(expectedToFail=False):
     try:
         # can't use waitForObject() 'cause visible is always 0
         findObject("{type='ProjectExplorer::Internal::BuildProgress' unnamed='1' }")
@@ -18,28 +47,31 @@ def checkLastBuild(expectedToFail=False, createTasksFileOnError=True):
         test.log("checkLastBuild called without a build")
         return
     buildIssues = getBuildIssues()
-    types = [i[5] for i in buildIssues]
+    types = [i[1] for i in buildIssues]
     errors = types.count("1")
     warnings = types.count("2")
     gotErrors = errors != 0
     test.verify(not (gotErrors ^ expectedToFail), "Errors: %s | Warnings: %s" % (errors, warnings))
-    # additional stuff - could be removed... or improved :)
-    if gotErrors and createTasksFileOnError:
-        createTasksFile(buildIssues)
     return not gotErrors
 
 # helper function to check the compilation when build wasn't successful
-def checkCompile():
+def checkCompile(expectToFail=False):
     ensureChecked(":Qt Creator_CompileOutput_Core::Internal::OutputPaneToggleButton")
     output = waitForObject(":Qt Creator.Compile Output_Core::OutputWindow")
     waitFor("len(str(output.plainText))>0",5000)
     if compileSucceeded(output.plainText):
         if os.getenv("SYSTEST_DEBUG") == "1":
             test.log("Compile Output:\n%s" % str(output.plainText))
-        test.passes("Compile successful")
+        if expectToFail:
+            test.fail("Compile successful - but was expected to fail.")
+        else:
+            test.passes("Compile successful")
         return True
     else:
-        test.fail("Compile Output:\n%s" % output.plainText)
+        if expectToFail:
+            test.passes("Expected fail - Compile output:\n%s" % str(output.plainText))
+        else:
+            test.fail("Compile Output:\n%s" % str(output.plainText))
         return False
 
 def compileSucceeded(compileOutput):
@@ -57,55 +89,9 @@ def dumpBuildIssues(listModel):
     issueDump = []
     for index in dumpIndices(listModel):
         issueDump.extend([[str(index.data(role).toString()) for role
-                           in range(Qt.UserRole, Qt.UserRole + 6)]])
+                           in range(Qt.UserRole, Qt.UserRole + 2)]])
     return issueDump
 
-# counter for written tasks files
-tasksFileCount = 0
-
-# helper method that writes a tasks file
-def createTasksFile(buildIssues):
-    # currently used directory for tasks files
-    tasksFileDir = None
-    global tasksFileCount
-    if tasksFileDir == None:
-            tasksFileDir = os.getcwd() + "/tasks"
-            tasksFileDir = os.path.abspath(tasksFileDir)
-    if not os.path.exists(tasksFileDir):
-        try:
-            os.makedirs(tasksFileDir)
-        except OSError:
-            test.log("Could not create %s - falling back to a temporary directory" % tasksFileDir)
-            tasksFileDir = tempDir()
-
-    tasksFileCount += 1
-    outfile = os.path.join(tasksFileDir, os.path.basename(squishinfo.testCase)+"_%d.tasks" % tasksFileCount)
-    file = codecs.open(outfile, "w", "utf-8")
-    test.log("Writing tasks file - can take some time (according to number of issues)")
-    rows = len(buildIssues)
-    if os.environ.get("SYSTEST_DEBUG") == "1":
-        firstrow = 0
-    else:
-        firstrow = max(0, rows - 100)
-    for issue in buildIssues[firstrow:rows]:
-        # the following is currently a bad work-around
-        fData = issue[0] # file
-        lData = issue[1] # line -> linenumber or empty
-        tData = issue[5] # type -> 1==error 2==warning
-        dData = issue[3] # description
-        if lData == "":
-            lData = "-1"
-        if tData == "1":
-            tData = "error"
-        elif tData == "2":
-            tData = "warning"
-        else:
-            tData = "unknown"
-        if str(fData).strip() == "" and lData == "-1" and str(dData).strip() == "":
-            test.fatal("Found empty task.")
-        file.write("%s\t%s\t%s\t%s\n" % (fData, lData, tData, dData))
-    file.close()
-    test.log("Written tasks file %s" % outfile)
 
 # returns a list of pairs each containing the ID of a kit (see class Targets)
 # and the name of the matching build configuration
@@ -193,28 +179,32 @@ def verifyBuildConfig(currentTarget, configName, shouldBeDebug=False, enableShad
     switchViewTo(ViewConstants.EDIT)
 
 # verify if building and running of project was successful
-def verifyBuildAndRun():
+def verifyBuildAndRun(expectCompileToFail=False):
     # check compile output if build successful
-    checkCompile()
+    checkCompile(expectCompileToFail)
     # check application output log
     appOutput = logApplicationOutput()
     if appOutput:
         test.verify((re.search(".* exited with code \d+", str(appOutput)) or
-                     re.search(".* crashed\.", str(appOutput))) and
+                     re.search(".* crashed\.", str(appOutput)) or
+                     re.search(".* was ended forcefully\.", str(appOutput))) and
                     re.search('[Ss]tarting.*', str(appOutput)),
                     "Verifying if built app started and closed successfully.")
 
 # run project for debug and release
-def runVerify():
+def runVerify(expectCompileToFailFor=None):
     availableConfigs = iterateBuildConfigs()
     if not availableConfigs:
         test.fatal("Haven't found build configurations, quitting")
         saveAndExit()
     for kit, config in availableConfigs:
         selectBuildConfig(kit, config)
+        expectCompileToFail = False
+        if expectCompileToFailFor is not None and kit in expectCompileToFailFor:
+            expectCompileToFail = True
         test.log("Using build config '%s'" % config)
-        if runAndCloseApp() == None:
-            checkCompile()
+        if runAndCloseApp(expectCompileToFail) == None:
+            checkCompile(expectCompileToFail)
             continue
-        verifyBuildAndRun()
+        verifyBuildAndRun(expectCompileToFail)
         mouseClick(waitForObject(":*Qt Creator.Clear_QToolButton"))

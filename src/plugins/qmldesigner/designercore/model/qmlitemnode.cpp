@@ -214,6 +214,9 @@ void QmlItemNode::placeEffectNode(NodeAbstractProperty &parentProperty, const Qm
     } else {
         parentProperty.parentModelNode().variantProperty("layer.enabled").setValue(true);
     }
+
+    if (effectNode.modelNode().metaInfo().hasProperty("timeRunning"))
+        effectNode.modelNode().variantProperty("timeRunning").setValue(true);
 }
 
 bool QmlItemNode::isValid() const
@@ -346,9 +349,6 @@ bool QmlItemNode::instanceHasScaleOrRotationTransform() const
 
 bool itemIsMovable(const ModelNode &modelNode)
 {
-    if (modelNode.metaInfo().isQtQuickControlsTab())
-        return false;
-
     if (!modelNode.hasParentProperty())
         return false;
 
@@ -360,9 +360,6 @@ bool itemIsMovable(const ModelNode &modelNode)
 
 bool itemIsResizable(const ModelNode &modelNode)
 {
-    if (modelNode.metaInfo().isQtQuickControlsTab())
-        return false;
-
     return NodeHints::fromModelNode(modelNode).isResizable();
 }
 

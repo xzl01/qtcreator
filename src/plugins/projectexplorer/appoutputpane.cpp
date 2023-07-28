@@ -8,7 +8,6 @@
 #include "projectexplorericons.h"
 #include "projectexplorertr.h"
 #include "runcontrol.h"
-#include "session.h"
 #include "showoutputtaskhandler.h"
 #include "windebuginterface.h"
 
@@ -17,6 +16,7 @@
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/outputwindow.h>
+#include <coreplugin/session.h>
 #include <texteditor/behaviorsettings.h>
 #include <texteditor/fontsettings.h>
 #include <texteditor/texteditorsettings.h>
@@ -46,6 +46,7 @@
 
 static Q_LOGGING_CATEGORY(appOutputLog, "qtc.projectexplorer.appoutput", QtWarningMsg);
 
+using namespace Core;
 using namespace Utils;
 
 namespace ProjectExplorer {
@@ -397,7 +398,7 @@ void AppOutputPane::createNewOutputWindow(RunControl *rc)
     const Environment thisEnvironment = rc->environment();
     const auto tab = std::find_if(m_runControlTabs.begin(), m_runControlTabs.end(),
                                   [&](const RunControlTab &tab) {
-        if (!tab.runControl || tab.runControl->isRunning())
+        if (!tab.runControl || tab.runControl->isRunning() || tab.runControl->isStarting())
             return false;
         return thisCommand == tab.runControl->commandLine()
                 && thisWorkingDirectory == tab.runControl->workingDirectory()
@@ -534,7 +535,7 @@ void AppOutputPane::storeSettings() const
     s->setValueWithDefault(WRAP_OUTPUT_KEY, m_settings.wrapOutput, kWrapOutputDefault);
     s->setValueWithDefault(MAX_LINES_KEY,
                            m_settings.maxCharCount / 100,
-                           Core::Constants::DEFAULT_MAX_CHAR_COUNT);
+                           Core::Constants::DEFAULT_MAX_CHAR_COUNT / 100);
 }
 
 void AppOutputPane::loadSettings()
@@ -550,7 +551,7 @@ void AppOutputPane::loadSettings()
     m_settings.mergeChannels = s->value(MERGE_CHANNELS_KEY, kMergeChannelsDefault).toBool();
     m_settings.wrapOutput = s->value(WRAP_OUTPUT_KEY, kWrapOutputDefault).toBool();
     m_settings.maxCharCount = s->value(MAX_LINES_KEY,
-                                       Core::Constants::DEFAULT_MAX_CHAR_COUNT).toInt() * 100;
+                                       Core::Constants::DEFAULT_MAX_CHAR_COUNT / 100).toInt() * 100;
 }
 
 void AppOutputPane::showTabFor(RunControl *rc)

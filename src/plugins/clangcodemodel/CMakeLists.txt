@@ -13,6 +13,7 @@ add_qtc_plugin(ClangCodeModel
     clangactivationsequencecontextprocessor.cpp clangactivationsequencecontextprocessor.h
     clangactivationsequenceprocessor.cpp clangactivationsequenceprocessor.h
     clangcodemodelplugin.cpp clangcodemodelplugin.h
+    clangcodemodeltr.h
     clangcompletioncontextanalyzer.cpp clangcompletioncontextanalyzer.h
     clangconstants.h
     clangdast.cpp clangdast.h
@@ -50,7 +51,6 @@ extend_qtc_plugin(ClangCodeModel
   CONDITION WITH_TESTS
   SOURCES
     test/activationsequenceprocessortest.cpp test/activationsequenceprocessortest.h
-    test/clangbatchfileprocessor.cpp test/clangbatchfileprocessor.h
     test/clangdtests.cpp test/clangdtests.h
     test/clangfixittest.cpp test/clangfixittest.h
     test/data/clangtestdata.qrc

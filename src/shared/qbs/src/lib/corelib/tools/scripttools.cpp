@@ -43,6 +43,10 @@
 #include <tools/error.h>
 
 #include <QtCore/qdatastream.h>
+#include <QtCore/qdatetime.h>
+#include <QtCore/qjsonarray.h>
+#include <QtCore/qjsondocument.h>
+#include <QtCore/qjsonobject.h>
 
 namespace qbs {
 namespace Internal {
@@ -89,9 +93,22 @@ JsException::~JsException() { JS_FreeValue(m_ctx, m_exception); }
 
 QString JsException::message() const
 {
-    if (JS_IsString(m_exception))
-        return getJsString(m_ctx, m_exception);
-    return getJsStringProperty(m_ctx, m_exception, QStringLiteral("message"));
+    if (JS_IsError(m_ctx, m_exception))
+        return getJsStringProperty(m_ctx, m_exception, QStringLiteral("message"));
+    const QVariant v = getJsVariant(m_ctx, m_exception);
+    switch (static_cast<QMetaType::Type>(v.userType())) {
+    case QMetaType::QVariantMap:
+        return QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(v.toMap()))
+                                 .toJson(QJsonDocument::Indented));
+    case QMetaType::QStringList:
+        return QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(v.toStringList()))
+                                 .toJson(QJsonDocument::Indented));
+    case QMetaType::QVariantList:
+        return QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(v.toList()))
+                                 .toJson(QJsonDocument::Indented));
+    default:
+        return v.toString();
+    }
 }
 
 const QStringList JsException::stackTrace() const
@@ -179,6 +196,11 @@ bool getJsBoolProperty(JSContext *ctx, JSValue obj, const QString &prop)
     return JS_VALUE_GET_BOOL(getJsProperty(ctx, obj, prop));
 }
 
+JSValue makeJsArrayBuffer(JSContext *ctx, const QByteArray &s)
+{
+    return ScriptEngine::engineForContext(ctx)->asJsValue(s);
+}
+
 JSValue makeJsString(JSContext *ctx, const QString &s)
 {
     return ScriptEngine::engineForContext(ctx)->asJsValue(s);
@@ -212,6 +234,8 @@ QStringList getJsStringList(JSContext *ctx, JSValue val)
 JSValue makeJsVariant(JSContext *ctx, const QVariant &v)
 {
     switch (static_cast<QMetaType::Type>(v.userType())) {
+    case QMetaType::QByteArray:
+        return makeJsArrayBuffer(ctx, v.toByteArray());
     case QMetaType::QString:
         return makeJsString(ctx, v.toString());
     case QMetaType::QStringList:
@@ -228,6 +252,8 @@ JSValue makeJsVariant(JSContext *ctx, const QVariant &v)
         return JS_NewInt64(ctx, v.toInt());
     case QMetaType::Bool:
         return JS_NewBool(ctx, v.toBool());
+    case QMetaType::QDateTime:
+        return JS_NewDate(ctx, v.toDateTime().toString(Qt::ISODateWithMs).toUtf8().constData());
     case QMetaType::QVariantMap:
         return makeJsVariantMap(ctx, v.toMap());
     default:
@@ -251,6 +277,13 @@ static QVariant getJsVariantImpl(JSContext *ctx, JSValue val, QList<JSValue> pat
         return getJsString(ctx, val);
     if (JS_IsBool(val))
         return bool(JS_VALUE_GET_BOOL(val));
+    if (JS_IsArrayBuffer(val)) {
+        size_t size = 0;
+        const auto data = JS_GetArrayBuffer(ctx, &size, val);
+        if (!data || !size)
+            return QByteArray();
+        return QByteArray(reinterpret_cast<const char *>(data), size);
+    }
     if (JS_IsArray(ctx, val)) {
         if (path.contains(val))
             return {};
@@ -262,6 +295,15 @@ static QVariant getJsVariantImpl(JSContext *ctx, JSValue val, QList<JSValue> pat
             l << getJsVariantImpl(ctx, sv, path);
         }
         return l;
+    }
+    if (JS_IsDate(val)) {
+        ScopedJsValue toString(ctx, getJsProperty(ctx, val, QLatin1String("toISOString")));
+        if (!JS_IsFunction(ctx, toString))
+            return {};
+        ScopedJsValue dateString(ctx, JS_Call(ctx, toString, val, 0, nullptr));
+        if (!JS_IsString(dateString))
+            return {};
+        return QDateTime::fromString(getJsString(ctx, dateString), Qt::ISODateWithMs);
     }
     if (JS_IsObject(val)) {
         if (path.contains(val))

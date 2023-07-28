@@ -34,7 +34,6 @@
 #include <QVBoxLayout>
 
 using namespace Utils;
-using namespace Utils::Layouting;
 
 namespace ProjectExplorer {
 
@@ -65,7 +64,7 @@ public:
 private:
     void makeReadOnly() override { m_chooser->setReadOnly(true); }
 
-    void addToLayout(LayoutBuilder &builder) override
+    void addToLayout(Layouting::LayoutItem &builder) override
     {
         addMutableAction(m_chooser);
         builder.addItem(Layouting::Span(2, m_chooser));
@@ -142,7 +141,7 @@ void SysRootKitAspect::addToMacroExpander(Kit *kit, MacroExpander *expander) con
     });
 }
 
-Id SysRootKitAspect::id()
+Utils::Id SysRootKitAspect::id()
 {
     return "PE.Profile.SysRoot";
 }
@@ -231,7 +230,7 @@ public:
     }
 
 private:
-    void addToLayout(LayoutBuilder &builder) override
+    void addToLayout(Layouting::LayoutItem &builder) override
     {
         addMutableAction(m_mainWidget);
         builder.addItem(m_mainWidget);
@@ -240,6 +239,8 @@ private:
 
     void refresh() override
     {
+        IDeviceConstPtr device = BuildDeviceKitAspect::device(kit());
+
         const GuardLocker locker(m_ignoreChanges);
         const QList<Id> keys = m_languageComboboxMap.keys();
         for (const Id l : keys) {
@@ -249,8 +250,21 @@ private:
             cb->clear();
             cb->addItem(Tr::tr("<No compiler>"), QByteArray());
 
-            for (ToolChain *tc : ltcList)
-                cb->addItem(tc->displayName(), tc->id());
+            const QList<ToolChain *> same = Utils::filtered(ltcList, [device](ToolChain *tc) {
+                return tc->compilerCommand().isSameDevice(device->rootPath());
+            });
+            const QList<ToolChain *> other = Utils::filtered(ltcList, [device](ToolChain *tc) {
+                return !tc->compilerCommand().isSameDevice(device->rootPath());
+            });
+
+            for (ToolChain *item : same)
+                cb->addItem(item->displayName(), item->id());
+
+            if (!same.isEmpty() && !other.isEmpty())
+                cb->insertSeparator(cb->count());
+
+            for (ToolChain *item : other)
+                cb->addItem(item->displayName(), item->id());
 
             cb->setEnabled(cb->count() > 1 && !m_isReadOnly);
             const int index = indexOf(cb, ToolChainKitAspect::toolChain(m_kit, l));
@@ -373,7 +387,7 @@ void ToolChainKitAspect::upgrade(Kit *k)
         const QVariant value = k->value(oldIdV2);
         if (value.isNull() && !oldValue.isNull()) {
             QVariantMap newValue;
-            if (oldValue.type() == QVariant::Map) {
+            if (oldValue.typeId() == QVariant::Map) {
                 // Used between 4.1 and 4.2:
                 newValue = oldValue.toMap();
             } else {
@@ -472,10 +486,9 @@ void ToolChainKitAspect::setup(Kit *k)
         // ID is not found: Might be an ABI string...
         lockToolchains = false;
         const QString abi = QString::fromUtf8(id);
-        const Toolchains possibleTcs = ToolChainManager::toolchains(
-            [abi, l](const ToolChain *t) {
-                return t->targetAbi().toString() == abi && t->language() == l;
-            });
+        const Toolchains possibleTcs = ToolChainManager::toolchains([abi, l](const ToolChain *t) {
+            return t->targetAbi().toString() == abi && t->language() == l;
+        });
         ToolChain *bestTc = nullptr;
         for (ToolChain *tc : possibleTcs) {
             if (!bestTc || tc->priority() > bestTc->priority())
@@ -760,7 +773,7 @@ public:
     ~DeviceTypeKitAspectWidget() override { delete m_comboBox; }
 
 private:
-    void addToLayout(LayoutBuilder &builder) override
+    void addToLayout(Layouting::LayoutItem &builder) override
     {
         addMutableAction(m_comboBox);
         builder.addItem(m_comboBox);
@@ -795,7 +808,7 @@ DeviceTypeKitAspect::DeviceTypeKitAspect()
 {
     setObjectName(QLatin1String("DeviceTypeInformation"));
     setId(DeviceTypeKitAspect::id());
-    setDisplayName(Tr::tr("Device type"));
+    setDisplayName(Tr::tr("Run device type"));
     setDescription(Tr::tr("The type of device to run applications on."));
     setPriority(33000);
     makeEssential();
@@ -896,7 +909,7 @@ public:
     }
 
 private:
-    void addToLayout(LayoutBuilder &builder) override
+    void addToLayout(Layouting::LayoutItem &builder) override
     {
         addMutableAction(m_comboBox);
         builder.addItem(m_comboBox);
@@ -942,7 +955,7 @@ DeviceKitAspect::DeviceKitAspect()
 {
     setObjectName(QLatin1String("DeviceInformation"));
     setId(DeviceKitAspect::id());
-    setDisplayName(Tr::tr("Device"));
+    setDisplayName(Tr::tr("Run device"));
     setDescription(Tr::tr("The device to run the applications on."));
     setPriority(32000);
 
@@ -1023,30 +1036,29 @@ KitAspect::ItemList DeviceKitAspect::toUserOutput(const Kit *k) const
 void DeviceKitAspect::addToMacroExpander(Kit *kit, MacroExpander *expander) const
 {
     QTC_ASSERT(kit, return);
-    expander->registerVariable("Device:HostAddress", Tr::tr("Host address"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
-            return device ? device->sshParameters().host() : QString();
+    expander->registerVariable("Device:HostAddress", Tr::tr("Host address"), [kit] {
+        const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
+        return device ? device->sshParameters().host() : QString();
     });
-    expander->registerVariable("Device:SshPort", Tr::tr("SSH port"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
-            return device ? QString::number(device->sshParameters().port()) : QString();
+    expander->registerVariable("Device:SshPort", Tr::tr("SSH port"), [kit] {
+        const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
+        return device ? QString::number(device->sshParameters().port()) : QString();
     });
-    expander->registerVariable("Device:UserName", Tr::tr("User name"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
-            return device ? device->sshParameters().userName() : QString();
+    expander->registerVariable("Device:UserName", Tr::tr("User name"), [kit] {
+        const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
+        return device ? device->sshParameters().userName() : QString();
     });
-    expander->registerVariable("Device:KeyFile", Tr::tr("Private key file"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
-            return device ? device->sshParameters().privateKeyFile.toString() : QString();
+    expander->registerVariable("Device:KeyFile", Tr::tr("Private key file"), [kit] {
+        const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
+        return device ? device->sshParameters().privateKeyFile.toString() : QString();
     });
-    expander->registerVariable("Device:Name", Tr::tr("Device name"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
-            return device ? device->displayName() : QString();
+    expander->registerVariable("Device:Name", Tr::tr("Device name"), [kit] {
+        const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
+        return device ? device->displayName() : QString();
+    });
+    expander->registerFileVariables("Device::Root", Tr::tr("Device root directory"), [kit] {
+        const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
+        return device ? device->rootPath() : FilePath{};
     });
 }
 
@@ -1157,7 +1169,7 @@ public:
     }
 
 private:
-    void addToLayout(LayoutBuilder &builder) override
+    void addToLayout(Layouting::LayoutItem &builder) override
     {
         addMutableAction(m_comboBox);
         builder.addItem(m_comboBox);
@@ -1266,31 +1278,31 @@ KitAspect::ItemList BuildDeviceKitAspect::toUserOutput(const Kit *k) const
 void BuildDeviceKitAspect::addToMacroExpander(Kit *kit, MacroExpander *expander) const
 {
     QTC_ASSERT(kit, return);
-    expander->registerVariable("BuildDevice:HostAddress", Tr::tr("Build host address"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
-            return device ? device->sshParameters().host() : QString();
+    expander->registerVariable("BuildDevice:HostAddress", Tr::tr("Build host address"), [kit] {
+        const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
+        return device ? device->sshParameters().host() : QString();
     });
-    expander->registerVariable("BuildDevice:SshPort", Tr::tr("Build SSH port"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
-            return device ? QString::number(device->sshParameters().port()) : QString();
+    expander->registerVariable("BuildDevice:SshPort", Tr::tr("Build SSH port"), [kit] {
+        const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
+        return device ? QString::number(device->sshParameters().port()) : QString();
     });
-    expander->registerVariable("BuildDevice:UserName", Tr::tr("Build user name"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
-            return device ? device->sshParameters().userName() : QString();
+    expander->registerVariable("BuildDevice:UserName", Tr::tr("Build user name"), [kit] {
+        const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
+        return device ? device->sshParameters().userName() : QString();
     });
-    expander->registerVariable("BuildDevice:KeyFile", Tr::tr("Build private key file"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
-            return device ? device->sshParameters().privateKeyFile.toString() : QString();
+    expander->registerVariable("BuildDevice:KeyFile", Tr::tr("Build private key file"), [kit] {
+        const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
+        return device ? device->sshParameters().privateKeyFile.toString() : QString();
     });
-    expander->registerVariable("BuildDevice:Name", Tr::tr("Build device name"),
-        [kit]() -> QString {
-            const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
-            return device ? device->displayName() : QString();
+    expander->registerVariable("BuildDevice:Name", Tr::tr("Build device name"), [kit] {
+        const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
+        return device ? device->displayName() : QString();
     });
+    expander
+        ->registerFileVariables("BuildDevice::Root", Tr::tr("Build device root directory"), [kit] {
+            const IDevice::ConstPtr device = BuildDeviceKitAspect::device(kit);
+            return device ? device->rootPath() : FilePath{};
+        });
 }
 
 Id BuildDeviceKitAspect::id()
@@ -1388,7 +1400,7 @@ public:
     }
 
 private:
-    void addToLayout(LayoutBuilder &builder) override
+    void addToLayout(Layouting::LayoutItem &builder) override
     {
         addMutableAction(m_mainWidget);
         builder.addItem(m_mainWidget);

@@ -3,6 +3,7 @@
 
 #include "mcusupportplugin.h"
 
+#include "mcubuildstep.h"
 #include "mcukitinformation.h"
 #include "mcukitmanager.h"
 #include "mcuqmlprojectnode.h"
@@ -17,6 +18,7 @@
 #include "test/unittest.h"
 #endif
 
+#include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
@@ -27,15 +29,20 @@
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/projecttree.h>
-#include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
 
 #include <cmakeprojectmanager/cmakeprojectconstants.h>
 
+#include <qmljs/qmljsmodelmanagerinterface.h>
+#include <qmljstools/qmljstoolsconstants.h>
+
 #include <utils/filepath.h>
 #include <utils/infobar.h>
 
+#include <QAction>
+#include <QDateTime>
 #include <QTimer>
 
 using namespace Core;
@@ -82,9 +89,7 @@ void updateMCUProjectTree(ProjectExplorer::Project *p)
         auto qmlProjectNode = std::make_unique<McuQmlProjectNode>(FilePath(node->filePath()),
                                                                   inputsJsonFile);
 
-        auto qmlProjectNodePtr = qmlProjectNode.get();
-        const_cast<ProjectNode *>(node)->addNode(std::move(qmlProjectNode));
-        ProjectExplorer::ProjectTree::emitSubtreeChanged(qmlProjectNodePtr);
+        const_cast<ProjectNode *>(node)->replaceSubtree(nullptr, std::move(qmlProjectNode));
     });
 };
 
@@ -98,6 +103,7 @@ public:
     McuSupportOptions m_options{m_settingsHandler};
     McuSupportOptionsPage optionsPage{m_options, m_settingsHandler};
     McuDependenciesKitAspect environmentPathsKitAspect;
+    MCUBuildStepFactory mcuBuildStepFactory;
 }; // class McuSupportPluginPrivate
 
 static McuSupportPluginPrivate *dd{nullptr};
@@ -113,9 +119,44 @@ void McuSupportPlugin::initialize()
     setObjectName("McuSupportPlugin");
     dd = new McuSupportPluginPrivate;
 
-    connect(SessionManager::instance(),
-            &SessionManager::projectFinishedParsing,
+    connect(ProjectManager::instance(),
+            &ProjectManager::projectFinishedParsing,
             updateMCUProjectTree);
+
+    // Temporary fix for CodeModel/Checker race condition
+    // Remove after https://bugreports.qt.io/browse/QTCREATORBUG-29269 is closed
+    connect(QmlJS::ModelManagerInterface::instance(),
+            &QmlJS::ModelManagerInterface::documentUpdated,
+            [lasttime = QTime::currentTime()](QmlJS::Document::Ptr doc) mutable {
+                // Prevent inifinite recall loop
+                auto currenttime = QTime::currentTime();
+                if (lasttime.msecsTo(currenttime) < 1000) {
+                    lasttime = currenttime;
+                    return;
+                }
+                lasttime = currenttime;
+
+                if (!doc)
+                    return;
+                //Reset code model only for QtMCUs documents
+                const Project *project = ProjectManager::projectForFile(doc->path());
+                if (!project)
+                    return;
+                const QList<Target *> targets = project->targets();
+                bool isMcuDocument
+                    = std::any_of(std::begin(targets), std::end(targets), [](const Target *target) {
+                          if (!target || !target->kit()
+                              || !target->kit()->hasValue(Constants::KIT_MCUTARGET_KITVERSION_KEY))
+                              return false;
+                          return true;
+                      });
+                if (!isMcuDocument)
+                    return;
+
+                Core::ActionManager::command(QmlJSTools::Constants::RESET_CODEMODEL)
+                    ->action()
+                    ->trigger();
+            });
 
     dd->m_options.registerQchFiles();
     dd->m_options.registerExamples();
@@ -166,7 +207,7 @@ void McuSupportPlugin::askUserAboutMcuSupportKitsUpgrade(const SettingsHandler::
         return;
 
     Utils::InfoBarEntry info(upgradeMcuSupportKits,
-                             Tr::tr("New version of Qt for MCUs detected. Upgrade existing Kits?"),
+                             Tr::tr("New version of Qt for MCUs detected. Upgrade existing kits?"),
                              Utils::InfoBarEntry::GlobalSuppression::Enabled);
     using McuKitManager::UpgradeOption;
     static UpgradeOption selectedOption = UpgradeOption::Keep;
@@ -217,6 +258,11 @@ void McuSupportPlugin::askUserAboutRemovingUninstalledTargetsKits()
     });
 
     ICore::infoBar()->addInfo(info);
+}
+
+void McuSupportPlugin::updateDeployStep(ProjectExplorer::Target *target, bool enabled)
+{
+    MCUBuildStepFactory::updateDeployStep(target, enabled);
 }
 
 } // namespace McuSupport::Internal

@@ -148,15 +148,11 @@ const QString stmCubeProgrammerDetectionPath{HostOsInfo::isWindowsHost()
 
 const char renesasProgrammerSetting[]{"RenesasFlashProgrammer"};
 const char renesasProgrammerCmakeVar[]{"RENESAS_FLASH_PROGRAMMER_PATH"};
-const QString renesasProgrammerEnvVar{renesasProgrammerCmakeVar};
+const char renesasProgrammerEnvVar[]{"RENESAS_FLASH_PROGRAMMER_PATH"};
 const char renesasProgrammerLabel[]{"Renesas Flash Programmer"};
 const QString renesasProgrammerDetectionPath{HostOsInfo::withExecutableSuffix("rfp-cli")};
 
-const char renesasE2StudioCmakeVar[]{"EK_RA6M3G_E2_PROJECT_PATH"};
-const char renesasE2StudioDefaultPath[]{"%{Env:HOME}/e2_studio/workspace"};
 const QString renesasE2StudioPath{(FileUtils::homePath() / "/e2_studio/workspace").toUserOutput()};
-const char renesasE2StudioLabel[]{"Path to project for Renesas e2 Studio"};
-const char renesasE2StudioSetting[]{"RenesasE2StudioPath"};
 
 const char cypressProgrammerSetting[]{"CypressAutoFlashUtil"};
 const char cypressProgrammerCmakeVar[]{"INFINEON_AUTO_FLASH_UTILITY_DIR"};
@@ -1106,7 +1102,7 @@ void McuSupportTest::test_legacy_createBoardSdk_data()
         << iar_mimxrt1064_evk_freertos_json << boardSdkCmakeVar << "EVK_MIMXRT1064_SDK_PATH"
         << QStringList{boardSdkVersion};
     QTest::newRow("ghs_rh850_d1m1a_baremetal_json")
-        << ghs_rh850_d1m1a_baremetal_json << boardSdkCmakeVar << "RGL_DIR" << QStringList{"2.0.0a"};
+        << ghs_rh850_d1m1a_baremetal_json << boardSdkCmakeVar << "RGL_DIR" << QStringList{"2.0.0", "2.0.0a"};
 }
 
 void McuSupportTest::test_legacy_createBoardSdk()
@@ -1543,9 +1539,9 @@ void McuSupportTest::test_legacy_createThirdPartyPackage_data()
         << PackageCreator{[this]() {
                return Legacy::createRenesasProgrammerPackage(settingsMockPtr);
            }}
-        << ghs_rh850_d1m1a_baremetal_json << defaultToolPath << defaultToolPath
-        << renesasProgrammerSetting << renesasProgrammerCmakeVar << renesasProgrammerEnvVar
-        << renesasProgrammerLabel << renesasProgrammerDetectionPath;
+        << ghs_rh850_d1m1a_baremetal_json << empty << empty << renesasProgrammerSetting
+        << renesasProgrammerCmakeVar << renesasProgrammerEnvVar << renesasProgrammerLabel
+        << renesasProgrammerDetectionPath;
 }
 
 void McuSupportTest::test_legacy_createThirdPartyPackage()
@@ -1578,7 +1574,53 @@ void McuSupportTest::test_legacy_createThirdPartyPackage()
 
 void McuSupportTest::test_createThirdPartyPackage_data()
 {
-    test_legacy_createThirdPartyPackage_data();
+    QTest::addColumn<QString>("json");
+    QTest::addColumn<QString>("path");
+    QTest::addColumn<QString>("defaultPath");
+    QTest::addColumn<QString>("setting");
+    QTest::addColumn<QString>("cmakeVar");
+    QTest::addColumn<QString>("envVar");
+    QTest::addColumn<QString>("label");
+    QTest::addColumn<QString>("detectionPath");
+
+    // Sometimes the jsons have different values than the legacy packages
+    // Enter the expected values from the jsons here when they diverge from legacy values
+    QString programFiles = qtcEnvironmentVariable("Env:PROGRAMFILES(x86)");
+    const QString renesasProgrammerDefaultPath = {
+        HostOsInfo::isWindowsHost()
+            ? QString("%1/Renesas Electronics/Programming Tools/Renesas "
+                      "Flash Programmer V3.09").arg(programFiles)
+            : QString("")};
+
+    QTest::newRow("armgcc_mimxrt1050_evk_freertos_json mcuXpresso")
+        << armgcc_mimxrt1050_evk_freertos_json << xpressoIdePath << xpressoIdePath
+        << xpressoIdeSetting << xpressoIdeCmakeVar << xpressoIdeEnvVar << xpressoIdeLabel
+        << xpressoIdeDetectionPath;
+
+    QTest::newRow("armgcc_mimxrt1064_evk_freertos_json mcuXpresso")
+        << armgcc_mimxrt1064_evk_freertos_json << xpressoIdePath << xpressoIdePath
+        << xpressoIdeSetting << xpressoIdeCmakeVar << xpressoIdeEnvVar << xpressoIdeLabel
+        << xpressoIdeDetectionPath;
+
+    QTest::newRow("armgcc_mimxrt1170_evk_freertos_json mcuXpresso")
+        << armgcc_mimxrt1170_evk_freertos_json << xpressoIdePath << xpressoIdePath
+        << xpressoIdeSetting << xpressoIdeCmakeVar << xpressoIdeEnvVar << xpressoIdeLabel
+        << xpressoIdeDetectionPath;
+
+    QTest::newRow("armgcc_stm32h750b_discovery_baremetal_json stmCubeProgrammer")
+        << armgcc_stm32h750b_discovery_baremetal_json << stmCubeProgrammerPath
+        << stmCubeProgrammerPath << stmCubeProgrammerSetting << empty << empty
+        << stmCubeProgrammerLabel << stmCubeProgrammerDetectionPath;
+
+    QTest::newRow("armgcc_stm32f769i_discovery_freertos_json stmCubeProgrammer")
+        << armgcc_stm32f769i_discovery_freertos_json << stmCubeProgrammerPath
+        << stmCubeProgrammerPath << stmCubeProgrammerSetting << empty << empty
+        << stmCubeProgrammerLabel << stmCubeProgrammerDetectionPath;
+
+    QTest::newRow("ghs_rh850_d1m1a_baremetal_json renesasProgrammer")
+        << ghs_rh850_d1m1a_baremetal_json << renesasProgrammerDefaultPath << empty
+        << "FlashProgrammerPath" << renesasProgrammerCmakeVar << "RenesasFlashProgrammer_PATH"
+        << renesasProgrammerLabel << renesasProgrammerDetectionPath;
 }
 
 void McuSupportTest::test_createThirdPartyPackage()
@@ -1760,9 +1802,9 @@ void McuSupportTest::test_nonemptyVersionDetector()
     // pkgDesc.versionDetection.xmlAttribute left empty
     pkgDesc.shouldAddToSystemPath = false;
     const auto package = targetFactory.createPackage(pkgDesc);
-    QVERIFY(package->getVersionDetector() != nullptr);
-    QCOMPARE(typeid(*package->getVersionDetector()).name(),
-             typeid(McuPackageExecutableVersionDetector).name());
+    const McuPackageVersionDetector *detector = package->getVersionDetector();
+    QVERIFY(detector != nullptr);
+    QCOMPARE(typeid(*detector).name(), typeid(McuPackageExecutableVersionDetector).name());
 }
 
 void McuSupportTest::test_emptyVersionDetector()

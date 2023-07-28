@@ -41,8 +41,9 @@
 #define TST_LANGUAGE_H
 
 #include <language/forward_decls.h>
-#include <language/loader.h>
+#include <language/scriptengine.h>
 #include <logging/ilogsink.h>
+#include <logging/logger.h>
 #include <tools/setupprojectparameters.h>
 
 #include <QtCore/qrandom.h>
@@ -56,27 +57,9 @@ public:
     TestLanguage(qbs::ILogSink *logSink, qbs::Settings *settings);
     ~TestLanguage();
 
-private:
-    qbs::ILogSink *m_logSink;
-    qbs::Settings * const m_settings;
-    qbs::Internal::Logger m_logger;
-    std::unique_ptr<qbs::Internal::ScriptEngine> m_engine;
-    qbs::Internal::Loader *loader;
-    qbs::Internal::TopLevelProjectPtr project;
-    qbs::SetupProjectParameters defaultParameters;
-    const QString m_wildcardsTestDirPath;
-
-    QHash<QString, qbs::Internal::ResolvedProductPtr> productsFromProject(
-            qbs::Internal::ResolvedProjectPtr project);
-    qbs::Internal::ResolvedModuleConstPtr findModuleByName(
-            qbs::Internal::ResolvedProductPtr product, const QString &name);
-    QVariant productPropertyValue(qbs::Internal::ResolvedProductPtr product, QString propertyName);
-    void handleInitCleanupDataTags(const char *projectFileName, bool *handled);
-
 private slots:
     void init();
     void initTestCase();
-    void cleanupTestCase();
 
     void additionalProductTypes();
     void baseProperty();
@@ -95,6 +78,8 @@ private slots:
     void disabledSubProject();
     void dottedNames_data();
     void dottedNames();
+    void duplicateMultiplexValues_data();
+    void duplicateMultiplexValues();
     void emptyJsFile();
     void enumerateProjectProperties();
     void evalErrorInNonPresentModule_data();
@@ -137,6 +122,7 @@ private slots:
     void modulePropertiesInGroups();
     void modulePropertyOverridesPerProduct();
     void moduleScope();
+    void moduleWithProductDependency();
     void modules_data();
     void modules();
     void multiplexedExports();
@@ -177,12 +163,29 @@ private slots:
     void qualifiedId();
     void recursiveProductDependencies();
     void rfc1034Identifier();
+    void throwThings_data();
+    void throwThings();
     void useInternalProfile();
     void versionCompare();
     void wildcards_data();
     void wildcards();
 
 private:
+    QHash<QString, qbs::Internal::ResolvedProductPtr> productsFromProject(
+        qbs::Internal::ResolvedProjectPtr project);
+    qbs::Internal::ResolvedModuleConstPtr findModuleByName(
+        qbs::Internal::ResolvedProductPtr product, const QString &name);
+    QVariant productPropertyValue(qbs::Internal::ResolvedProductPtr product, QString propertyName);
+    void handleInitCleanupDataTags(const char *projectFileName, bool *handled);
+    qbs::Internal::TopLevelProjectPtr resolveProject(const char *relProjectFilePath = nullptr);
+
+    qbs::ILogSink * const m_logSink;
+    qbs::Settings * const m_settings;
+    qbs::Internal::Logger m_logger;
+    std::unique_ptr<qbs::Internal::ScriptEngine> m_engine;
+    qbs::Internal::TopLevelProjectPtr project;
+    qbs::SetupProjectParameters defaultParameters;
+    const QString m_wildcardsTestDirPath;
     QTemporaryDir m_tempDir;
     QRandomGenerator m_rand;
 };

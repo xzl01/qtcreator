@@ -6,8 +6,10 @@
 #include "filestatus.h"
 #include "nonlockingmutex.h"
 #include "projectstorageids.h"
+#include "projectstoragepathwatchernotifierinterface.h"
 #include "projectstoragepathwatchertypes.h"
 #include "projectstoragetypes.h"
+#include "sourcepath.h"
 
 #include <qmljs/parser/qmldirparser_p.h>
 
@@ -30,7 +32,7 @@ class ProjectStorage;
 class QmlDocumentParserInterface;
 class QmlTypesParserInterface;
 
-class ProjectStorageUpdater
+class ProjectStorageUpdater : public ProjectStoragePathWatcherNotifierInterface
 {
 public:
     using PathCache = SourcePathCache<ProjectStorage<Sqlite::Database>, NonLockingMutex>;
@@ -40,17 +42,22 @@ public:
                           FileStatusCache &fileStatusCache,
                           PathCache &pathCache,
                           QmlDocumentParserInterface &qmlDocumentParser,
-                          QmlTypesParserInterface &qmlTypesParser)
+                          QmlTypesParserInterface &qmlTypesParser,
+                          class ProjectStoragePathWatcherInterface &pathWatcher,
+                          ProjectPartId projectPartId)
         : m_fileSystem{fileSystem}
         , m_projectStorage{projectStorage}
         , m_fileStatusCache{fileStatusCache}
         , m_pathCache{pathCache}
         , m_qmlDocumentParser{qmlDocumentParser}
         , m_qmlTypesParser{qmlTypesParser}
+        , m_pathWatcher{pathWatcher}
+        , m_projectPartId{projectPartId}
     {}
 
     void update(QStringList directories, QStringList qmlTypesPaths);
-    void pathsWithIdsChanged(const std::vector<IdPaths> &idPaths);
+    void pathsWithIdsChanged(const std::vector<IdPaths> &idPaths) override;
+    void pathsChanged(const SourceIds &filePathIds) override;
 
     struct Component
     {
@@ -89,66 +96,100 @@ public:
         NotExists,
     };
 
-private:
+    struct WatchedSourceIdsIds
+    {
+        WatchedSourceIdsIds(std::size_t reserve)
+        {
+            directorySourceIds.reserve(reserve);
+            qmldirSourceIds.reserve(reserve);
+            qmlSourceIds.reserve(reserve * 30);
+            qmltypesSourceIds.reserve(reserve * 30);
+        }
 
+        SourceIds directorySourceIds;
+        SourceIds qmldirSourceIds;
+        SourceIds qmlSourceIds;
+        SourceIds qmltypesSourceIds;
+    };
+
+    struct NotUpdatedSourceIds
+    {
+        NotUpdatedSourceIds(std::size_t reserve)
+        {
+            fileStatusSourceIds.reserve(reserve * 30);
+            sourceIds.reserve(reserve * 30);
+        }
+
+        SourceIds fileStatusSourceIds;
+        SourceIds sourceIds;
+    };
+
+private:
     void updateQmlTypes(const QStringList &qmlTypesPaths,
                         Storage::Synchronization::SynchronizationPackage &package,
-                        SourceIds &notUpdatedFileStatusSourceIds,
-                        SourceIds &notUpdatedSourceIds);
+                        NotUpdatedSourceIds &notUpdatedSourceIds,
+                        WatchedSourceIdsIds &watchedSourceIdsIds);
+
     void updateDirectories(const QStringList &directories,
                            Storage::Synchronization::SynchronizationPackage &package,
-                           SourceIds &notUpdatedFileStatusSourceIds,
-                           SourceIds &notUpdatedSourceIds);
+                           NotUpdatedSourceIds &notUpdatedSourceIds,
+                           WatchedSourceIdsIds &watchedSourceIdsIds);
+
+    void updateDirectory(const Utils::PathString &directory,
+                         Storage::Synchronization::SynchronizationPackage &package,
+                         NotUpdatedSourceIds &notUpdatedSourceIds,
+                         WatchedSourceIdsIds &watchedSourceIdsIds);
 
     void parseTypeInfos(const QStringList &typeInfos,
                         const QList<QmlDirParser::Import> &qmldirDependencies,
                         const QList<QmlDirParser::Import> &qmldirImports,
-                        SourceId qmldirSourceId,
+                        SourceId directorySourceId,
                         Utils::SmallStringView directoryPath,
                         ModuleId moduleId,
                         Storage::Synchronization::SynchronizationPackage &package,
-                        SourceIds &notUpdatedFileStatusSourceIds,
-                        SourceIds &notUpdatedSourceIds);
+                        NotUpdatedSourceIds &notUpdatedSourceIds,
+                        WatchedSourceIdsIds &watchedSourceIdsIds);
     void parseProjectDatas(const Storage::Synchronization::ProjectDatas &projectDatas,
                            Storage::Synchronization::SynchronizationPackage &package,
-                           SourceIds &notUpdatedFileStatusSourceIds,
-                           SourceIds &notUpdatedSourceIds,
-                           Utils::SmallStringView directoryPath);
+                           NotUpdatedSourceIds &notUpdatedSourceIds,
+                           WatchedSourceIdsIds &watchedSourceIdsIds);
     FileState parseTypeInfo(const Storage::Synchronization::ProjectData &projectData,
                             Utils::SmallStringView qmltypesPath,
                             Storage::Synchronization::SynchronizationPackage &package,
-                            SourceIds &notUpdatedFileStatusSourceIds,
-                            SourceIds &notUpdatedSourceIds);
+                            NotUpdatedSourceIds &notUpdatedSourceIds);
     void parseQmlComponents(Components components,
-                            SourceId qmldirSourceId,
+                            SourceId directorySourceId,
                             SourceContextId directoryId,
                             Storage::Synchronization::SynchronizationPackage &package,
-                            SourceIds &notUpdatedFileStatusSourceIds);
+                            NotUpdatedSourceIds &notUpdatedSourceIds,
+                            WatchedSourceIdsIds &watchedSourceIdsIds,
+                            FileState qmldirState);
     void parseQmlComponent(Utils::SmallStringView fileName,
                            Utils::SmallStringView directory,
                            Storage::Synchronization::ExportedTypes exportedTypes,
-                           SourceId qmldirSourceId,
+                           SourceId directorySourceId,
                            Storage::Synchronization::SynchronizationPackage &package,
-                           SourceIds &notUpdatedFileStatusSourceIds);
-    void parseQmlComponent(Utils::SmallStringView fileName,
-                           Utils::SmallStringView filePath,
-                           Utils::SmallStringView directoryPath,
-                           SourceId sourceId,
+                           NotUpdatedSourceIds &notUpdatedSourceIds,
+                           WatchedSourceIdsIds &watchedSourceIdsIds,
+                           FileState qmldirState);
+    void parseQmlComponent(SourceId sourceId,
                            Storage::Synchronization::SynchronizationPackage &package,
-                           SourceIds &notUpdatedFileStatusSourceIds);
+                           NotUpdatedSourceIds &notUpdatedSourceIds);
 
     FileState fileState(SourceId sourceId,
-                        FileStatuses &fileStatuses,
-                        SourceIds &updatedSourceIds,
-                        SourceIds &notUpdatedSourceIds) const;
+                        Storage::Synchronization::SynchronizationPackage &package,
+                        NotUpdatedSourceIds &notUpdatedSourceIds) const;
 
 private:
+    std::vector<IdPaths> m_changedIdPaths;
     FileSystemInterface &m_fileSystem;
     ProjectStorageInterface &m_projectStorage;
     FileStatusCache &m_fileStatusCache;
     PathCache &m_pathCache;
     QmlDocumentParserInterface &m_qmlDocumentParser;
     QmlTypesParserInterface &m_qmlTypesParser;
+    ProjectStoragePathWatcherInterface &m_pathWatcher;
+    ProjectPartId m_projectPartId;
 };
 
 } // namespace QmlDesigner

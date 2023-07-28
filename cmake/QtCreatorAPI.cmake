@@ -188,7 +188,7 @@ function(add_qtc_library name)
     set(TEST_DEFINES WITH_TESTS SRCDIR="${CMAKE_CURRENT_SOURCE_DIR}")
   endif()
 
-  if(_arg_STATIC AND UNIX)
+  if((_arg_STATIC OR _arg_OBJECT) AND UNIX)
     # not added by Qt if reduce_relocations is turned off for it
     set_target_properties(${name} PROPERTIES POSITION_INDEPENDENT_CODE ON)
   endif()
@@ -628,6 +628,7 @@ function(add_qtc_executable name)
 
   update_cached_list(__QTC_EXECUTABLES "${name}")
 
+  condition_info(_extra_text _arg_CONDITION)
   if (NOT _arg_CONDITION)
     set(_arg_CONDITION ON)
   endif()
@@ -647,6 +648,9 @@ function(add_qtc_executable name)
     set(_executable_enabled ON)
   else()
     set(_executable_enabled OFF)
+  endif()
+  if (NOT _arg_INTERNAL_ONLY)
+    add_feature_info("Executable ${name}" _executable_enabled "${_extra_text}")
   endif()
   if (NOT _executable_enabled)
     return()
@@ -817,7 +821,7 @@ endfunction()
 
 function(add_qtc_test name)
   cmake_parse_arguments(_arg "GTEST;MANUALTEST;EXCLUDE_FROM_PRECHECK" "TIMEOUT"
-      "DEFINES;DEPENDS;INCLUDES;SOURCES;EXPLICIT_MOC;SKIP_AUTOMOC;SKIP_PCH;CONDITION" ${ARGN})
+      "DEFINES;DEPENDS;INCLUDES;SOURCES;EXPLICIT_MOC;SKIP_AUTOMOC;SKIP_PCH;CONDITION;PROPERTIES" ${ARGN})
 
   if (${_arg_UNPARSED_ARGUMENTS})
     message(FATAL_ERROR "add_qtc_test had unparsed arguments!")
@@ -877,6 +881,7 @@ function(add_qtc_test name)
     VISIBILITY_INLINES_HIDDEN ON
     BUILD_RPATH "${_RPATH_BASE}/${_RPATH};${CMAKE_BUILD_RPATH}"
     INSTALL_RPATH "${_RPATH_BASE}/${_RPATH};${CMAKE_INSTALL_RPATH}"
+    ${_arg_PROPERTIES}
   )
   if (NOT _arg_SKIP_PCH)
     enable_pch(${name})

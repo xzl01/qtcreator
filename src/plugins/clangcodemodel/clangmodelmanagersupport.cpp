@@ -16,6 +16,8 @@
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
+#include <coreplugin/session.h>
+#include <coreplugin/vcsmanager.h>
 
 #include <cppeditor/cppcodemodelsettings.h>
 #include <cppeditor/cppeditorconstants.h>
@@ -27,22 +29,23 @@
 #include <cppeditor/editordocumenthandle.h>
 
 #include <languageclient/languageclientmanager.h>
+#include <languageclient/locatorfilter.h>
 
 #include <texteditor/quickfix.h>
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/project.h>
+#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/projecttree.h>
-#include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/taskhub.h>
 
 #include <utils/algorithm.h>
+#include <utils/async.h>
 #include <utils/infobar.h>
 #include <utils/qtcassert.h>
-#include <utils/runextensions.h>
 
 #include <QApplication>
 #include <QLabel>
@@ -51,22 +54,24 @@
 #include <QTimer>
 #include <QtDebug>
 
+using namespace Core;
 using namespace CppEditor;
 using namespace LanguageClient;
+using namespace ProjectExplorer;
 using namespace Utils;
 
 namespace ClangCodeModel::Internal {
 
-static CppEditor::CppModelManager *cppModelManager()
+static CppModelManager *cppModelManager()
 {
-    return CppEditor::CppModelManager::instance();
+    return CppModelManager::instance();
 }
 
-static ProjectExplorer::Project *fallbackProject()
+static Project *fallbackProject()
 {
-    if (ProjectExplorer::Project * const p = ProjectExplorer::ProjectTree::currentProject())
+    if (Project * const p = ProjectTree::currentProject())
         return p;
-    return ProjectExplorer::SessionManager::startupProject();
+    return ProjectManager::startupProject();
 }
 
 static bool sessionModeEnabled()
@@ -76,18 +81,17 @@ static bool sessionModeEnabled()
 
 static const QList<TextEditor::TextDocument *> allCppDocuments()
 {
-    const auto isCppDocument = Utils::equal(&Core::IDocument::id,
-                                            Utils::Id(CppEditor::Constants::CPPEDITOR_ID));
-    const QList<Core::IDocument *> documents
-        = Utils::filtered(Core::DocumentModel::openedDocuments(), isCppDocument);
+    const auto isCppDocument = Utils::equal(&IDocument::id, Id(CppEditor::Constants::CPPEDITOR_ID));
+    const QList<IDocument *> documents = Utils::filtered(DocumentModel::openedDocuments(),
+                                                         isCppDocument);
     return Utils::qobject_container_cast<TextEditor::TextDocument *>(documents);
 }
 
-static const QList<ProjectExplorer::Project *> projectsForClient(const Client *client)
+static const QList<Project *> projectsForClient(const Client *client)
 {
-    QList<ProjectExplorer::Project *> projects;
+    QList<Project *> projects;
     if (sessionModeEnabled()) {
-        for (ProjectExplorer::Project * const p : ProjectExplorer::SessionManager::projects()) {
+        for (Project * const p : ProjectManager::projects()) {
             if (ClangdProjectSettings(p).settings().useClangd)
                 projects << p;
         }
@@ -99,7 +103,7 @@ static const QList<ProjectExplorer::Project *> projectsForClient(const Client *c
 
 static bool fileIsProjectBuildArtifact(const Client *client, const FilePath &filePath)
 {
-    for (const ProjectExplorer::Project * const p : projectsForClient(client)) {
+    for (const Project * const p : projectsForClient(client)) {
         if (const auto t = p->activeTarget()) {
             if (const auto bc = t->activeBuildConfiguration()) {
                 if (filePath.isChildOf(bc->buildDirectory()))
@@ -144,15 +148,15 @@ static void checkSystemForClangdSuitability()
             "You can enable/disable and fine-tune clangd <a href=\"dummy\">here</a>."));
         label->setWordWrap(true);
         QObject::connect(label, &QLabel::linkActivated, [] {
-            Core::ICore::showOptionsDialog(CppEditor::Constants::CPP_CLANGD_SETTINGS_ID);
+            ICore::showOptionsDialog(CppEditor::Constants::CPP_CLANGD_SETTINGS_ID);
         });
         return label;
     });
     info.addCustomButton(Tr::tr("Enable Anyway"), [clangdWarningSetting] {
         ClangdSettings::setUseClangdAndSave(true);
-        Core::ICore::infoBar()->removeInfo(clangdWarningSetting);
+        ICore::infoBar()->removeInfo(clangdWarningSetting);
     });
-    Core::ICore::infoBar()->addInfo(info);
+    ICore::infoBar()->addInfo(info);
 }
 
 static void updateParserConfig(ClangdClient *client)
@@ -170,15 +174,14 @@ static void updateParserConfig(ClangdClient *client)
 
 static bool projectIsParsing(const ClangdClient *client)
 {
-    for (const ProjectExplorer::Project * const p : projectsForClient(client)) {
-        const ProjectExplorer::BuildSystem * const bs = p && p->activeTarget()
+    for (const Project * const p : projectsForClient(client)) {
+        const BuildSystem * const bs = p && p->activeTarget()
                 ? p->activeTarget()->buildSystem() : nullptr;
         if (bs && (bs->isParsing() || bs->isWaitingForParse()))
             return true;
     }
     return false;
 }
-
 
 ClangModelManagerSupport::ClangModelManagerSupport()
     : m_clientRestartTimer(new QTimer(this))
@@ -200,25 +203,36 @@ ClangModelManagerSupport::ClangModelManagerSupport()
     setupClangdConfigFile();
     checkSystemForClangdSuitability();
     cppModelManager()->setCurrentDocumentFilter(std::make_unique<ClangdCurrentDocumentFilter>());
-    cppModelManager()->setLocatorFilter(std::make_unique<ClangGlobalSymbolFilter>());
-    cppModelManager()->setClassesFilter(std::make_unique<ClangClassesFilter>());
-    cppModelManager()->setFunctionsFilter(std::make_unique<ClangFunctionsFilter>());
+    cppModelManager()->setLocatorFilter(std::make_unique<ClangdAllSymbolsFilter>());
+    cppModelManager()->setClassesFilter(std::make_unique<ClangdClassesFilter>());
+    cppModelManager()->setFunctionsFilter(std::make_unique<ClangdFunctionsFilter>());
+    // Setup matchers
+    LocatorMatcher::addMatcherCreator(MatcherType::AllSymbols, [] {
+        return LanguageClient::languageClientMatchers(
+            MatcherType::AllSymbols, clientsForOpenProjects(), 10000);
+    });
+    LocatorMatcher::addMatcherCreator(MatcherType::Classes, [] {
+        return LanguageClient::languageClientMatchers(
+            MatcherType::Classes, clientsForOpenProjects(), 10000);
+    });
+    LocatorMatcher::addMatcherCreator(MatcherType::Functions, [] {
+        return LanguageClient::languageClientMatchers(
+            MatcherType::Functions, clientsForOpenProjects(), 10000);
+    });
 
-    Core::EditorManager *editorManager = Core::EditorManager::instance();
-    connect(editorManager, &Core::EditorManager::editorOpened,
+    EditorManager *editorManager = EditorManager::instance();
+    connect(editorManager, &EditorManager::editorOpened,
             this, &ClangModelManagerSupport::onEditorOpened);
-    connect(editorManager, &Core::EditorManager::currentEditorChanged,
+    connect(editorManager, &EditorManager::currentEditorChanged,
             this, &ClangModelManagerSupport::onCurrentEditorChanged);
 
-    CppEditor::CppModelManager *modelManager = cppModelManager();
-    connect(modelManager, &CppEditor::CppModelManager::abstractEditorSupportContentsUpdated,
+    CppModelManager *modelManager = cppModelManager();
+    connect(modelManager, &CppModelManager::abstractEditorSupportContentsUpdated,
             this, &ClangModelManagerSupport::onAbstractEditorSupportContentsUpdated);
-    connect(modelManager, &CppEditor::CppModelManager::abstractEditorSupportRemoved,
+    connect(modelManager, &CppModelManager::abstractEditorSupportRemoved,
             this, &ClangModelManagerSupport::onAbstractEditorSupportRemoved);
-    connect(modelManager, &CppEditor::CppModelManager::projectPartsUpdated,
-            this, &ClangModelManagerSupport::onProjectPartsUpdated);
-    connect(modelManager, &CppEditor::CppModelManager::projectPartsRemoved,
-            this, &ClangModelManagerSupport::onProjectPartsRemoved);
+    connect(modelManager, &CppModelManager::projectPartsUpdated,
+            this, &ClangModelManagerSupport::updateLanguageClient);
     connect(modelManager, &CppModelManager::fallbackProjectPartUpdated, this, [this] {
         if (sessionModeEnabled())
             return;
@@ -228,26 +242,23 @@ ClangModelManagerSupport::ClangModelManagerSupport()
         }
     });
 
-    auto *sessionManager = ProjectExplorer::SessionManager::instance();
-    connect(sessionManager, &ProjectExplorer::SessionManager::projectRemoved,
-            this, [this] {
+    auto projectManager = ProjectManager::instance();
+    connect(projectManager, &ProjectManager::projectRemoved, this, [this] {
         if (!sessionModeEnabled())
             claimNonProjectSources(clientForProject(fallbackProject()));
     });
-    connect(sessionManager, &ProjectExplorer::SessionManager::sessionLoaded,
-            this, [this] {
+    connect(SessionManager::instance(), &SessionManager::sessionLoaded, this, [this] {
         if (sessionModeEnabled())
             onClangdSettingsChanged();
     });
 
-    CppEditor::ClangdSettings::setDefaultClangdPath(Core::ICore::clangdExecutable(CLANG_BINDIR));
-    connect(&CppEditor::ClangdSettings::instance(), &CppEditor::ClangdSettings::changed,
+    ClangdSettings::setDefaultClangdPath(ICore::clangdExecutable(CLANG_BINDIR));
+    connect(&ClangdSettings::instance(), &ClangdSettings::changed,
             this, &ClangModelManagerSupport::onClangdSettingsChanged);
 
-    if (CppEditor::ClangdSettings::instance().useClangd())
+    if (ClangdSettings::instance().useClangd())
         new ClangdClient(nullptr, {});
 
-    m_generatorSynchronizer.setCancelOnWait(true);
     new ClangdQuickFixFactory(); // memory managed by CppEditor::g_cppQuickFixFactories
 }
 
@@ -256,9 +267,9 @@ ClangModelManagerSupport::~ClangModelManagerSupport()
     m_generatorSynchronizer.waitForFinished();
 }
 
-void ClangModelManagerSupport::followSymbol(const CppEditor::CursorInEditor &data,
-                  const LinkHandler &processLinkCallback, bool resolveTarget,
-                  bool inNextSplit)
+void ClangModelManagerSupport::followSymbol(const CursorInEditor &data,
+                                            const LinkHandler &processLinkCallback,
+                                            bool resolveTarget, bool inNextSplit)
 {
     if (ClangdClient * const client = clientForFile(data.filePath());
             client && client->isFullyIndexed()) {
@@ -271,7 +282,7 @@ void ClangModelManagerSupport::followSymbol(const CppEditor::CursorInEditor &dat
                                   CppModelManager::Backend::Builtin);
 }
 
-void ClangModelManagerSupport::followSymbolToType(const CppEditor::CursorInEditor &data,
+void ClangModelManagerSupport::followSymbolToType(const CursorInEditor &data,
                                                   const LinkHandler &processLinkCallback,
                                                   bool inNextSplit)
 {
@@ -284,8 +295,8 @@ void ClangModelManagerSupport::followSymbolToType(const CppEditor::CursorInEdito
                                         CppModelManager::Backend::Builtin);
 }
 
-void ClangModelManagerSupport::switchDeclDef(const CppEditor::CursorInEditor &data,
-                   const LinkHandler &processLinkCallback)
+void ClangModelManagerSupport::switchDeclDef(const CursorInEditor &data,
+                                             const LinkHandler &processLinkCallback)
 {
     if (ClangdClient * const client = clientForFile(data.filePath());
             client && client->isFullyIndexed()) {
@@ -297,9 +308,9 @@ void ClangModelManagerSupport::switchDeclDef(const CppEditor::CursorInEditor &da
     CppModelManager::switchDeclDef(data, processLinkCallback, CppModelManager::Backend::Builtin);
 }
 
-void ClangModelManagerSupport::startLocalRenaming(const CppEditor::CursorInEditor &data,
-                                           const CppEditor::ProjectPart *projectPart,
-                                           RenameCallback &&renameSymbolsCallback)
+void ClangModelManagerSupport::startLocalRenaming(const CursorInEditor &data,
+                                                  const ProjectPart *projectPart,
+                                                  RenameCallback &&renameSymbolsCallback)
 {
     if (ClangdClient * const client = clientForFile(data.filePath());
             client && client->reachable()) {
@@ -312,7 +323,7 @@ void ClangModelManagerSupport::startLocalRenaming(const CppEditor::CursorInEdito
             std::move(renameSymbolsCallback), CppModelManager::Backend::Builtin);
 }
 
-void ClangModelManagerSupport::globalRename(const CppEditor::CursorInEditor &cursor,
+void ClangModelManagerSupport::globalRename(const CursorInEditor &cursor,
                                             const QString &replacement,
                                             const std::function<void()> &callback)
 {
@@ -320,20 +331,19 @@ void ClangModelManagerSupport::globalRename(const CppEditor::CursorInEditor &cur
             client && client->isFullyIndexed()) {
         QTC_ASSERT(client->documentOpen(cursor.textDocument()),
                    client->openDocument(cursor.textDocument()));
-        client->findUsages(cursor.textDocument(), cursor.cursor(), replacement, callback);
+        client->findUsages(cursor, replacement, callback);
         return;
     }
     CppModelManager::globalRename(cursor, replacement, callback, CppModelManager::Backend::Builtin);
 }
 
-void ClangModelManagerSupport::findUsages(const CppEditor::CursorInEditor &cursor) const
+void ClangModelManagerSupport::findUsages(const CursorInEditor &cursor) const
 {
     if (ClangdClient * const client = clientForFile(cursor.filePath());
             client && client->isFullyIndexed()) {
         QTC_ASSERT(client->documentOpen(cursor.textDocument()),
                    client->openDocument(cursor.textDocument()));
-        client->findUsages(cursor.textDocument(), cursor.cursor(), {}, {});
-
+        client->findUsages(cursor, {}, {});
         return;
     }
     CppModelManager::findUsages(cursor, CppModelManager::Backend::Builtin);
@@ -341,17 +351,30 @@ void ClangModelManagerSupport::findUsages(const CppEditor::CursorInEditor &curso
 
 void ClangModelManagerSupport::switchHeaderSource(const FilePath &filePath, bool inNextSplit)
 {
-    if (ClangdClient * const client = clientForFile(filePath))
-        client->switchHeaderSource(filePath, inNextSplit);
-    else
-        CppModelManager::switchHeaderSource(inNextSplit, CppModelManager::Backend::Builtin);
+    if (ClangdClient * const client = clientForFile(filePath)) {
+        switch (ClangdProjectSettings(client->project()).settings().headerSourceSwitchMode) {
+        case ClangdSettings::HeaderSourceSwitchMode::BuiltinOnly:
+            CppModelManager::switchHeaderSource(inNextSplit, CppModelManager::Backend::Builtin);
+            return;
+        case ClangdSettings::HeaderSourceSwitchMode::ClangdOnly:
+            client->switchHeaderSource(filePath, inNextSplit);
+            return;
+        case ClangdSettings::HeaderSourceSwitchMode::Both:
+            const FilePath otherFile = correspondingHeaderOrSource(filePath);
+            if (!otherFile.isEmpty())
+                openEditor(otherFile, inNextSplit);
+            else
+                client->switchHeaderSource(filePath, inNextSplit);
+            return;
+        }
+    }
+    CppModelManager::switchHeaderSource(inNextSplit, CppModelManager::Backend::Builtin);
 }
 
-void ClangModelManagerSupport::checkUnused(const Link &link, Core::SearchResult *search,
+void ClangModelManagerSupport::checkUnused(const Link &link, SearchResult *search,
                                            const LinkHandler &callback)
 {
-    if (const ProjectExplorer::Project * const project
-            = ProjectExplorer::SessionManager::projectForFile(link.targetFilePath)) {
+    if (const Project * const project = ProjectManager::projectForFile(link.targetFilePath)) {
         if (ClangdClient * const client = clientWithProject(project);
                 client && client->isFullyIndexed()) {
             client->checkUnused(link, search, callback);
@@ -368,7 +391,7 @@ bool ClangModelManagerSupport::usesClangd(const TextEditor::TextDocument *docume
     return clientForFile(document->filePath());
 }
 
-CppEditor::BaseEditorDocumentProcessor *ClangModelManagerSupport::createEditorDocumentProcessor(
+BaseEditorDocumentProcessor *ClangModelManagerSupport::createEditorDocumentProcessor(
         TextEditor::TextDocument *baseTextDocument)
 {
     const auto processor = new ClangEditorDocumentProcessor(baseTextDocument);
@@ -382,10 +405,10 @@ CppEditor::BaseEditorDocumentProcessor *ClangModelManagerSupport::createEditorDo
     return processor;
 }
 
-void ClangModelManagerSupport::onCurrentEditorChanged(Core::IEditor *editor)
+void ClangModelManagerSupport::onCurrentEditorChanged(IEditor *editor)
 {
     // Update task hub issues for current CppEditorDocument
-    ProjectExplorer::TaskHub::clearTasks(Constants::TASK_CATEGORY_DIAGNOSTICS);
+    TaskHub::clearTasks(Constants::TASK_CATEGORY_DIAGNOSTICS);
     if (!editor || !editor->document() || !cppModelManager()->isCppEditor(editor))
         return;
 
@@ -408,28 +431,25 @@ void ClangModelManagerSupport::connectToWidgetsMarkContextMenuRequested(QWidget 
     }
 }
 
-static FilePath getJsonDbDir(const ProjectExplorer::Project *project)
+static FilePath getJsonDbDir(const Project *project)
 {
     static const QString dirName(".qtc_clangd");
     if (!project) {
         const QString sessionDirName = FileUtils::fileSystemFriendlyName(
-                    ProjectExplorer::SessionManager::activeSession());
-        return Core::ICore::userResourcePath() / dirName / sessionDirName; // TODO: Make configurable?
+                    SessionManager::activeSession());
+        return ICore::userResourcePath() / dirName / sessionDirName; // TODO: Make configurable?
     }
-    if (const ProjectExplorer::Target * const target = project->activeTarget()) {
-        if (const ProjectExplorer::BuildConfiguration * const bc
-                = target->activeBuildConfiguration()) {
+    if (const Target * const target = project->activeTarget()) {
+        if (const BuildConfiguration * const bc = target->activeBuildConfiguration())
             return bc->buildDirectory() / dirName;
-        }
     }
     return {};
 }
 
-static bool isProjectDataUpToDate(
-        ProjectExplorer::Project *project, ProjectInfoList projectInfo,
-        const FilePath &jsonDbDir)
+static bool isProjectDataUpToDate(Project *project, ProjectInfoList projectInfo,
+                                  const FilePath &jsonDbDir)
 {
-    if (project && !ProjectExplorer::SessionManager::hasProject(project))
+    if (project && !ProjectManager::hasProject(project))
         return false;
     const ClangdSettings settings(ClangdProjectSettings(project).settings());
     if (!settings.useClangd())
@@ -458,7 +478,7 @@ static bool isProjectDataUpToDate(
     return true;
 }
 
-void ClangModelManagerSupport::updateLanguageClient(ProjectExplorer::Project *project)
+void ClangModelManagerSupport::updateLanguageClient(Project *project)
 {
     const ClangdSettings settings(ClangdProjectSettings(project).settings());
     if (!settings.useClangd())
@@ -484,12 +504,12 @@ void ClangModelManagerSupport::updateLanguageClient(ProjectExplorer::Project *pr
             return;
         const GenerateCompilationDbResult result = generatorWatcher->result();
         if (!result.error.isEmpty()) {
-            Core::MessageManager::writeDisrupting(
+            MessageManager::writeDisrupting(
                         Tr::tr("Cannot use clangd: Failed to generate compilation database:\n%1")
                         .arg(result.error));
             return;
         }
-        Utils::Id previousId;
+        Id previousId;
         if (Client * const oldClient = clientForProject(project)) {
             previousId = oldClient->id();
             LanguageClientManager::shutdownClient(oldClient);
@@ -525,7 +545,7 @@ void ClangModelManagerSupport::updateLanguageClient(ProjectExplorer::Project *pr
                     hasDocuments = true;
                     continue;
                 }
-                const Project * const docProject = SessionManager::projectForFile(doc->filePath());
+                const Project * const docProject = ProjectManager::projectForFile(doc->filePath());
                 if (currentClient && currentClient->project()
                         && currentClient->project() != project
                         && currentClient->project() == docProject) {
@@ -565,8 +585,8 @@ void ClangModelManagerSupport::updateLanguageClient(ProjectExplorer::Project *pr
             ProjectNode *rootNode = nullptr;
             if (project)
                 rootNode = project->rootProjectNode();
-            else if (SessionManager::startupProject())
-                rootNode = SessionManager::startupProject()->rootProjectNode();
+            else if (ProjectManager::startupProject())
+                rootNode = ProjectManager::startupProject()->rootProjectNode();
             if (!rootNode)
                 return;
             const Node * const cxxNode = rootNode->findNode([](Node *n) {
@@ -584,7 +604,7 @@ void ClangModelManagerSupport::updateLanguageClient(ProjectExplorer::Project *pr
 
     });
     const FilePath includeDir = settings.clangdIncludePath();
-    auto future = Utils::runAsync(&Internal::generateCompilationDB, projectInfo,
+    auto future = Utils::asyncRun(&Internal::generateCompilationDB, projectInfo,
                                   jsonDbDir, CompilationDbPurpose::CodeModel,
                                   warningsConfigForProject(project),
                                   globalClangOptions(), includeDir);
@@ -592,18 +612,28 @@ void ClangModelManagerSupport::updateLanguageClient(ProjectExplorer::Project *pr
     m_generatorSynchronizer.addFuture(future);
 }
 
-ClangdClient *ClangModelManagerSupport::clientForProject(const ProjectExplorer::Project *project)
+QList<Client *> ClangModelManagerSupport::clientsForOpenProjects()
+{
+    QSet<Client *> clients;
+    const QList<Project *> projects = ProjectManager::projects();
+    for (Project *project : projects) {
+        if (Client *client = ClangModelManagerSupport::clientForProject(project))
+            clients << client;
+    }
+    return clients.values();
+}
+
+ClangdClient *ClangModelManagerSupport::clientForProject(const Project *project)
 {
     if (sessionModeEnabled())
         project = nullptr;
     return clientWithProject(project);
 }
 
-ClangdClient *ClangModelManagerSupport::clientWithProject(const ProjectExplorer::Project *project)
+ClangdClient *ClangModelManagerSupport::clientWithProject(const Project *project)
 {
     const QList<Client *> clients = Utils::filtered(
-                LanguageClientManager::clientsForProject(project),
-                    [](const LanguageClient::Client *c) {
+                LanguageClientManager::clientsForProject(project), [](const Client *c) {
         return qobject_cast<const ClangdClient *>(c)
                 && c->state() != Client::ShutdownRequested
                 && c->state() != Client::Shutdown;
@@ -641,7 +671,7 @@ void ClangModelManagerSupport::claimNonProjectSources(ClangdClient *client)
         }
         if (!ClangdSettings::instance().sizeIsOkay(doc->filePath()))
             continue;
-        if (ProjectExplorer::SessionManager::projectForFile(doc->filePath()))
+        if (ProjectManager::projectForFile(doc->filePath()))
             continue;
         if (client->project() && !ProjectFile::isHeader(doc->filePath()))
             continue;
@@ -655,9 +685,10 @@ void ClangModelManagerSupport::claimNonProjectSources(ClangdClient *client)
 // for the respective project to force re-parsing of open documents and re-indexing.
 // While this is not 100% bullet-proof, chances are good that in a typical session-based
 // workflow, e.g. a git branch switch will hit at least one open file.
+// We also look for repository changes explicitly.
 void ClangModelManagerSupport::watchForExternalChanges()
 {
-    connect(Core::DocumentManager::instance(), &Core::DocumentManager::filesChangedExternally,
+    connect(DocumentManager::instance(), &DocumentManager::filesChangedExternally,
             this, [this](const QSet<FilePath> &files) {
         if (!LanguageClientManager::hasClients<ClangdClient>())
             return;
@@ -665,8 +696,7 @@ void ClangModelManagerSupport::watchForExternalChanges()
             const ProjectFile::Kind kind = ProjectFile::classify(file.toString());
             if (!ProjectFile::isSource(kind) && !ProjectFile::isHeader(kind))
                 continue;
-            ProjectExplorer::Project * const project
-                    = ProjectExplorer::SessionManager::projectForFile(file);
+            Project * const project = ProjectManager::projectForFile(file);
             if (!project)
                 continue;
 
@@ -679,20 +709,36 @@ void ClangModelManagerSupport::watchForExternalChanges()
             return;
         }
     });
+
+    connect(VcsManager::instance(), &VcsManager::repositoryChanged,
+            this, [this](const FilePath &repoDir) {
+        if (sessionModeEnabled()) {
+            if (ClangdClient * const client = clientForProject(nullptr))
+                scheduleClientRestart(client);
+            return;
+        }
+        for (const Project * const project : ProjectManager::projects()) {
+            const FilePath &projectDir = project->projectDirectory();
+            if (repoDir == projectDir || repoDir.isChildOf(projectDir)
+                || projectDir.isChildOf(repoDir)) {
+                if (ClangdClient * const client = clientForProject(project))
+                    scheduleClientRestart(client);
+            }
+        }
+    });
 }
 
 // If Qt Creator changes a file that is not open (e.g. as part of a quickfix), we have to
 // restart clangd for reliable re-parsing and re-indexing.
 void ClangModelManagerSupport::watchForInternalChanges()
 {
-    connect(Core::DocumentManager::instance(), &Core::DocumentManager::filesChangedInternally,
+    connect(DocumentManager::instance(), &DocumentManager::filesChangedInternally,
             this, [this](const FilePaths &filePaths) {
         for (const FilePath &fp : filePaths) {
             const ProjectFile::Kind kind = ProjectFile::classify(fp.toString());
             if (!ProjectFile::isSource(kind) && !ProjectFile::isHeader(kind))
                 continue;
-            ProjectExplorer::Project * const project
-                    = ProjectExplorer::SessionManager::projectForFile(fp);
+            Project * const project = ProjectManager::projectForFile(fp);
             if (!project)
                 continue;
             if (ClangdClient * const client = clientForProject(project);
@@ -718,18 +764,17 @@ void ClangModelManagerSupport::scheduleClientRestart(ClangdClient *client)
     m_clientRestartTimer->start();
 }
 
-void ClangModelManagerSupport::onEditorOpened(Core::IEditor *editor)
+void ClangModelManagerSupport::onEditorOpened(IEditor *editor)
 {
     QTC_ASSERT(editor, return);
-    Core::IDocument *document = editor->document();
+    IDocument *document = editor->document();
     QTC_ASSERT(document, return);
     auto textDocument = qobject_cast<TextEditor::TextDocument *>(document);
 
     if (textDocument && cppModelManager()->isCppEditor(editor)) {
         connectToWidgetsMarkContextMenuRequested(editor->widget());
 
-        ProjectExplorer::Project * project
-                = ProjectExplorer::SessionManager::projectForFile(document->filePath());
+        Project * project = ProjectManager::projectForFile(document->filePath());
         const ClangdSettings settings(ClangdProjectSettings(project).settings());
         if (!settings.sizeIsOkay(textDocument->filePath()))
             return;
@@ -814,44 +859,12 @@ void ClangModelManagerSupport::onTextMarkContextMenuRequested(TextEditor::TextEd
     }
 }
 
-using ClangEditorDocumentProcessors = QVector<ClangEditorDocumentProcessor *>;
-static ClangEditorDocumentProcessors clangProcessors()
-{
-    ClangEditorDocumentProcessors result;
-    for (const CppEditorDocumentHandle *editorDocument : cppModelManager()->cppEditorDocuments())
-        result.append(qobject_cast<ClangEditorDocumentProcessor *>(editorDocument->processor()));
-
-    return result;
-}
-
-void ClangModelManagerSupport::onProjectPartsUpdated(ProjectExplorer::Project *project)
-{
-    QTC_ASSERT(project, return);
-
-    updateLanguageClient(project);
-
-    QStringList projectPartIds;
-    const CppEditor::ProjectInfo::ConstPtr projectInfo = cppModelManager()->projectInfo(project);
-    QTC_ASSERT(projectInfo, return);
-
-    for (const CppEditor::ProjectPart::ConstPtr &projectPart : projectInfo->projectParts())
-        projectPartIds.append(projectPart->id());
-    onProjectPartsRemoved(projectPartIds);
-}
-
-void ClangModelManagerSupport::onProjectPartsRemoved(const QStringList &projectPartIds)
-{
-    if (!projectPartIds.isEmpty())
-        reinitializeBackendDocuments(projectPartIds);
-}
-
 void ClangModelManagerSupport::onClangdSettingsChanged()
 {
     const bool sessionMode = sessionModeEnabled();
 
-    for (ProjectExplorer::Project * const project : ProjectExplorer::SessionManager::projects()) {
-        const CppEditor::ClangdSettings settings(
-                    CppEditor::ClangdProjectSettings(project).settings());
+    for (Project * const project : ProjectManager::projects()) {
+        const ClangdSettings settings(ClangdProjectSettings(project).settings());
         ClangdClient * const client = clientWithProject(project);
         if (sessionMode) {
             if (client && client->project())
@@ -891,23 +904,6 @@ void ClangModelManagerSupport::onClangdSettingsChanged()
     if (fallbackOrSessionClient->settingsData() != settings.data()) {
         LanguageClientManager::shutdownClient(fallbackOrSessionClient);
         startNewFallbackOrSessionClient();
-    }
-}
-
-static ClangEditorDocumentProcessors
-clangProcessorsWithProjectParts(const QStringList &projectPartIds)
-{
-    return ::Utils::filtered(clangProcessors(), [projectPartIds](ClangEditorDocumentProcessor *p) {
-        return p->hasProjectPart() && projectPartIds.contains(p->projectPart()->id());
-    });
-}
-
-void ClangModelManagerSupport::reinitializeBackendDocuments(const QStringList &projectPartIds)
-{
-    const ClangEditorDocumentProcessors processors = clangProcessorsWithProjectParts(projectPartIds);
-    for (ClangEditorDocumentProcessor *processor : processors) {
-        processor->clearProjectPart();
-        processor->run();
     }
 }
 

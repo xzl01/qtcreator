@@ -135,17 +135,10 @@ LookupResult ScriptEngine::doExtraScopeLookup(JSContext *ctx, JSAtom prop)
 
     ScriptEngine * const engine = engineForContext(ctx);
     engine->m_lastLookupWasSuccess = false;
+
     JSValueList scopes;
-
-    // FIXME: This is probably wrong, and kept only for "bug compatibility"
-    // The correct code should be the one commented out below. Fix for 2.1.
-    for (const auto &l : qAsConst(engine->m_scopeChains)) {
-        for (const auto &s : l)
-            scopes.push_back(s);
-    }
-    //    if (!engine->m_scopeChains.isEmpty())
-    //        scopes = engine->m_scopeChains.last();
-
+    if (!engine->m_scopeChains.isEmpty())
+        scopes = engine->m_scopeChains.last();
     if (JS_IsObject(engine->m_globalObject))
         scopes.insert(scopes.begin(), engine->m_globalObject);
     for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
@@ -181,9 +174,9 @@ ScriptEngine::~ScriptEngine()
         m_logger.qbsLog(LoggerInfo, true) << Tr::tr("Setting up imports took %1.")
                                              .arg(elapsedTimeString(m_elapsedTimeImporting));
     }
-    for (const auto &ext : qAsConst(m_internalExtensions))
+    for (const auto &ext : std::as_const(m_internalExtensions))
         JS_FreeValue(m_context, ext);
-    for (const JSValue &s : qAsConst(m_stringCache))
+    for (const JSValue &s : std::as_const(m_stringCache))
         JS_FreeValue(m_context, s);
     for (JSValue * const externalRef : std::as_const(m_externallyCachedValues)) {
         JS_FreeValue(m_context, *externalRef);
@@ -199,7 +192,7 @@ void ScriptEngine::reset()
     // TODO: Check whether we can keep file and imports cache.
     //       We'd have to find a solution for the scope name problem then.
     clearImportsCache();
-    for (const auto &e : qAsConst(m_jsFileCache))
+    for (const auto &e : std::as_const(m_jsFileCache))
         JS_FreeValue(m_context, e.second);
     m_jsFileCache.clear();
 
@@ -208,19 +201,19 @@ void ScriptEngine::reset()
             JS_FreeValue(m_context, it.key());
     }
     m_evalResults.clear();
-    for (const auto &e : qAsConst(m_projectScriptValues))
+    for (const auto &e : std::as_const(m_projectScriptValues))
         JS_FreeValue(m_context, e.second);
     m_projectScriptValues.clear();
-    for (const auto &e : qAsConst(m_baseProductScriptValues))
+    for (const auto &e : std::as_const(m_baseProductScriptValues))
         JS_FreeValue(m_context, e.second);
     m_baseProductScriptValues.clear();
-    for (const auto &e : qAsConst(m_productArtifactsMapScriptValues))
+    for (const auto &e : std::as_const(m_productArtifactsMapScriptValues))
         JS_FreeValue(m_context, e.second);
     m_productArtifactsMapScriptValues.clear();
-    for (const auto &e : qAsConst(m_moduleArtifactsMapScriptValues))
+    for (const auto &e : std::as_const(m_moduleArtifactsMapScriptValues))
         JS_FreeValue(m_context, e.second);
     m_moduleArtifactsMapScriptValues.clear();
-    for (const auto &e : qAsConst(m_baseModuleScriptValues))
+    for (const auto &e : std::as_const(m_baseModuleScriptValues))
         JS_FreeValue(m_context, e.second);
     m_baseModuleScriptValues.clear();
     for (auto it = m_artifactsScriptValues.cbegin(); it != m_artifactsScriptValues.cend(); ++it) {
@@ -233,22 +226,7 @@ void ScriptEngine::reset()
 void ScriptEngine::import(const FileContextBaseConstPtr &fileCtx, JSValue &targetObject,
                           ObserveMode observeMode)
 {
-    installImportFunctions(targetObject);
-    m_currentDirPathStack.push(FileInfo::path(fileCtx->filePath()));
-    m_extensionSearchPathsStack.push(fileCtx->searchPaths());
-    m_observeMode = observeMode;
-
-    for (const JsImport &jsImport : fileCtx->jsImports())
-        import(jsImport, targetObject);
-    if (m_observeMode == ObserveMode::Enabled) {
-        for (JSValue &sv : m_requireResults)
-            observeImport(sv);
-        m_requireResults.clear();
-    }
-
-    m_currentDirPathStack.pop();
-    m_extensionSearchPathsStack.pop();
-    uninstallImportFunctions();
+    Importer(*this, fileCtx, targetObject, observeMode).run();
 }
 
 void ScriptEngine::import(const JsImport &jsImport, JSValue &targetObject)
@@ -266,9 +244,10 @@ void ScriptEngine::import(const JsImport &jsImport, JSValue &targetObject)
         if (debugJSImports)
             qDebug() << "[ENGINE] " << jsImport.filePaths << " (cache miss)";
 
-        jsImportValue = JS_NewObject(m_context);
+        ScopedJsValue scopedImportValue(m_context, JS_NewObject(m_context));
         for (const QString &filePath : jsImport.filePaths)
-            importFile(filePath, jsImportValue);
+            importFile(filePath, scopedImportValue);
+        jsImportValue = scopedImportValue.release();
         m_jsImportCache.insert(jsImport, jsImportValue);
         std::vector<QString> &filePathsForScriptValue
                 = m_filePathsPerImport[jsObjectId(jsImportValue)];
@@ -300,7 +279,7 @@ void ScriptEngine::observeImport(JSValue &jsImport)
 
 void ScriptEngine::clearImportsCache()
 {
-    for (const auto &jsImport : qAsConst(m_jsImportCache))
+    for (const auto &jsImport : std::as_const(m_jsImportCache))
         JS_FreeValue(m_context, jsImport);
     m_jsImportCache.clear();
     m_filePathsPerImport.clear();
@@ -444,7 +423,7 @@ void ScriptEngine::setEnvironment(const QProcessEnvironment &env)
     m_environment = env;
 }
 
-void ScriptEngine::importFile(const QString &filePath, JSValue &targetObject)
+void ScriptEngine::importFile(const QString &filePath, JSValue targetObject)
 {
     AccumulatingTimer importTimer(m_elapsedTimeImporting != -1 ? &m_elapsedTimeImporting : nullptr);
     JSValue &evaluationResult = m_jsFileCache[filePath];
@@ -500,6 +479,12 @@ JSValue ScriptEngine::getInternalExtension(const char *name) const
 void ScriptEngine::addInternalExtension(const char *name, JSValue ext)
 {
     m_internalExtensions.insert(QLatin1String(name), JS_DupValue(m_context, ext));
+}
+
+JSValue ScriptEngine::asJsValue(const QByteArray &s)
+{
+    return JS_NewArrayBufferCopy(
+        m_context, reinterpret_cast<const uint8_t *>(s.constData()), s.size());
 }
 
 JSValue ScriptEngine::asJsValue(const QString &s)
@@ -598,9 +583,9 @@ JSValue ScriptEngine::js_require(JSContext *ctx, JSValueConst this_val,
                         engine->m_logger.qbsDebug()
                                 << "[require] importing file " << filePath;
                     }
-                    JSValue obj = engine->newObject();
+                    ScopedJsValue obj(engine->context(), engine->newObject());
                     engine->importFile(filePath, obj);
-                    values << obj;
+                    values << obj.release();
                     filePaths.push_back(filePath);
                 }
             } catch (const ErrorInfo &e) {
@@ -631,8 +616,9 @@ JSValue ScriptEngine::js_require(JSContext *ctx, JSValueConst this_val,
         result = getJsProperty(ctx, func_data[0], scopeName);
         if (JS_IsObject(result))
             return result; // Same JS file imported from same qbs file via different JS files (e.g. codesign.js from DarwinGCC.qbs via gcc.js and darwin.js).
-        result = engine->newObject();
-        engine->importFile(filePath, result);
+        ScopedJsValue scopedResult(engine->context(), engine->newObject());
+        engine->importFile(filePath, scopedResult);
+        result = scopedResult.release();
         setJsProperty(ctx, result, StringConstants::importScopeNamePropertyInternal(), scopeName);
         setJsProperty(ctx, func_data[0], scopeName, result);
         engine->m_requireResults.push_back(result);
@@ -1025,6 +1011,36 @@ void ScriptEngine::clearRequestedProperties()
 void ScriptEngine::takeOwnership(JSValue v)
 {
     ++m_evalResults[v];
+}
+
+ScriptEngine::Importer::Importer(
+            ScriptEngine &engine, const FileContextBaseConstPtr &fileCtx, JSValue &targetObject,
+            ObserveMode observeMode)
+    : m_engine(engine), m_fileCtx(fileCtx), m_targetObject(targetObject)
+{
+    m_engine.installImportFunctions(targetObject);
+    m_engine.m_currentDirPathStack.push(FileInfo::path(fileCtx->filePath()));
+    m_engine.m_extensionSearchPathsStack.push(fileCtx->searchPaths());
+    m_engine.m_observeMode = observeMode;
+}
+
+ScriptEngine::Importer::~Importer()
+{
+    if (m_engine.m_observeMode == ObserveMode::Enabled)
+        m_engine.m_requireResults.clear();
+    m_engine.m_currentDirPathStack.pop();
+    m_engine.m_extensionSearchPathsStack.pop();
+    m_engine.uninstallImportFunctions();
+}
+
+void ScriptEngine::Importer::run()
+{
+    for (const JsImport &jsImport : m_fileCtx->jsImports())
+        m_engine.import(jsImport, m_targetObject);
+    if (m_engine.m_observeMode == ObserveMode::Enabled) {
+        for (JSValue &sv : m_engine.m_requireResults)
+            m_engine.observeImport(sv);
+    }
 }
 
 } // namespace Internal

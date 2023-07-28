@@ -65,7 +65,7 @@ static void splitIdInBaseNameAndNumber(const QString &id, QString *baseId, int *
 {
 
     int counter = 0;
-    while (counter < id.count()) {
+    while (counter < id.size()) {
         bool canConvertToInteger = false;
         int newNumber = id.right(counter + 1).toInt(&canConvertToInteger);
         if (canConvertToInteger)
@@ -76,7 +76,7 @@ static void splitIdInBaseNameAndNumber(const QString &id, QString *baseId, int *
         counter++;
     }
 
-    *baseId = id.left(id.count() - counter);
+    *baseId = id.left(id.size() - counter);
 }
 
 void StylesheetMerger::syncNodeProperties(ModelNode &outputNode, const ModelNode &inputNode, bool skipDuplicates)
@@ -555,6 +555,7 @@ void StylesheetMerger::styleMerge(const QString &qmlTemplateString,
     templateRewriterView->setTextModifier(&textModifierTemplate);
     templateModel->attachView(templateRewriterView.data());
     templateRewriterView->setCheckSemanticErrors(false);
+    templateRewriterView->setPossibleImportsEnabled(false);
 
     ModelNode templateRootNode = templateRewriterView->rootModelNode();
     QTC_ASSERT(templateRootNode.isValid(), return );

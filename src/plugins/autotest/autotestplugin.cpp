@@ -32,22 +32,28 @@
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
+
 #include <cplusplus/CppDocument.h>
 #include <cplusplus/LookupContext.h>
 #include <cplusplus/Overview.h>
+
 #include <cppeditor/cppeditorconstants.h>
 #include <cppeditor/cppmodelmanager.h>
+
 #include <extensionsystem/pluginmanager.h>
+
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorericons.h>
+#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/projectpanelfactory.h>
 #include <projectexplorer/runcontrol.h>
-#include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
+
 #include <texteditor/textdocument.h>
 #include <texteditor/texteditor.h>
+
 #include <utils/algorithm.h>
 #include <utils/textutils.h>
 #include <utils/utilsicons.h>
@@ -90,7 +96,7 @@ public:
     void onRunUnderCursorTriggered(TestRunMode mode);
 
     TestSettings m_settings;
-    TestSettingsPage m_testSettingPage{&m_settings};
+    TestSettingsPage m_testSettingPage;
 
     TestCodeParser m_testCodeParser;
     TestTreeModel m_testTreeModel{&m_testCodeParser};
@@ -148,11 +154,11 @@ AutotestPluginPrivate::AutotestPluginPrivate()
     m_testTreeModel.synchronizeTestFrameworks();
     m_testTreeModel.synchronizeTestTools();
 
-    auto sessionManager = ProjectExplorer::SessionManager::instance();
-    connect(sessionManager, &ProjectExplorer::SessionManager::startupProjectChanged,
+    auto sessionManager = ProjectExplorer::ProjectManager::instance();
+    connect(sessionManager, &ProjectExplorer::ProjectManager::startupProjectChanged,
             this, [this] { m_runconfigCache.clear(); });
 
-    connect(sessionManager, &ProjectExplorer::SessionManager::aboutToRemoveProject,
+    connect(sessionManager, &ProjectExplorer::ProjectManager::aboutToRemoveProject,
             this, [](ProjectExplorer::Project *project) {
         const auto it = s_projectSettings.constFind(project);
         if (it != s_projectSettings.constEnd()) {
@@ -172,11 +178,6 @@ AutotestPluginPrivate::~AutotestPluginPrivate()
     delete m_resultsPane;
 }
 
-TestSettings *AutotestPlugin::settings()
-{
-    return &dd->m_settings;
-}
-
 TestProjectSettings *AutotestPlugin::projectSettings(ProjectExplorer::Project *project)
 {
     auto &settings = s_projectSettings[project];
@@ -194,7 +195,7 @@ void AutotestPluginPrivate::initializeMenuEntries()
 
     QAction *action = new QAction(Tr::tr("Run &All Tests"), this);
     action->setIcon(Utils::Icons::RUN_SMALL.icon());
-    action->setToolTip(Tr::tr("Run all tests"));
+    action->setToolTip(Tr::tr("Run All Tests"));
     Command *command = ActionManager::registerAction(action, Constants::ACTION_RUN_ALL_ID);
     command->setDefaultKeySequence(
         QKeySequence(useMacShortcuts ? Tr::tr("Ctrl+Meta+T, Ctrl+Meta+A") : Tr::tr("Alt+Shift+T,Alt+A")));
@@ -205,7 +206,7 @@ void AutotestPluginPrivate::initializeMenuEntries()
 
     action = new QAction(Tr::tr("Run All Tests Without Deployment"), this);
     action->setIcon(Utils::Icons::RUN_SMALL.icon());
-    action->setToolTip(Tr::tr("Run all tests without deployment"));
+    action->setToolTip(Tr::tr("Run All Tests Without Deployment"));
     command = ActionManager::registerAction(action, Constants::ACTION_RUN_ALL_NODEPLOY_ID);
     command->setDefaultKeySequence(
                 QKeySequence(useMacShortcuts ? Tr::tr("Ctrl+Meta+T, Ctrl+Meta+E") : Tr::tr("Alt+Shift+T,Alt+E")));
@@ -216,7 +217,7 @@ void AutotestPluginPrivate::initializeMenuEntries()
 
     action = new QAction(Tr::tr("&Run Selected Tests"), this);
     action->setIcon(Utils::Icons::RUN_SELECTED.icon());
-    action->setToolTip(Tr::tr("Run selected tests"));
+    action->setToolTip(Tr::tr("Run Selected Tests"));
     command = ActionManager::registerAction(action, Constants::ACTION_RUN_SELECTED_ID);
     command->setDefaultKeySequence(
         QKeySequence(useMacShortcuts ? Tr::tr("Ctrl+Meta+T, Ctrl+Meta+R") : Tr::tr("Alt+Shift+T,Alt+R")));
@@ -227,7 +228,7 @@ void AutotestPluginPrivate::initializeMenuEntries()
 
     action = new QAction(Tr::tr("&Run Selected Tests Without Deployment"), this);
     action->setIcon(Utils::Icons::RUN_SELECTED.icon());
-    action->setToolTip(Tr::tr("Run selected tests"));
+    action->setToolTip(Tr::tr("Run Selected Tests Without Deployment"));
     command = ActionManager::registerAction(action, Constants::ACTION_RUN_SELECTED_NODEPLOY_ID);
     command->setDefaultKeySequence(
         QKeySequence(useMacShortcuts ? Tr::tr("Ctrl+Meta+T, Ctrl+Meta+W") : Tr::tr("Alt+Shift+T,Alt+W")));
@@ -238,7 +239,7 @@ void AutotestPluginPrivate::initializeMenuEntries()
 
     action = new QAction(Tr::tr("Run &Failed Tests"),  this);
     action->setIcon(Icons::RUN_FAILED.icon());
-    action->setToolTip(Tr::tr("Run failed tests"));
+    action->setToolTip(Tr::tr("Run Failed Tests"));
     command = ActionManager::registerAction(action, Constants::ACTION_RUN_FAILED_ID);
     command->setDefaultKeySequence(
                 useMacShortcuts ? Tr::tr("Ctrl+Meta+T, Ctrl+Meta+F") : Tr::tr("Alt+Shift+T,Alt+F"));
@@ -248,7 +249,7 @@ void AutotestPluginPrivate::initializeMenuEntries()
 
     action = new QAction(Tr::tr("Run Tests for &Current File"), this);
     action->setIcon(Utils::Icons::RUN_FILE.icon());
-    action->setToolTip(Tr::tr("Run tests for current file"));
+    action->setToolTip(Tr::tr("Run Tests for Current File"));
     command = ActionManager::registerAction(action, Constants::ACTION_RUN_FILE_ID);
     command->setDefaultKeySequence(
         QKeySequence(useMacShortcuts ? Tr::tr("Ctrl+Meta+T, Ctrl+Meta+C") : Tr::tr("Alt+Shift+T,Alt+C")));
@@ -471,7 +472,7 @@ void AutotestPluginPrivate::onRunUnderCursorTriggered(TestRunMode mode)
 
 TestFrameworks AutotestPlugin::activeTestFrameworks()
 {
-    ProjectExplorer::Project *project = ProjectExplorer::SessionManager::startupProject();
+    ProjectExplorer::Project *project = ProjectExplorer::ProjectManager::startupProject();
     TestFrameworks sorted;
     if (!project || projectSettings(project)->useGlobalSettings()) {
         sorted = Utils::filtered(TestFrameworkManager::registeredFrameworks(),
@@ -489,7 +490,7 @@ TestFrameworks AutotestPlugin::activeTestFrameworks()
 
 void AutotestPlugin::updateMenuItemsEnabledState()
 {
-    const ProjectExplorer::Project *project = ProjectExplorer::SessionManager::startupProject();
+    const ProjectExplorer::Project *project = ProjectExplorer::ProjectManager::startupProject();
     const ProjectExplorer::Target *target = project ? project->activeTarget() : nullptr;
     const bool canScan = !dd->m_testRunner.isTestRunning()
             && dd->m_testCodeParser.state() == TestCodeParser::Idle;

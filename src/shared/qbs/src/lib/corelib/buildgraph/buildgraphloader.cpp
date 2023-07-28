@@ -39,21 +39,20 @@
 #include "buildgraphloader.h"
 
 #include "buildgraph.h"
-#include "cycledetector.h"
 #include "emptydirectoriesremover.h"
 #include "productbuilddata.h"
 #include "projectbuilddata.h"
 #include "rulenode.h"
 #include "rulecommands.h"
-#include "rulesevaluationcontext.h"
 #include "transformer.h"
 
+#include <buildgraph/rulesevaluationcontext.h>
 #include <language/artifactproperties.h>
 #include <language/language.h>
-#include <language/loader.h>
 #include <language/propertymapinternal.h>
 #include <language/qualifiedid.h>
 #include <language/resolvedfilecontext.h>
+#include <loader/projectresolver.h>
 #include <logging/categories.h>
 #include <logging/translator.h>
 #include <tools/buildgraphlocker.h>
@@ -95,7 +94,7 @@ static void restoreBackPointers(const ResolvedProjectPtr &project)
         product->project = project;
         if (!product->buildData)
             continue;
-        for (BuildGraphNode * const n : qAsConst(product->buildData->allNodes())) {
+        for (BuildGraphNode * const n : std::as_const(product->buildData->allNodes())) {
             if (n->type() == BuildGraphNode::ArtifactNodeType) {
                 project->topLevelProject()->buildData
                         ->insertIntoLookupTable(static_cast<Artifact *>(n));
@@ -103,7 +102,7 @@ static void restoreBackPointers(const ResolvedProjectPtr &project)
         }
     }
 
-    for (const ResolvedProjectPtr &subProject : qAsConst(project->subProjects)) {
+    for (const ResolvedProjectPtr &subProject : std::as_const(project->subProjects)) {
         subProject->parentProject = project;
         restoreBackPointers(subProject);
     }
@@ -129,7 +128,7 @@ BuildGraphLoadResult BuildGraphLoader::load(const TopLevelProjectPtr &existingPr
     if (!m_result.loadedProject)
         return m_result;
     if (parameters.restoreBehavior() == SetupProjectParameters::RestoreOnly) {
-        for (const ErrorInfo &e : qAsConst(m_result.loadedProject->warningsEncountered))
+        for (const ErrorInfo &e : std::as_const(m_result.loadedProject->warningsEncountered))
             m_logger.printWarning(e);
         return m_result;
     }
@@ -220,7 +219,7 @@ bool BuildGraphLoader::checkBuildGraphCompatibility(const TopLevelProjectConstPt
     if (m_parameters.projectFilePath().isEmpty())
         m_parameters.setProjectFilePath(project->location.filePath());
     else
-        Loader::setupProjectFilePath(m_parameters);
+        m_parameters.finalizeProjectFilePath();
     if (QFileInfo(project->location.filePath()) == QFileInfo(m_parameters.projectFilePath()))
         return true;
     QString message = Tr::tr("Stored build graph at '%1' is for project file '%2', but "
@@ -244,7 +243,7 @@ static bool checkProductForChangedDependency(std::vector<ResolvedProductPtr> &ch
         return false;
     if (contains(changedProducts, product))
         return true;
-    for (const ResolvedProductPtr &dep : qAsConst(product->dependencies)) {
+    for (const ResolvedProductPtr &dep : std::as_const(product->dependencies)) {
         if (checkProductForChangedDependency(changedProducts, seenProducts, dep)) {
             changedProducts << product;
             return true;
@@ -269,14 +268,14 @@ static void makeChangedProductsListComplete(std::vector<ResolvedProductPtr> &cha
 static void updateProductAndRulePointers(const ResolvedProductPtr &newProduct)
 {
     std::unordered_map<RuleConstPtr, RuleConstPtr> ruleMap;
-    for (BuildGraphNode *node : qAsConst(newProduct->buildData->allNodes())) {
+    for (BuildGraphNode *node : std::as_const(newProduct->buildData->allNodes())) {
         node->product = newProduct;
         const auto findNewRule = [&ruleMap, &newProduct]
                 (const RuleConstPtr &oldRule) -> RuleConstPtr {
             const auto it = ruleMap.find(oldRule);
             if (it != ruleMap.cend())
                 return it->second;
-            for (const auto &r : qAsConst(newProduct->rules)) {
+            for (const auto &r : std::as_const(newProduct->rules)) {
                 if (*r == *oldRule) {
                     ruleMap.insert(std::make_pair(oldRule, r));
                     return r;
@@ -330,7 +329,7 @@ void BuildGraphLoader::trackProjectChanges()
     }
 
     if (!reResolvingNecessary) {
-        for (const ErrorInfo &e : qAsConst(restoredProject->warningsEncountered))
+        for (const ErrorInfo &e : std::as_const(restoredProject->warningsEncountered))
             m_logger.printWarning(e);
         return;
     }
@@ -339,24 +338,23 @@ void BuildGraphLoader::trackProjectChanges()
     markTransformersForChangeTracking(allRestoredProducts);
     if (!m_parameters.overrideBuildGraphData())
         m_parameters.setEnvironment(restoredProject->environment);
-    Loader ldr(m_evalContext->engine(), m_logger);
-    ldr.setSearchPaths(m_parameters.searchPaths());
-    ldr.setProgressObserver(m_evalContext->observer());
-    ldr.setOldProjectProbes(restoredProject->probes);
+    ProjectResolver resolver(m_parameters, m_evalContext->engine(), m_logger);
+    resolver.setProgressObserver(m_evalContext->observer());
+    resolver.setOldProjectProbes(restoredProject->probes);
     if (!m_parameters.forceProbeExecution())
-        ldr.setStoredModuleProviderInfo(restoredProject->moduleProviderInfo);
-    ldr.setLastResolveTime(restoredProject->lastStartResolveTime);
+        resolver.setStoredModuleProviderInfo(restoredProject->moduleProviderInfo);
+    resolver.setLastResolveTime(restoredProject->lastStartResolveTime);
     QHash<QString, std::vector<ProbeConstPtr>> restoredProbes;
-    for (const auto &restoredProduct : qAsConst(allRestoredProducts))
+    for (const auto &restoredProduct : std::as_const(allRestoredProducts))
         restoredProbes.insert(restoredProduct->uniqueName(), restoredProduct->probes);
-    ldr.setOldProductProbes(restoredProbes);
+    resolver.setOldProductProbes(restoredProbes);
     if (!m_parameters.overrideBuildGraphData())
-        ldr.setStoredProfiles(restoredProject->profileConfigs);
-    m_result.newlyResolvedProject = ldr.loadProject(m_parameters);
+        resolver.setStoredProfiles(restoredProject->profileConfigs);
+    m_result.newlyResolvedProject = resolver.resolve();
 
     std::vector<ResolvedProductPtr> allNewlyResolvedProducts
             = m_result.newlyResolvedProject->allProducts();
-    for (const ResolvedProductPtr &cp : qAsConst(allNewlyResolvedProducts))
+    for (const ResolvedProductPtr &cp : std::as_const(allNewlyResolvedProducts))
         m_freshProductsByName.insert(cp->uniqueName(), cp);
 
     checkAllProductsForChanges(allRestoredProducts, changedProducts);
@@ -365,7 +363,7 @@ void BuildGraphLoader::trackProjectChanges()
     ChildListHash childLists;
     if (!changedProducts.empty()) {
         oldBuildData = std::make_shared<ProjectBuildData>(restoredProject->buildData.get());
-        for (const auto &product : qAsConst(allRestoredProducts)) {
+        for (const auto &product : std::as_const(allRestoredProducts)) {
             if (!product->buildData)
                 continue;
 
@@ -384,7 +382,7 @@ void BuildGraphLoader::trackProjectChanges()
     // mean that artifacts will have to get rebuilt; whether this is necesessary will be decided
     // an a per-artifact basis by the Executor on the next build.
     QHash<QString, AllRescuableArtifactData> rescuableArtifactData;
-    for (const ResolvedProductPtr &product : qAsConst(changedProducts)) {
+    for (const ResolvedProductPtr &product : std::as_const(changedProducts)) {
         const QString name = product->uniqueName();
         m_changedSourcesByProduct.erase(name);
         m_productsWhoseArtifactsNeedUpdate.remove(name);
@@ -428,7 +426,7 @@ void BuildGraphLoader::trackProjectChanges()
     }
 
     // Products still left in the list do not exist anymore.
-    for (const ResolvedProductPtr &removedProduct : qAsConst(allRestoredProducts)) {
+    for (const ResolvedProductPtr &removedProduct : std::as_const(allRestoredProducts)) {
         removeOne(changedProducts, removedProduct);
         onProductRemoved(removedProduct, m_result.newlyResolvedProject->buildData.get());
     }
@@ -454,7 +452,7 @@ void BuildGraphLoader::trackProjectChanges()
         updateGeneratedArtifacts(product.get());
     }
 
-    for (const auto &changedProduct : qAsConst(changedProducts)) {
+    for (const auto &changedProduct : std::as_const(changedProducts)) {
         rescueOldBuildData(changedProduct,
                            m_freshProductsByName.value(changedProduct->uniqueName()),
                            childLists, rescuableArtifactData.value(changedProduct->uniqueName()));
@@ -463,7 +461,7 @@ void BuildGraphLoader::trackProjectChanges()
     EmptyDirectoriesRemover(m_result.newlyResolvedProject.get(), m_logger)
             .removeEmptyParentDirectories(m_artifactsRemovedFromDisk);
 
-    for (FileResourceBase * const f : qAsConst(m_objectsToDelete)) {
+    for (FileResourceBase * const f : std::as_const(m_objectsToDelete)) {
         if (f->fileType() == FileResourceBase::FileTypeArtifact)
             static_cast<Artifact *>(f)->product.reset(); // To help with the sanity checks.
     }
@@ -583,7 +581,7 @@ bool BuildGraphLoader::hasProductFileChanged(const std::vector<ResolvedProductPt
             hasChanged = true;
         } else if (!contains(changedProducts, product)) {
             bool foundMissingSourceFile = false;
-            for (const QString &file : qAsConst(product->missingSourceFiles)) {
+            for (const QString &file : std::as_const(product->missingSourceFiles)) {
                 if (FileInfo(file).exists()) {
                     qCDebug(lcBuildGraph) << "Formerly missing file" << file << "in product"
                                           << product->name << "exists now, must re-resolve project";
@@ -739,9 +737,9 @@ static bool dependenciesAreEqual(const ResolvedProductConstPtr &p1,
         return false;
     Set<QString> names1;
     Set<QString> names2;
-    for (const auto &dep : qAsConst(p1->dependencies))
+    for (const auto &dep : std::as_const(p1->dependencies))
         names1 << dep->uniqueName();
-    for (const auto &dep : qAsConst(p2->dependencies))
+    for (const auto &dep : std::as_const(p2->dependencies))
         names2 << dep->uniqueName();
     return names1 == names2;
 }
@@ -820,7 +818,7 @@ void BuildGraphLoader::onProductRemoved(const ResolvedProductPtr &product,
 
     removeOne(product->project->products, product);
     if (product->buildData) {
-        for (BuildGraphNode * const node : qAsConst(product->buildData->allNodes())) {
+        for (BuildGraphNode * const node : std::as_const(product->buildData->allNodes())) {
             if (node->type() == BuildGraphNode::ArtifactNodeType) {
                 const auto artifact = static_cast<Artifact *>(node);
                 projectBuildData->removeArtifact(artifact, m_logger, removeArtifactsFromDisk,
@@ -828,10 +826,10 @@ void BuildGraphLoader::onProductRemoved(const ResolvedProductPtr &product,
                 if (removeArtifactsFromDisk && artifact->artifactType == Artifact::Generated)
                     m_artifactsRemovedFromDisk << artifact->filePath();
             } else {
-                for (BuildGraphNode * const parent : qAsConst(node->parents))
+                for (BuildGraphNode * const parent : std::as_const(node->parents))
                     parent->children.remove(node);
                 node->parents.clear();
-                for (BuildGraphNode * const child : qAsConst(node->children))
+                for (BuildGraphNode * const child : std::as_const(node->children))
                     child->parents.remove(node);
                 node->children.clear();
             }
@@ -900,8 +898,8 @@ bool BuildGraphLoader::checkConfigCompatibility()
     if (m_parameters.finalBuildConfigurationTree() != restoredProject->buildConfiguration())
         return false;
     Settings settings(m_parameters.settingsDirectory());
-    for (QVariantMap::ConstIterator it = restoredProject->profileConfigs.constBegin();
-         it != restoredProject->profileConfigs.constEnd(); ++it) {
+    const QVariantMap profileConfigsTree = restoredProject->fullProfileConfigsTree();
+    for (auto it = profileConfigsTree.begin(); it != profileConfigsTree.end(); ++it) {
         const Profile profile(it.key(), &settings);
         const QVariantMap buildConfig = SetupProjectParameters::expandedBuildConfiguration(
                     profile, m_parameters.configurationName());
@@ -967,7 +965,7 @@ void BuildGraphLoader::rescueOldBuildData(const ResolvedProductConstPtr &restore
             rad.lastPrepareScriptExecutionTime
                     = oldArtifact->transformer->lastPrepareScriptExecutionTime;
             const ChildrenInfo &childrenInfo = childLists.value(oldArtifact);
-            for (Artifact * const child : qAsConst(childrenInfo.children)) {
+            for (Artifact * const child : std::as_const(childrenInfo.children)) {
                 rad.children.emplace_back(child->product->name,
                         child->product->multiplexConfigurationId, child->filePath(),
                         childrenInfo.childrenAddedByScanner.contains(child));

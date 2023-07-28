@@ -67,9 +67,10 @@
 #include <projectexplorer/projectexplorericons.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectexplorersettings.h>
+#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/projecttree.h>
 #include <projectexplorer/runconfiguration.h>
-#include <projectexplorer/session.h>
+#include <projectexplorer/projectmanager.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/taskhub.h>
 #include <projectexplorer/toolchain.h>
@@ -109,6 +110,7 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QStackedWidget>
 #include <QTextBlock>
@@ -123,8 +125,6 @@
 
 #include <cppeditor/cpptoolstestcase.h>
 #include <cppeditor/projectinfo.h>
-
-#include <utils/executeondestruction.h>
 
 #include <QTest>
 #include <QSignalSpy>
@@ -602,8 +602,8 @@ public:
             } else {
                 //: Message tracepoint: %1 file, %2 line %3 function hit.
                 message = Tr::tr("%1:%2 %3() hit").arg(data.fileName.fileName()).
-                        arg(data.lineNumber).
-                        arg(cppFunctionAt(data.fileName, data.lineNumber));
+                        arg(data.textPosition.line).
+                        arg(cppFunctionAt(data.fileName, data.textPosition.line));
             }
             QInputDialog dialog; // Create wide input dialog.
             dialog.setWindowFlags(dialog.windowFlags() & ~(Qt::MSWindowsFixedSizeDialogHint));
@@ -685,7 +685,6 @@ public:
 
     EngineManager m_engineManager;
     QTimer m_shutdownTimer;
-    bool m_shuttingDown = false;
 
     Console m_console; // ensure Debugger Console is created before settings are taken into account
     DebuggerSettings m_debuggerSettings;
@@ -1187,7 +1186,7 @@ DebuggerPluginPrivate::DebuggerPluginPrivate(const QStringList &arguments)
 
     setInitialState();
 
-    connect(SessionManager::instance(), &SessionManager::startupProjectChanged,
+    connect(ProjectManager::instance(), &ProjectManager::startupProjectChanged,
         this, &DebuggerPluginPrivate::onStartupProjectChanged);
     connect(EngineManager::instance(), &EngineManager::engineStateChanged,
         this, &DebuggerPluginPrivate::updatePresetState);
@@ -1391,11 +1390,11 @@ static QVariant configValue(const QString &name)
 
 void DebuggerPluginPrivate::updatePresetState()
 {
-    if (m_shuttingDown)
+    if (PluginManager::isShuttingDown())
         return;
 
-    Project *startupProject = SessionManager::startupProject();
-    RunConfiguration *startupRunConfig = SessionManager::startupRunConfiguration();
+    Project *startupProject = ProjectManager::startupProject();
+    RunConfiguration *startupRunConfig = ProjectManager::startupRunConfiguration();
     DebuggerEngine *currentEngine = EngineManager::currentEngine();
 
     QString whyNot;
@@ -1881,7 +1880,7 @@ void DebuggerPluginPrivate::requestContextMenu(TextEditorWidget *widget,
             if (engine->hasCapability(RunToLineCapability)) {
                 auto act = menu->addAction(args.address
                                            ? Tr::tr("Run to Address 0x%1").arg(args.address, 0, 16)
-                                           : Tr::tr("Run to Line %1").arg(args.lineNumber));
+                                           : Tr::tr("Run to Line %1").arg(args.textPosition.line));
                 connect(act, &QAction::triggered, this, [args, engine] {
                     QTC_ASSERT(engine, return);
                     engine->executeRunToLine(args);
@@ -1890,7 +1889,7 @@ void DebuggerPluginPrivate::requestContextMenu(TextEditorWidget *widget,
             if (engine->hasCapability(JumpToLineCapability)) {
                 auto act = menu->addAction(args.address
                                            ? Tr::tr("Jump to Address 0x%1").arg(args.address, 0, 16)
-                                           : Tr::tr("Jump to Line %1").arg(args.lineNumber));
+                                           : Tr::tr("Jump to Line %1").arg(args.textPosition.line));
                 connect(act, &QAction::triggered, this, [args, engine] {
                     QTC_ASSERT(engine, return);
                     engine->executeJumpToLine(args);
@@ -1995,9 +1994,7 @@ void DebuggerPluginPrivate::dumpLog()
 
 void DebuggerPluginPrivate::aboutToShutdown()
 {
-    m_shuttingDown = true;
-
-    disconnect(SessionManager::instance(), &SessionManager::startupProjectChanged, this, nullptr);
+    disconnect(ProjectManager::instance(), &ProjectManager::startupProjectChanged, this, nullptr);
 
     m_shutdownTimer.setInterval(0);
     m_shutdownTimer.setSingleShot(true);
@@ -2080,7 +2077,7 @@ QWidget *addSearch(BaseTreeView *treeView)
 
 void openTextEditor(const QString &titlePattern0, const QString &contents)
 {
-    if (dd->m_shuttingDown)
+    if (PluginManager::isShuttingDown())
         return;
     QString titlePattern = titlePattern0;
     IEditor *editor = EditorManager::openEditorWithContents(
@@ -2165,7 +2162,7 @@ static bool buildTypeAccepted(QFlags<ToolMode> toolMode, BuildConfiguration::Bui
 static BuildConfiguration::BuildType startupBuildType()
 {
     BuildConfiguration::BuildType buildType = BuildConfiguration::Unknown;
-    if (RunConfiguration *runConfig = SessionManager::startupRunConfiguration()) {
+    if (RunConfiguration *runConfig = ProjectManager::startupRunConfiguration()) {
         if (const BuildConfiguration *buildConfig = runConfig->target()->activeBuildConfiguration())
             buildType = buildConfig->buildType();
     }
@@ -2239,10 +2236,12 @@ bool wantRunTool(ToolMode toolMode, const QString &toolName)
             "or otherwise insufficient output.</p><p>"
             "Do you want to continue and run the tool in %2 mode?</p></body></html>")
                 .arg(toolName).arg(currentMode).arg(toolModeString);
-        if (Utils::CheckableMessageBox::doNotAskAgainQuestion(ICore::dialogParent(),
-                title, message, ICore::settings(), "AnalyzerCorrectModeWarning")
-                    != QDialogButtonBox::Yes)
-            return false;
+        if (Utils::CheckableMessageBox::question(ICore::dialogParent(),
+                                                 title,
+                                                 message,
+                                                 QString("AnalyzerCorrectModeWarning"))
+            != QMessageBox::Yes)
+                return false;
     }
 
     return true;
@@ -2335,12 +2334,12 @@ void DebuggerUnitTests::testStateMachine()
     QEventLoop loop;
     connect(BuildManager::instance(), &BuildManager::buildQueueFinished,
             &loop, &QEventLoop::quit);
-    BuildManager::buildProjectWithDependencies(SessionManager::startupProject());
+    BuildManager::buildProjectWithDependencies(ProjectManager::startupProject());
     loop.exec();
 
-    ExecuteOnDestruction guard([] { EditorManager::closeAllEditors(false); });
+    const QScopeGuard cleanup([] { EditorManager::closeAllEditors(false); });
 
-    RunConfiguration *rc = SessionManager::startupRunConfiguration();
+    RunConfiguration *rc = ProjectManager::startupRunConfiguration();
     QVERIFY(rc);
 
     auto runControl = new RunControl(ProjectExplorer::Constants::DEBUG_RUN_MODE);

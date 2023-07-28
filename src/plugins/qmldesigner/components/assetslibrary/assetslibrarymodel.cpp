@@ -136,7 +136,7 @@ bool AssetsLibraryModel::renameFolder(const QString &folderPath, const QString &
     return dir.rename(oldName, newName);
 }
 
-bool AssetsLibraryModel::addNewFolder(const QString &folderPath)
+QString AssetsLibraryModel::addNewFolder(const QString &folderPath)
 {
     QString iterPath = folderPath;
     QDir dir{folderPath};
@@ -147,7 +147,13 @@ bool AssetsLibraryModel::addNewFolder(const QString &folderPath)
         dir.setPath(iterPath);
     }
 
-    return dir.mkpath(iterPath);
+    return dir.mkpath(iterPath) ? iterPath : "";
+}
+
+bool AssetsLibraryModel::urlPathExistsInModel(const QUrl &url) const
+{
+    QModelIndex index = indexForPath(url.toLocalFile());
+    return index.isValid();
 }
 
 bool AssetsLibraryModel::deleteFolderRecursively(const QModelIndex &folderIndex)
@@ -160,50 +166,11 @@ bool AssetsLibraryModel::deleteFolderRecursively(const QModelIndex &folderIndex)
     return ok;
 }
 
-bool AssetsLibraryModel::allFilePathsAreImages(const QStringList &filePaths) const
+bool AssetsLibraryModel::allFilePathsAreTextures(const QStringList &filePaths) const
 {
     return Utils::allOf(filePaths, [](const QString &path) {
-        return Asset(path).isImage();
+        return Asset(path).isValidTextureSource();
     });
-}
-
-QString AssetsLibraryModel::getUniqueEffectPath(const QString &parentFolder, const QString &effectName)
-{
-    auto genEffectPath = [=](const QString &name) {
-        return QString(parentFolder + "/" + name + ".qep");
-    };
-
-    QString uniqueName = effectName;
-    QString path = genEffectPath(uniqueName);
-    QFileInfo file{path};
-
-    while (file.exists()) {
-        uniqueName = getUniqueName(uniqueName);
-
-        path = genEffectPath(uniqueName);
-        file.setFile(path);
-    }
-
-    return path;
-}
-
-bool AssetsLibraryModel::createNewEffect(const QString &effectPath, bool openEffectMaker)
-{
-    bool created = QFile(effectPath).open(QIODevice::WriteOnly);
-
-    if (created && openEffectMaker)
-        ModelNodeOperations::openEffectMaker(effectPath);
-
-    return created;
-}
-
-bool AssetsLibraryModel::canCreateEffects() const
-{
-#ifdef LICENSECHECKER
-    return checkLicense() == FoundLicense::enterprise;
-#else
-    return true;
-#endif
 }
 
 bool AssetsLibraryModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const

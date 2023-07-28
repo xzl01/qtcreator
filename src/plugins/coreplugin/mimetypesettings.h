@@ -11,17 +11,14 @@ class MimeTypeSettingsPrivate;
 
 class MimeTypeSettings : public IOptionsPage
 {
-    Q_OBJECT
-
 public:
     MimeTypeSettings();
     ~MimeTypeSettings() override;
 
-    QWidget *widget() override;
-    void apply() override;
-    void finish() override;
+    QStringList keywords() const override;
 
     static void restoreSettings();
+
 private:
     MimeTypeSettingsPrivate *d;
 };

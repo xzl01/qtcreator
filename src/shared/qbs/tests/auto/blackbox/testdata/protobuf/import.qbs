@@ -12,7 +12,6 @@ CppApplication {
 
     protobuf.cpp.importPaths: [sourceDirectory]
 
-    cpp.cxxLanguageVersion: "c++11"
     cpp.minimumMacosVersion: "10.8"
 
     Depends { name: "protobuf.cpp"; required: false }

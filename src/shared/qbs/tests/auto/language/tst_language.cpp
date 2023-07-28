@@ -53,6 +53,7 @@
 #include <language/propertymapinternal.h>
 #include <language/scriptengine.h>
 #include <language/value.h>
+#include <loader/projectresolver.h>
 #include <parser/qmljslexer_p.h>
 #include <parser/qmljsparser_p.h>
 #include <tools/scripttools.h>
@@ -65,6 +66,7 @@
 #include <tools/settings.h>
 #include <tools/stlutils.h>
 
+#include <QtCore/qjsonobject.h>
 #include <QtCore/qprocess.h>
 
 #include <algorithm>
@@ -91,14 +93,9 @@ TestLanguage::TestLanguage(ILogSink *logSink, Settings *settings)
 {
     m_rand.seed(QTime::currentTime().msec());
     qRegisterMetaType<QList<bool> >("QList<bool>");
-    defaultParameters.setBuildRoot(m_tempDir.path() + "/buildroot");
-    defaultParameters.setPropertyCheckingMode(ErrorHandlingMode::Strict);
-    defaultParameters.setSettingsDirectory(m_settings->baseDirectory());
 }
 
-TestLanguage::~TestLanguage()
-{
-}
+TestLanguage::~TestLanguage() = default;
 
 QHash<QString, ResolvedProductPtr> TestLanguage::productsFromProject(ResolvedProjectPtr project)
 {
@@ -142,8 +139,7 @@ void TestLanguage::handleInitCleanupDataTags(const char *projectFileName, bool *
         *handled = true;
         bool exceptionCaught = false;
         try {
-            defaultParameters.setProjectFilePath(testProject(projectFileName));
-            project = loader->loadProject(defaultParameters);
+            resolveProject(projectFileName);
             QVERIFY(!!project);
         } catch (const ErrorInfo &e) {
             exceptionCaught = true;
@@ -158,9 +154,27 @@ void TestLanguage::handleInitCleanupDataTags(const char *projectFileName, bool *
     }
 }
 
+TopLevelProjectPtr TestLanguage::resolveProject(const char *relProjectFilePath)
+{
+    if (relProjectFilePath)
+        defaultParameters.setProjectFilePath(testProject(relProjectFilePath));
+    defaultParameters.expandBuildConfiguration();
+    ProjectResolver resolver(defaultParameters, m_engine.get(), m_logger);
+    return project = resolver.resolve();
+}
+
 void TestLanguage::init()
 {
     m_logSink->setLogLevel(LoggerInfo);
+    defaultParameters = {};
+    defaultParameters.setBuildRoot(m_tempDir.path() + "/buildroot");
+    defaultParameters.setPropertyCheckingMode(ErrorHandlingMode::Strict);
+    defaultParameters.setSettingsDirectory(m_settings->baseDirectory());
+    defaultParameters.setTopLevelProfile(profileName());
+    defaultParameters.setConfigurationName("default");
+    defaultParameters.setEnvironment(QProcessEnvironment::systemEnvironment());
+    defaultParameters.setSearchPaths({SRCDIR "/../../../share/qbs"});
+
     QVERIFY(m_tempDir.isValid());
 }
 
@@ -176,27 +190,15 @@ void TestLanguage::initTestCase()
 {
     m_logger = Logger(m_logSink);
     m_engine = ScriptEngine::create(m_logger, EvalContext::PropertyEvaluation);
-    loader = new Loader(m_engine.get(), m_logger);
-    loader->setSearchPaths(QStringList()
-                           << (testDataDir() + "/../../../../share/qbs"));
-    defaultParameters.setTopLevelProfile(profileName());
-    defaultParameters.setConfigurationName("default");
-    defaultParameters.expandBuildConfiguration();
-    defaultParameters.setEnvironment(QProcessEnvironment::systemEnvironment());
-    QVERIFY(QFileInfo(m_wildcardsTestDirPath).isAbsolute());
-}
 
-void TestLanguage::cleanupTestCase()
-{
-    delete loader;
+    QVERIFY(QFileInfo(m_wildcardsTestDirPath).isAbsolute());
 }
 
 void TestLanguage::additionalProductTypes()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("additional-product-types.qbs"));
-        project = loader->loadProject(defaultParameters);
+        resolveProject("additional-product-types.qbs");
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         const ResolvedProductConstPtr product = products.value("p");
@@ -217,8 +219,7 @@ void TestLanguage::baseProperty()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("baseproperty.qbs"));
-        project = loader->loadProject(defaultParameters);
+        resolveProject("baseproperty.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         ResolvedProductPtr product = products.value("product1");
@@ -235,10 +236,8 @@ void TestLanguage::baseProperty()
 
 void TestLanguage::baseValidation()
 {
-    qbs::SetupProjectParameters params = defaultParameters;
-    params.setProjectFilePath(testProject("base-validate/base-validate.qbs"));
     try {
-        project = loader->loadProject(params);
+        resolveProject("base-validate/base-validate.qbs");
         QVERIFY2(false, "exception expected");
     } catch (const qbs::ErrorInfo &e) {
         QVERIFY2(e.toString().contains("Parent succeeded, child failed."),
@@ -248,11 +247,9 @@ void TestLanguage::baseValidation()
 
 void TestLanguage::brokenDependencyCycle()
 {
-    qbs::SetupProjectParameters params = defaultParameters;
     QFETCH(QString, projectFileName);
-    params.setProjectFilePath(testProject(qPrintable(projectFileName)));
     try {
-        project = loader->loadProject(params);
+        resolveProject(qPrintable(projectFileName));
     } catch (const qbs::ErrorInfo &e) {
         QVERIFY2(false, qPrintable(e.toString()));
     }
@@ -269,12 +266,10 @@ void TestLanguage::buildConfigStringListSyntax()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters parameters = defaultParameters;
         QVariantMap overriddenValues;
         overriddenValues.insert("project.someStrings", "foo,bar,baz");
-        parameters.setOverriddenValues(overriddenValues);
-        parameters.setProjectFilePath(testProject("buildconfigstringlistsyntax.qbs"));
-        project = loader->loadProject(parameters);
+        defaultParameters.setOverriddenValues(overriddenValues);
+        resolveProject("buildconfigstringlistsyntax.qbs");
         QVERIFY(!!project);
         QCOMPARE(project->projectProperties().value("someStrings").toStringList(),
                  QStringList() << "foo" << "bar" << "baz");
@@ -289,9 +284,7 @@ void TestLanguage::builtinFunctionInSearchPathsProperty()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters parameters = defaultParameters;
-        parameters.setProjectFilePath(testProject("builtinFunctionInSearchPathsProperty.qbs"));
-        QVERIFY(!!loader->loadProject(parameters));
+        QVERIFY(resolveProject("builtinFunctionInSearchPathsProperty.qbs"));
     } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
@@ -303,9 +296,7 @@ void TestLanguage::chainedProbes()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters parameters = defaultParameters;
-        parameters.setProjectFilePath(testProject("chained-probes/chained-probes.qbs"));
-        const TopLevelProjectConstPtr project = loader->loadProject(parameters);
+        resolveProject("chained-probes/chained-probes.qbs");
         QVERIFY(!!project);
         QCOMPARE(project->products.size(), size_t(1));
         const QString prop1Val = project->products.front()->moduleProperties
@@ -326,9 +317,7 @@ void TestLanguage::versionCompare()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters parameters = defaultParameters;
-        parameters.setProjectFilePath(testProject("versionCompare.qbs"));
-        QVERIFY(!!loader->loadProject(parameters));
+        QVERIFY(resolveProject("versionCompare.qbs"));
     } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
@@ -340,8 +329,7 @@ void TestLanguage::canonicalArchitecture()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("canonicalArchitecture.qbs"));
-        project = loader->loadProject(defaultParameters);
+        resolveProject("canonicalArchitecture.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         ResolvedProductPtr product = products.value(QStringLiteral("x86"));
@@ -357,8 +345,7 @@ void TestLanguage::rfc1034Identifier()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("rfc1034identifier.qbs"));
-        project = loader->loadProject(defaultParameters);
+        resolveProject("rfc1034identifier.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         ResolvedProductPtr product = products.value(QStringLiteral("this-has-special-characters-"
@@ -371,17 +358,47 @@ void TestLanguage::rfc1034Identifier()
     QCOMPARE(exceptionCaught, false);
 }
 
+void TestLanguage::throwThings_data()
+{
+    QTest::addColumn<QString>("type");
+    QTest::addColumn<QString>("result");
+    QTest::addRow("bool") << "bool" << "true";
+    QTest::addRow("int") << "int" << "43";
+    QTest::addRow("string") << "string" << "an error";
+    QTest::addRow("list") << "list" << R"([
+    "an",
+    "error"
+])";
+    QTest::addRow("object") << "object" << R"({
+    "reason": "overheating",
+    "result": "crash"
+})";
+}
+
+void TestLanguage::throwThings()
+{
+    QFETCH(QString, type);
+    QFETCH(QString, result);
+    bool exceptionCaught = false;
+    try {
+        defaultParameters.setOverriddenValues({{"project.throwType", type}});
+        resolveProject("throw.qbs");
+    } catch (const ErrorInfo &e) {
+        exceptionCaught = true;
+        QVERIFY2(e.toString().contains(result), qPrintable(e.toString()));
+    }
+    QVERIFY(exceptionCaught);
+}
+
 void TestLanguage::conditionalDepends()
 {
     bool exceptionCaught = false;
     ResolvedProductPtr product;
     ResolvedModuleConstPtr dependency;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("conditionaldepends.qbs"));
-        params.setOverriddenValues({std::make_pair(QString("products."
+        defaultParameters.setOverriddenValues({std::make_pair(QString("products."
                                     "multilevel_module_props_overridden.dummy3.loadDummy"), true)});
-        project = loader->loadProject(params);
+        resolveProject("conditionaldepends.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
 
@@ -485,12 +502,10 @@ void TestLanguage::delayedError()
     QFETCH(bool, productEnabled);
     try {
         QFETCH(QString, projectFileName);
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject(projectFileName.toLatin1()));
         QVariantMap overriddenValues;
         overriddenValues.insert("project.enableProduct", productEnabled);
-        params.setOverriddenValues(overriddenValues);
-        project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(overriddenValues);
+        resolveProject(projectFileName.toLatin1());
         QCOMPARE(productEnabled, false);
         QVERIFY(!!project);
         QCOMPARE(project->products.size(), size_t(1));
@@ -522,8 +537,6 @@ void TestLanguage::dependencyOnAllProfiles()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("dependencyOnAllProfiles.qbs"));
         TemporaryProfile p1("p1", m_settings);
         p1.p.setValue("qbs.architecture", "arch1");
         TemporaryProfile p2("p2", m_settings);
@@ -531,8 +544,8 @@ void TestLanguage::dependencyOnAllProfiles()
         QVariantMap overriddenValues;
         overriddenValues.insert("project.profile1", "p1");
         overriddenValues.insert("project.profile2", "p2");
-        params.setOverriddenValues(overriddenValues);
-        project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(overriddenValues);
+        resolveProject("dependencyOnAllProfiles.qbs");
         QVERIFY(!!project);
         QCOMPARE(project->products.size(), size_t(3));
         const ResolvedProductConstPtr mainProduct = productsFromProject(project).value("main");
@@ -553,9 +566,7 @@ void TestLanguage::derivedSubProject()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("derived-sub-project/project.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        resolveProject("derived-sub-project/project.qbs");
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
@@ -570,9 +581,7 @@ void TestLanguage::disabledSubProject()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("disabled-subproject.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        resolveProject("disabled-subproject.qbs");
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 0);
@@ -601,16 +610,14 @@ void TestLanguage::dottedNames()
 {
     QFETCH(bool, expectSuccess);
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("dotted-names/dotted-names.qbs"));
         QFETCH(bool, useProduct);
         QFETCH(bool, useModule);
         const QVariantMap overridden{
             std::make_pair("projects.theProject.includeDottedProduct", useProduct),
             std::make_pair("projects.theProject.includeDottedModule", useModule)
         };
-        params.setOverriddenValues(overridden);
-        TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(overridden);
+        resolveProject("dotted-names/dotted-names.qbs");
         QVERIFY(expectSuccess);
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
@@ -627,13 +634,44 @@ void TestLanguage::dottedNames()
     }
 }
 
+void TestLanguage::duplicateMultiplexValues_data()
+{
+    QTest::addColumn<bool>("dummy");
+    QTest::newRow("duplicate-multiplex-value") << true;
+    QTest::newRow("duplicate-multiplex-value2") << true;
+}
+
+void TestLanguage::duplicateMultiplexValues()
+{
+    bool exceptionCaught = false;
+    try {
+        resolveProject(qPrintable(QString::fromLocal8Bit(QTest::currentDataTag())
+                                  + QLatin1String(".qbs")));
+        QVERIFY(project);
+        const std::vector<ResolvedProductPtr> products = project->allProducts();
+        QCOMPARE(products.size(), 2);
+        bool x86 = false;
+        bool arm = false;
+        for (const ResolvedProductPtr &p : products) {
+            if (p->moduleProperties->moduleProperty("qbs", "architecture").toString() == "x86")
+                x86 = true;
+            else if (p->moduleProperties->moduleProperty("qbs", "architecture").toString() == "arm")
+                arm = true;
+        }
+        QVERIFY(x86);
+        QVERIFY(arm);
+    } catch (const ErrorInfo &e) {
+        exceptionCaught = true;
+        qDebug() << e.toString();
+    }
+    QVERIFY(!exceptionCaught);
+}
+
 void TestLanguage::emptyJsFile()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("empty-js-file.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        resolveProject("empty-js-file.qbs");
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
@@ -648,9 +686,7 @@ void TestLanguage::enumerateProjectProperties()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("enum-project-props.qbs"));
-        auto project = loader->loadProject(params);
+        resolveProject("enum-project-props.qbs");
         QVERIFY(!!project);
         auto products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
@@ -673,7 +709,7 @@ void TestLanguage::evalErrorInNonPresentModule_data()
     QTest::addColumn<QString>("errorMessage");
 
     QTest::newRow("module required")
-            << true << "broken.qbs:4:5 Element at index 0 of list property 'broken' "
+            << true << "broken.qbs:2:5 Element at index 0 of list property 'broken' "
                        "does not have string type";
     QTest::newRow("module not required") << false << QString();
 }
@@ -683,19 +719,16 @@ void TestLanguage::evalErrorInNonPresentModule()
     QFETCH(bool, moduleRequired);
     QFETCH(QString, errorMessage);
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("eval-error-in-non-present-module.qbs"));
         QVariantMap overridden{std::make_pair("products.p.moduleRequired", moduleRequired)};
-        params.setOverriddenValues(overridden);
-        TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(overridden);
+        resolveProject("eval-error-in-non-present-module.qbs");
         QVERIFY(errorMessage.isEmpty());
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
         const ResolvedProductPtr product = products.value("p");
         QVERIFY(!!product);
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         QVERIFY(!errorMessage.isEmpty());
         QVERIFY2(e.toString().contains(errorMessage), qPrintable(e.toString()));
     }
@@ -705,14 +738,12 @@ void TestLanguage::defaultValue()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("defaultvalue/egon.qbs"));
         QFETCH(QString, prop1Value);
         QVariantMap overridden;
         if (!prop1Value.isEmpty())
             overridden.insert("modules.lower.prop1", prop1Value);
-        params.setOverriddenValues(overridden);
-        TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(overridden);
+        resolveProject("defaultvalue/egon.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 2);
@@ -726,8 +757,7 @@ void TestLanguage::defaultValue()
         propertyValue = product->moduleProperties->property(propertyName);
         QFETCH(QVariant, expectedListPropValue);
         QCOMPARE(propertyValue.toStringList(), expectedListPropValue.toStringList());
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -762,10 +792,7 @@ void TestLanguage::environmentVariable()
         QProcessEnvironment origEnv = defaultParameters.environment(); // store orig environment
 
         defaultParameters.setEnvironment(env);
-        defaultParameters.setProjectFilePath(testProject("environmentvariable.qbs"));
-        project = loader->loadProject(defaultParameters);
-
-        defaultParameters.setEnvironment(origEnv); // reset environment
+        resolveProject("environmentvariable.qbs");
 
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
@@ -782,9 +809,7 @@ void TestLanguage::errorInDisabledProduct()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("error-in-disabled-product.qbs"));
-        auto project = loader->loadProject(params);
+        resolveProject("error-in-disabled-product.qbs");
         QVERIFY(!!project);
         auto products = productsFromProject(project);
         QCOMPARE(products.size(), 5);
@@ -899,8 +924,6 @@ void TestLanguage::erroneousFiles_data()
     QTest::newRow("conflicting-module-instances")
             << "There is more than one equally prioritized candidate for module "
                "'conflicting-instances'.";
-    QTest::newRow("module-depends-on-product")
-            << "module-with-product-dependency.qbs:2:5.*Modules cannot depend on products.";
     QTest::newRow("overwrite-inherited-readonly-property")
             << "overwrite-inherited-readonly-property.qbs"
                ":2:21.*Cannot set read-only property 'readOnlyString'.";
@@ -940,13 +963,10 @@ void TestLanguage::erroneousFiles_data()
     QTest::newRow("dependency-profile-mismatch-2")
             << "dependency-profile-mismatch-2.qbs:15:9 Dependency from product 'main' to "
                "product 'dep' not fulfilled. There are no eligible multiplex candidates.";
-    QTest::newRow("duplicate-multiplex-value")
-            << "duplicate-multiplex-value.qbs:1:1.*Duplicate entry 'x86' in qbs.architectures.";
-    QTest::newRow("duplicate-multiplex-value2")
-            << "duplicate-multiplex-value2.qbs:1:1.*Duplicate entry 'architecture' in "
-               "Product.multiplexByQbsProperties.";
     QTest::newRow("invalid-references")
             << "invalid-references.qbs:2:17.*Cannot open '.*nosuchproject.qbs'";
+    QTest::newRow("missing-js-file")
+            << "missing-js-file-module.qbs.*Cannot open '.*javascriptfile.js'";
 }
 
 void TestLanguage::erroneousFiles()
@@ -954,8 +974,7 @@ void TestLanguage::erroneousFiles()
     QFETCH(QString, errorMessage);
     QString fileName = QString::fromLocal8Bit(QTest::currentDataTag()) + QLatin1String(".qbs");
     try {
-        defaultParameters.setProjectFilePath(testProject("/erroneous/") + fileName);
-        loader->loadProject(defaultParameters);
+        resolveProject(qPrintable("/erroneous/" + fileName));
     } catch (const ErrorInfo &e) {
         const QRegularExpression reg(errorMessage, QRegularExpression::DotMatchesEverythingOption);
         if (!e.toString().contains(reg)) {
@@ -974,8 +993,7 @@ void TestLanguage::exports()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("exports.qbs"));
-        TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("exports.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 22);
@@ -1088,8 +1106,7 @@ void TestLanguage::exports()
                      || m->name == QString("broken_cycle2"),
                      qPrintable(m->name));
         }
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -1100,8 +1117,7 @@ void TestLanguage::fileContextProperties()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("filecontextproperties.qbs"));
-        project = loader->loadProject(defaultParameters);
+        resolveProject("filecontextproperties.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         ResolvedProductPtr product = products.value("product1");
@@ -1147,14 +1163,12 @@ void TestLanguage::fileInProductAndModule()
     QFETCH(bool, addFileToProduct);
     QFETCH(bool, successExpected);
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("file-in-product-and-module.qbs"));
-        params.setOverriddenValues(QVariantMap{
+        defaultParameters.setOverriddenValues(QVariantMap{
             std::make_pair("modules.module_with_file.file1IsTarget", file1IsTarget),
             std::make_pair("modules.module_with_file.file2IsTarget", file2IsTarget),
             std::make_pair("products.p.addFileToProduct", addFileToProduct),
         });
-        project = loader->loadProject(params);
+        resolveProject("file-in-product-and-module.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
@@ -1169,8 +1183,7 @@ void TestLanguage::getNativeSetting()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("getNativeSetting.qbs"));
-        project = loader->loadProject(defaultParameters);
+        resolveProject("getNativeSetting.qbs");
 
         QString expectedTargetName;
         if (HostOsInfo::isMacosHost()) {
@@ -1245,8 +1258,7 @@ void TestLanguage::groupName()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("groupname.qbs"));
-        TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("groupname.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 2);
@@ -1273,8 +1285,7 @@ void TestLanguage::groupName()
         group = product->groups.at(2);
         QVERIFY(!!group);
         QCOMPARE(group->name, QString("Group 2"));
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -1284,8 +1295,7 @@ void TestLanguage::groupName()
 void TestLanguage::homeDirectory()
 {
     try {
-        defaultParameters.setProjectFilePath(testProject("homeDirectory.qbs"));
-        ResolvedProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("homeDirectory.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
@@ -1310,8 +1320,7 @@ void TestLanguage::homeDirectory()
                  FileInfo::resolvePath(product->sourceDirectory, QStringLiteral("a/~/bb")));
         QCOMPARE(product->productProperties.value("user").toString(),
                  FileInfo::resolvePath(product->sourceDirectory, QStringLiteral("~foo/bar")));
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         qDebug() << e.toString();
     }
 }
@@ -1390,8 +1399,7 @@ void TestLanguage::idUsage()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("idusage.qbs"));
-        TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("idusage.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 5);
@@ -1415,8 +1423,7 @@ void TestLanguage::idUsage()
         QVERIFY(!!product5);
         QCOMPARE(product5->moduleProperties->moduleProperty("deepdummy.deep.moat", "zort")
                  .toString(), QString("zort in dummy"));
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -1427,10 +1434,8 @@ void TestLanguage::idUniqueness()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("id-uniqueness.qbs"));
-        loader->loadProject(defaultParameters);
-    }
-    catch (const ErrorInfo &e) {
+        resolveProject("id-uniqueness.qbs");
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         const QList<ErrorItem> items = e.items();
         QCOMPARE(items.size(), 3);
@@ -1445,15 +1450,13 @@ void TestLanguage::importCollection()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("import-collection/project.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("import-collection/project.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         const ResolvedProductConstPtr product = products.value("da product");
         QCOMPARE(product->productProperties.value("targetName").toString(),
                  QLatin1String("C1f1C1f2C2f1C2f2"));
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -1472,19 +1475,15 @@ void TestLanguage::inheritedPropertiesItems()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
         QFETCH(QString, buildVariant);
         QFETCH(QString, productName);
-        params.setProjectFilePath
-                (testProject("inherited-properties-items/inherited-properties-items.qbs"));
-        params.setOverriddenValues(QVariantMap{std::make_pair("qbs.buildVariant", buildVariant)});
-        TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(QVariantMap{std::make_pair("qbs.buildVariant", buildVariant)});
+        resolveProject("inherited-properties-items/inherited-properties-items.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
         QVERIFY(!!products.value(productName));
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -1495,13 +1494,11 @@ void TestLanguage::invalidBindingInDisabledItem()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("invalidBindingInDisabledItem.qbs"));
-        TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("invalidBindingInDisabledItem.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 2);
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -1515,13 +1512,10 @@ void TestLanguage::invalidOverrides()
     const bool successExpected = expectedErrorMessage.isEmpty();
     bool exceptionCaught = false;
     try {
-        qbs::SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("invalid-overrides.qbs"));
-        params.setOverriddenValues(QVariantMap{std::make_pair(key, true)});
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(QVariantMap{std::make_pair(key, true)});
+        resolveProject("invalid-overrides.qbs");
         QVERIFY(!!project);
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         if (successExpected)
             qDebug() << e.toString();
@@ -1568,25 +1562,20 @@ void TestLanguage::invalidOverrides_data()
 class JSSourceValueCreator
 {
     FileContextPtr m_fileContext;
-    QList<QString *> m_strings;
+    std::vector<std::unique_ptr<QString>> m_strings;
 public:
     JSSourceValueCreator(const FileContextPtr &fileContext)
         : m_fileContext(fileContext)
     {
     }
 
-    ~JSSourceValueCreator()
-    {
-        qDeleteAll(m_strings);
-    }
-
     JSSourceValuePtr create(const QString &sourceCode)
     {
         JSSourceValuePtr value = JSSourceValue::create();
         value->setFile(m_fileContext);
-        const auto str = new QString(sourceCode);
-        m_strings.push_back(str);
-        value->setSourceCode(QStringRef(str));
+        auto str = std::make_unique<QString>(sourceCode);
+        value->setSourceCode(*str.get());
+        m_strings.push_back(std::move(str));
         return value;
     }
 };
@@ -1667,20 +1656,16 @@ void TestLanguage::jsImportUsedInMultipleScopes()
 
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("jsimportsinmultiplescopes.qbs"));
-        params.setOverriddenValues({std::make_pair(QStringLiteral("qbs.buildVariant"),
-                                                   buildVariant)});
-        params.expandBuildConfiguration();
-        TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues({std::make_pair(QStringLiteral("qbs.buildVariant"),
+                                                              buildVariant)});
+        resolveProject("jsimportsinmultiplescopes.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
         ResolvedProductPtr product = products.values().front();
         QVERIFY(!!product);
         QCOMPARE(product->name, expectedProductName);
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -1691,11 +1676,7 @@ void TestLanguage::moduleMergingVariantValues()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath
-                (testProject("module-merging-variant-values/module-merging-variant-values.qbs"));
-        params.expandBuildConfiguration();
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        resolveProject("module-merging-variant-values/module-merging-variant-values.qbs");
         QVERIFY(!!project);
         QCOMPARE(int(project->products.size()), 2);
     } catch (const ErrorInfo &e) {
@@ -1720,12 +1701,10 @@ void TestLanguage::modulePrioritizationBySearchPath()
 
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("module-prioritization-by-search-path/project.qbs"));
-        params.setOverriddenValues({std::make_pair(QStringLiteral("project.qbsSearchPaths"),
-                                                   searchPaths)});
-        params.expandBuildConfiguration();
-        TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(
+            {std::make_pair(QStringLiteral("project.qbsSearchPaths"),
+                            searchPaths)});
+        resolveProject("module-prioritization-by-search-path/project.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
@@ -1734,8 +1713,7 @@ void TestLanguage::modulePrioritizationBySearchPath()
         const QString actualVariant = product->moduleProperties->moduleProperty
                 ("conflicting-instances", "moduleVariant").toString();
         QCOMPARE(actualVariant, expectedVariant);
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -1801,7 +1779,7 @@ void TestLanguage::modulePropertiesInGroups()
     defaultParameters.setProjectFilePath(testProject("modulepropertiesingroups.qbs"));
     bool exceptionCaught = false;
     try {
-        TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject();
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         ResolvedProductPtr product = products.value("grouptest");
@@ -1929,7 +1907,7 @@ void TestLanguage::modulePropertiesInGroups()
         QCOMPARE(g2Gmod1List1, QStringList() << "gmod1_list1_proto" << "g2");
         const auto &g2Gmod1List2 = moduleProperty(g2Props, "gmod.gmod1", "gmod1_list2")
                 .toStringList();
-        QCOMPARE(g2Gmod1List2, QStringList() << "grouptest" << "g2" << "gmod1_list2_proto");
+        QCOMPARE(g2Gmod1List2, QStringList() << "grouptest" << "gmod1_string_proto" << "gmod1_list2_proto");
         const int g2P0 = moduleProperty(g2Props, "gmod.gmod1", "p0").toInt();
         QCOMPARE(g2P0, 6);
         const int g2DepProp = moduleProperty(g2Props, "gmod.gmod1", "depProp").toInt();
@@ -2013,17 +1991,14 @@ void TestLanguage::modulePropertyOverridesPerProduct()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setOverriddenValues({
+        defaultParameters.setOverriddenValues({
                 std::make_pair("modules.dummy.rpaths", QStringList({"/usr/lib"})),
                 std::make_pair("modules.dummy.someString", "m"),
                 std::make_pair("products.b.dummy.someString", "b"),
                 std::make_pair("products.c.dummy.someString", "c"),
                 std::make_pair("products.c.dummy.rpaths", QStringList({"/home", "/tmp"}))
         });
-        params.setProjectFilePath(
-                    testProject("module-property-overrides-per-product.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        resolveProject("module-property-overrides-per-product.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 3);
@@ -2056,8 +2031,7 @@ void TestLanguage::modulePropertyOverridesPerProduct()
         QCOMPARE(listPropertyValue(a), productPropertyValue(a));
         QCOMPARE(listPropertyValue(b), productPropertyValue(b));
         QCOMPARE(listPropertyValue(c), productPropertyValue(c));
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -2069,7 +2043,7 @@ void TestLanguage::moduleScope()
     bool exceptionCaught = false;
     try {
         defaultParameters.setProjectFilePath(testProject("modulescope.qbs"));
-        TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject();
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
@@ -2089,13 +2063,30 @@ void TestLanguage::moduleScope()
         QCOMPARE(intModuleValue("f"), 2);     // overridden
         QCOMPARE(intModuleValue("g"), 156);   // overridden, dependent on product properties
         QCOMPARE(intModuleValue("h"), 158);   // overridden, base dependent on product properties
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
     QCOMPARE(exceptionCaught, false);
+}
 
+void TestLanguage::moduleWithProductDependency()
+{
+    bool exceptionCaught = false;
+    try {
+        defaultParameters.setProjectFilePath(testProject("module-depends-on-product.qbs"));
+        resolveProject();
+        QVERIFY(project);
+        QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
+        QCOMPARE(products.size(), 2);
+        ResolvedProductPtr product = products.value("p1");
+        QVERIFY(product);
+        QCOMPARE(int(product->dependencies.size()), 1);
+    } catch (const ErrorInfo &e) {
+        exceptionCaught = true;
+        qDebug() << e.toString();
+    }
+    QCOMPARE(exceptionCaught, false);
 }
 
 void TestLanguage::modules_data()
@@ -2154,9 +2145,7 @@ void TestLanguage::multiplexedExports()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("multiplexed-exports.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        resolveProject("multiplexed-exports.qbs");
         QVERIFY(!!project);
         const auto products = project->allProducts();
         QCOMPARE(products.size(), size_t(4));
@@ -2190,11 +2179,9 @@ void TestLanguage::multiplexingByProfile()
 {
     QFETCH(QString, projectFileName);
     QFETCH(bool, successExpected);
-    SetupProjectParameters params = defaultParameters;
-    params.setProjectFilePath(testDataDir() + "/multiplexing-by-profile/" + projectFileName);
     try {
-        params.setDryRun(true);
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setDryRun(true);
+        resolveProject(qPrintable("/multiplexing-by-profile/" + projectFileName));
         QVERIFY(successExpected);
         QVERIFY(!!project);
     } catch (const ErrorInfo &e) {
@@ -2218,11 +2205,9 @@ void TestLanguage::nonApplicableModulePropertyInProfile()
     QFETCH(QString, toolchain);
     QFETCH(bool, successExpected);
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("non-applicable-module-property-in-profile.qbs"));
-        params.setOverriddenValues(QVariantMap{std::make_pair("project.targetOS", targetOS),
+        defaultParameters.setOverriddenValues({std::make_pair("project.targetOS", targetOS),
                                                std::make_pair("project.toolchain", toolchain)});
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        resolveProject("non-applicable-module-property-in-profile.qbs");
         QVERIFY(!!project);
         QVERIFY(successExpected);
     } catch (const ErrorInfo &e) {
@@ -2252,8 +2237,6 @@ void TestLanguage::nonRequiredProducts()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("non-required-products.qbs"));
         QFETCH(bool, subProjectEnabled);
         QFETCH(bool, dependeeEnabled);
         QVariantMap overriddenValues;
@@ -2261,8 +2244,8 @@ void TestLanguage::nonRequiredProducts()
             overriddenValues.insert("projects.subproject.condition", false);
         else if (!dependeeEnabled)
             overriddenValues.insert("products.dependee.condition", false);
-        params.setOverriddenValues(overriddenValues);
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(overriddenValues);
+        resolveProject("non-required-products.qbs");
         QVERIFY(!!project);
         const auto products = productsFromProject(project);
         QCOMPARE(products.size(), 4 + !!subProjectEnabled);
@@ -2281,8 +2264,7 @@ void TestLanguage::nonRequiredProducts()
              QVERIFY2(product, name);
              QVERIFY2(!product->enabled, name);
         }
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -2303,7 +2285,7 @@ void TestLanguage::outerInGroup()
     bool exceptionCaught = false;
     try {
         defaultParameters.setProjectFilePath(testProject("outerInGroup.qbs"));
-        TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject();
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
@@ -2324,8 +2306,7 @@ void TestLanguage::outerInGroup()
         artifact = group->files.front();
         installDir = artifact->properties->qbsPropertyValue("installDir");
         QCOMPARE(installDir.toString(), QString("/somewhere/else"));
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -2338,16 +2319,14 @@ void TestLanguage::overriddenPropertiesAndPrototypes()
     try {
         QFETCH(QString, osName);
         QFETCH(QString, backendName);
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("overridden-properties-and-prototypes.qbs"));
-        params.setOverriddenValues({std::make_pair("modules.qbs.targetPlatform", osName)});
-        TopLevelProjectConstPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues({std::make_pair("modules.qbs.targetPlatform",
+                                                              osName)});
+        resolveProject("overridden-properties-and-prototypes.qbs");
         QVERIFY(!!project);
         QCOMPARE(project->products.size(), size_t(1));
         QCOMPARE(project->products.front()->moduleProperties->moduleProperty(
                      "multiple_backends", "prop").toString(), backendName);
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -2366,11 +2345,9 @@ void TestLanguage::overriddenVariantProperty()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
         const QVariantMap objectValue{std::make_pair("x", 1), std::make_pair("y", 2)};
-        params.setOverriddenValues({std::make_pair("products.p.myObject", objectValue)});
-        params.setProjectFilePath(testProject("overridden-variant-property.qbs"));
-        TopLevelProjectConstPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues({std::make_pair("products.p.myObject", objectValue)});
+        resolveProject("overridden-variant-property.qbs");
         QVERIFY(!!project);
         QCOMPARE(project->products.size(), size_t(1));
         QCOMPARE(project->products.front()->productProperties.value("myObject").toMap(),
@@ -2387,9 +2364,8 @@ void TestLanguage::parameterTypes()
     bool exceptionCaught = false;
     try {
         defaultParameters.setProjectFilePath(testProject("parameter-types.qbs"));
-        loader->loadProject(defaultParameters);
-    }
-    catch (const ErrorInfo &e) {
+        resolveProject();
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -2400,8 +2376,7 @@ void TestLanguage::pathProperties()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("pathproperties.qbs"));
-        project = loader->loadProject(defaultParameters);
+        resolveProject("pathproperties.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         ResolvedProductPtr product = products.value("product1");
@@ -2437,14 +2412,11 @@ void TestLanguage::profileValuesAndOverriddenValues()
         profile.setValue("dummy.cFlags", "IN_PROFILE");
         profile.setValue("dummy.cxxFlags", "IN_PROFILE");
         profile.setValue("qbs.architecture", "x86");
-        SetupProjectParameters parameters = defaultParameters;
-        parameters.setTopLevelProfile(profile.name());
+        defaultParameters.setTopLevelProfile(profile.name());
         QVariantMap overriddenValues;
         overriddenValues.insert("modules.dummy.cFlags", "OVERRIDDEN");
-        parameters.setOverriddenValues(overriddenValues);
-        parameters.setProjectFilePath(testProject("profilevaluesandoverriddenvalues.qbs"));
-        parameters.expandBuildConfiguration();
-        project = loader->loadProject(parameters);
+        defaultParameters.setOverriddenValues(overriddenValues);
+        resolveProject("profilevaluesandoverriddenvalues.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         ResolvedProductPtr product = products.value("product1");
@@ -2474,7 +2446,7 @@ void TestLanguage::projectFileLookup()
     try {
         SetupProjectParameters params;
         params.setProjectFilePath(projectFileInput);
-        Loader::setupProjectFilePath(params);
+        params.finalizeProjectFilePath();
         QVERIFY(!failureExpected);
         QCOMPARE(params.projectFilePath(), projectFileOutput);
     } catch (const ErrorInfo &) {
@@ -2505,8 +2477,7 @@ void TestLanguage::productConditions()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("productconditions.qbs"));
-        TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("productconditions.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 6);
@@ -2534,8 +2505,7 @@ void TestLanguage::productConditions()
         product = products.value("product_probe_condition_true");
         QVERIFY(!!product);
         QVERIFY(product->enabled);
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -2546,8 +2516,7 @@ void TestLanguage::productDirectories()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("productdirectories.qbs"));
-        ResolvedProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("productdirectories.qbs");
         QVERIFY(!!project);
         QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 1);
@@ -2558,8 +2527,7 @@ void TestLanguage::productDirectories()
         QCOMPARE(config.value(QStringLiteral("buildDirectory")).toString(),
                  product->buildDirectory());
         QCOMPARE(config.value(QStringLiteral("sourceDirectory")).toString(), testDataDir());
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
         exceptionCaught = true;
         qDebug() << e.toString();
     }
@@ -2705,8 +2673,7 @@ void TestLanguage::propertiesBlockInGroup()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("properties-block-in-group.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("properties-block-in-group.qbs");
         QVERIFY(!!project);
         QCOMPARE(project->allProducts().size(), size_t(1));
         const ResolvedProductConstPtr product = project->allProducts().front();
@@ -2730,9 +2697,7 @@ void TestLanguage::propertiesItemInModule()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(
-                    testProject("properties-item-in-module.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("properties-item-in-module.qbs");
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 2);
@@ -2751,9 +2716,7 @@ void TestLanguage::propertyAssignmentInExportedGroup()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(
-                    testProject("property-assignment-in-exported-group.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("property-assignment-in-exported-group.qbs");
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 2);
@@ -2780,8 +2743,7 @@ void TestLanguage::qbs1275()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(testProject("qbs1275.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("qbs1275.qbs");
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.count(), 5);
@@ -2796,9 +2758,7 @@ void TestLanguage::qbsPropertiesInProjectCondition()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(
-                    testProject("qbs-properties-in-project-condition.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("qbs-properties-in-project-condition.qbs");
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 0);
@@ -2813,16 +2773,14 @@ void TestLanguage::qbsPropertyConvenienceOverride()
 {
     bool exceptionCaught = false;
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("qbs-property-convenience-override.qbs"));
-        params.setOverriddenValues({std::make_pair("qbs.installPrefix", "/opt")});
-        TopLevelProjectConstPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues({std::make_pair("qbs.installPrefix", "/opt")});
+        resolveProject("qbs-property-convenience-override.qbs");
         QVERIFY(!!project);
         QCOMPARE(project->products.size(), size_t(1));
         QCOMPARE(project->products.front()->moduleProperties->qbsPropertyValue("installPrefix")
                  .toString(), QString("/opt"));
-    }
-    catch (const ErrorInfo &e) {
+    } catch (const ErrorInfo &e) {
+        exceptionCaught = true;
         qDebug() << e.toString();
     }
     QCOMPARE(exceptionCaught, false);
@@ -2833,11 +2791,9 @@ void TestLanguage::relaxedErrorMode()
     m_logSink->setLogLevel(LoggerMinLevel);
     QFETCH(bool, strictMode);
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("relaxed-error-mode/relaxed-error-mode.qbs"));
-        params.setProductErrorMode(strictMode ? ErrorHandlingMode::Strict
-                                              : ErrorHandlingMode::Relaxed);
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setProductErrorMode(strictMode ? ErrorHandlingMode::Strict
+                                                         : ErrorHandlingMode::Relaxed);
+        resolveProject("relaxed-error-mode/relaxed-error-mode.qbs");
         QVERIFY(!strictMode);
         const auto productMap = productsFromProject(project);
         const ResolvedProductConstPtr brokenProduct = productMap.value("broken");
@@ -2882,10 +2838,7 @@ void TestLanguage::requiredAndNonRequiredDependencies()
     QFETCH(QString, projectFile);
     QFETCH(bool, exceptionExpected);
     try {
-        SetupProjectParameters params = defaultParameters;
-        const QString projectFilePath = "required-and-nonrequired-dependencies/" + projectFile;
-        params.setProjectFilePath(testProject(projectFilePath.toLocal8Bit()));
-        const TopLevelProjectConstPtr project = loader->loadProject(params);
+        resolveProject(qPrintable("required-and-nonrequired-dependencies/" + projectFile));
         QVERIFY(!!project);
         QVERIFY(!exceptionExpected);
     } catch (const ErrorInfo &e) {
@@ -2912,10 +2865,7 @@ void TestLanguage::requiredAndNonRequiredDependencies_data()
 void TestLanguage::suppressedAndNonSuppressedErrors()
 {
     try {
-        SetupProjectParameters params = defaultParameters;
-        const QString projectFilePath = "suppressed-and-non-suppressed-errors.qbs";
-        params.setProjectFilePath(testProject(projectFilePath.toLocal8Bit()));
-        const TopLevelProjectConstPtr project = loader->loadProject(params);
+        resolveProject("suppressed-and-non-suppressed-errors.qbs");
         QFAIL("failure expected");
     } catch (const ErrorInfo &e) {
         QVERIFY2(e.toString().contains("easter bunny"), qPrintable(e.toString()));
@@ -2927,12 +2877,10 @@ void TestLanguage::throwingProbe()
 {
     QFETCH(bool, enableProbe);
     try {
-        SetupProjectParameters params = defaultParameters;
-        params.setProjectFilePath(testProject("throwing-probe.qbs"));
         QVariantMap properties;
         properties.insert(QStringLiteral("products.theProduct.enableProbe"), enableProbe);
-        params.setOverriddenValues(properties);
-        const TopLevelProjectPtr project = loader->loadProject(params);
+        defaultParameters.setOverriddenValues(properties);
+        resolveProject("throwing-probe.qbs");
         QVERIFY(!!project);
         QVERIFY(!enableProbe);
     } catch (const ErrorInfo &e) {
@@ -2974,9 +2922,7 @@ void TestLanguage::recursiveProductDependencies()
 {
     bool exceptionCaught = false;
     try {
-        defaultParameters.setProjectFilePath(
-                    testProject("recursive-dependencies/recursive-dependencies.qbs"));
-        const TopLevelProjectPtr project = loader->loadProject(defaultParameters);
+        resolveProject("recursive-dependencies/recursive-dependencies.qbs");
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         QCOMPARE(products.size(), 4);
@@ -3036,10 +2982,8 @@ void TestLanguage::fileTags()
 void TestLanguage::useInternalProfile()
 {
     const QString profile(QStringLiteral("theprofile"));
-    SetupProjectParameters params = defaultParameters;
-    params.setProjectFilePath(testProject("use-internal-profile.qbs"));
-    params.setTopLevelProfile(profile);
-    TopLevelProjectConstPtr project = loader->loadProject(params);
+    defaultParameters.setTopLevelProfile(profile);
+    resolveProject("use-internal-profile.qbs");
     QVERIFY(!!project);
     QCOMPARE(project->profile(), profile);
     QCOMPARE(project->products.size(), size_t(1));
@@ -3235,7 +3179,7 @@ void TestLanguage::wildcards()
     }
 
     // create files
-    for (QString filePath : qAsConst(filesToCreate)) {
+    for (QString filePath : std::as_const(filesToCreate)) {
         filePath.prepend(m_wildcardsTestDirPath + '/');
         QFileInfo fi(filePath);
         if (!QDir(fi.path()).exists())
@@ -3249,7 +3193,7 @@ void TestLanguage::wildcards()
     ResolvedProductPtr product;
     try {
         defaultParameters.setProjectFilePath(projectFilePath);
-        project = loader->loadProject(defaultParameters);
+        resolveProject();
         QVERIFY(!!project);
         const QHash<QString, ResolvedProductPtr> products = productsFromProject(project);
         product = products.value("MyProduct");

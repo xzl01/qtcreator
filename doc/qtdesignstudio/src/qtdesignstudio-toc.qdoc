@@ -12,7 +12,6 @@
                 \li \l{Tutorials}
                 \li \l{User Interface}
                     \list
-                        \li \l{Selecting Modes}
                         \li \l{Design Views}
                             \list
                                 \li \l{2D}
@@ -134,6 +133,9 @@
                         \li \l{Previewing on Devices}
                         \li \l{Previewing Android Applications}
                         \li \l{Sharing Applications Online}
+                          \list
+                            \li \l{Creating a Single Page Navigation Web Application}
+                          \endlist
                     \endlist
                 \li \l {Asset Creation with Other Tools}
                     \list
@@ -159,6 +161,7 @@
                                 \list
                                     \li \l{Setting Up Qt Bridge for Figma}
                                     \li \l{Using Qt Bridge for Figma}
+                                    \li \l{Using Figma Quick Control Template Components in Qt Design Studio}
                                 \endlist
                         \endlist
                         \li \l {Exporting 3D Assets}
@@ -176,11 +179,7 @@
                                 \li \l{Importing 3D Assets}
                             \endlist
                         \li \l{Exporting Components}
-                        \li Qt Quick Effect Maker
-                            \list
-                                \li \l{Creating Qt Quick Effect Maker Files}
-                                \li \l{Working with Effects in Qt Quick Effect Maker}
-                            \endlist
+                        \li \l{Using Qt Quick Effect Maker Effects}
                     \endlist
             \endlist
         \li \l{Motion Design}
@@ -201,12 +200,6 @@
                     \list
                         \li \l{Writing Code}
                             \list
-                                \li \l{Working in Edit Mode}
-                                    \list
-                                        \li \l{Working with Sidebars}
-                                        \li \l{Browsing Project Contents}
-                                        \li \l{Viewing Output}
-                                    \endlist
                                 \li \l{Semantic Highlighting}
                                 \li \l{Checking Code Syntax}
                                 \li \l{Completing Code}
@@ -259,6 +252,10 @@
                 \li \l{Converting Qt 5 Projects into Qt 6 Projects}
                 \li \l{Converting UI Projects to Applications}
                 \li \l{Using External Tools}
+                \li \l{\QDS on MCUs}
+                    \list
+                        \li \l {\QDS Version Compatibility with \QMCU SDKs}
+                    \endlist
             \endlist
         \li \l Help
             \list
